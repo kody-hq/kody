@@ -1,3 +1,4 @@
+import { isolateState } from '@kody-internal/shared/isolate-state.ts'
 import {
 	base64UrlToBytes,
 	bytesToBase64Url,
@@ -73,7 +74,9 @@ export function parsePackageAppTicketKeys(raw: string | undefined) {
 		.filter((key) => key.length > 0)
 }
 
-let cachedKeys: { source: string; keys: Array<CryptoKey> } | null = null
+const cachedKeys = isolateState(
+	(): { source: string; keys: Array<CryptoKey> } | null => null,
+)
 
 async function getTicketKeys(env: Env) {
 	const configured = parsePackageAppTicketKeys(env.PACKAGE_APP_TICKET_KEYS)
@@ -88,7 +91,7 @@ async function getTicketKeys(env: Env) {
 		sources = [cookieSecret]
 	}
 	const source = sources.join('\n')
-	if (cachedKeys?.source === source) return cachedKeys.keys
+	if (cachedKeys.current?.source === source) return cachedKeys.current.keys
 	const keys = await Promise.all(
 		sources.map((secret) =>
 			crypto.subtle.importKey(
@@ -100,13 +103,8 @@ async function getTicketKeys(env: Env) {
 			),
 		),
 	)
-	cachedKeys = { source, keys }
+	cachedKeys.current = { source, keys }
 	return keys
-}
-
-/** Clears the imported key cache so tests can swap secrets. */
-export function resetPackageAppTicketKeysForTests() {
-	cachedKeys = null
 }
 
 async function ticketCookieName(slug: string, secure: boolean) {

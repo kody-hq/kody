@@ -6,7 +6,6 @@ import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type {
 	AgentClaimPageData,
 	AgentClaimPageError,

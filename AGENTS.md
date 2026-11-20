@@ -1,24 +1,20 @@
 # kody agent index
 
-Kody is your agents' cloud. Accounts isolate packages, jobs, credentials,
-memories, connectors, email, and durable storage for individuals and teams.
+Kody is your agents' cloud: orgs isolate packages, jobs, credentials, memories,
+connectors, email, and storage. Open only the pointers for your task.
 
-Reuse existing UI components; extend shared controls. Never add unstyled native
-selects. Verify rendering with [ui:verify](./docs/contributing/ui-verify.md).
-`npm run validate` is the local gate. Verify UI/API with
-[control-kody](./docs/contributing/control-kody.md) first.
-
-Open the page that owns the task:
-
-- Docs map: [contributing](./docs/contributing/index.md) ·
-  [principles](./docs/principles/index.md) · [skills](./.agents/skills/) ·
-  [blog posts](./docs/contributing/blog.md) (category, series, video roundups)
-- Invite a whole team: [organizations](./docs/guides/organizations.md)
-  (`guide:organizations`, `inviteLinkCreate`)
-- Cloud Agent VM gotchas (Node, Playwright, dev server, seeding, limits):
-  [docs/contributing/cloud-agents.md](./docs/contributing/cloud-agents.md)
-- Dependency bump or audit fix: reuse an open PR, never open a duplicate
-  ([rule](./docs/contributing/dependency-overrides.md#dependency-bump-prs))
-- Never run `wrangler deploy`, `versions upload|deploy`, or `secret put|bulk`
-  against `kody-production` or any production Worker; only the Deploy workflow
-  deploys ([rule](./docs/contributing/rollback.md#ci-only-production-deploys))
+- Explore: [intent](./docs/contributing/project-intent.md),
+  [architecture](./docs/contributing/architecture/index.md),
+  [guides](./docs/guides/README.md), [all docs](./docs/contributing/index.md)
+- Change code: [getting started](./docs/contributing/getting-started.md)
+  (`npm run validate` gate), [principles](./docs/principles/index.md),
+  [Cloud Agent VM](./docs/contributing/cloud-agents.md)
+- UI: [components](./docs/contributing/ui-components.md),
+  [ui:verify](./docs/contributing/ui-verify.md),
+  [control-kody](./docs/contributing/control-kody.md)
+- Security: [security](./docs/contributing/security.md)
+- Docs: [documentation](./docs/contributing/documentation.md),
+  [blog](./docs/contributing/blog.md)
+- Ship: [skills](./.agents/skills/),
+  [dependency PRs](./docs/contributing/dependency-overrides.md#dependency-bump-prs),
+  [CI-only production deploys](./docs/contributing/rollback.md#ci-only-production-deploys)

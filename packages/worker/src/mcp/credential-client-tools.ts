@@ -5,6 +5,7 @@
  * values, so the sandbox can rebuild them with `code` and `retryWith`.
  */
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
+import { credentialCallMapToJson } from '#worker/credentials/credential-call-map.ts'
 import {
 	callToolWithCredentialClient,
 	openCredentialClient,
@@ -102,7 +103,7 @@ export function createCredentialClientKodyTools(input: {
 				const callMap = input.options.callMap ?? null
 				if (!callMap) return { warnings: [] }
 				const packageId = await input.options.resolvePackageId(args.packageId)
-				return await validateCredentialCallMap({
+				const { warnings, map } = await validateCredentialCallMap({
 					env: input.env,
 					request: input.callerContext.request ?? null,
 					map: callMap,
@@ -110,6 +111,7 @@ export function createCredentialClientKodyTools(input: {
 					strict: args.strict === true,
 					baseUrl: input.callerContext.baseUrl,
 				})
+				return { warnings, credentials: credentialCallMapToJson(map) }
 			})
 		},
 		[credentialClientToolNames.sign]: async (raw) => {

@@ -159,7 +159,7 @@ test('a body refusal of a user Key carries its owner-approval link', () => {
 	expect(refused).toBeInstanceOf(SecretPlacementError)
 	const message = (refused as Error).message
 	expect(message).toContain(
-		'https://kody.codes/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body&org=acme&credential=cred_1',
+		'https://kody.codes/connect/secrets?org=acme&name=plaidSecret&hosts=production.plaid.com&placement=body&credential=cred_1',
 	)
 	expect(message).toContain('host may store the value')
 	expect(message).toContain('Only the owner can approve it')

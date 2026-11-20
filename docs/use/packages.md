@@ -695,8 +695,14 @@ Request in the entry. See
 [Package app routing](../guides/package-authoring.md#package-app-routing) for
 the authoring example, and [Package apps](../guides/package-apps.md)
 (`guide:package_apps`) for the fetch contract, Remix recipe, session handoff,
-`packageAppFetch`, asset URLs, and lean forks. Other saved-package runtime
-surfaces may omit these app-specific fields.
+`packageAppFetch`, asset URLs, and lean forks. Outside a request (execute
+imports, jobs, webhooks, package invocations, workflows) the package's code
+still reads `packageContext.hostedUrl` and `appBasePath`: the canonical URL its
+app is served at (verified custom hostname, else its `kody.run` host or
+subdomain mount), so links it builds there match the app. They are `null` only
+when the package has no app. Exports a package app imports from another package
+read that package's own URL the same way. Request-only fields such as
+`cookiePrefix` and `clientModuleUrl` stay app-only.
 
 Use the package app model when the package needs:
 
@@ -1023,7 +1029,11 @@ than the last publish, owners see **Publish changes** on the Repo tab and a
 full 40-character SHA-1 of the resolved default-branch HEAD, to publish with
 **Publish HEAD**. Visitors may still see a non-interactive status when HEAD is
 ahead. The five-minute reconcile job still auto-publishes unlocked packages;
-this page is the explicit website path.
+this page is the explicit website path. Reconcile gives each package 45 seconds
+per tick. A publish that takes longer (large packages whose checks and rebuild
+run for minutes) does not land from reconcile, and that HEAD is skipped for six
+hours, so publish those with `kody package publish` or
+`packagePublishExternalPush`.
 
 Once a package is listed, publishing or promoting advances the public community
 listing with the runtime — see
@@ -1266,10 +1276,30 @@ the commit it clones, so a dev check result is the best predictor of a publish:
   at a time, stopping after a failed wave. Nothing is saved. Targets whose
   inputs are unchanged since the published commit are skipped, because publish
   copies those artifacts instead of building them.
+- **Same run.** Like publish, the server checks run as a durable workflow, not
+  inside the request. The CLI uploads the tree
+  (`POST /v1/packages/check-uploads`, streamed to short-lived storage), starts
+  the run with `packageCheck({ upload_id })`, which answers
+  `{ status: "dispatched", workflow_id }` right away, and polls
+  `packageRunResult({ workflow_id })`. It prints each phase and artifact chunk
+  count as the run reports it, and the same answer carries the full result once
+  the run finishes. Each phase is a durable step in its own throwaway isolate.
+  Ctrl-C cancels the run (`workflowRunCancel`). Checking the same upload again
+  while its run is active returns that run. Following a run needs only
+  `package:read`, so a token with package scopes alone works. Cancelling needs
+  `job:execute`: without it Ctrl-C stops the CLI and says the run keeps going on
+  Kody.
 - **Same retries.** A durable publish retries an attempt that hit a compute
   limit or timed out, so `kody dev check` runs the server checks up to 3 times
-  when the server reports a memory or CPU limit, answers 502/503/504, or sends
-  no answer before the request times out.
+  (a fresh upload and run each time) when a check reports a memory or CPU limit,
+  the server answers 502/503/504, or it sends no answer before the request times
+  out.
+
+`packageCheck` no longer takes the tree in the request. A CLI older than 3.46.0
+gets HTTP 426 with error code `upgrade_required` and
+`details.minimum_cli_version`; upgrade `@kodycodes/cli`. The uploaded tree is
+deleted when its run ends, and stored results and abandoned uploads expire after
+one day.
 
 What a dev check cannot run, and says so in its output: cloning the pushed
 commit from Artifacts. `git push` (and the Artifacts push limit) happens before
@@ -1435,58 +1465,64 @@ publish checks run.
    returns `already_published` (true no-op tip). That result still runs the
    artifact rebuild and sets `artifacts_rebuilt` true when any target needed
    rebuild or a forced snapshot repair ran. If `published_commit` moved relative
-   to that pre-request tip — including a durable re-entry after an overlapping
-   inline attempt advanced the tip — the status is `published` with
-   `previous_commit` set to the baseline tip, even when the repo session already
-   saw tip==HEAD. If the package is locked, it returns `locked` with a
-   `pending_commit` and `approval_url` after checks pass and leaves
-   `published_commit` unchanged. If it is internet-visible and its credential
-   needs changed, it returns `approval_required` the same way (see
+   to that pre-request tip, including when an earlier attempt of the durable run
+   already advanced the tip, the status is `published` with `previous_commit`
+   set to the baseline tip, even when the repo session already saw tip==HEAD. If
+   the package is locked, it returns `locked` with a `pending_commit` and
+   `approval_url` after checks pass and leaves `published_commit` unchanged. If
+   it is internet-visible and its credential needs changed, it returns
+   `approval_required` the same way (see
    [Approval when credential needs change](#approval-when-credential-needs-change)).
    If checks fail before promotion, it returns `checks_failed` with the failed
    check entries and leaves the underlying storage state unchanged. The CLI
-   exits **0** for `published`, `already_published` (including
-   `artifacts_rebuilt: true`), and `dispatched`; it exits **1** for refusal
-   statuses (`checks_failed`, `locked`, `approval_required`, `not_fast_forward`)
-   and prints the API `message` (or a checks summary) to stderr — same
-   convention as npm. Auth and permission failures also exit 1. Full check-time
-   esbuild is deferred to the later published artifact rebuild (callable and
-   importable targets stay distinct). That rebuild copies unchanged callable,
-   importable, app, job, and subscription artifacts from the previous published
-   commit when the target's entry, reachable source, and bundler root config
-   (`package.json`, wrangler config, vendored `node_modules`) match the new
-   snapshot; a shared-module change dirties every dependent target. Stale
-   captured `kody:@` dependency commits also force a rebuild, so republishing a
-   stale dependent still refreshes inlined snapshots. Missing prior artifacts or
-   snapshots, first publish, force, and `already_published` snapshot-mismatch
-   repairs still rebuild. A published commit always has a complete target set —
-   reuse writes the prior modules under the new commit key rather than leaving
-   holes. A rebuild failure after promotion also returns `checks_failed` with a
-   bundle check. The publish did not succeed: Kody drops that commit's
-   publish-checks seal and moves `published_commit`, the package projection, and
-   job pins back to the last good commit (a first publish has no earlier commit,
-   so only the seal is dropped). Re-run the publish capability to repair
-   artifacts. Successful `published` responses, and `already_published`
-   responses when the metadata is available, include a bounded
-   `static_dependents` summary of direct saved packages whose published bundle
-   artifacts statically reference this package. Stale entries mean the dependent
-   bundle captured a dependency commit that differs from the current published
-   commit. Kody does not automatically republish those dependents; inspect and
-   republish only the ones whose static snapshot should reference the current
-   published commit. Those same success results include `phase_timings` with
-   optional millisecond fields `clone_ms`, `checks_typecheck_ms`,
-   `checks_bundle_ms`, `rebuild_ms`, `dependents_ms`, and `total_ms`. Omitted
-   keys did not run on that attempt. `checks_bundle_ms` is the publish
-   bundle-check and is omitted when that esbuild pass is deferred to rebuild;
-   `rebuild_ms` is the later artifact rebuild — they stay separate. Read
-   `phase_timings` on the capability result; for an inline publish it is not
-   available from `runList` or Cloudflare Log Explorer. When an interactive
-   publish exceeds the inline budget (~35s), the tool returns
-   `status: "dispatched"` with a `workflow_id` instead of hanging until the host
-   times out. `dispatched` includes `phase_timings.total_ms` as
-   time-to-dispatch. Poll with `workflowRunList({ workflow_id })` (CLI:
-   `kody api workflowRunList --params '{"workflow_id":"<id>"}'`) until the run
-   is terminal; do not retry the same publish while the run is active.
+   follows the run to its end and exits **0** for `published` and
+   `already_published` (including `artifacts_rebuilt: true`); it exits **1** for
+   a run Kody failed, and for refusal statuses (`checks_failed`, `locked`,
+   `approval_required`, `not_fast_forward`) and prints the API `message` (or a
+   checks summary) to stderr — same convention as npm. Auth and permission
+   failures also exit 1. Full check-time esbuild is deferred to the later
+   published artifact rebuild (callable and importable targets stay distinct).
+   That rebuild copies unchanged callable, importable, app, job, and
+   subscription artifacts from the previous published commit when the target's
+   entry, reachable source, and bundler root config (`package.json`, wrangler
+   config, vendored `node_modules`) match the new snapshot; a shared-module
+   change dirties every dependent target. Stale captured `kody:@` dependency
+   commits also force a rebuild, so republishing a stale dependent still
+   refreshes inlined snapshots. Missing prior artifacts or snapshots, first
+   publish, force, and `already_published` snapshot-mismatch repairs still
+   rebuild. A published commit always has a complete target set — reuse writes
+   the prior modules under the new commit key rather than leaving holes. A
+   rebuild failure after promotion also returns `checks_failed` with a bundle
+   check. The publish did not succeed: Kody drops that commit's publish-checks
+   seal and moves `published_commit`, the package projection, and job pins back
+   to the last good commit (a first publish has no earlier commit, so only the
+   seal is dropped). Re-run the publish capability to repair artifacts.
+   Successful `published` responses, and `already_published` responses when the
+   metadata is available, include a bounded `static_dependents` summary of
+   direct saved packages whose published bundle artifacts statically reference
+   this package. Stale entries mean the dependent bundle captured a dependency
+   commit that differs from the current published commit. Kody does not
+   automatically republish those dependents; inspect and republish only the ones
+   whose static snapshot should reference the current published commit. Those
+   same success results include `phase_timings` with optional millisecond fields
+   `clone_ms`, `checks_typecheck_ms`, `checks_bundle_ms`, `rebuild_ms`,
+   `dependents_ms`, and `total_ms`. Omitted keys did not run on that attempt.
+   `checks_bundle_ms` is the publish bundle-check and is omitted when that
+   esbuild pass is deferred to rebuild; `rebuild_ms` is the later artifact
+   rebuild — they stay separate. Read `phase_timings` on the stored result. A
+   publish never runs inside the request: the tool always returns
+   `status: "dispatched"` with a `workflow_id`, and the publish runs as a
+   durable workflow. `dispatched` includes `phase_timings.total_ms` as
+   time-to-dispatch. Poll with `packageRunResult({ workflow_id })` (CLI:
+   `kody api packageRunResult --params '{"workflow_id":"<id>"}'`), which needs
+   only `package:read`, until its `status` is terminal. It carries `progress`
+   (`phase`, `message`, and `done` / `total` while artifacts build),
+   `last_error`, and, once the run finishes, the full answer in `result`
+   (manifest, static dependents, hints, or the refusal), kept for one day.
+   `workflowRunList({ workflow_id })` shows the same run to a caller with
+   `job:read`. Do not retry the same publish while the run is active.
+   `kody package publish` does all of this for you: it prints progress, prints
+   the stored result, and Ctrl-C cancels the run.
 
    A durable publish run that ends `complete` (its run in `runList` / `runGet`
    has status `success`) means the publish finished as `published` or
@@ -1503,8 +1539,8 @@ publish checks run.
    If the CLI or client loses the HTTP response (for example
    `fetch failed: UND_ERR_SOCKET`) before you see `dispatched` or a terminal
    status, the outcome is unknown until you check. Prefer
-   `workflowRunList({ workflow_id })` when you still have the id; otherwise list
-   recent runs with `workflowRunList` (CLI: `kody api workflowRunList`),
+   `packageRunResult({ workflow_id })` when you still have the id; otherwise
+   list recent runs with `workflowRunList` (CLI: `kody api workflowRunList`),
    optionally filtering with `package_id`, `status`, or `since`. Re-calling
    publish for the **same** commit is safe: an active durable run for that
    commit is deduped and returns the existing `dispatched` handle; a completed

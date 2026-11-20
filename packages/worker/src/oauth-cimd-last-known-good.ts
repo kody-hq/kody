@@ -1,3 +1,4 @@
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import {
 	builtInFallbackCimdDocument,
 	isWorkerBlockedCimdHost,
@@ -153,7 +154,9 @@ export function cimdFallbackDecision(input: {
 	return { allowed: false, reason: 'none' }
 }
 
-const resolvedStash = new Map<string, { document: string; at: number }>()
+const resolvedStash = isolateCollection(
+	new Map<string, { document: string; at: number }>(),
+)
 
 /** Provider hook: remember a document that just validated (memory only). */
 export function noteResolvedCimdDocument(input: {
@@ -177,11 +180,6 @@ export function noteResolvedCimdDocument(input: {
 		if (oldest === undefined) break
 		resolvedStash.delete(oldest)
 	}
-}
-
-/** Test helper. */
-export function clearResolvedCimdStashForTests() {
-	resolvedStash.clear()
 }
 
 async function readLastKnownGood(env: Env, key: string) {

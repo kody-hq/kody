@@ -75,7 +75,6 @@ vi.mock('#worker/enablements/owner-cron-enablement.ts', () => ({
 	resolveOwnerPersonIdForCronEnablement: vi.fn(),
 }))
 
-// eslint-disable-next-line epic-web/prefer-dispose-in-tests -- restores the shared job-service mocks and spies between tests.
 afterEach(() => {
 	resetJobServiceMocks()
 })

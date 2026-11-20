@@ -1,3 +1,4 @@
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 export type PackageAppCookieFinding = {
 	cookieName: string
 	reason: 'added_httponly' | 'missing_httponly'
@@ -204,12 +205,10 @@ export function enforcePackageAppCookieHttpOnly(
 	}
 }
 
-const packageAppCookieFindingWrites = new Map<string, number>()
+const packageAppCookieFindingWrites = isolateCollection(
+	new Map<string, number>(),
+)
 const findingThrottleMs = 60 * 60 * 1000
-
-export function resetPackageAppCookieFindingWritesForTests() {
-	packageAppCookieFindingWrites.clear()
-}
 
 export async function recordPackageAppCookieFindings(input: {
 	db: D1Database

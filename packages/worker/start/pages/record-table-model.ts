@@ -88,7 +88,6 @@ export function useRecordTableModel(
 			)
 			if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
 				// Synchronize the optional browser preference after hydration.
-				// eslint-disable-next-line react/set-state-in-effect
 				setVisibility(
 					Object.fromEntries(
 						Object.entries(saved).filter(

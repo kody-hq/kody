@@ -25,6 +25,7 @@ const doorModules = new Set([
 	'packages/worker/src/credentials/login-resolver.ts',
 	'packages/worker/src/credentials/signing-resolver.ts',
 	'packages/worker/src/credentials/client-resolver.ts',
+	'packages/worker/src/credentials/vault-item-credential.ts',
 ])
 
 type StorageRule = {

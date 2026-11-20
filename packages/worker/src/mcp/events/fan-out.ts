@@ -112,7 +112,7 @@ async function isOwnedOauthClientRevoked(input: {
 /**
  * MCP Events leg of package event delivery. Runs inside the same
  * `kody-package-events-dispatch` consumer message as package subscribers
- * (`deliverPackageEventWithToolFactories`), so there is one dispatch path.
+ * (`deliverPackageEvent`), so there is one dispatch path.
  *
  * Delivery-time re-checks: the emitter still declares `mcp: true` on the live
  * manifest (not only the enqueue stamp), the user still has the flag, the

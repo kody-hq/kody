@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import {
 	classifyRetryableD1Error,
 	isBareRetryableD1LockSentryEvent,
@@ -122,4 +122,106 @@ test('readD1RetryAttempts reports how many tries runD1WithRetry made', async () 
 		throw badSql
 	}).catch(() => undefined)
 	expect(readD1RetryAttempts(badSql)).toBeNull()
+})
+
+test('runD1WithRetry jitter keeps each backoff within its upper half', async () => {
+	vi.useFakeTimers()
+	const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+	try {
+		let attempts = 0
+		const result = runD1WithRetry(
+			async () => {
+				attempts += 1
+				if (attempts < 3) throw new Error('D1_ERROR: SQLITE_BUSY')
+				return 'ok'
+			},
+			{ maxAttempts: 3, baseDelayMs: 100, jitter: true },
+		)
+		await vi.advanceTimersByTimeAsync(49)
+		expect(attempts).toBe(1)
+		await vi.advanceTimersByTimeAsync(1)
+		expect(attempts).toBe(2)
+		await vi.advanceTimersByTimeAsync(100)
+		await expect(result).resolves.toBe('ok')
+		expect(attempts).toBe(3)
+	} finally {
+		random.mockRestore()
+		vi.useRealTimers()
+	}
+})
+
+const accountOverloaded =
+	'D1_ERROR: Your account is generating too much load on D1 DBs. Please back off and try again later.'
+
+test('account-level D1 load throttle is an overloaded blip and similar wording is not', () => {
+	for (const message of [
+		accountOverloaded,
+		`Error: ${accountOverloaded}`,
+		'Your account is generating too much load on D1 DBs. Please back off and try again later',
+	]) {
+		expect(classifyRetryableD1Error(new Error(message))).toBe('overloaded')
+		expect(isBareRetryableD1LockSentryEvent(exceptionEvent(message))).toBe(true)
+	}
+	for (const message of [
+		'Your account is generating too much load. Please back off and try again later.',
+		'Your account is generating too much load on R2. Please back off and try again later.',
+		`sync failed: ${accountOverloaded}`,
+		'Please back off and try again later.',
+	]) {
+		expect(classifyRetryableD1Error(new Error(message))).toBeNull()
+		expect(isBareRetryableD1LockSentryEvent(exceptionEvent(message))).toBe(
+			false,
+		)
+	}
+})
+
+test('runD1WithRetry backs off the account load throttle with jitter, then succeeds', async () => {
+	vi.useFakeTimers()
+	const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+	try {
+		let attempts = 0
+		const result = runD1WithRetry(
+			async () => {
+				attempts += 1
+				if (attempts < 3) throw new Error(accountOverloaded)
+				return 'ok'
+			},
+			{ maxAttempts: 3, baseDelayMs: 100 },
+		)
+		await vi.advanceTimersByTimeAsync(49)
+		expect(attempts).toBe(1)
+		await vi.advanceTimersByTimeAsync(1)
+		expect(attempts).toBe(2)
+		await vi.advanceTimersByTimeAsync(100)
+		await expect(result).resolves.toBe('ok')
+		expect(attempts).toBe(3)
+	} finally {
+		random.mockRestore()
+		vi.useRealTimers()
+	}
+})
+
+test('runD1WithRetry surfaces a persistent account load throttle after bounded attempts', async () => {
+	const throttled = new Error(accountOverloaded)
+	let attempts = 0
+	const thrown = await runD1WithRetry(
+		async () => {
+			attempts += 1
+			throw throttled
+		},
+		{ maxAttempts: 4, baseDelayMs: 0 },
+	).catch((error: unknown) => error)
+	expect(thrown).toBe(throttled)
+	expect(attempts).toBe(4)
+	expect(readD1RetryAttempts(throttled)).toBe(4)
+
+	const lookalike = new Error(
+		'Your account is generating too much load on R2. Please back off and try again later.',
+	)
+	let lookalikeAttempts = 0
+	await runD1WithRetry(async () => {
+		lookalikeAttempts += 1
+		throw lookalike
+	}).catch(() => undefined)
+	expect(lookalikeAttempts).toBe(1)
 })

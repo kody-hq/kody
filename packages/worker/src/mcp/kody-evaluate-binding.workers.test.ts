@@ -44,6 +44,26 @@ async function bundle(source: string) {
 	})
 }
 
+test('hosted execute passes pinned credential picks across the gateway RPC boundary', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const run = await runBundledModuleWithRegistry(
+		env,
+		createCaller(),
+		await bundle('export default () => ({ ran: true })'),
+		undefined,
+		{
+			skipCapabilityRegistry: true,
+			credentialCallMap: {
+				map: new Map([['api', [{ id: 'pinned-credential-id' }]]]),
+				checked: true,
+				strict: false,
+			},
+		},
+	)
+	expect(run.error).toBeUndefined()
+	expect(run.result).toEqual({ ran: true })
+})
+
 test(
 	'bare kody is absent on one-file and module executes, while the documented import and helpers still work',
 	{ timeout: 60_000 },

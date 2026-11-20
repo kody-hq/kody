@@ -1,3 +1,7 @@
+import {
+	resetIsolateState,
+	settleIsolateState,
+} from '@kody-internal/shared/isolate-state-test-support.ts'
 import { env } from 'cloudflare:test'
 import { expect, test } from 'vitest'
 import { ensureEmailTestSchema } from '#worker/email/test-schema.ts'
@@ -9,9 +13,7 @@ import {
 	assertWithinStorageBytesEntitlement,
 } from './service.ts'
 import {
-	clearOwnerD1StorageReconcileDedupeForTests,
 	enqueueOwnerD1StorageReconcile,
-	flushOwnerD1StorageReconcilesForTests,
 	reconcileD1StorageBytes,
 } from './d1-storage-reconciliation.ts'
 import { userMeterRpc } from './user-meter-client.ts'
@@ -322,7 +324,7 @@ test('reconcile defers and preserves reserve when CAS misses a concurrent reserv
 })
 
 test('lazy per-owner enqueue seeds a cold meter from physical bytes and dedupes in-flight work', async () => {
-	clearOwnerD1StorageReconcileDedupeForTests()
+	resetIsolateState()
 	const owner = await seedUser('a'.repeat(63) + 'e', { payloadBytes: 256 })
 	const expectedBytes = await owner.physicalBytes()
 	expect(expectedBytes).toBeGreaterThan(128)
@@ -343,7 +345,7 @@ test('lazy per-owner enqueue seeds a cold meter from physical bytes and dedupes 
 		now: new Date('2026-08-01T03:00:00.000Z'),
 	})
 	expect(second).toBe(first)
-	await flushOwnerD1StorageReconcilesForTests()
+	await settleIsolateState()
 	expect(await owner.meter.readStorageBytes()).toMatchObject({
 		outcome: 'ready',
 		bytes: expectedBytes,
@@ -351,7 +353,7 @@ test('lazy per-owner enqueue seeds a cold meter from physical bytes and dedupes 
 })
 
 test('cold storage reserve awaits the lazy per-owner reconcile before adding the reservation', async () => {
-	clearOwnerD1StorageReconcileDedupeForTests()
+	resetIsolateState()
 	const owner = await seedUser('a'.repeat(63) + 'f', { payloadBytes: 256 })
 	const expectedBytes = await owner.physicalBytes()
 	expect(expectedBytes).toBeGreaterThan(128)
@@ -363,7 +365,7 @@ test('cold storage reserve awaits the lazy per-owner reconcile before adding the
 		email: `${owner.userId}@example.test`,
 		requested: 40,
 	})
-	await flushOwnerD1StorageReconcilesForTests()
+	await settleIsolateState()
 	expect(await owner.meter.readStorageBytes()).toMatchObject({
 		outcome: 'ready',
 		bytes: expectedBytes + 40,

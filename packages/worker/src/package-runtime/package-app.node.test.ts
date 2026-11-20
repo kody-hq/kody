@@ -7,6 +7,7 @@ import { expect, test, vi } from 'vitest'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { secretAuthorityArgName } from '#mcp/secrets/secret-authority.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
+import * as packageAppPublicUrl from '#worker/package-app-public-url.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import {
 	createPackageStorageAccessDeniedMessage,
@@ -77,13 +78,27 @@ const packageAppRuntimeMock = vi.hoisted(() => ({
 			capabilityMap: {},
 		}),
 	),
-	createPackageEventTools: vi.fn(
-		async (
-			..._args: Parameters<
-				typeof PackageInvocationsService.createPackageEventTools
-			>
+	packageEventDispatches: [] as Array<{
+		runPackageContext: unknown
+		loadedPackageIds: Array<string>
+		input: unknown
+		emittingPackageId: string | null
+	}>,
+	createRunPackageEventTools: vi.fn(
+		(
+			options: Parameters<
+				typeof PackageInvocationsService.createRunPackageEventTools
+			>[0],
 		) => ({
-			dispatch: vi.fn(async () => ({})),
+			dispatch: async (input: unknown, emittingPackageId: string | null) => {
+				packageAppRuntimeMock.packageEventDispatches.push({
+					runPackageContext: options.runPackageContext,
+					loadedPackageIds: [...options.loadedPackageIds],
+					input,
+					emittingPackageId,
+				})
+				return { status: 'enqueued' }
+			},
 		}),
 	),
 	credentialClientBindingsSeen: [] as Array<string>,
@@ -214,11 +229,11 @@ vi.mock('#mcp/capabilities/registry.ts', () => ({
 }))
 
 vi.mock('#worker/package-invocations/service.ts', () => ({
-	createPackageEventTools: (
+	createRunPackageEventTools: (
 		...args: Parameters<
-			typeof PackageInvocationsService.createPackageEventTools
+			typeof PackageInvocationsService.createRunPackageEventTools
 		>
-	) => packageAppRuntimeMock.createPackageEventTools(...args),
+	) => packageAppRuntimeMock.createRunPackageEventTools(...args),
 }))
 
 vi.mock('#worker/run-records/service.ts', async (importOriginal) => {
@@ -582,7 +597,7 @@ test('package app createCredentialRuntime exposes callable credential().sign via
 		${createCredentialClientRuntimeSource()}
 		${extractGeneratedSource(
 			'function createCredentialRuntime(runtimeBridge, call) {',
-			'\nfunction createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, identity = null) {',
+			'\nfunction createRuntime(runtimeBridge, packageContext, packageApps, mcpServerNamesOrLoader, identity = null) {',
 		)}
 		return createCredentialRuntime(runtimeBridge, call);`,
 	) as (
@@ -728,6 +743,33 @@ test('buildPackageAppWorker claims the unique Dynamic Worker day with its surfac
 		await Promise.all(waitUntilTasks)
 	} finally {
 		recordSpy.mockRestore()
+	}
+})
+
+test('package app worker gets the app location of each package it can act as', async () => {
+	const { env, loader } = createPackageAppTestEnv()
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	const packageApps = {
+		'package-run-apps': {
+			hostedUrl: 'https://kody.kody.run/rooms',
+			appBasePath: '/rooms',
+		},
+	}
+	const resolveSpy = vi
+		.spyOn(packageAppPublicUrl, 'resolvePackageAppRunLocations')
+		.mockResolvedValue(packageApps)
+	try {
+		await buildPackageAppWorker(makeBuildInput(env, 'run-apps'))
+		expect(resolveSpy).toHaveBeenCalledWith(
+			expect.objectContaining({ packageIds: ['package-run-apps'] }),
+		)
+		expect(loaderWorkerOptions(loader)?.env['__kodyPackageApps']).toEqual(
+			packageApps,
+		)
+	} finally {
+		resolveSpy.mockRestore()
 	}
 })
 
@@ -1660,4 +1702,71 @@ test('buildPackageAppWorker passes packageStorage grant ids from root, static, a
 		props: { packageStorageGrantIds: Array<string> }
 	}
 	expect(bridgeProps.props.packageStorageGrantIds).toHaveLength(3)
+})
+
+test('package app events.dispatch emits as the app, or as the bound package for its stamped modules', async () => {
+	const { bridge } = createPackageAppRuntimeBridgeForTest({
+		packageStorageGrantIds: ['package-1', 'dep-package'],
+	})
+	vi.spyOn(
+		bridge as unknown as {
+			runWithAuthority: (input: {
+				run: (callerContext: unknown) => Promise<unknown>
+			}) => Promise<unknown>
+		},
+		'runWithAuthority',
+	).mockImplementation(async (input) => await input.run({}))
+	packageAppRuntimeMock.packageEventDispatches.length = 0
+	const event = { topic: '@user/demo.ready', idempotencyKey: 'k-1' }
+
+	await expect(bridge.packageEventDispatch(event)).resolves.toEqual({
+		status: 'enqueued',
+	})
+	await expect(
+		bridge.packageBoundCall({
+			token: 'binding-token-for-test',
+			packageId: 'dep-package',
+			op: 'packageEvent',
+			args: event,
+		}),
+	).resolves.toEqual({ status: 'enqueued' })
+	const appContext = {
+		packageId: 'package-1',
+		kodyId: 'example',
+		sourceId: 'source-1',
+	}
+	expect(packageAppRuntimeMock.packageEventDispatches).toEqual([
+		{
+			runPackageContext: appContext,
+			loadedPackageIds: ['package-1', 'dep-package'],
+			input: event,
+			emittingPackageId: null,
+		},
+		{
+			runPackageContext: appContext,
+			loadedPackageIds: ['package-1', 'dep-package'],
+			input: event,
+			emittingPackageId: 'dep-package',
+		},
+	])
+
+	// Only the wrapper capability selects a package, and only a granted one.
+	for (const [token, packageId, message] of [
+		['wrong-token', 'dep-package', 'Package binding capability is invalid.'],
+		[
+			'binding-token-for-test',
+			'pkg-not-granted',
+			createPackageStorageAccessDeniedMessage('pkg-not-granted'),
+		],
+	] as const) {
+		await expect(
+			bridge.packageBoundCall({
+				token,
+				packageId,
+				op: 'packageEvent',
+				args: event,
+			}),
+		).rejects.toThrow(message)
+	}
+	expect(packageAppRuntimeMock.packageEventDispatches).toHaveLength(2)
 })

@@ -1,57 +1,66 @@
 import type { WorkspaceSwitchTarget } from '#universal/org-pages.ts'
 /** Presentation identity belongs to the native route, never a second URL matcher. */
+const pageNavigationItems = [
+	'activity',
+	'agents',
+	'approvals',
+	'billing',
+	'codemods',
+	'collaborators',
+	'community-reports',
+	'connected-apps',
+	'connections',
+	'credentials',
+	'credits',
+	'data',
+	'email',
+	'execution-contexts',
+	'experiments',
+	'feature-flags',
+	'files',
+	'follows',
+	'grants',
+	'insights',
+	'integrations',
+	'jobs',
+	'members',
+	'memories',
+	'organizations',
+	'overview',
+	'packages',
+	'platform-feedback',
+	'platform-integrations',
+	'profile',
+	'profiles',
+	'provider-marks',
+	'public-profile',
+	'apps',
+	'repositories',
+	'reserved-usernames',
+	'roles',
+	'secret-providers',
+	'security',
+	'settings',
+	'skills',
+	'system-email',
+	'teams',
+	'usage',
+	'users',
+	'orgs',
+	'waiting',
+	'webhooks',
+	'workflows',
+] as const
 export type PageNavigation = {
 	rail: 'account' | 'workspace' | 'admin'
-	item:
-		| 'activity'
-		| 'agents'
-		| 'approvals'
-		| 'billing'
-		| 'codemods'
-		| 'collaborators'
-		| 'community-reports'
-		| 'connected-apps'
-		| 'connections'
-		| 'credentials'
-		| 'credits'
-		| 'data'
-		| 'email'
-		| 'execution-contexts'
-		| 'experiments'
-		| 'feature-flags'
-		| 'files'
-		| 'follows'
-		| 'grants'
-		| 'insights'
-		| 'integrations'
-		| 'jobs'
-		| 'members'
-		| 'memories'
-		| 'organizations'
-		| 'overview'
-		| 'packages'
-		| 'platform-feedback'
-		| 'platform-integrations'
-		| 'profile'
-		| 'profiles'
-		| 'provider-marks'
-		| 'public-profile'
-		| 'apps'
-		| 'repositories'
-		| 'reserved-usernames'
-		| 'roles'
-		| 'secret-providers'
-		| 'security'
-		| 'settings'
-		| 'skills'
-		| 'system-email'
-		| 'teams'
-		| 'usage'
-		| 'users'
-		| 'orgs'
-		| 'waiting'
-		| 'webhooks'
-		| 'workflows'
+	item: (typeof pageNavigationItems)[number]
+}
+type RouteNavigation = PageNavigation & {
+	/** Search param whose value, when it names a rail item, replaces `item`. */
+	itemFromSearch?: string
+}
+function isPageNavigationItem(value: unknown): value is PageNavigation['item'] {
+	return (pageNavigationItems as ReadonlyArray<unknown>).includes(value)
 }
 export type MatchedPageNavigation = PageNavigation & {
 	workspaceSwitch?: WorkspaceSwitchTarget
@@ -60,7 +69,7 @@ export type MatchedPageNavigation = PageNavigation & {
 }
 declare module '@tanstack/router-core' {
 	interface StaticDataRouteOption {
-		navigation?: PageNavigation
+		navigation?: RouteNavigation
 		workspaceSwitch?: WorkspaceSwitchTarget & {
 			suffix?: readonly (string | { param: string })[]
 		}
@@ -69,17 +78,22 @@ declare module '@tanstack/router-core' {
 export function pageNavigationForMatches(
 	matches: readonly {
 		staticData: {
-			navigation?: PageNavigation
+			navigation?: RouteNavigation
 			workspaceSwitch?: WorkspaceSwitchTarget & {
 				suffix?: readonly (string | { param: string })[]
 			}
 		}
 		params: unknown
+		search?: unknown
 	}[],
 ): MatchedPageNavigation | undefined {
 	for (const match of [...matches].reverse()) {
-		const navigation = match.staticData.navigation
-		if (!navigation) continue
+		if (!match.staticData.navigation) continue
+		const { itemFromSearch, ...navigation } = match.staticData.navigation
+		const searchItem = itemFromSearch
+			? (match.search as Record<string, unknown> | undefined)?.[itemFromSearch]
+			: undefined
+		if (isPageNavigationItem(searchItem)) navigation.item = searchItem
 		const params = (match.params ?? {}) as {
 			orgSlug?: unknown
 			username?: unknown

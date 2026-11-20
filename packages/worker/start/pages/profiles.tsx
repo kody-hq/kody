@@ -16,7 +16,9 @@ import {
 import {
 	createProfile,
 	createProfileToken,
+	grantProfileAccess,
 	revokeProfile,
+	revokeProfileGrant,
 	revokeProfileToken,
 	shortenProfileExpiry,
 } from '#start/server/profiles'
@@ -47,6 +49,7 @@ import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	getSquircleCss,
+	visuallyHiddenCss,
 	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
@@ -583,6 +586,15 @@ function ProfileDetail(props: {
 	const block = subProfileBlock(profile, viewer)
 	const tokens = tokensForProfile(payload.tokens, profile.id)
 	const editable = canEditProfile(profile, viewer)
+	const parent = profile.parentProfileId
+		? (payload.profiles.find((entry) => entry.id === profile.parentProfileId) ??
+			null)
+		: null
+	const grantOptions = profile.parentProfileId
+		? parent
+			? subProfileGrantOptions(parent, payload.profiles)
+			: []
+		: payload.grantOptions
 	const parentLimit =
 		profile.chain.length > 1
 			? (payload.profiles
@@ -673,7 +685,21 @@ function ProfileDetail(props: {
 						},
 					]}
 				/>
-				<GrantsList grants={profile.grants} />
+				<GrantsList
+					orgSlug={payload.orgSlug}
+					grants={profile.grants}
+					options={grantOptions}
+					onRemoved={editable ? refresh : null}
+				/>
+				{editable ? (
+					<AddProfileGrantForm
+						orgSlug={payload.orgSlug}
+						profile={profile}
+						parentName={parent?.name ?? null}
+						options={grantOptions}
+						onDone={refresh}
+					/>
+				) : null}
 				<div css={accountActionsCss}>
 					{block === null ? (
 						<Button
@@ -727,7 +753,40 @@ function grantResourceLabel(type: string) {
 		: type[0]?.toUpperCase() + type.slice(1)
 }
 
-function GrantsList(props: { grants: ProfileItem['grants'] }) {
+function grantOptionKey(grant: { resourceType: string; resourceId: string }) {
+	return `${grant.resourceType}:${grant.resourceId}`
+}
+
+function GrantsList(props: {
+	orgSlug: string
+	grants: ProfileItem['grants']
+	options: ReadonlyArray<ProfileGrantOption>
+	/** Set when the viewer can remove grants. */
+	onRemoved: (() => Promise<unknown>) | null
+}) {
+	const [message, setMessage] = useState<string | null>(null)
+	const [pending, setPending] = useState<string | null>(null)
+	const labels = new Map(
+		props.options.map((option) => [grantOptionKey(option), option.label]),
+	)
+	const removable = props.onRemoved !== null
+
+	async function remove(grantId: string) {
+		setPending(grantId)
+		setMessage(null)
+		try {
+			const result = (await revokeProfileGrant({
+				data: { orgSlug: props.orgSlug, grantId },
+			})) as MutationResult
+			setMessage(failureText(result))
+			if (result.ok) await props.onRemoved?.()
+		} catch (error) {
+			setMessage(thrownText(error))
+		} finally {
+			setPending(null)
+		}
+	}
+
 	return (
 		<section aria-label="Grants" css={{ display: 'grid', gap: '0.5rem' }}>
 			<h3 css={subheadCss}>What it can reach</h3>
@@ -744,38 +803,227 @@ function GrantsList(props: { grants: ProfileItem['grants'] }) {
 							<th scope="col">Resource</th>
 							<th scope="col">Type</th>
 							<th scope="col">Permissions</th>
+							{removable ? (
+								<th scope="col">
+									<span css={visuallyHiddenCss}>Actions</span>
+								</th>
+							) : null}
 						</tr>
 					</thead>
 					<tbody>
-						{props.grants.map((grant) => (
-							<tr key={`${grant.resourceType}:${grant.resourceId}`}>
-								<td>
-									{grant.href ? (
-										<TextLink href={grant.href}>
-											{grant.label ?? grant.resourceId}
-										</TextLink>
-									) : (
-										(grant.label ?? <code>{grant.resourceId}</code>)
-									)}
-								</td>
-								<td>{grantResourceLabel(grant.resourceType)}</td>
-								<td>
-									<span
-										css={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}
-									>
-										{grant.permissions.map((permission) => (
-											<code key={permission} css={chipCss}>
-												{permission}
-											</code>
-										))}
-									</span>
-								</td>
-							</tr>
-						))}
+						{props.grants.map((grant) => {
+							const label =
+								grant.label ?? labels.get(grantOptionKey(grant)) ?? null
+							return (
+								<tr key={grantOptionKey(grant)}>
+									<td>
+										{grant.href ? (
+											<TextLink href={grant.href}>
+												{label ?? grant.resourceId}
+											</TextLink>
+										) : (
+											(label ?? <code>{grant.resourceId}</code>)
+										)}
+									</td>
+									<td>{grantResourceLabel(grant.resourceType)}</td>
+									<td>
+										<span
+											css={{
+												display: 'flex',
+												flexWrap: 'wrap',
+												gap: '0.3rem',
+											}}
+										>
+											{grant.permissions.map((permission) => (
+												<code key={permission} css={chipCss}>
+													{permission}
+												</code>
+											))}
+										</span>
+									</td>
+									{removable ? (
+										<td>
+											{grant.grantId ? (
+												<Button
+													type="button"
+													variant="danger"
+													disabled={pending !== null}
+													aria-label={`Remove ${label ?? grant.resourceId}`}
+													onClick={() => void remove(grant.grantId!)}
+												>
+													{pending === grant.grantId ? 'Removing…' : 'Remove'}
+												</Button>
+											) : null}
+										</td>
+									) : null}
+								</tr>
+							)
+						})}
 					</tbody>
 				</Table>
 			)}
+			{message ? (
+				<AccountManagementMessage tone="error">
+					{message}
+				</AccountManagementMessage>
+			) : null}
 		</section>
+	)
+}
+
+function AddProfileGrantForm(props: {
+	orgSlug: string
+	profile: ProfileItem
+	parentName: string | null
+	options: ReadonlyArray<ProfileGrantOption>
+	onDone: () => Promise<unknown>
+}) {
+	const [selected, setSelected] = useState('')
+	const [picked, setPicked] = useState<Set<string>>(() => new Set())
+	const [message, setMessage] = useState<string | null>(null)
+	const [pending, setPending] = useState(false)
+	const option =
+		props.options.find((entry) => grantOptionKey(entry) === selected) ?? null
+	const held = new Map(
+		props.profile.grants.map((grant) => [
+			grantOptionKey(grant),
+			grant.permissions,
+		]),
+	)
+
+	function choose(key: string) {
+		setSelected(key)
+		setPicked(new Set(held.get(key) ?? []))
+		setMessage(null)
+	}
+
+	async function submit(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault()
+		if (!option) return setMessage('Pick a resource to grant.')
+		const permissions = option.permissions.filter((permission) =>
+			picked.has(permission),
+		)
+		if (permissions.length === 0)
+			return setMessage('Pick at least one permission.')
+		setPending(true)
+		setMessage(null)
+		try {
+			const result = (await grantProfileAccess({
+				data: {
+					orgSlug: props.orgSlug,
+					profileId: props.profile.id,
+					grant: {
+						resourceType: option.resourceType,
+						resourceId: option.resourceId,
+						permissions,
+					},
+				},
+			})) as MutationResult
+			if (!result.ok) return setMessage(failureText(result))
+			setSelected('')
+			setPicked(new Set())
+			await props.onDone()
+		} catch (error) {
+			setMessage(thrownText(error))
+		} finally {
+			setPending(false)
+		}
+	}
+
+	return (
+		<form
+			onSubmit={submit}
+			noValidate
+			data-testid="profile-add-grant"
+			css={{ display: 'grid', gap: '0.5rem' }}
+		>
+			<h3 css={subheadCss}>Give access</h3>
+			{props.options.length === 0 ? (
+				<p css={{ margin: 0, color: colors.textMuted }}>
+					{props.parentName
+						? `${props.parentName} holds no grants, so this sub-profile cannot get any.`
+						: 'Nothing you can grant yet.'}
+				</p>
+			) : (
+				<>
+					<Field
+						label="Resource"
+						description={
+							props.parentName
+								? `Only grants every parent profile still holds are offered. A new grant replaces this profile’s grant on that resource.`
+								: 'A package, credential, or org-level permission you hold. A new grant replaces this profile’s grant on that resource.'
+						}
+					>
+						<Select
+							value={selected}
+							onChange={(event) => choose(event.target.value)}
+						>
+							<option value="">Choose a resource</option>
+							{props.options.map((entry) => (
+								<option
+									key={grantOptionKey(entry)}
+									value={grantOptionKey(entry)}
+								>
+									{entry.resourceType === 'org'
+										? entry.label
+										: `${entry.label} (${grantResourceLabel(entry.resourceType)})`}
+								</option>
+							))}
+						</Select>
+					</Field>
+					{option ? (
+						<fieldset css={fieldsetCss}>
+							<legend css={fieldLabelCss}>Permissions</legend>
+							<span
+								css={{
+									display: 'flex',
+									flexWrap: 'wrap',
+									gap: '0.3rem 0.9rem',
+								}}
+							>
+								{option.permissions.map((permission) => (
+									<label key={permission} css={checkLabelCss}>
+										<Checkbox
+											checked={picked.has(permission)}
+											onChange={(event) =>
+												setPicked((current) => {
+													const next = new Set(current)
+													if (event.target.checked) next.add(permission)
+													else next.delete(permission)
+													return next
+												})
+											}
+										/>
+										{permission === 'secret:read_local' ? (
+											'read locally'
+										) : (
+											<code>{permission}</code>
+										)}
+									</label>
+								))}
+							</span>
+							<span css={fieldDescriptionCss}>
+								Kody refuses any permission you do not hold on that resource.
+							</span>
+						</fieldset>
+					) : null}
+					<div css={accountActionsCss}>
+						<Button
+							type="submit"
+							disabled={pending || !option}
+							variant="secondary"
+						>
+							{pending ? 'Granting…' : 'Grant access'}
+						</Button>
+					</div>
+				</>
+			)}
+			{message ? (
+				<AccountManagementMessage tone="error">
+					{message}
+				</AccountManagementMessage>
+			) : null}
+		</form>
 	)
 }
 

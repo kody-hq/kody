@@ -408,35 +408,36 @@ named `apps` resolves at `/@<slug>/-/integrations/apps`). Endpoints, host
 allowlists, flow / PKCE / exchange style, and credential rotation stay behind an
 advanced disclosure. Each connection also shows a usage grant: **any context**
 (execute and every package) or **specific packages** only. Agents tighten that
-grant with `resourceLock({ kind: 'integration', name, package_id })` (switch to
-packages mode and add a saved package id; unlocking or removing a grant is
-website-only). One-click approval lives at
-`/@<slug>/-/integrations/approve?name=&package_id=`; approving a package while
-the connection is still `any` leaves it `any` so execute stays usable. Rotate
-(`rotateOauthAppCredentials`) stores a new client-secret value on the app, then
-calls `rotateOauthAppClientCredentials` so every sibling connection picks up the
-new client id on the next join. Each connection has a double-checked Disconnect
-control; user-registered integrations also have Delete integration. Both are
-delayed-commit undoable actions: the UI updates immediately, and
-`disconnectIntegration` / `deleteOauthApp` run only after the undo window (or
-when the user leaves). Built-in apps cannot be deleted; disconnect their
-connections instead.
+grant with `resourceLock({ kind: 'integration', name, package_id })`: on an
+any-context connection it switches to packages mode with that saved package id;
+on a locked connection it adds nothing and returns an owner `approval_url`
+(unlocking, removing, or adding a grant is website-only). One-click approval
+lives at `/@<slug>/-/integrations/approve?name=&package_id=`; approving a
+package while the connection is still `any` leaves it `any` so execute stays
+usable. Rotate (`rotateOauthAppCredentials`) stores a new client-secret value on
+the app, then calls `rotateOauthAppClientCredentials` so every sibling
+connection picks up the new client id on the next join. Each connection has a
+double-checked Disconnect control; user-registered integrations also have Delete
+integration. Both are delayed-commit undoable actions: the UI updates
+immediately, and `disconnectIntegration` / `deleteOauthApp` run only after the
+undo window (or when the user leaves). Built-in apps cannot be deleted;
+disconnect their connections instead.
 
 ## Capability surface
 
 Domain: `integrations`
 (`packages/worker/src/mcp/capabilities/integrations/domain.ts`).
 
-| Capability                                       | Role                                                                               |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                        |
-| `resourceLock`                                   | Integration package lock (`kind: integration`); tighten-only; website unlock       |
-| `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                           |
-| `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                  |
-| `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                  |
-| `integrationPlatformAppList`                     | Discoverable (enabled + published) built-ins; operators use the admin list         |
-| `integrationTokenRefresh`                        | Host-side OAuth refresh; returns metadata only, never token values                 |
-| `integrationDeviceConnectStart` / `_Poll`        | RFC 8628 device grant; credentials persist server-side; no token/`device_code` out |
+| Capability                                       | Role                                                                                                |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                                         |
+| `resourceLock`                                   | Integration package lock (`kind: integration`); narrow-only (security invariant 16); website unlock |
+| `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                                            |
+| `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                                   |
+| `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                                   |
+| `integrationPlatformAppList`                     | Discoverable (enabled + published) built-ins; operators use the admin list                          |
+| `integrationTokenRefresh`                        | Host-side OAuth refresh; returns metadata only, never token values                                  |
+| `integrationDeviceConnectStart` / `_Poll`        | RFC 8628 device grant; credentials persist server-side; no token/`device_code` out                  |
 
 ## Account deletion order
 

@@ -200,6 +200,10 @@ async function loadSecretRows(input: {
 				: reconnect
 					? 'The login provider rejected the saved refresh token (invalid_grant). This is a provider auth failure, not a Kody plan limit. Save a new value on this credential in its current workspace to reconnect (creating one under another workspace leaves this id broken; credentials cannot be moved between orgs).'
 					: null
+		const inject =
+			kind === 'secret' || kind === 'login'
+				? readCredentialInject(row.inject_json)
+				: null
 		return [
 			{
 				family: 'secret',
@@ -210,9 +214,11 @@ async function loadSecretRows(input: {
 				description: row.description,
 				hosts: parseStringArray(row.allowed_hosts),
 				inject:
-					kind === 'secret' || kind === 'login'
-						? readCredentialInject(row.inject_json)
-						: null,
+					inject?.kind === 'body'
+						? { kind: 'body' }
+						: inject?.kind === 'path'
+							? { kind: 'path' }
+							: inject,
 				placement: readCredentialFillPlacement(row.placement_json),
 				placementOrigin: readPlacementOriginView(row.placement_origin),
 				packageId: row.bucket_scope === 'package' ? row.binding_key : null,

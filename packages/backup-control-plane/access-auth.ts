@@ -1,3 +1,4 @@
+import { isolateState } from '@kody-internal/shared/isolate-state.ts'
 import {
 	utf8ToBase64Url,
 	base64UrlToBytes,
@@ -24,8 +25,10 @@ type CachedJwks = {
 	keysByKid: Map<string, CryptoKey>
 }
 
-let jwksCache: CachedJwks | null = null
-let lastForcedJwksRefreshAt = 0
+const jwks = isolateState(() => ({
+	cache: null as CachedJwks | null,
+	lastForcedRefreshAt: 0,
+}))
 
 function decodeJwtPart(part: string): unknown {
 	const text = new TextDecoder().decode(base64UrlToBytes(part))
@@ -56,8 +59,11 @@ async function loadJwks(
 	fetcher: typeof fetch,
 ): Promise<Map<string, CryptoKey>> {
 	const now = Date.now()
-	if (jwksCache !== null && now - jwksCache.fetchedAt < JWKS_CACHE_TTL_MS) {
-		return jwksCache.keysByKid
+	if (
+		jwks.current.cache !== null &&
+		now - jwks.current.cache.fetchedAt < JWKS_CACHE_TTL_MS
+	) {
+		return jwks.current.cache.keysByKid
 	}
 	let response: Response
 	try {
@@ -102,7 +108,7 @@ async function loadJwks(
 			'Access JWKS contained no usable RS256 keys',
 		)
 	}
-	jwksCache = { fetchedAt: now, keysByKid }
+	jwks.current.cache = { fetchedAt: now, keysByKid }
 	return keysByKid
 }
 
@@ -118,12 +124,6 @@ async function verifyWithKey(
 		base64UrlToBytes(signaturePart),
 		new TextEncoder().encode(`${headerPart}.${payloadPart}`),
 	)
-}
-
-/** Test-only: clear the in-memory JWKS cache between cases. */
-export function resetAccessJwksCacheForTests(): void {
-	jwksCache = null
-	lastForcedJwksRefreshAt = 0
 }
 
 export type AccessIdentity = {
@@ -185,14 +185,17 @@ export async function verifyAccessJwt(
 	let verifyingKey = keys.get(header.kid)
 	if (verifyingKey === undefined) {
 		const now = Date.now()
-		if (now - lastForcedJwksRefreshAt < JWKS_FORCE_REFRESH_COOLDOWN_MS) {
+		if (
+			now - jwks.current.lastForcedRefreshAt <
+			JWKS_FORCE_REFRESH_COOLDOWN_MS
+		) {
 			throw new BackupError(
 				'access-jwt-unknown-kid',
 				'Access JWT kid was not found in JWKS',
 			)
 		}
-		lastForcedJwksRefreshAt = now
-		jwksCache = null
+		jwks.current.lastForcedRefreshAt = now
+		jwks.current.cache = null
 		const refreshed = await loadJwks(teamDomain, fetcher)
 		verifyingKey = refreshed.get(header.kid)
 		if (verifyingKey === undefined) {
@@ -293,9 +296,4 @@ export function accessForbiddenResponse(error: unknown): Response {
 			headers: { 'cache-control': 'no-store' },
 		},
 	)
-}
-
-/** Encode a JWT part for tests / helpers. */
-export function encodeJwtPartForTests(value: unknown): string {
-	return utf8ToBase64Url(JSON.stringify(value))
 }

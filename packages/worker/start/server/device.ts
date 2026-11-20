@@ -2,9 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { getStartRequestEnv } from './request-env.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type { DeviceVerificationRequest } from '../../src/oauth-device/verification.ts'
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type { AccountDeviceVerificationRequest } from '../../src/app/account-device-sign-in.ts'
 
 export type DevicePageError =

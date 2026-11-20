@@ -375,3 +375,75 @@ test('generate preserves a different-zone */* from the runtime base config', asy
 		...packageAppRoutes,
 	])
 })
+
+test('the runtime Worker binds Artifacts and package run staging in every env', async () => {
+	// Package checks and publishes run as durable workflows in this Worker:
+	// they read the pushed commit from Artifacts and store results in R2.
+	const config = parseJsonc<{
+		env?: Record<
+			string,
+			{
+				artifacts?: Array<{ binding?: string; namespace?: string }>
+				r2_buckets?: Array<{ binding?: string }>
+			}
+		>
+	}>(await readFile(runtimeBaseConfigPath, 'utf8'))
+	for (const envName of ['production', 'preview']) {
+		const env = config.env?.[envName]
+		expect(env?.artifacts, envName).toEqual([
+			{ binding: 'ARTIFACTS', namespace: envName },
+		])
+		expect(
+			env?.r2_buckets?.map((bucket) => bucket.binding),
+			envName,
+		).toContain('REPO_SESSION_BLOBS')
+	}
+})
+
+test('only the runtime Worker binds the legacy package-app mount counter', async () => {
+	// `kody-runtime` owns the package-app host routes, so the legacy
+	// `/packages/{name}` counter (#4119) is written there and nowhere else.
+	type AnalyticsConfig = {
+		env?: Record<
+			string,
+			{
+				analytics_engine_datasets?: Array<{
+					binding?: string
+					dataset?: string
+				}>
+			}
+		>
+	}
+	const [runtimeConfig, mainConfig] = await Promise.all([
+		readFile(runtimeBaseConfigPath, 'utf8').then(parseJsonc<AnalyticsConfig>),
+		readFile('packages/worker/wrangler.jsonc', 'utf8').then(
+			parseJsonc<AnalyticsConfig>,
+		),
+	])
+	for (const [envName, dataset] of [
+		['production', 'kody_package_app_legacy_events'],
+		['preview', 'kody_package_app_legacy_events_preview'],
+	] as const) {
+		expect(
+			runtimeConfig.env?.[envName]?.analytics_engine_datasets,
+			envName,
+		).toContainEqual({ binding: 'PACKAGE_APP_LEGACY_EVENTS', dataset })
+	}
+	for (const [envName, env] of Object.entries(mainConfig.env ?? {})) {
+		expect(
+			env.analytics_engine_datasets?.map((entry) => entry.binding) ?? [],
+			envName,
+		).not.toContain('PACKAGE_APP_LEGACY_EVENTS')
+	}
+
+	// The main Worker has no entry to copy, so generation keeps the base name.
+	const { runtime } = await generateRuntime({
+		envName: 'preview',
+		workerPrefix: 'kody-pr-7',
+		mainWorkerName: 'kody-pr-7',
+	})
+	expect(runtime.env?.preview?.analytics_engine_datasets).toContainEqual({
+		binding: 'PACKAGE_APP_LEGACY_EVENTS',
+		dataset: 'kody_package_app_legacy_events_preview',
+	})
+})

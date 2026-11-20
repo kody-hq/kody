@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
@@ -7,7 +8,6 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import {
 	listPackageAppCookieWarnings,
 	recordPackageAppCookieFindings,
-	resetPackageAppCookieFindingWritesForTests,
 } from './package-app-cookie-httponly.ts'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
@@ -27,7 +27,7 @@ function createMigratedDb(options: { queries?: Array<string> } = {}) {
 }
 
 test('upserts warning rows and throttles identical writes for one hour', async () => {
-	resetPackageAppCookieFindingWritesForTests()
+	resetIsolateState()
 	consoleWarn.mockImplementation(() => {})
 	const { sqlite, db } = createMigratedDb()
 	const finding = {
@@ -108,11 +108,11 @@ test('upserts warning rows and throttles identical writes for one hour', async (
 		last_seen_at: new Date(afterHour + 1).toISOString(),
 		reason: 'missing_httponly',
 	})
-	resetPackageAppCookieFindingWritesForTests()
+	resetIsolateState()
 })
 
 test('logs and writes only unthrottled findings', async () => {
-	resetPackageAppCookieFindingWritesForTests()
+	resetIsolateState()
 	const queries: Array<string> = []
 	const { db } = createMigratedDb({ queries })
 	consoleWarn.mockImplementation(() => {})
@@ -156,7 +156,7 @@ test('logs and writes only unthrottled findings', async () => {
 			),
 		).toHaveLength(1)
 	} finally {
-		resetPackageAppCookieFindingWritesForTests()
+		resetIsolateState()
 	}
 })
 

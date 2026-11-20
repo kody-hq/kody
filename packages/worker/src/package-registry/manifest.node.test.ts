@@ -13,9 +13,46 @@ import {
 import {
 	assertKodyDescriptionLength,
 	KODY_DESCRIPTION_MAX_LENGTH,
+	packageWebhookDefinitionSchema,
 } from './types.ts'
 
 const parser = await loadModuleSourceParser()
+
+test('Standard Webhooks requires all replay headers and the fixed symmetric scheme', () => {
+	const webhook = {
+		name: 'incoming',
+		export: './incoming',
+		verification: {
+			type: 'hmac-sha256',
+			header: 'webhook-signature',
+			encoding: 'base64',
+			secretName: 'signing-key',
+			profile: 'standard-webhooks',
+		},
+		replay: {
+			deliveryIdHeader: 'webhook-id',
+			timestampHeader: 'webhook-timestamp',
+			timestampFormat: 'unix-seconds',
+		},
+	}
+	expect(packageWebhookDefinitionSchema.safeParse(webhook).success).toBe(true)
+	expect(
+		packageWebhookDefinitionSchema.safeParse({ ...webhook, replay: undefined })
+			.success,
+	).toBe(false)
+	for (const change of [
+		{ deliveryIdHeader: 'Webhook-Signature' },
+		{ toleranceSeconds: 301 },
+		{ timestampFormat: 'unix-millis' },
+	]) {
+		expect(
+			packageWebhookDefinitionSchema.safeParse({
+				...webhook,
+				replay: { ...webhook.replay, ...change },
+			}).success,
+		).toBe(false)
+	}
+})
 
 function parse(
 	name: string,

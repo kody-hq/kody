@@ -10,6 +10,8 @@ import {
 	ensureEmailSendingEventSubscription,
 	ensurePackageAppDnsRecords,
 	ensureR2Bucket,
+	ensureR2BucketLifecycle,
+	packageRunStagingLifecyclePolicy,
 	fail,
 	isValidBareHostname,
 	listCloudflareQueues,
@@ -681,6 +683,11 @@ async function ensureProductionResources(options: CliOptions) {
 	})
 	const repoSessionBlobs = await ensureR2Bucket({
 		name: bindings.repoSessionBlobsBucketName,
+		dryRun: options.dryRun,
+	})
+	ensureR2BucketLifecycle({
+		name: repoSessionBlobs.name,
+		policy: packageRunStagingLifecyclePolicy,
 		dryRun: options.dryRun,
 	})
 	const fileBlobs = await ensureR2Bucket({

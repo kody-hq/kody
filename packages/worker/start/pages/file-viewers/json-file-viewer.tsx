@@ -5,6 +5,7 @@ import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
 import {
 	useContext,
 	useEffect,
+	useEffectEvent,
 	useLayoutEffect,
 	useMemo,
 	useRef,
@@ -225,7 +226,7 @@ export default function JsonFileViewer({
 		setFocused(row.node.id)
 		virtual.scrollToIndex(index, { align: 'auto' })
 	}
-	useEffect(() => {
+	const revealPointer = useEffectEvent(() => {
 		if (pointer === undefined || !selected) {
 			revealed.current = undefined
 			return
@@ -252,6 +253,9 @@ export default function JsonFileViewer({
 		if (index >= 0) virtual.scrollToIndex(index, { align: 'center' })
 		else revealAfter.current = pointer
 		revealed.current = selected.id
+	})
+	useEffect(() => {
+		revealPointer()
 	}, [pointer, selected?.id, root, children, pending])
 
 	if (error)

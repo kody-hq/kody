@@ -2,7 +2,6 @@ import { createServerFn } from '@tanstack/react-start'
 import { getStartRequestEnv } from './request-env.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type { PackageAppDeviceSignInView } from '../../src/app/package-app-device-sign-in.ts'
 
 export type { PackageAppDeviceSignInView }

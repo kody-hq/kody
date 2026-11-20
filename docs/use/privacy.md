@@ -77,10 +77,9 @@ yourself — Kody stores that connection in your account only: tokens, the scope
 you granted, and host allowlists. OAuth access and refresh tokens, and a
 user-lane app client secret, are stored encrypted on that connection or app.
 Standalone credentials (PATs and API keys) stay in the encrypted secret store.
-Your agent and package code refer to them by name (or by opaque `{{secret:…}}`
-refs from `packageSecrets.get`); Kody substitutes them at the network boundary
-and never returns the raw value to chat, search, package JS, or capability
-output.
+Your agent and package code use declared needs mapped to stable credential IDs.
+Kody supplies the credential at the network boundary and never returns the raw
+value to chat, search, package JS, or capability output.
 
 Kody fetches data from a connected service only to fulfill a request you, or a
 job you saved, just made. Content a package or job persists (for example a saved

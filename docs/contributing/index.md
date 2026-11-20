@@ -27,6 +27,8 @@ style, tests, MCP capabilities, and runtime architecture.
   `@kentcdodds/verification-skill-maintain`)
 - [UI verify](./ui-verify.md) (`npm run ui:verify`: gallery and key pages, axe,
   keyboard focus, visual baselines; run before calling UI work done)
+- [UI mockups](../../packages/worker/start/mockups/README.md) (`/dev/mockups`:
+  proposed UI from real components, light and dark, local dev only)
 - [UI components](./ui-components.md) (shared Button, Field, form controls; lint
   rules that keep raw controls out)
 - [Optional Cloudflare offerings](./cloudflare-offerings.md)
@@ -45,8 +47,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Friction log](./friction-log.md) (when/where/how-to-fix policy; filing at
   [@kody/kody-factory](https://kody.codes/@kody/kody-factory), daily sweep at
   [@kentcdodds/friction-log](https://kody.codes/@kentcdodds/friction-log))
-- [Repo health](./repo-health.md) (CI + in-repo budgets: AGENTS.md ratchet,
-  Validate unit-job timing, ship-pr review-bot sort)
+- [Repo health](./repo-health.md) (CI + in-repo budgets: AGENTS.md cap, Validate
+  unit-job timing, ship-pr review-bot sort)
 - Local CLI execute (when, command, failure):
   [guide:local_execute](../guides/local-execute.md) and
   [prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md).

@@ -556,8 +556,9 @@ export function FileComments({
 	const pending = useRef(false)
 	const focusCreated = useRef<string | null>(null)
 	const selected = threads.find((thread) => thread.id === activeId)
+	const hasSelected = !!selected
 	useEffect(() => {
-		if (selected && focusCreated.current === selected.id) {
+		if (hasSelected && focusCreated.current === activeId) {
 			root.current
 				?.querySelector<HTMLElement>('[aria-label="Reply to discussion"]')
 				?.focus({ preventScroll: true })
@@ -567,7 +568,7 @@ export function FileComments({
 			!documentRoot.current?.contains(document.activeElement)
 		)
 			root.current?.focus({ preventScroll: true })
-	}, [activeId, composing, !!selected, documentRoot])
+	}, [activeId, composing, hasSelected, documentRoot])
 	const unread = new Set(
 		notifications
 			.filter((notification) => !notification.read)
@@ -641,7 +642,7 @@ export function FileComments({
 		{ target: root, ignoreInputs: true, enabled: !!selected },
 	)
 	useLayoutEffect(() => {
-		if (!selected && !composing) {
+		if (!hasSelected && !composing) {
 			setOffset(0)
 			return
 		}
@@ -685,7 +686,7 @@ export function FileComments({
 			window.removeEventListener('scroll', update, true)
 			window.removeEventListener('resize', update)
 		}
-	}, [activeId, anchor, composing, documentRoot, !!selected])
+	}, [activeId, anchor, composing, documentRoot, hasSelected])
 	async function execute(command: CommentCommand) {
 		setError('')
 		const ok = await run(command)

@@ -40,15 +40,16 @@ export async function listKnownSecretNameReferences(input: {
 		input.db
 			.prepare(
 				`SELECT id, package_id, webhook_name FROM webhook_endpoints
-				WHERE user_id = ? AND (hmac_secret_name = ? OR previous_hmac_secret_name = ?)${andLiveDeletedAtSql()}
+				WHERE user_id = ?
+					AND hmac_credential_id IS NULL AND hmac_secret_name = ?${andLiveDeletedAtSql()}
 				ORDER BY webhook_name ASC, id ASC`,
 			)
-			.bind(input.orgId, input.name, input.name)
+			.bind(input.orgId, input.name)
 			.all<{ id: string; package_id: string; webhook_name: string }>(),
 		input.db
 			.prepare(
 				`SELECT provider_id, package_id FROM secret_provider_bindings
-				WHERE user_id = ? AND door_secret_name = ?${andLiveDeletedAtSql()}
+				WHERE user_id = ? AND door_credential_id IS NULL AND door_secret_name = ?${andLiveDeletedAtSql()}
 				ORDER BY provider_id ASC`,
 			)
 			.bind(input.orgId, input.name)

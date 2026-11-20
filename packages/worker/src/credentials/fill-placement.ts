@@ -264,14 +264,15 @@ export function observeFillPlacementWouldBlockSites(input: {
 }
 
 /**
- * Fill site for a scoped `credential()` inject. Inject kinds today are only
- * header, basic (Authorization header), and query — no path or body inject.
+ * Fill site for a scoped `credential()` inject.
  */
 export function fillSiteFromCredentialInject(
 	inject:
 		| { kind: 'header'; name: string }
 		| { kind: 'basic' }
-		| { kind: 'query' },
+		| { kind: 'query' }
+		| { kind: 'body' }
+		| { kind: 'path' },
 ): CredentialFillSite {
 	switch (inject.kind) {
 		case 'header':
@@ -280,6 +281,10 @@ export function fillSiteFromCredentialInject(
 			return { part: 'header', name: 'Authorization' }
 		case 'query':
 			return { part: 'query' }
+		case 'body':
+			return { part: 'body' }
+		case 'path':
+			return { part: 'path' }
 		default: {
 			const exhaustive: never = inject
 			throw new Error(`Unhandled inject: ${String(exhaustive)}`)

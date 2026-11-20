@@ -127,6 +127,39 @@ async function loadHostedPackageRuntime(
 	}))
 }
 
+test("an imported package's packageContext names that package, not the run", async () => {
+	type Context = Record<string, unknown>
+	const read = async (runContext: Context | null) => {
+		const { module, run } = await loadHostedPackageRuntime('pkg-own', {
+			packageContext: runContext,
+		})
+		const context = module.packageContext as Context
+		return await run(async () => ({
+			packageId: context.packageId,
+			appBasePath: context.appBasePath,
+			viaDefault: (module.default.packageContext as Context).packageId,
+		}))
+	}
+	// Ad hoc execute has no run package; another package's run has its own.
+	expect(await read(null)).toEqual({
+		packageId: 'pkg-own',
+		appBasePath: undefined,
+		viaDefault: 'pkg-own',
+	})
+	expect(
+		await read({ packageId: 'pkg-caller', appBasePath: '/caller' }),
+	).toEqual({
+		packageId: 'pkg-own',
+		appBasePath: undefined,
+		viaDefault: 'pkg-own',
+	})
+	expect(await read({ packageId: 'pkg-own', appBasePath: '/own' })).toEqual({
+		packageId: 'pkg-own',
+		appBasePath: '/own',
+		viaDefault: 'pkg-own',
+	})
+})
+
 test("an imported package's createAuthenticatedFetch and oauthClientCredentials act through its binding", async () => {
 	const runLevel: Array<string> = []
 	const { shared, module, run } = await loadHostedPackageRuntime('pkg-locked', {

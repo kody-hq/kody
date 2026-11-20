@@ -1,13 +1,15 @@
 ---
 id: connect_secret
-title: Secret setup URL reference
+title: Ask the user to save a secret, API key, or token
 summary:
-  Hosted credential setup URL shape, query params, approval policy for API keys
-  and PATs, and post-hoc package approval URLs including bulk approve.
+  Send the user a prefilled /connect/secret-set link when they must type a
+  secret value such as an API key, PAT, or token into Kody themselves. Covers
+  the URL shape, query params, approval policy, and post-hoc package approval
+  URLs including bulk approve.
 category: platform
 ---
 
-# Secret setup URL reference
+# Ask the user to save a secret, API key, or token
 
 Use the hosted Key form whenever the user needs to enter a secret value such as
 an API key or personal access token. Both `/connect/credential?kind=secret` and
@@ -96,5 +98,6 @@ secret and lets the user approve them in one click.
    downstream package.
 5. For common non-OAuth integrations, continue with
    `guide: "secret_backed_integration"` after the secret exists.
-6. Proceed using `{{secret:name}}` fetch placeholders or a named secret lookup
-   such as `secretJwtSign`.
+6. Map the declared need to the saved credential's ID. Use the
+   [scoped credential client](./credentials.md#scoped-clients-credentialkey) for
+   authenticated requests or signing.

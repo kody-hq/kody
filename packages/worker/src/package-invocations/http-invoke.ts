@@ -10,7 +10,6 @@ import {
 	type PackageInvocationRequest,
 	type PackageInvocationResponse,
 	type PackageInvocationTokenScope,
-	type PackageRuntimeToolFactories,
 	type PackageSourceRevisionOptions,
 } from './common.ts'
 import { invokeSavedPackageModule } from './idempotent-module-invocation.ts'
@@ -41,13 +40,12 @@ function tokenAllowsExport(input: {
 	)
 }
 
-export async function invokePackageExportWithToolFactories(input: {
+export async function invokePackageExport(input: {
 	env: Env
 	baseUrl: string
 	token: PackageInvocationTokenScope
 	request: PackageInvocationRequest
 	runtimeInvokeDepth?: number
-	toolFactories: PackageRuntimeToolFactories
 	waitUntil?: (promise: Promise<unknown>) => void
 	/**
 	 * Internal workflow runner: skip the idempotency ledger so Cloudflare
@@ -142,7 +140,6 @@ export async function invokePackageExportWithToolFactories(input: {
 		topic,
 		notFoundCode: 'export_not_found' as const,
 		runtimeInvokeDepth: input.runtimeInvokeDepth ?? 0,
-		toolFactories: input.toolFactories,
 		waitUntil: input.waitUntil,
 		executorTimeoutMs: input.executorTimeoutMs,
 		signal: input.signal,

@@ -467,6 +467,7 @@ export const packageWebhookHmacVerificationSchema = z.object({
 	encoding: z.enum(['hex', 'base64']),
 	prefix: z.string().optional(),
 	signedPayload: z.enum(webhookSignedPayloadValues).optional(),
+	profile: z.literal('standard-webhooks').optional(),
 })
 
 /**
@@ -720,6 +721,36 @@ export const packageWebhookDefinitionSchema = z
 		execution: automationExecutionSchema.optional(),
 	})
 	.superRefine((webhook, ctx) => {
+		const verification = webhook.verification
+		if (
+			verification?.type !== 'url-secret' &&
+			verification?.profile === 'standard-webhooks'
+		) {
+			const replay = webhook.replay
+			const headers = [
+				verification.header,
+				replay?.timestampHeader,
+				replay?.deliveryIdHeader,
+			].map((header) => header?.toLowerCase())
+			if (
+				verification.type !== 'hmac-sha256' ||
+				verification.encoding !== 'base64' ||
+				!verification.secretName ||
+				verification.prefix !== undefined ||
+				verification.signedPayload !== undefined ||
+				replay?.timestampFormat !== 'unix-seconds' ||
+				(replay.toleranceSeconds ?? 300) > 300 ||
+				headers.includes(undefined) ||
+				new Set(headers).size !== 3
+			) {
+				ctx.addIssue({
+					code: 'custom',
+					path: ['verification', 'profile'],
+					message:
+						'Standard Webhooks requires a saved HMAC-SHA256 key, base64 signatures, distinct signature, delivery ID, and Unix timestamp headers, and a replay tolerance of at most 300 seconds. The profile fixes the signature prefix and payload.',
+				})
+			}
+		}
 		if (
 			webhook.verification?.type !== 'url-secret' &&
 			webhook.verification?.signedPayload === 'timestamp.body' &&

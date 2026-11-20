@@ -3,7 +3,8 @@ import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	handleApiEdgeRequest,
 	maxApiRequestBodyBytes,
-	maxPackageCheckRequestBodyBytes,
+	maxPackageCheckUploadBytes,
+	minimumPackageCheckCliVersion,
 	maxGatewayFetchUploadBytes,
 	type ApiWorkerEnv,
 } from './edge.ts'
@@ -166,27 +167,6 @@ test('rejects unknown paths, oversize bodies, and rate-limited callers', async (
 	expect(oversize.status).toBe(413)
 	expect(forwarded).toHaveLength(0)
 
-	// packageCheck carries a whole package tree, so it gets its own cap (#5308).
-	const packageCheck = (bytes: number) =>
-		handleApiEdgeRequest(
-			new Request('https://api.kody.test/v1/packages/check', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: 'x'.repeat(bytes),
-			}),
-			env,
-		)
-	expect((await packageCheck(maxApiRequestBodyBytes + 1)).status).not.toBe(413)
-	expect(forwarded).toHaveLength(1)
-	const oversizeCheck = await packageCheck(maxPackageCheckRequestBodyBytes + 1)
-	expect(oversizeCheck.status).toBe(413)
-	expect(await oversizeCheck.json()).toMatchObject({
-		error: {
-			message: `Request body exceeds ${maxPackageCheckRequestBodyBytes} bytes.`,
-		},
-	})
-	expect(forwarded).toHaveLength(1)
-
 	const ipLimited = createEnv({ ipAllowed: false })
 	const ipResponse = await handleApiEdgeRequest(
 		new Request('https://api.kody.test/v1/me', {
@@ -255,14 +235,14 @@ test('names an origin memory or CPU limit and echoes the ray id as the request i
 		} as unknown as Fetcher,
 	}
 	const response = await handleApiEdgeRequest(
-		new Request('https://api.kody.test/v1/packages/check', {
+		new Request('https://api.kody.test/v1/memories', {
 			method: 'POST',
 			headers: {
 				Authorization: `Bearer ${token}`,
 				'Content-Type': 'application/json',
 				'CF-Ray': '8f00aa11bb22cc33-SJC',
 			},
-			body: JSON.stringify({ files: { 'package.json': '{}' } }),
+			body: JSON.stringify({ subject: 'x' }),
 		}),
 		env,
 	)
@@ -282,67 +262,160 @@ test('names an origin memory or CPU limit and echoes the ray id as the request i
 	expect(body.error.message).not.toMatch(/temporarily unavailable/)
 })
 
-test('names the step and package size origin recorded before it hit a CPU limit', async () => {
-	consoleError.mockImplementation(() => {})
-	const forwarded: Array<Request> = []
-	const progressReads: Array<string> = []
+/** An R2 bucket that drains what it is given and records it. */
+function createBucket(options: { fail?: boolean } = {}) {
+	const stored = new Map<string, string>()
+	const bucket = {
+		async put(key: string, body: ReadableStream<Uint8Array>) {
+			const text = await new Response(body).text()
+			if (options.fail) throw new Error('R2 put failed')
+			stored.set(key, text)
+			return {}
+		},
+	} as unknown as R2Bucket
+	return { bucket, stored }
+}
+
+function uploadEnv(
+	reservation: Response,
+	bucketOptions: { fail?: boolean } = {},
+) {
+	const forwarded: Array<{ request: Request; body: string }> = []
+	const { bucket, stored } = createBucket(bucketOptions)
 	const env: ApiWorkerEnv = {
 		KODY_API: {
 			async fetch(request: Request) {
-				forwarded.push(request)
-				throw new Error('Worker exceeded CPU time limit.')
+				forwarded.push({ request, body: await request.clone().text() })
+				return reservation
 			},
-			async readRequestProgress(requestId: string) {
-				progressReads.push(requestId)
-				return {
-					step: 'artifact_reuse_scan',
-					packageName: '@danj/audible',
-					fileCount: 178,
-					totalBytes: 1_960_000,
-					maxFiles: 2_000,
-					maxTotalBytes: 32 * 1024 * 1024,
-				}
-			},
-		} as unknown as ApiWorkerEnv['KODY_API'],
+		} as unknown as Fetcher,
+		REPO_SESSION_BLOBS: bucket,
 	}
+	return { env, forwarded, stored }
+}
+
+function uploadRequest(body: string, headers: Record<string, string> = {}) {
+	return new Request('https://api.kody.test/v1/packages/check-uploads', {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json',
+			'Content-Length': String(new TextEncoder().encode(body).byteLength),
+			...headers,
+		},
+		body,
+	})
+}
+
+test('a package check upload streams to staging and origin never receives the tree', async () => {
+	const tree = JSON.stringify({
+		files: { 'package.json': '{}', 'src/big.ts': 'x'.repeat(6 * 1024 * 1024) },
+	})
+	expect(tree.length).toBeGreaterThan(maxApiRequestBodyBytes)
+	const { env, forwarded, stored } = uploadEnv(
+		Response.json({
+			upload_id: 'pcu_1',
+			object_key: 'package-runs/uploads/user-1/pcu_1.json',
+			max_bytes: maxPackageCheckUploadBytes,
+		}),
+	)
+	const response = await handleApiEdgeRequest(uploadRequest(tree), env)
+	expect(response.status).toBe(201)
+	expect(await response.json()).toEqual({ upload_id: 'pcu_1' })
+	expect(stored.get('package-runs/uploads/user-1/pcu_1.json')).toBe(tree)
+	// Origin authenticated the caller and reserved the key, with an empty body.
+	expect(forwarded).toHaveLength(1)
+	expect(forwarded[0]?.body).toBe('{}')
+	expect(forwarded[0]?.request.headers.get('Authorization')).toBe(
+		`Bearer ${token}`,
+	)
+})
+
+test('a package check upload is refused before staging when origin refuses the caller or the size is wrong', async () => {
+	const denied = uploadEnv(
+		Response.json({ error: { code: 'unauthorized' } }, { status: 401 }),
+	)
+	const unauthorized = await handleApiEdgeRequest(
+		uploadRequest('{"files":{}}'),
+		denied.env,
+	)
+	expect(unauthorized.status).toBe(401)
+	expect(denied.stored.size).toBe(0)
+
+	const sized = uploadEnv(Response.json({ upload_id: 'x', object_key: 'k' }))
+	const tooLarge = await handleApiEdgeRequest(
+		uploadRequest('{}', {
+			'Content-Length': String(maxPackageCheckUploadBytes + 1),
+		}),
+		sized.env,
+	)
+	expect(tooLarge.status).toBe(413)
+	const noLength = new Request(
+		'https://api.kody.test/v1/packages/check-uploads',
+		{ method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+	)
+	expect((await handleApiEdgeRequest(noLength, sized.env)).status).toBe(411)
+	expect(sized.forwarded).toHaveLength(0)
+	expect(sized.stored.size).toBe(0)
+})
+
+test('a package check upload that does not arrive in full is reported, not acknowledged', async () => {
+	consoleError.mockImplementation(() => {})
+	const { env } = uploadEnv(
+		Response.json({ upload_id: 'pcu_1', object_key: 'k' }),
+		{ fail: true },
+	)
+	const response = await handleApiEdgeRequest(
+		uploadRequest('{"files":{}}'),
+		env,
+	)
+	expect(response.status).toBe(400)
+	expect(await response.json()).toMatchObject({
+		error: { code: 'invalid_request' },
+	})
+})
+
+test('an older CLI sending the tree to packageCheck gets upgrade_required without reaching origin', async () => {
+	const { env, forwarded } = createEnv()
 	const response = await handleApiEdgeRequest(
 		new Request('https://api.kody.test/v1/packages/check', {
 			method: 'POST',
 			headers: {
 				Authorization: `Bearer ${token}`,
 				'Content-Type': 'application/json',
-				'CF-Ray': 'a58d7375e847dfaf',
-				'X-Kody-Request-Id': 'spoofed',
 			},
-			body: JSON.stringify({ files: { 'package.json': '{}' } }),
+			body: JSON.stringify({
+				files: { 'package.json': '{}', 'src/a.ts': 'x'.repeat(200 * 1024) },
+			}),
 		}),
 		env,
 	)
-	expect(response.status).toBe(503)
-	expect(forwarded[0]?.headers.get('X-Kody-Request-Id')).toBe(
-		'a58d7375e847dfaf',
-	)
-	expect(progressReads).toEqual(['a58d7375e847dfaf'])
+	expect(response.status).toBe(426)
 	const body = (await response.json()) as {
-		error: { message: string; details: Record<string, unknown> }
+		error: { code: string; message: string; details: unknown }
 	}
+	expect(body.error.code).toBe('upgrade_required')
 	expect(body.error.details).toEqual({
-		reason: 'origin_resource_limit',
-		request_id: 'a58d7375e847dfaf',
-		step: 'artifact_reuse_scan',
-		package_bytes: 1_960_000,
-		package_files: 178,
+		minimum_cli_version: minimumPackageCheckCliVersion,
 	})
-	expect(body.error.message).toContain(
-		'during package checks: the artifact reuse scan',
-	)
-	expect(body.error.message).toContain('for @danj/audible')
-	expect(body.error.message).toContain(
-		'1.96 MB in 178 files: 6% of the 32 MiB check size limit and 9% of the 2,000 file limit',
-	)
-	expect(body.error.message).toContain('a retry can pass')
-	expect(body.error.message).not.toMatch(/usually fails/)
+	expect(body.error.message).toContain(minimumPackageCheckCliVersion)
 	expect(body.error.message).not.toContain('\u2014')
+	expect(forwarded).toHaveLength(0)
+
+	// The new call shape is small and goes through.
+	const dispatched = await handleApiEdgeRequest(
+		new Request('https://api.kody.test/v1/packages/check', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ upload_id: 'pcu_1' }),
+		}),
+		env,
+	)
+	expect(dispatched.status).toBe(200)
+	expect(forwarded).toHaveLength(1)
 })
 
 test('names the execute run that had started when origin died, instead of inviting a retry', async () => {

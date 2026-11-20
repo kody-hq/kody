@@ -79,7 +79,10 @@ export function AutomationExecutionSettings(props: {
 		let cancelled = false
 		void (
 			loadAutomationExecution({
-				data: { orgSlug: props.orgSlug, target: props.target },
+				data: {
+					orgSlug: props.orgSlug,
+					target: JSON.parse(targetKey) as typeof props.target,
+				},
 			}) as Promise<Loaded | Failure>
 		)
 			.then((result) => {
@@ -96,7 +99,6 @@ export function AutomationExecutionSettings(props: {
 		return () => {
 			cancelled = true
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [props.orgSlug, targetKey])
 
 	if (!loaded || !form) return null

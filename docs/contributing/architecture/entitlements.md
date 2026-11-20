@@ -525,7 +525,10 @@ observes:
   ceiling in the same `admitExecuteCall` round trip as the runaway brake, and a
   call either brake refuses counts against neither. A git request that carries
   only an Artifacts token is counted once Artifacts accepts it, so a forged
-  token cannot spend an org's allowance.
+  token cannot spend an org's allowance. The `execute` capability (package or
+  execute code calling `kody.execute`, and the proxied capability) passes the
+  same admission without the identical-call loop brake, because package code may
+  repeat one call on purpose.
 
   | Guard         | Counts                                                         | Org burst               | Org per day |
   | ------------- | -------------------------------------------------------------- | ----------------------- | ----------- |

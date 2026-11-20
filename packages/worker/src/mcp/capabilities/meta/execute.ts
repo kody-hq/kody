@@ -10,7 +10,13 @@ import { entitlementStructuredContent } from '#mcp/entitlement-metadata.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { getInboundRequestSignal } from '#mcp/inbound-request-signal.ts'
+import { admitHostedExecuteCall } from '#mcp/execute-admission.ts'
 import { runModuleWithRegistry } from '#mcp/run-kody-registry.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
+import { walletGuardActorUserId } from '#worker/wallet-guard/enforce.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
@@ -163,6 +169,19 @@ export const executeCapability = defineDomainCapability(
 						logs: [],
 					}
 				}
+			}
+
+			// This starts a run on Kody cloud, so it passes the same runaway brake
+			// and daily ceiling as the execute tool. The identical-call loop brake
+			// is left out: package code may repeat one call on purpose.
+			const ownerId = ownerIdFromCaller(callerContext)
+			if (callerContext.user && ownerId) {
+				await admitHostedExecuteCall({
+					env: ctx.env,
+					ownerId,
+					email: entitlementEmailForOwner(callerContext, ownerId),
+					actorUserId: walletGuardActorUserId(callerContext.request),
+				})
 			}
 
 			let claimedRunHandle: RunRecordHandle | null = null

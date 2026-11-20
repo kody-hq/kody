@@ -9,6 +9,7 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 	expect(
 		buildSecretHostApprovalUrl({
 			baseUrl: 'https://example.com',
+			orgSlug: null,
 			name: 'cloudflareToken',
 			scope: 'user',
 			requestedHost: 'API.Cloudflare.com',
@@ -21,6 +22,7 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 	expect(
 		buildSecretHostBulkApprovalUrl({
 			baseUrl: 'https://example.com',
+			orgSlug: null,
 			names: ['accessToken', 'refreshToken'],
 			hosts: ['api.example.com', 'oauth.example.com', 'api.example.com'],
 		}),
@@ -31,6 +33,7 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 	expect(
 		buildSecretHostBulkApprovalUrl({
 			baseUrl: 'https://example.com',
+			orgSlug: null,
 			names: ['signingSecret'],
 			hosts: ['hooks.example.com'],
 			scope: 'package',
@@ -47,6 +50,7 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 	expect(
 		buildSecretHostBulkApprovalUrlIfNeeded({
 			baseUrl: 'https://example.com',
+			orgSlug: null,
 			names: ['onlyOne'],
 			hosts: ['api.example.com'],
 		}),
@@ -55,6 +59,7 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 	expect(
 		buildSecretHostBulkApprovalUrlIfNeeded({
 			baseUrl: 'https://example.com',
+			orgSlug: null,
 			names: ['onlyOne'],
 			hosts: ['api.example.com', 'oauth.example.com'],
 		}),
@@ -65,6 +70,7 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 	expect(
 		buildSecretHostBulkApprovalUrl({
 			baseUrl: 'https://example.com',
+			orgSlug: null,
 			names: ['openaiApiKey'],
 			hosts: ['hooks.slack.com', 'api.ope', 'api.openai.com/v1'],
 		}),
@@ -75,6 +81,7 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 	expect(() =>
 		buildSecretHostBulkApprovalUrl({
 			baseUrl: 'https://example.com',
+			orgSlug: null,
 			names: ['openaiApiKey'],
 			hosts: ['api.ope', 'api.openai.com/v1'],
 		}),
@@ -83,6 +90,7 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 	expect(
 		buildSecretHostApprovalUrl({
 			baseUrl: 'https://example.com',
+			orgSlug: null,
 			name: 'localToken',
 			scope: 'user',
 			requestedHost: '::1',
@@ -90,5 +98,30 @@ test('host approval URLs use /connect/secrets and support multiple hosts', () =>
 		}),
 	).toBe(
 		'https://example.com/connect/secrets?name=localToken&hosts=%5B%3A%3A1%5D',
+	)
+})
+
+test('host approval URLs name the owning org so the page reads that org', () => {
+	expect(
+		buildSecretHostApprovalUrl({
+			baseUrl: 'https://kody.codes',
+			orgSlug: 'kody',
+			name: 'rooms-wake-key-root',
+			scope: 'user',
+			requestedHost: 'kody.kody.run',
+			storageContext: null,
+		}),
+	).toBe(
+		'https://kody.codes/connect/secrets?org=kody&name=rooms-wake-key-root&hosts=kody.kody.run',
+	)
+	expect(
+		buildSecretHostBulkApprovalUrlIfNeeded({
+			baseUrl: 'https://kody.codes',
+			orgSlug: 'kody',
+			names: ['a', 'b'],
+			hosts: ['api.example.com'],
+		}),
+	).toBe(
+		'https://kody.codes/connect/secrets?org=kody&names=a%2Cb&hosts=api.example.com',
 	)
 })

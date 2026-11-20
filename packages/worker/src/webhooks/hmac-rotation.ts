@@ -90,6 +90,7 @@ export async function rotateWebhookHmacSecretsForSecretValueChange(input: {
 	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 	userId: OwnerId
 	secretName: string
+	credentialId?: string | null
 	previousPlaintext: string
 	/** When known, advance the verification snapshot so ingress does not
 	 * treat the same value change as a second rotation. */
@@ -108,6 +109,7 @@ export async function rotateWebhookHmacSecretsForSecretValueChange(input: {
 		db: input.env.APP_DB,
 		userId: input.userId,
 		hmacSecretName: secretName,
+		hmacCredentialId: input.credentialId ?? undefined,
 		...(input.packageId ? { packageId: input.packageId } : {}),
 	})
 	const userScopedUpdate = !input.packageId
@@ -115,12 +117,13 @@ export async function rotateWebhookHmacSecretsForSecretValueChange(input: {
 	for (const endpoint of endpoints) {
 		if (userScopedUpdate) {
 			if (
-				await packageOwnsWebhookSecretName({
+				!endpoint.hmacCredentialId &&
+				(await packageOwnsWebhookSecretName({
 					db: input.env.APP_DB,
 					userId: input.userId,
 					packageId: endpoint.packageId,
 					secretName,
-				})
+				}))
 			) {
 				continue
 			}
@@ -178,9 +181,11 @@ export async function rotateWebhookHmacSecretsForSecretValueChange(input: {
 			db: input.env.APP_DB,
 			userId: input.userId,
 			endpointId: endpoint.id,
-			hmacSecretName: secretName,
+			hmacSecretName: endpoint.hmacSecretName,
+			hmacCredentialId: endpoint.hmacCredentialId ?? input.credentialId,
 			hmacVerificationSecretEncrypted: nextSnapshot,
-			previousHmacSecretName: secretName,
+			previousHmacSecretName: endpoint.hmacSecretName,
+			previousHmacCredentialId: endpoint.hmacCredentialId ?? input.credentialId,
 			previousHmacSecretEncrypted: previousEncrypted,
 			previousHmacSecretExpiresAt: webhookHmacSecretRotationGraceExpiresAt(now),
 		})
@@ -198,6 +203,7 @@ export async function reconcileWebhookHmacVerificationRotation(input: {
 	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 	endpoint: WebhookEndpointRecord
 	secretName: string
+	credentialId?: string | null
 	declaredPlaintext: string
 	now?: Date | string
 }): Promise<WebhookEndpointRecord> {
@@ -218,6 +224,7 @@ export async function reconcileWebhookHmacVerificationRotation(input: {
 		endpoint = {
 			...endpoint,
 			previousHmacSecretName: null,
+			previousHmacCredentialId: null,
 			previousHmacSecretEncrypted: null,
 			previousHmacSecretExpiresAt: null,
 		}
@@ -231,18 +238,24 @@ export async function reconcileWebhookHmacVerificationRotation(input: {
 	})
 
 	const trackedName = endpoint.hmacSecretName?.trim() ?? ''
+	const trackedId = endpoint.hmacCredentialId ?? null
+	const credentialId = input.credentialId ?? null
+	const identity = {
+		hmacSecretName: secretName,
+		hmacCredentialId: credentialId,
+	}
 	if (!trackedName) {
 		const saved = await setWebhookEndpointHmacVerificationState({
 			db: input.env.APP_DB,
 			userId: endpoint.userId,
 			endpointId: endpoint.id,
-			hmacSecretName: secretName,
+			...identity,
 			hmacVerificationSecretEncrypted: nextSnapshot,
 		})
 		return (
 			saved ?? {
 				...endpoint,
-				hmacSecretName: secretName,
+				...identity,
 				hmacVerificationSecretEncrypted: nextSnapshot,
 			}
 		)
@@ -265,22 +278,29 @@ export async function reconcileWebhookHmacVerificationRotation(input: {
 		}
 	}
 
-	const nameChanged = trackedName !== secretName
+	const credentialChanged =
+		trackedId && credentialId
+			? trackedId !== credentialId
+			: trackedName !== secretName
 	const valueChanged =
 		previousPlaintext !== null && previousPlaintext !== input.declaredPlaintext
-	if (!nameChanged && !valueChanged) {
-		if (!endpoint.hmacVerificationSecretEncrypted) {
+	if (!credentialChanged && !valueChanged) {
+		if (
+			!endpoint.hmacVerificationSecretEncrypted ||
+			trackedId !== credentialId ||
+			trackedName !== secretName
+		) {
 			const saved = await setWebhookEndpointHmacVerificationState({
 				db: input.env.APP_DB,
 				userId: endpoint.userId,
 				endpointId: endpoint.id,
-				hmacSecretName: secretName,
+				...identity,
 				hmacVerificationSecretEncrypted: nextSnapshot,
 			})
 			return (
 				saved ?? {
 					...endpoint,
-					hmacSecretName: secretName,
+					...identity,
 					hmacVerificationSecretEncrypted: nextSnapshot,
 				}
 			)
@@ -303,13 +323,13 @@ export async function reconcileWebhookHmacVerificationRotation(input: {
 			db: input.env.APP_DB,
 			userId: endpoint.userId,
 			endpointId: endpoint.id,
-			hmacSecretName: secretName,
+			...identity,
 			hmacVerificationSecretEncrypted: nextSnapshot,
 		})
 		return (
 			saved ?? {
 				...endpoint,
-				hmacSecretName: secretName,
+				...identity,
 				hmacVerificationSecretEncrypted: nextSnapshot,
 			}
 		)
@@ -319,18 +339,20 @@ export async function reconcileWebhookHmacVerificationRotation(input: {
 		db: input.env.APP_DB,
 		userId: endpoint.userId,
 		endpointId: endpoint.id,
-		hmacSecretName: secretName,
+		...identity,
 		hmacVerificationSecretEncrypted: nextSnapshot,
 		previousHmacSecretName: trackedName,
+		previousHmacCredentialId: trackedId,
 		previousHmacSecretEncrypted: previousEncrypted,
 		previousHmacSecretExpiresAt: webhookHmacSecretRotationGraceExpiresAt(now),
 	})
 	return (
 		saved ?? {
 			...endpoint,
-			hmacSecretName: secretName,
+			...identity,
 			hmacVerificationSecretEncrypted: nextSnapshot,
 			previousHmacSecretName: trackedName,
+			previousHmacCredentialId: trackedId,
 			previousHmacSecretEncrypted: previousEncrypted,
 			previousHmacSecretExpiresAt: webhookHmacSecretRotationGraceExpiresAt(now),
 		}

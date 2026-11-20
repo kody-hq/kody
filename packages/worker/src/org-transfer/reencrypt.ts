@@ -18,6 +18,10 @@ import {
 	userWebhookHmacSecretContext,
 	userWebhookUrlSecretContext,
 } from '#mcp/secrets/crypto.ts'
+import {
+	readVaultItemConfig,
+	vaultItemRefContext,
+} from '#mcp/secrets/vault-item-config.ts'
 import type { OrgTransferPlan } from './plan.ts'
 import type { OrgTransferRow } from './snapshot.ts'
 
@@ -28,8 +32,19 @@ type SealedColumn = {
 	column: string
 	decrypt: Seal
 	encrypt: Seal
-	context: (ownerId: OwnerId, row: OrgTransferRow) => string
-}
+} & (
+	| {
+			context: (ownerId: OwnerId, row: OrgTransferRow) => string
+			nested?: never
+	  }
+	| {
+			nested: (raw: string) => {
+				ciphertext: string
+				context: (ownerId: OwnerId) => string
+				replace: (ciphertext: string) => string
+			} | null
+	  }
+)
 
 /** Re-sealed ciphertext columns per moved row, keyed `table:rowid`. */
 export type OrgTransferSealedColumns = Map<string, Record<string, string>>
@@ -48,6 +63,23 @@ export const orgTransferSealedColumns = {
 			decrypt: decryptSecretValue,
 			encrypt: encryptSecretValue,
 			context: (ownerId) => userSecretContext(ownerId),
+		},
+		{
+			column: 'config_json',
+			decrypt: decryptSecretValue,
+			encrypt: encryptSecretValue,
+			nested: (raw) => {
+				const config = readVaultItemConfig(raw)
+				return config
+					? {
+							ciphertext: config.encryptedRef,
+							context: (ownerId) =>
+								vaultItemRefContext(ownerId, config.bindingId),
+							replace: (encryptedRef) =>
+								JSON.stringify({ ...config, encryptedRef }),
+						}
+					: null
+			},
 		},
 	],
 	user_integrations: [
@@ -145,33 +177,41 @@ export async function resealOrgTransferSecrets(input: {
 		for (const row of input.plan.moves[table]) {
 			const next: Record<string, string> = {}
 			for (const spec of columns) {
-				const payload = row[spec.column]
-				if (typeof payload !== 'string' || payload.length === 0) continue
+				const raw = row[spec.column]
+				if (typeof raw !== 'string' || raw.length === 0) continue
+				const field = spec.nested
+					? spec.nested(raw)
+					: {
+							ciphertext: raw,
+							context: (ownerId: OwnerId) => spec.context(ownerId, row),
+							replace: (ciphertext: string) => ciphertext,
+						}
+				if (!field) continue
 				const failure = `Could not re-seal ${spec.column} for ${rowLabel(table, row)}.`
 				let matches = false
 				let ciphertext = ''
 				try {
 					const plaintext = await spec.decrypt(
 						input.env,
-						payload,
-						spec.context(from.id, row),
+						field.ciphertext,
+						field.context(from.id),
 					)
 					ciphertext = await spec.encrypt(
 						input.env,
 						plaintext,
-						spec.context(to.id, row),
+						field.context(to.id),
 					)
 					matches =
 						(await spec.decrypt(
 							input.env,
 							ciphertext,
-							spec.context(to.id, row),
+							field.context(to.id),
 						)) === plaintext
 				} catch {
 					throw new Error(failure)
 				}
 				if (!matches) throw new Error(failure)
-				next[spec.column] = ciphertext
+				next[spec.column] = field.replace(ciphertext)
 			}
 			if (Object.keys(next).length > 0) {
 				sealed.set(sealedRowKey(table, row.__rowid), next)

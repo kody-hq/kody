@@ -1,9 +1,5 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import {
-	createSnapshotFilesWorkspace,
-	runRepoChecks,
-	type RepoCheckRunResult,
-} from './checks.ts'
+import { runRepoChecks, type RepoCheckRunResult } from './checks.ts'
 import type { RepoCheckStep } from './isolated-runner-limit-message.ts'
 import type { PublishPhaseTimings } from './publish-phase-timing.ts'
 
@@ -62,52 +58,6 @@ export async function runAuthoringPublishChecks(input: {
 			: {}),
 		...(input.typecheckRanOffWorker === true
 			? { typecheckRanOffWorker: true }
-			: {}),
-	})
-}
-
-/**
- * {@link runAuthoringPublishChecks} over an in-memory package tree whose
- * root holds `package.json` (a local checkout sent by `kody dev check`).
- */
-export async function runAuthoringPublishChecksOnFiles(input: {
-	files: Record<string, string>
-	/** Binary files sent by path and byte size only (see `packageCheck`). */
-	binaryFileSizes?: Record<string, number>
-	env: Env
-	baseUrl: string
-	userId: OwnerId
-	sourceId?: string
-	expectedPackageScope?: string
-	onStep?: (step: RepoCheckStep) => Promise<void>
-	/** See {@link runAuthoringPublishChecks}; `packageCheck` follows it with the rebuild. */
-	deferBundleCheckToRebuild?: boolean
-	typecheckRanOffWorker?: boolean
-	kodyIgnoredDeclarationFiles?: Array<string>
-}): Promise<RepoCheckRunResult> {
-	return await runAuthoringPublishChecks({
-		workspace: createSnapshotFilesWorkspace(
-			input.files,
-			input.binaryFileSizes ? { binaryFileSizes: input.binaryFileSizes } : {},
-		),
-		manifestPath: 'package.json',
-		sourceRoot: '/',
-		...(input.onStep ? { onStep: input.onStep } : {}),
-		env: input.env,
-		baseUrl: input.baseUrl,
-		userId: input.userId,
-		...(input.sourceId ? { sourceId: input.sourceId } : {}),
-		...(input.expectedPackageScope !== undefined
-			? { expectedPackageScope: input.expectedPackageScope }
-			: {}),
-		...(input.deferBundleCheckToRebuild === true
-			? { deferBundleCheckToRebuild: true }
-			: {}),
-		...(input.typecheckRanOffWorker === true
-			? { typecheckRanOffWorker: true }
-			: {}),
-		...(input.kodyIgnoredDeclarationFiles?.length
-			? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
 			: {}),
 	})
 }

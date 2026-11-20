@@ -9,7 +9,11 @@ import {
 	type McpServerRef,
 } from '@kody-internal/shared/mcp-servers.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
+import {
+	normalizeAllowedPackages,
+	planPackageLock,
+	type PackageLockOutcome,
+} from '#mcp/secrets/allowed-packages.ts'
 import {
 	encryptMcpServerOAuthClientSecret,
 	mcpServerOAuthClientSecretContext,
@@ -547,8 +551,9 @@ export async function setMcpServerUsage(input: {
 }
 
 /**
- * One-way lock: switch the server to `packages` and grant this saved package.
- * Additional grants accumulate. Unlocking or removing a grant is website-only.
+ * Agent-facing package lock. See `planPackageLock`: the first lock applies,
+ * widening an existing lock returns `approval_required` and changes nothing.
+ * Owners add packages on the website through `setMcpServerUsage`.
  */
 export async function lockMcpServerToPackage(input: {
 	env: Pick<Env, 'APP_DB'>
@@ -556,7 +561,11 @@ export async function lockMcpServerToPackage(input: {
 	id: string
 	packageId: string
 	audit: OrgAuditWriter | null
-}): Promise<McpServerSettingMetadata> {
+}): Promise<{
+	outcome: PackageLockOutcome
+	server: McpServerSettingMetadata
+	packageKodyId: string
+}> {
 	const packageId = input.packageId.trim()
 	if (!packageId) {
 		throw new McpCallerError('Package id is required.')
@@ -576,24 +585,28 @@ export async function lockMcpServerToPackage(input: {
 	if (!savedPackage) {
 		throw new McpCallerError('Saved package not found for this user.')
 	}
-	if (
-		existing.usage_mode === 'packages' &&
-		existing.allowedPackageIds.includes(packageId)
-	) {
-		return toMetadata(existing)
-	}
-	const allowedPackageIds = normalizeAllowedPackages([
-		...existing.allowedPackageIds,
+	const plan = planPackageLock({
+		usageMode: normalizeMcpServerUsageMode(existing.usage_mode),
+		allowedPackageIds: existing.allowedPackageIds,
 		packageId,
-	])
-	return setMcpServerUsage({
+	})
+	const packageKodyId = savedPackage.kodyId
+	if (plan.outcome !== 'locked') {
+		return {
+			outcome: plan.outcome,
+			server: toMetadata(existing),
+			packageKodyId,
+		}
+	}
+	const server = await setMcpServerUsage({
 		env: input.env,
 		userId: input.userId,
 		id: input.id,
 		usageMode: 'packages',
-		allowedPackageIds,
+		allowedPackageIds: plan.allowedPackageIds,
 		audit: input.audit,
 	})
+	return { outcome: 'locked', server, packageKodyId }
 }
 
 export async function setMcpServerLastError(input: {

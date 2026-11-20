@@ -299,7 +299,8 @@ test('dotted kody.mcp[server].tool looks up raw tools-map keys, not sanitizeTool
 })
 
 test('context runs use the credential picks on their lease and cannot send their own', async () => {
-	const { capabilityProxyCallMap } = await import('./capability-proxy.ts')
+	const { capabilityProxyCallMap } =
+		await import('./native-operation-helpers.ts')
 	const leaseMap = new Map([['github', [{ name: 'work', scope: null }]]])
 	const contextRun = {
 		principal: {

@@ -1,3 +1,7 @@
+import type {
+	PackageCheckPrepareRequest,
+	PackageCheckPrepareResult,
+} from './package-check-upload.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
 import type { ArtifactBootstrapAccess } from './artifacts.ts'
@@ -8,8 +12,6 @@ import type {
 	IsolatedArtifactRebuildRequest,
 } from './isolated-artifact-rebuild.ts'
 import type {
-	IsolatedAuthoringChecksOutcome,
-	IsolatedAuthoringChecksRequest,
 	IsolatedCheckPhaseOutcome,
 	IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
@@ -37,7 +39,6 @@ import type {
 import type { PackageServingUpdate } from './package-serving-update.ts'
 // Type-only: an inline `type` specifier keeps a runtime import of
 // publish-work.ts and creates an import cycle through checks.ts.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type {
 	ExternalRefCloneRequest,
 	ExternalRefCloneResult,
@@ -175,9 +176,10 @@ export type RepoSessionRpc = {
 	runIsolatedCheckPhase: (
 		payload: IsolatedCheckPhaseRequest,
 	) => Promise<IsolatedCheckPhaseOutcome>
-	runIsolatedAuthoringChecks: (
-		payload: IsolatedAuthoringChecksRequest,
-	) => Promise<IsolatedAuthoringChecksOutcome>
+	/** Read and stage a `packageCheck` upload on a throwaway isolate. */
+	runIsolatedPackageCheckPrepare: (
+		payload: PackageCheckPrepareRequest,
+	) => Promise<PackageCheckPrepareResult>
 	/** One heavy publish step on a throwaway isolate (`publish-work.ts`). */
 	runIsolatedPublishWork: (payload: PublishWorkRequest) => Promise<unknown>
 	/** Clone + stage one external ref on a throwaway isolate. */

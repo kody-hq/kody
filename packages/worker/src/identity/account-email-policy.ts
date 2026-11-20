@@ -220,17 +220,9 @@ export async function assessAccountEmailSyntax(
 	return { ok: true, email: parsed.email }
 }
 
-function isVitestRuntime() {
-	const runtime = globalThis as {
-		process?: { env?: { VITEST?: string } }
-	}
-	return runtime.process?.env?.VITEST === 'true'
-}
-
 /**
- * Full account-email check. Under Vitest, DNS is skipped unless `fetchImpl`
- * is passed, so signup tests that stub global `fetch` for the mail API stay
- * deterministic. Production always queries DNS-over-HTTPS.
+ * Full account-email check, including mail-domain DNS over HTTPS. Pass
+ * `fetchImpl` to control the DNS transport.
  */
 export async function assessAccountEmail(
 	email: string,
@@ -238,13 +230,10 @@ export async function assessAccountEmail(
 ): Promise<AccountEmailAssessment> {
 	const syntax = await assessAccountEmailSyntax(email)
 	if (!syntax.ok) return syntax
-	// example.com publishes a null MX. Unit tests skip DNS under Vitest.
+	// example.com publishes a null MX.
 	// Local dev, preview, and Playwright permit that fixture only; production
 	// still rejects it.
 	if (options?.allowExampleDomain && syntax.email.endsWith('@example.com')) {
-		return syntax
-	}
-	if (!options?.fetchImpl && isVitestRuntime()) {
 		return syntax
 	}
 	const lookup: MailDomainLookup = await lookupMailDomainAcceptance(

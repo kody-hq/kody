@@ -14,5 +14,7 @@ export default defineConfig({
 		// TanStack Router regenerates this file with its own formatter.
 		'packages/worker/start/routeTree.gen.ts',
 		'packages/worker/start/routeTree.gen.check.ts',
+		// Written by `npm run capabilities:manifest`.
+		'packages/worker/src/mcp/capabilities/capability-manifest.generated.mjs',
 	],
 })

@@ -2,7 +2,12 @@
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 
 import { css } from '@emotion/react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Button } from '../components/button.tsx'
+import { Field } from '../components/field.tsx'
+import { Textarea } from '../components/input.tsx'
+import { useCredentialMutation } from '../credential-mutation.ts'
+import { saveCredentialRequestProfile } from '#start/server/credential-placement'
 import {
 	IdValue,
 	MetadataGrid,
@@ -64,6 +69,89 @@ const listCss = css({
 	color: colors.text,
 })
 const mutedCss = css({ margin: 0, color: colors.textMuted })
+
+function CredentialRequestProfileEditor(props: {
+	credentialId: string
+	orgSlug: string
+	approved: boolean
+}) {
+	const [error, setError] = useState<string | null>(null)
+	const [saved, setSaved] = useState(false)
+	const mutation = useCredentialMutation(
+		{ orgSlug: props.orgSlug },
+		(profile: string | null) =>
+			saveCredentialRequestProfile({
+				data: {
+					credentialId: props.credentialId,
+					orgSlug: props.orgSlug,
+					profile,
+				},
+			}),
+	)
+	return (
+		<details>
+			<summary>Approve an exact request</summary>
+			<form
+				css={{ display: 'grid', gap: spacing.sm }}
+				onSubmit={async (event) => {
+					event.preventDefault()
+					const form = event.currentTarget
+					setError(null)
+					setSaved(false)
+					try {
+						await mutation.mutateAsync(
+							String(new FormData(form).get('profile')),
+						)
+						form.reset()
+						setSaved(true)
+					} catch (error) {
+						setError(
+							error instanceof Error
+								? error.message
+								: 'Unable to approve this profile.',
+						)
+					}
+				}}
+			>
+				<Field label="Request profile (JSON)">
+					<Textarea name="profile" rows={8} maxLength={65000} required />
+				</Field>
+				<p css={mutedCss}>
+					Use the package ID, destination, method, and approved locations. For
+					composed Keys, save the same profile on each Key. Do not include
+					secret values. Review Fill placement below to allow each request part.
+				</p>
+				<Button type="submit" disabled={mutation.isPending}>
+					Approve profile
+				</Button>
+				{props.approved ? (
+					<Button
+						type="button"
+						variant="secondary"
+						disabled={mutation.isPending}
+						onClick={async () => {
+							setError(null)
+							setSaved(false)
+							try {
+								await mutation.mutateAsync(null)
+							} catch (error) {
+								setError(
+									error instanceof Error
+										? error.message
+										: 'Unable to remove this profile.',
+								)
+							}
+						}}
+					>
+						Remove profile and restore Bearer injection
+					</Button>
+				) : null}
+				{error ? <p role="alert">{error}</p> : null}
+				{saved ? <p role="status">Profile approved.</p> : null}
+			</form>
+		</details>
+	)
+}
 /** What a credential of each kind is, in one sentence. */
 function kindLede(kind: CredentialListItem['kind']) {
 	switch (kind) {
@@ -93,6 +181,12 @@ function injectLabel(inject: CredentialInjectView) {
 			return `Basic auth, value as the ${inject.valueAs}`
 		case 'query':
 			return `Query parameter ${inject.param}={value}`
+		case 'body':
+			return 'Approved JSON body fields'
+		case 'path':
+			return 'Approved URL path'
+		case 'composition':
+			return 'Approved credential composition'
 		default: {
 			const exhaustive: never = inject
 			return exhaustive
@@ -448,8 +542,20 @@ export function renderCredentialDetail(input: {
 					<code css={codeCss}>{injectSummary(credential)}</code>
 					<p css={mutedCss}>
 						How a scoped <code css={codeCss}>credential()</code> client puts
-						this value on a request. Placeholders ignore inject.
+						this value on a request.
 					</p>
+					{credential.kind === 'secret' && detail?.canApproveRequestProfile ? (
+						<CredentialRequestProfileEditor
+							key={credential.id}
+							credentialId={credential.id}
+							orgSlug={input.orgSlug}
+							approved={
+								credential.inject?.kind === 'body' ||
+								credential.inject?.kind === 'path' ||
+								credential.inject?.kind === 'composition'
+							}
+						/>
+					) : null}
 				</div>,
 			)}
 

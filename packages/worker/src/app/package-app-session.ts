@@ -1,3 +1,7 @@
+import {
+	isolateCollection,
+	isolateState,
+} from '@kody-internal/shared/isolate-state.ts'
 import { createCookie } from 'remix/cookie'
 import { isSecureRequest } from '#app/auth-session.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
@@ -31,19 +35,15 @@ import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
  * Lifetime matches the remaining `kody_session` that minted the handoff or
  * OAuth exchange, not a fixed cap.
  *
- * Pre-#3890 host-wide `__Host-kody_pkg_session` cookies are still accepted as
- * a read fallback so existing sessions keep working until the next
- * login/handoff (which writes a per-app cookie and clears the legacy name) or
- * logout (which clears both the per-app name and the legacy name).
+ * Pre-#3890 host-wide `__Host-kody_pkg_session` / `kody_pkg_session` names
+ * and `v: 2` payloads are no longer read or cleared (#3906). Minting stopped
+ * in #3908 (2026-10-16); the longest remember-me lifetime is 30 days.
  */
 
 const securePackageAppSessionCookiePrefix = '__Host-kody_pkg_session_'
 const insecurePackageAppSessionCookiePrefix = 'kody_pkg_session_'
-/** Pre-per-app host-wide names (read fallback + clear on write/logout). */
-const legacySecurePackageAppSessionCookieName = '__Host-kody_pkg_session'
-const legacyInsecurePackageAppSessionCookieName = 'kody_pkg_session'
-/** Fallback Max-Age for handoff tokens that omit `sessExp`. */
-const legacyPackageAppSessionMaxAgeSeconds = 60 * 60 * 12
+/** Default Max-Age when serialize omits an explicit remaining lifetime. */
+const packageAppSessionDefaultMaxAgeSeconds = 60 * 60 * 12
 const packageAppSessionSecretPurpose = 'kody-package-app-session:v2'
 
 export type PackageAppSession = {
@@ -51,27 +51,15 @@ export type PackageAppSession = {
 	username: string
 }
 
-type StoredPackageAppSessionV2 = {
-	v: 2
-	stableUserId: string
-	pkgUsername: string
-	issuedAt: number
-	expiresAt?: number
-}
-
-type StoredPackageAppSessionV3 = {
+type StoredPackageAppSession = {
 	v: 3
 	stableUserId: string
 	pkgUsername: string
 	/** Lowercased package leaf this cookie authorizes. */
 	app: string
 	issuedAt: number
-	expiresAt?: number
+	expiresAt: number
 }
-
-type StoredPackageAppSession =
-	| StoredPackageAppSessionV2
-	| StoredPackageAppSessionV3
 
 export type ParsedPackageAppSession = {
 	session: PackageAppSession
@@ -87,23 +75,25 @@ export function remainingCookieMaxAgeSeconds(
 	return remaining > 0 ? remaining : null
 }
 
-let cachedSecret: {
-	sourceSecret: string
-	derivedSecret: string
-} | null = null
+const cachedSecret = isolateState(
+	(): { sourceSecret: string; derivedSecret: string } | null => null,
+)
 
-const cookieCache = new Map<string, ReturnType<typeof createCookie>>()
+const cookieCache = isolateCollection(
+	new Map<string, ReturnType<typeof createCookie>>(),
+)
 
 async function getDerivedSecret(env: Env) {
 	const secret = env.COOKIE_SECRET?.trim()
 	if (!secret) {
 		throw new Error('Missing COOKIE_SECRET for package app session signing.')
 	}
-	if (cachedSecret?.sourceSecret === secret) return cachedSecret.derivedSecret
+	if (cachedSecret.current?.sourceSecret === secret)
+		return cachedSecret.current.derivedSecret
 	const derivedSecret = await sha256Base64Url(
 		`${packageAppSessionSecretPurpose}:${secret}`,
 	)
-	cachedSecret = { sourceSecret: secret, derivedSecret }
+	cachedSecret.current = { sourceSecret: secret, derivedSecret }
 	cookieCache.clear()
 	return derivedSecret
 }
@@ -126,7 +116,7 @@ async function getNamedPackageAppSessionCookie(
 		httpOnly: true,
 		sameSite: 'Lax',
 		path: '/',
-		maxAge: legacyPackageAppSessionMaxAgeSeconds,
+		maxAge: packageAppSessionDefaultMaxAgeSeconds,
 		secrets: [derivedSecret],
 		...(secure ? { secure: true } : {}),
 	})
@@ -146,43 +136,25 @@ async function getPackageAppSessionCookie(
 	)
 }
 
-async function getLegacyPackageAppSessionCookie(env: Env, secure: boolean) {
-	return await getNamedPackageAppSessionCookie(
-		env,
-		secure
-			? legacySecurePackageAppSessionCookieName
-			: legacyInsecurePackageAppSessionCookieName,
-		secure,
-	)
-}
-
-/** Clears the derived cookie cache so tests can swap secrets. */
-export function resetPackageAppSessionCookieForTests() {
-	cachedSecret = null
-	cookieCache.clear()
-}
-
 function isStoredPackageAppSession(
 	value: unknown,
 ): value is StoredPackageAppSession {
 	if (!value || typeof value !== 'object') return false
 	const record = value as Record<string, unknown>
-	const baseOk =
+	return (
+		record.v === 3 &&
 		parsePersonId(record.stableUserId) !== null &&
 		typeof record.pkgUsername === 'string' &&
 		record.pkgUsername.length > 0 &&
+		typeof record.app === 'string' &&
+		record.app.length > 0 &&
 		typeof record.issuedAt === 'number' &&
 		Number.isFinite(record.issuedAt) &&
 		record.issuedAt > 0 &&
-		(record.expiresAt === undefined ||
-			(typeof record.expiresAt === 'number' &&
-				Number.isFinite(record.expiresAt) &&
-				record.expiresAt > 0))
-	if (!baseOk) return false
-	if (record.v === 3) {
-		return typeof record.app === 'string' && record.app.length > 0
-	}
-	return record.v === 2
+		typeof record.expiresAt === 'number' &&
+		Number.isFinite(record.expiresAt) &&
+		record.expiresAt > 0
+	)
 }
 
 function expireCookieHeader(
@@ -194,15 +166,6 @@ function expireCookieHeader(
 		maxAge: 0,
 		expires: new Date(0),
 	})
-}
-
-/** Clears the pre-per-app host-wide session cookie names. */
-export async function destroyLegacyPackageAppSessionCookies(input: {
-	env: Env
-	secure: boolean
-}) {
-	const cookie = await getLegacyPackageAppSessionCookie(input.env, input.secure)
-	return [await expireCookieHeader(cookie, input.secure)]
 }
 
 export async function createPackageAppSessionCookie(input: {
@@ -229,22 +192,13 @@ export async function createPackageAppSessionCookie(input: {
 			app: slug,
 			issuedAt: now,
 			expiresAt: input.expiresAt,
-		} satisfies StoredPackageAppSessionV3),
+		} satisfies StoredPackageAppSession),
 		{ secure: input.secure, maxAge },
 	)
-	// Eagerly drop the host-wide legacy cookie so sibling apps on the same
-	// shared host cannot keep riding it after a per-app login/handoff.
-	const legacyClears = await destroyLegacyPackageAppSessionCookies({
-		env: input.env,
-		secure: input.secure,
-	})
-	return [setCookie, ...legacyClears]
+	return [setCookie]
 }
 
-/**
- * Clears the per-app session cookie for `slug`, and the legacy host-wide
- * names so a leftover pre-per-app cookie cannot re-authorize this app.
- */
+/** Clears the per-app session cookie for `slug`. */
 export async function destroyPackageAppSessionCookie(input: {
 	env: Env
 	slug: string
@@ -255,11 +209,7 @@ export async function destroyPackageAppSessionCookie(input: {
 		input.slug,
 		input.secure,
 	)
-	const legacyClears = await destroyLegacyPackageAppSessionCookies({
-		env: input.env,
-		secure: input.secure,
-	})
-	return [await expireCookieHeader(cookie, input.secure), ...legacyClears]
+	return [await expireCookieHeader(cookie, input.secure)]
 }
 
 function parseStoredPackageAppSession(
@@ -271,11 +221,8 @@ function parseStoredPackageAppSession(
 	try {
 		const parsed: unknown = JSON.parse(stored)
 		if (!isStoredPackageAppSession(parsed)) return null
-		if (parsed.v === 3 && parsed.app !== expectedSlug) return null
-		const expiresAt =
-			parsed.expiresAt ??
-			parsed.issuedAt + legacyPackageAppSessionMaxAgeSeconds * 1000
-		if (expiresAt <= now) {
+		if (parsed.app !== expectedSlug) return null
+		if (parsed.expiresAt <= now) {
 			return null
 		}
 		return {
@@ -284,7 +231,7 @@ function parseStoredPackageAppSession(
 				username: parsed.pkgUsername,
 			},
 			issuedAt: parsed.issuedAt,
-			expiresAt,
+			expiresAt: parsed.expiresAt,
 		}
 	} catch {
 		return null
@@ -310,34 +257,18 @@ export async function readPackageAppSession(input: {
 
 	// Only the names for this request's scheme. On HTTPS the `__Host-` prefix
 	// is what stops a sibling subdomain from tossing a `Domain`-wide cookie;
-	// the unprefixed names exist only for plain-HTTP local dev.
+	// the unprefixed hashed names exist only for plain-HTTP local dev.
 	const secure = isSecureRequest(input.request)
 	const slug = input.slug.trim().toLowerCase()
 	const appCookieName = await packageAppSessionCookieName(slug, secure)
-	const legacyCookieName = secure
-		? legacySecurePackageAppSessionCookieName
-		: legacyInsecurePackageAppSessionCookieName
-	if (
-		!cookieHeaderHasName(cookieHeader, appCookieName) &&
-		!cookieHeaderHasName(cookieHeader, legacyCookieName)
-	) {
+	if (!cookieHeaderHasName(cookieHeader, appCookieName)) {
 		return null
 	}
 
 	const now = input.now ?? Date.now()
 	const appCookie = await getPackageAppSessionCookie(input.env, slug, secure)
-	const appSession = parseStoredPackageAppSession(
-		await appCookie.parse(cookieHeader),
-		now,
-		slug,
-	)
-	if (appSession) return appSession
-
-	// Legacy host-wide cookie (pre-per-app). Accept for any app until the
-	// next login/handoff or logout clears it.
-	const legacyCookie = await getLegacyPackageAppSessionCookie(input.env, secure)
 	return parseStoredPackageAppSession(
-		await legacyCookie.parse(cookieHeader),
+		await appCookie.parse(cookieHeader),
 		now,
 		slug,
 	)

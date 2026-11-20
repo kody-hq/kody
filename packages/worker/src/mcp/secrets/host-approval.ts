@@ -19,8 +19,24 @@ export function normalizeBulkHostApprovalHosts(hosts: Array<string>) {
 	return classifyBulkApprovalHosts(hosts).valid
 }
 
+/**
+ * Every `/connect/secrets` link starts here so it names the org that owns the
+ * credential. The page reads `org` (absent means the personal org), so a link
+ * without it looks in the wrong account.
+ */
+export function buildConnectSecretsUrl(input: {
+	baseUrl: string
+	orgSlug: string | null
+}) {
+	const url = new URL(connectSecretsPath, input.baseUrl)
+	const orgSlug = input.orgSlug?.trim()
+	if (orgSlug) url.searchParams.set('org', orgSlug)
+	return url
+}
+
 export function buildSecretHostApprovalUrl(input: {
 	baseUrl: string
+	orgSlug: string | null
 	name: string
 	scope: SecretScope
 	requestedHost: string
@@ -28,6 +44,7 @@ export function buildSecretHostApprovalUrl(input: {
 }) {
 	return buildSecretHostBulkApprovalUrl({
 		baseUrl: input.baseUrl,
+		orgSlug: input.orgSlug,
 		names: [input.name],
 		hosts: [input.requestedHost],
 		scope: input.scope,
@@ -37,6 +54,7 @@ export function buildSecretHostApprovalUrl(input: {
 
 export function buildSecretHostBulkApprovalUrl(input: {
 	baseUrl: string
+	orgSlug: string | null
 	names: Array<string>
 	hosts: Array<string>
 	scope?: SecretScope
@@ -50,7 +68,7 @@ export function buildSecretHostBulkApprovalUrl(input: {
 	if (hosts.length === 0) {
 		throw new Error('At least one host is required for host approval.')
 	}
-	const url = new URL(connectSecretsPath, input.baseUrl)
+	const url = buildConnectSecretsUrl(input)
 	if (names.length === 1) {
 		url.searchParams.set('name', names[0] ?? '')
 	} else {
@@ -63,6 +81,7 @@ export function buildSecretHostBulkApprovalUrl(input: {
 
 export function buildSecretHostBulkApprovalUrlIfNeeded(input: {
 	baseUrl: string
+	orgSlug: string | null
 	names: Array<string>
 	hosts: Array<string>
 	scope?: SecretScope
@@ -73,6 +92,7 @@ export function buildSecretHostBulkApprovalUrlIfNeeded(input: {
 	if (names.length < 2 && hosts.length < 2) return null
 	return buildSecretHostBulkApprovalUrl({
 		baseUrl: input.baseUrl,
+		orgSlug: input.orgSlug,
 		names,
 		hosts,
 		scope: input.scope,

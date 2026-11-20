@@ -1,4 +1,8 @@
 import { fileStoreRpc } from '#worker/files/client.ts'
+import {
+	fileTreePermission,
+	loadFileAncestors,
+} from '#worker/files/tree-access.ts'
 import { inviteRoleDenial, isSeatRole } from '#worker/orgs/admin-role-rules.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import {
@@ -12,6 +16,10 @@ import type {
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { z } from 'zod'
+import {
+	compileAccessForActor,
+	resourceGrantKey,
+} from '#worker/authorization/access-compile.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { unmappableCredentialGrantWarnings } from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -26,6 +34,7 @@ import {
 import {
 	authorize,
 	computeEffectivePermissions,
+	hasOwnerAuthority,
 } from '#worker/authorization/authorize.ts'
 import {
 	requireMcpRequest,
@@ -80,6 +89,7 @@ import {
 	resolveAuthorizedGrantPermissions,
 	resolveGrantTarget,
 	rethrowAccessError,
+	manageAccessPermission,
 } from './shared.ts'
 
 export function inviteMatchesUser(
@@ -159,7 +169,75 @@ export const outsideInviterGrantSubjects = {
 	},
 } as const satisfies GrantSubjectChoices
 
-async function assertInviterStillValid(db: D1Database, invite: StoredInvite) {
+async function inviterAccess(
+	db: D1Database,
+	invite: StoredInvite,
+	role: string | null,
+) {
+	return await compileAccessForActor({
+		db,
+		orgId: ownerIdFromStored(invite.orgId),
+		userId: invite.invitedByUserId,
+		role: role as OrgRole | null,
+	})
+}
+
+/** The permission that manages access to the resource a grant invite names. */
+async function inviteManagePermission(
+	db: D1Database,
+	invite: StoredInvite,
+): Promise<OrgPermission> {
+	const resourceType = invite.resourceType
+	if (!resourceType || resourceType === 'org') return 'member:write'
+	if (resourceType === 'credential') {
+		const credential = await getOrgCredential(
+			db,
+			ownerIdFromStored(invite.orgId),
+			invite.resourceId ?? '',
+		)
+		if (!credential) return 'member:write'
+		return manageAccessPermission(credentialPermissionFamily(credential.kind))
+	}
+	if (resourceType === 'machine_capability') {
+		return manageAccessPermission('execution_context')
+	}
+	return manageAccessPermission(resourceType)
+}
+
+/** File access follows the folder tree, as it does when the invite is made. */
+async function inviterManagesFile(
+	env: Env,
+	invite: StoredInvite,
+	access: Awaited<ReturnType<typeof inviterAccess>>,
+) {
+	const orgId = ownerIdFromStored(invite.orgId)
+	const fileId = invite.resourceId ?? ''
+	const store = fileStoreRpc(env, orgId)
+	const files = await loadFileAncestors(
+		(id) => store.metadata(orgId, id),
+		fileId,
+	)
+	// A deleted file is reported by the target check that follows.
+	if (!files.has(fileId)) return true
+	return fileTreePermission(
+		{
+			orgId,
+			permissions: access.orgPermissions,
+			isOwner: access.isOwner,
+			resourcePermissions: access.resourcePermissions,
+			credentialScopes: null,
+		},
+		files,
+		'file:manage_access',
+		fileId,
+	)
+}
+
+async function assertInviterStillValid(
+	env: Env,
+	db: D1Database,
+	invite: StoredInvite,
+) {
 	const requireOwner = invite.kind === 'membership' && invite.role === 'owner'
 	const inviter = await db
 		.prepare(
@@ -184,13 +262,41 @@ async function assertInviterStillValid(db: D1Database, invite: StoredInvite) {
 		}
 		return
 	}
+	const noLongerAllowed = () =>
+		new McpCallerError(
+			'This invite is no longer valid because the inviter can no longer grant this access.',
+		)
 	if (invite.kind === 'membership') {
 		if (!inviter) {
 			throw new McpCallerError(
 				'This invite is no longer valid because the inviter no longer has access.',
 			)
 		}
+		const access = await inviterAccess(db, invite, inviter.role)
+		if (
+			!hasOwnerAuthority(access) &&
+			!access.orgPermissions.has('member:write')
+		) {
+			throw noLongerAllowed()
+		}
 		return
+	}
+	// A grant invite stays valid only while its inviter could still make it:
+	// they hold the permission that manages access to that resource today.
+	if (invite.resourceType && invite.resourceId) {
+		const access = await inviterAccess(db, invite, inviter?.role ?? null)
+		if (!hasOwnerAuthority(access)) {
+			const permission = await inviteManagePermission(db, invite)
+			const held =
+				invite.resourceType === 'file'
+					? await inviterManagesFile(env, invite, access)
+					: access.orgPermissions.has(permission) ||
+						(access.resourcePermissions
+							.get(resourceGrantKey(invite.resourceType, invite.resourceId))
+							?.has(permission) ??
+							false)
+			if (!held) throw noLongerAllowed()
+		}
 	}
 	// Grant invites may come from outside collaborators who still hold a grant.
 	if (inviter) return
@@ -322,7 +428,7 @@ async function acceptStoredInvite(input: {
 			'This invite is no longer valid because the organization is not active.',
 		)
 	}
-	await assertInviterStillValid(input.db, invite)
+	await assertInviterStillValid(input.env, input.db, invite)
 	const grantTarget = await assertInviteTargetsStillValid(
 		input.env,
 		input.db,

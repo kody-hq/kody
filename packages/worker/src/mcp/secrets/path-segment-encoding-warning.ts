@@ -4,7 +4,7 @@
  * upstream then returned 4xx. Agents see the warning on the response and in
  * run logs; the credential value never appears.
  */
-import { withLanding } from './echo-redaction.ts'
+import { withResponseHeaders } from './echo-redaction.ts'
 
 /** Response header naming path-segment encoding on a 4xx (never a value). */
 export const pathSegmentEncodingWarningHeaderName =
@@ -82,12 +82,5 @@ export function withPathSegmentEncodingWarning(
 				.join(' | '),
 		)
 	}
-	return withLanding(
-		new Response(response.body, {
-			status: response.status,
-			statusText: response.statusText,
-			headers,
-		}),
-		{ url: response.url, redirected: response.redirected },
-	)
+	return withResponseHeaders(response, headers)
 }

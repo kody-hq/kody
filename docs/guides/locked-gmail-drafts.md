@@ -34,8 +34,11 @@ Agent notes — for AI agents explaining or recreating this loop:
   tree of this package. That is the grant for jobs and named exports.
 - After publish lock, call `resourceLock({ kind: 'integration', name, package_id })` so
   execute and other packages cannot use createAuthenticatedFetch on that
-  connection. Agents can lock; unlocking or removing a grant is
-  website-only at /@<slug>/-/integrations/:name. integrationSave cannot
+  connection. Agents can lock a connection that is still any context. Once
+  it is locked, `resourceLock` with another package returns status
+  approval_required and an approval_url and adds nothing; only the owner
+  approves ([enforced by this test](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)). Unlocking or removing a grant is website-only at
+  /@<slug>/-/integrations/:name. integrationSave cannot
   change usageMode. The one-click /@<slug>/-/integrations/approve grant is
   a no-op while usage is still any context.
 - Do not lock a full @kody/google fork if it exports send. Author a thin
@@ -64,8 +67,11 @@ locked Kody package is the grant that cannot.
 
 This is the usual complaint: an assistant should prepare the reply to an invoice
 or a support thread and leave it in Drafts. The human opens Gmail, edits, and
-sends. OAuth cannot say that. The published export can — and the publish lock
-keeps a later agent from widening it.
+sends. OAuth cannot say that. The published export can. The publish lock keeps a
+later agent from changing what this package runs, and the integration usage lock
+keeps a later agent from handing the token to another package without the
+owner's approval
+([test](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)).
 
 > [!WATCH] https://www.youtube.com/watch?v=_EJTrJFLa3g Watch: Make your agent
 > safe and autonomous
@@ -85,14 +91,17 @@ Publish lock does **not** revoke send on the token. It stops _this_ package's
 jobs and exports from silently becoming a sender.
 
 **Integration usage lock** (`usage_mode` on the connection) is the token grant.
-`resourceLock({ kind: 'integration', name, package_id })` switches Usage to
-specific packages and adds that package id. Ad hoc execute cannot call
-`createAuthenticatedFetch`. Other packages are denied. Additional grants
-accumulate. Unlocking or removing a grant is website-only at
-`/@<slug>/-/integrations/:name`.
+`resourceLock({ kind: 'integration', name, package_id })` on a connection that
+any context can use switches Usage to specific packages and adds that package id
+(status `locked`). Ad hoc execute cannot call `createAuthenticatedFetch`. Other
+packages are denied. Once the connection is locked, agents cannot add packages:
+`resourceLock` with another `package_id` returns status `approval_required` and
+an `approval_url` (`/@<slug>/-/integrations/approve`), and nothing changes until
+the owner clicks **Approve** there. Unlocking or removing a grant is
+website-only at `/@<slug>/-/integrations/:name`.
 
-A connected MCP server uses the same tighten-only shape: lock the **server** to
-a package so execute and other packages cannot call `kody.mcp["name"]`. See
+A connected MCP server uses the same shape: lock the **server** to a package so
+execute and other packages cannot call `kody.mcp["name"]`. See
 [Lock an MCP server to a package](./locked-mcp-server.md). User secrets require
 a website grant on `allowed_packages`.
 `resourceLock({ kind: 'secret', name, package_id })` returns the approval URL

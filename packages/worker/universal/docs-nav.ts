@@ -152,7 +152,10 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 				slug: 'secret-backed-integration',
 				label: 'Secret-backed integrations',
 			},
-			{ slug: 'account-secret-setup', label: 'Secret setup URL reference' },
+			{
+				slug: 'account-secret-setup',
+				label: 'Ask the user to save a secret',
+			},
 			{ slug: 'openapi-integrations', label: 'OpenAPI integrations' },
 			{ slug: 'local-mcp-tunnels', label: 'Connect a home MCP server' },
 			{ slug: 'locked-mcp-server', label: 'Lock an MCP server to a package' },

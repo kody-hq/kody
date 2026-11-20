@@ -255,7 +255,7 @@ test('fetch gateway blocks or expands secret placeholders based on host approval
 				secretName: 'spotifyRefreshToken',
 				host: 'example.com',
 				approvalUrl: expect.stringMatching(
-					/\/connect\/secrets\?name=spotifyRefreshToken&hosts=example\.com$/,
+					/\/connect\/secrets\?org=ada&name=spotifyRefreshToken&hosts=example\.com$/,
 				),
 			}),
 		],
@@ -782,7 +782,7 @@ test('fetch gateway bulk host approval uses the secret scope, not the package ru
 		),
 	)
 	expect(approvals?.bulkApprovalUrl).toBe(
-		'https://example.com/connect/secrets?names=accessToken%2CrefreshToken&hosts=api.example.com',
+		'https://example.com/connect/secrets?org=ada&names=accessToken%2CrefreshToken&hosts=api.example.com',
 	)
 	expect(approvals?.entries[0]?.approvalUrl).not.toContain('scope=package')
 })

@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -18,11 +19,10 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
-import {
-	clearLoginSessionsForTests,
-	loginExchangeSchema,
-	readRetryAfterSeconds,
-} from './login-resolver.ts'
+import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
+import { credentialClientHeaderName } from './credential-client-header.ts'
+import { signCredentialClientHandle } from './credential-client-handle.ts'
+import { loginExchangeSchema, readRetryAfterSeconds } from './login-resolver.ts'
 import { listCredentialsForViewer } from './credential-list.ts'
 import { resolveCredential } from './resolve-credential.ts'
 
@@ -231,7 +231,7 @@ async function setup() {
 	}
 	valueReads.count = 0
 	scheduledAudits.length = 0
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	return {
 		env,
 		db,
@@ -243,6 +243,222 @@ async function setup() {
 		audits,
 	}
 }
+
+const singleRequestExchange = {
+	...jsonExchange,
+	body: { ...jsonExchange.body, clientKey: '{clientKey}' },
+	singleRequest: {
+		logoutUrl: 'https://api.example.com/v1/auth/logout',
+		headers: [{ name: 'X-Client-Key', field: 'clientKey' }],
+	},
+}
+
+test.each([
+	'success',
+	'stream',
+	'cancel stream',
+	'401',
+	'network error',
+	'logout error',
+	'redirect',
+	'failed login',
+	'rate-limited login',
+] as const)(
+	'single-request Login runs one protected request and cleans up: %s',
+	async (outcome) => {
+		const t = await setup()
+		const request = t.requestAs('bea', 'owner')
+		const clientKey = 'dummy-client-key'
+		const credentialId = await t.storeCredential({
+			name: 'ephemeral-reports',
+			exchange: singleRequestExchange,
+			value: JSON.stringify({ ...JSON.parse(fields), clientKey }),
+			inject: { kind: 'header', name: 'X-Session', format: '{value}' },
+		})
+		const binding = 'run:single-request-login'
+		const handle = await signCredentialClientHandle({
+			env: t.env,
+			handle: {
+				id: credentialId,
+				name: 'ephemeral-reports',
+				kind: 'login',
+				scope: 'org',
+				org: t.acmeId,
+				actor: request.actor!.userId,
+				binding,
+			},
+		})
+		const calls: Array<string> = []
+		const logouts: Array<Exchange> = []
+		const pending: Array<Promise<unknown>> = []
+		let closeResponse: (() => void) | undefined
+		let signedIn = 0
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init: RequestInit) => {
+				expect(init.redirect).toBe('manual')
+				if (url === singleRequestExchange.url) {
+					calls.push('login')
+					expect(init.body).toEqual(expect.stringContaining(clientKey))
+					if (outcome === 'failed login')
+						return new Response(null, { status: 403 })
+					if (outcome === 'rate-limited login') {
+						return new Response(null, {
+							status: 429,
+							headers: { 'retry-after': '120' },
+						})
+					}
+					return Response.json({
+						data: { token: `dummy-session-${++signedIn}` },
+					})
+				}
+				calls.push('logout')
+				logouts.push({ url, init })
+				if (outcome === 'logout error') throw new Error('Logout failed')
+				return new Response(null, { status: 204 })
+			}),
+		)
+		const forward = vi.fn(async (outbound: Request) => {
+			calls.push('request')
+			expect(outbound.redirect).toBe('manual')
+			expect(outbound.headers.has(credentialClientHeaderName)).toBe(false)
+			expect(outbound.headers.get('x-session')).toBe(
+				`dummy-session-${signedIn}`,
+			)
+			expect(outbound.headers.get('x-client-key')).toBe(clientKey)
+			if (outcome === 'network error') throw new Error('Network error')
+			if (outcome === 'redirect')
+				return Response.redirect('https://api.example.com/next')
+			if (outcome === 'stream' || outcome === 'cancel stream') {
+				return new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							closeResponse = () => {
+								controller.enqueue(new TextEncoder().encode('report'))
+								controller.close()
+							}
+						},
+					}),
+				)
+			}
+			return new Response(`dummy-session-${signedIn} ${clientKey}`, {
+				status: outcome === '401' ? 401 : 200,
+			})
+		})
+		const run = (url = 'https://api.example.com/v1/reports') =>
+			executeGatewayFetch({
+				env: t.env,
+				props: {
+					baseUrl: 'https://example.com',
+					userId: t.acmeId,
+					email: null,
+					request,
+					storageContext: null,
+					credentialClientBinding: binding,
+				},
+				request: new Request(url, {
+					headers: {
+						[credentialClientHeaderName]: handle,
+						'X-Client-Key': 'caller-value',
+						'X-Session': 'caller-session',
+					},
+				}),
+				globalFetch: forward as unknown as typeof fetch,
+				waitUntil: (task) => pending.push(task),
+			})
+		await expect(
+			run('https://api.example.com:8443/v1/reports'),
+		).rejects.toMatchObject({
+			body: { code: 'host_not_allowed' },
+		})
+		expect(calls).toEqual([])
+		if (outcome === 'failed login') {
+			await expect(run()).rejects.toMatchObject({
+				body: { code: 'login_failed' },
+			})
+			expect(calls).toEqual(['login'])
+		} else if (outcome === 'rate-limited login') {
+			await expect(run()).rejects.toMatchObject({
+				body: { code: 'login_failed', retryAfterSeconds: 120 },
+			})
+			await expect(run()).rejects.toMatchObject({
+				body: { code: 'login_retry_later' },
+			})
+			expect(calls).toEqual(['login'])
+		} else if (outcome === 'network error') {
+			await expect(run()).rejects.toThrow('Network error')
+			expect(calls).toEqual(['login', 'request', 'logout'])
+		} else if (outcome === 'redirect') {
+			await expect(run()).rejects.toMatchObject({
+				body: { code: 'invalid_request' },
+			})
+			expect(calls).toEqual(['login', 'request', 'logout'])
+		} else if (outcome === 'stream' || outcome === 'cancel stream') {
+			const response = await run()
+			expect(calls).toEqual(['login', 'request'])
+			if (outcome === 'stream') {
+				closeResponse!()
+				expect(await response.text()).toBe('report')
+			} else {
+				await response.body!.cancel()
+			}
+			await Promise.all(pending.splice(0))
+			expect(calls).toEqual(['login', 'request', 'logout'])
+		} else {
+			const response = await run()
+			expect(response.status).toBe(outcome === '401' ? 401 : 200)
+			const body = await response.text()
+			await Promise.all(pending.splice(0))
+			expect(body).not.toContain('dummy-session-')
+			expect(body).not.toContain(clientKey)
+			expect(calls).toEqual(['login', 'request', 'logout'])
+			if (outcome === 'success') {
+				await (await run()).text()
+				await Promise.all(pending.splice(0))
+				expect(calls).toEqual([
+					'login',
+					'request',
+					'logout',
+					'login',
+					'request',
+					'logout',
+				])
+				expect(signedIn).toBe(2)
+			}
+		}
+		expect(
+			await t.db
+				.prepare(
+					'SELECT credential_id FROM login_credential_sessions WHERE session_id IS NOT NULL OR session_encrypted IS NOT NULL',
+				)
+				.first(),
+		).toBeNull()
+		for (const [index, { url, init }] of logouts.entries()) {
+			expect(url).toBe(singleRequestExchange.singleRequest.logoutUrl)
+			expect(init).toMatchObject({ method: 'POST', redirect: 'manual' })
+			expect(init.signal?.aborted).toBe(false)
+			const headers = new Headers(init.headers)
+			expect(headers.get('x-session')).toBe(`dummy-session-${index + 1}`)
+			expect(headers.get('x-client-key')).toBe(clientKey)
+		}
+	},
+)
+
+test('single-request Login rejects a cross-origin logout and reserved request headers', () => {
+	const { singleRequest } = singleRequestExchange
+	for (const invalid of [
+		{ ...singleRequest, logoutUrl: 'https://other.example.com/logout' },
+		{ ...singleRequest, headers: [{ name: 'Host', field: 'clientKey' }] },
+		{ ...singleRequest, headers: [{ name: 'X-Client-Key', field: 'missing' }] },
+	]) {
+		expect(
+			loginExchangeSchema.safeParse({
+				...singleRequestExchange,
+				singleRequest: invalid,
+			}).success,
+		).toBe(false)
+	}
+})
 
 const refreshFields = JSON.stringify({ refresh_token: 'dummy-refresh-1' })
 const rotatingExchange = {
@@ -314,7 +530,7 @@ test('a rotated refresh token replaces the login value with its session, audited
 	expect(after!.encrypted_value).not.toContain('dummy-refresh')
 
 	// Another isolate reuses the session stored under the new revision.
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const second = await t.signIn({ actor, credentialId: id })
 	expect(second.placement).toMatchObject({ value: 'Bearer dummy-access-1' })
 	expect(sent).toHaveLength(1)
@@ -400,7 +616,7 @@ test('a rejected session is dropped once: a second caller with the same rejectio
 		rejectedSessionId: first.sessionId,
 	})
 	expect(retried.placement).toMatchObject({ value: 'Bearer session-2' })
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const again = await t.signIn({
 		actor,
 		credentialId: id,
@@ -486,7 +702,7 @@ test('a caller that read the value before another isolate rotated it reuses the 
 	const first = t.signIn({ actor, credentialId: id })
 	await exchangeStarted
 	// A second isolate reads the pre-rotation value while the first holds the lease.
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const second = t.signIn({ actor, credentialId: id })
 	await new Promise((resolve) => setTimeout(resolve, 50))
 	release()
@@ -531,7 +747,7 @@ test('invalid_grant from the token endpoint needs reconnecting and stops the exc
 		exchange: rotatingExchange,
 	})
 	for (let i = 0; i < 3; i++) {
-		clearLoginSessionsForTests()
+		resetIsolateState()
 		const error = loginErrorBody(
 			await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
 		)
@@ -564,7 +780,7 @@ test("a 429 waits for the provider's Retry-After before the next exchange", asyn
 		await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
 	)
 	expect(first).toMatchObject({ code: 'login_failed', retryAfterSeconds: 120 })
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const second = loginErrorBody(
 		await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
 	)

@@ -111,6 +111,30 @@ export const revokeProfile = createServerFn({ method: 'POST' })
 		)
 	})
 
+export const grantProfileAccess = createServerFn({ method: 'POST' })
+	.validator(z.object({ orgSlug, profileId: id, grant }))
+	.handler(async ({ data }) => {
+		const { grantProfileAccessForUser } =
+			await import('../../src/app/handlers/profiles.ts')
+		return mutate(data.orgSlug, (input) =>
+			grantProfileAccessForUser({
+				...input,
+				profileId: data.profileId,
+				grant: data.grant,
+			}),
+		)
+	})
+
+export const revokeProfileGrant = createServerFn({ method: 'POST' })
+	.validator(z.object({ orgSlug, grantId: id }))
+	.handler(async ({ data }) => {
+		const { revokeProfileGrantForUser } =
+			await import('../../src/app/handlers/profiles.ts')
+		return mutate(data.orgSlug, (input) =>
+			revokeProfileGrantForUser({ ...input, grantId: data.grantId }),
+		)
+	})
+
 export const createProfileToken = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({

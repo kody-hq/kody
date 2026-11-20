@@ -62,6 +62,17 @@ test('runD1WithRetry matches lock errors, retries them, and rethrows other failu
 			true,
 			false,
 		],
+		// KODY-H0: account-level D1 throttle.
+		[
+			'D1_ERROR: Your account is generating too much load on D1 DBs. Please back off and try again later.',
+			true,
+			true,
+		],
+		[
+			'Your account is generating too much load on D1 DBs. Please back off and try again later',
+			true,
+			false,
+		],
 		[
 			'D1_ERROR: internal error; reference = 0u3odos5iotccpol68ppc0eg',
 			true,
@@ -138,6 +149,11 @@ test('runD1WithRetry matches lock errors, retries them, and rethrows other failu
 		],
 		['Network connection lost while uploading...', false, true],
 		['queue is overloaded while uploading...', false, true],
+		[
+			'Your account is generating too much load on D1 DBs. Slow down.',
+			false,
+			true,
+		],
 		['internal error', false, false],
 		['internal error', false, true],
 		[
@@ -298,6 +314,13 @@ test('isBareRetryableD1LockMessage rejects wrappers that embed lock or export te
 })
 
 test('isRetryableD1LockSentryEvent drops bare D1 blips and keeps recovery wrappers', () => {
+	expect(
+		isRetryableD1LockSentryEvent(
+			exceptionEvent(
+				'D1_ERROR: Your account is generating too much load on D1 DBs. Please back off and try again later.',
+			),
+		),
+	).toBe(true)
 	expect(isRetryableD1LockSentryEvent(exceptionEvent(d1SqliteBusy))).toBe(true)
 	expect(isRetryableD1LockSentryEvent(exceptionEvent(d1StartupReset))).toBe(
 		true,

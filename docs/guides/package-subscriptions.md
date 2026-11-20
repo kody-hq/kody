@@ -213,8 +213,11 @@ search/detail projections so subscribers can discover payload shapes.
 
 ### Emitting
 
-`events` is bound only in package jobs, subscription handlers, and package apps.
-Emit from those runtimes (including package modules they load):
+Any package code can emit its package's events, wherever it runs: package jobs,
+exports, subscription handlers, webhook handlers, package apps, and `execute`
+calls that import a package export. The event always carries the package that
+declares the emitting module, with the same `kody.emits` checks and limits on
+every surface:
 
 ```ts
 import { events } from 'kody:runtime'
@@ -233,9 +236,39 @@ Rules:
   against `payloadSchema` when declared.
 - Payloads are capped at 64 KiB (canonical JSON). Store large data with
   `packageStorage()` and emit a reference instead.
-- `events.dispatch` is unavailable in ad hoc `execute` runs — topics belong to
-  packages. Statically importing a package export from `execute` does not bind
-  `events`.
+- Code that is not part of a saved package (an ad hoc `execute` snippet) cannot
+  emit: it has no package identity, so `events.dispatch` fails and says why. Put
+  the emit in a package export and call that export instead:
+
+  ```ts
+  // In @kentcdodds/rooms, src/post-message.ts (declares the topic in kody.emits)
+  import { events } from 'kody:runtime'
+
+  export default async function postMessage(input: {
+  	roomId: string
+  	messageId: string
+  }) {
+  	return await events.dispatch({
+  		topic: '@kentcdodds/rooms.message.posted',
+  		idempotencyKey: `rooms:${input.roomId}:${input.messageId}`,
+  		payload: input,
+  	})
+  }
+  ```
+
+  ```ts
+  // An execute call: the event is emitted as @kentcdodds/rooms
+  import postMessage from 'kody:@kentcdodds/rooms/post-message'
+
+  export default async () =>
+  	await postMessage({ roomId: 'office', messageId: 'm-1' })
+  ```
+
+- Package code imported into another package's run still emits as its own
+  package and must declare the topic in its own `kody.emits`.
+- Emitting needs a hosted run. `execute --local` runs code on your machine,
+  where Kody cannot verify that package code produced the event, so
+  `events.dispatch` fails there. Run the export on Kody instead.
 
 ### Delivery semantics
 

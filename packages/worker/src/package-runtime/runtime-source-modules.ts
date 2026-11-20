@@ -579,32 +579,28 @@ function __kodyOptionalRuntimeFunctionExport(exportName) {
 	return __kodyCreateRuntimeFunctionExport(exportName);
 }
 
-function __kodyCreateRuntimeRecordExport(exportName) {
+function __kodyCreateRecordProxy(exportName, read) {
 	return new Proxy({}, {
 		get(_target, property) {
 			if (__kodyIsRuntimeProxyInspectionProperty(property)) {
 				return __kodyRuntimeProxyInspectionValue(exportName, property);
 			}
-			const currentRuntime = __kodyRuntimeStorage.getStore();
-			const value = currentRuntime?.[exportName] ?? null;
+			const value = read();
 			if (value == null) return undefined;
 			return value[property];
 		},
 		has(_target, property) {
 			if (__kodyIsRuntimeProxyInspectionProperty(property)) return false;
-			const currentRuntime = __kodyRuntimeStorage.getStore();
-			const value = currentRuntime?.[exportName] ?? null;
+			const value = read();
 			return value != null && property in value;
 		},
 		ownKeys() {
-			const currentRuntime = __kodyRuntimeStorage.getStore();
-			const value = currentRuntime?.[exportName] ?? null;
+			const value = read();
 			return value == null ? [] : Reflect.ownKeys(value);
 		},
 		getOwnPropertyDescriptor(_target, property) {
 			if (__kodyIsRuntimeProxyInspectionProperty(property)) return undefined;
-			const currentRuntime = __kodyRuntimeStorage.getStore();
-			const value = currentRuntime?.[exportName] ?? null;
+			const value = read();
 			if (value == null) return undefined;
 			const descriptor = Reflect.getOwnPropertyDescriptor(value, property);
 			if (descriptor !== undefined) {
@@ -627,6 +623,39 @@ function __kodyCreateRuntimeRecordExport(exportName) {
 		deleteProperty() {
 			return false;
 		},
+	});
+}
+
+function __kodyCreateRuntimeRecordExport(exportName) {
+	return __kodyCreateRecordProxy(
+		exportName,
+		() => __kodyRuntimeStorage.getStore()?.[exportName] ?? null,
+	);
+}
+
+// A package's own modules read its own id even when an export runs inside
+// another run (ad hoc execute, another package): the run's context when the
+// run belongs to this package, else \`{ packageId }\` plus the package's own
+// \`hostedUrl\` / \`appBasePath\` from the run's host-set \`packageApps\`.
+export function __kodyCreatePackageBoundPackageContext(packageId) {
+	const own = Object.freeze({ packageId });
+	let ownAppSource = null;
+	let ownApp = own;
+	return __kodyCreateRecordProxy('packageContext', () => {
+		const store = __kodyGetRuntimeStore();
+		const run = store?.packageContext ?? null;
+		if (run != null && run.packageId === packageId) return run;
+		const app = store?.packageApps?.[packageId] ?? null;
+		if (app == null) return own;
+		if (app !== ownAppSource) {
+			ownAppSource = app;
+			ownApp = Object.freeze({
+				packageId,
+				hostedUrl: app.hostedUrl,
+				appBasePath: app.appBasePath,
+			});
+		}
+		return ownApp;
 	});
 }
 
@@ -676,6 +705,32 @@ export function __kodyCreatePackageBoundStorage(packageId) {
 			return __kodyCreateBindingPackageStorage(binding, packageId);
 		}
 		return __kodyResolvePackageStorage(packageId);
+	};
+}
+
+// Factory for the per-package virtual runtime modules: events.dispatch from a
+// package's modules emits as that package wherever the module runs (its own
+// run, ad hoc execute, another package's run). With a trusted binding in
+// scope the host-bound dispatcher stamps the package; without one only the
+// run's own package may use the run's events helper.
+export function __kodyCreatePackageBoundEvents(packageId) {
+	return {
+		dispatch: async (input) => {
+			const binding = __kodyPackageBindingFor(packageId);
+			if (binding != null && typeof binding.packageEventDispatch === 'function') {
+				return await __kodyReflectApply(binding.packageEventDispatch, binding, [
+					input ?? {},
+				]);
+			}
+			__kodyAssertUnboundIsRunPackage(packageId, 'events.dispatch');
+			const runEvents = __kodyGetRuntimeStore()?.events;
+			if (runEvents == null || typeof runEvents.dispatch !== 'function') {
+				throw new __kodyErrorCtor(
+					'events.dispatch is not available in this execution context.',
+				);
+			}
+			return await runEvents.dispatch(input ?? {});
+		},
 	};
 }
 

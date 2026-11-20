@@ -70,6 +70,13 @@ No new tests needed.
 <!-- Or, for each new long-lived test: the behavior it protects and why existing
      tests do not cover it. See docs/contributing/writing-tests.md. -->
 
+### Variants checked
+
+<!-- Security fixes only; delete otherwise. Where else the same pattern could
+     live and what you found: sibling kinds of the same operation, the other
+     repo (kody vs kody-celld), and docs that describe the behavior. See
+     docs/contributing/security.md#variant-check. -->
+
 ## System changes
 
 <!-- Optional for non-trivial work: primitives touched and risk. See visual-recap skill. -->

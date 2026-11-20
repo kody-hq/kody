@@ -1,3 +1,4 @@
+import { isolateState } from '@kody-internal/shared/isolate-state.ts'
 import { createCookie } from 'remix/cookie'
 import { isIssuedAtInvalidatedByPasswordChange } from '#worker/password-change-lockout.ts'
 import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -25,20 +26,22 @@ export type AuthSessionResult = {
 	setCookie: string | null
 }
 
-let sessionCookie: ReturnType<typeof createCookie> | null = null
-let sessionSecret: string | null = null
+const session = isolateState(() => ({
+	cookie: null as ReturnType<typeof createCookie> | null,
+	secret: null as string | null,
+}))
 
 export function setAuthSessionSecret(secret: string) {
 	if (!secret) {
 		throw new Error('Missing COOKIE_SECRET for session signing.')
 	}
 
-	if (sessionCookie && sessionSecret === secret) {
+	if (session.current.cookie && session.current.secret === secret) {
 		return
 	}
 
-	sessionSecret = secret
-	sessionCookie = createCookie('kody_session', {
+	session.current.secret = secret
+	session.current.cookie = createCookie('kody_session', {
 		httpOnly: true,
 		sameSite: 'Lax',
 		path: '/',
@@ -47,18 +50,12 @@ export function setAuthSessionSecret(secret: string) {
 	})
 }
 
-/** Clears configured session cookie state so SSR entry points re-initialize. */
-export function resetAuthSessionSecretForTests() {
-	sessionCookie = null
-	sessionSecret = null
-}
-
 function getSessionCookie() {
-	if (!sessionCookie) {
+	if (!session.current.cookie) {
 		throw new Error('Session cookie not configured. Call setAuthSessionSecret.')
 	}
 
-	return sessionCookie
+	return session.current.cookie
 }
 
 function isStoredAuthSession(value: unknown): value is StoredAuthSession {

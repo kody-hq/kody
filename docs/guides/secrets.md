@@ -156,11 +156,9 @@ already-allowed package.
   keyed by the package id, and can be used only with package context.
   `secretList` and `packageGet` expose their metadata with `package_id` even
   outside an active package run. Search does not return or rank those
-  references. **Creating or updating package-scoped secrets from
-  `kody execute --local` is unavailable** — local CapabilityProxy does not
-  attach package secret authority (and must not trust a client-supplied package
-  id). Prefer hosted package execute, `/connect/secret-set`, or Open API
-  `secretSet` outside local execute. Details:
+  references. To create or update one from execute, the Open API, or
+  `kody execute --local`, pass `package_id` to `secretSet` (a saved package in
+  this org); Kody applies the same permission check as the website. Details:
   [Local CLI execute](./local-execute.md#failure).
 
 A Use collaborator running your package in **your** org uses **your** org's
@@ -194,7 +192,7 @@ on connected tool servers.
 
 - Pasting a key or PAT: the agent sends you a prefilled `/connect/secret-set`
   link; you paste the value into the page, never into chat. URL shape and
-  parameters: [Secret setup URL reference](./account-secret-setup.md).
+  parameters: [Ask the user to save a secret](./account-secret-setup.md).
 - Building an integration around one or more secrets:
   [Secret-backed integrations](./secret-backed-integration.md).
 - Using a password-manager item without pasting it into Kody:

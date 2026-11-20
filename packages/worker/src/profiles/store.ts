@@ -109,9 +109,26 @@ export async function profileNameTaken(
 }
 
 export type ProfileGrantRow = {
+	grantId: string
 	resourceType: string
 	resourceId: string
 	permissions: Array<OrgPermission>
+}
+
+/** One live profile grant by id, or null. */
+export async function findLiveProfileGrant(
+	db: D1Database,
+	input: { orgId: string; grantId: string },
+): Promise<{ grantId: string; profileId: string } | null> {
+	const row = await db
+		.prepare(
+			`SELECT id, subject_id FROM grants
+			 WHERE org_id = ? AND id = ? AND subject_type = 'profile'
+			   AND deleted_at IS NULL`,
+		)
+		.bind(input.orgId, input.grantId)
+		.first<{ id: string; subject_id: string }>()
+	return row ? { grantId: row.id, profileId: row.subject_id } : null
 }
 
 /** Live profile grants keyed by profile id. */
@@ -154,6 +171,7 @@ export async function loadProfileGrants(
 		let grant = byGrant.get(row.grant_id)
 		if (!grant) {
 			grant = {
+				grantId: row.grant_id,
 				resourceType: row.resource_type,
 				resourceId: row.resource_id,
 				permissions: [],

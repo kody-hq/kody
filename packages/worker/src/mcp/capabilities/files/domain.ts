@@ -13,6 +13,7 @@ import {
 import {
 	fileStorageConfigSchema,
 	fileStorageStatusSchema,
+	fileStorageUsageSchema,
 } from '#universal/file-storage.ts'
 import {
 	commentCommandSchema,
@@ -468,6 +469,7 @@ export const filesDomain = defineDomain({
 				files: z.array(fileMetadataSchema.extend({ access: fileAccessSchema })),
 				can_create: z.boolean(),
 				writes_enabled: z.boolean(),
+				storage: fileStorageUsageSchema,
 			}),
 			handler: (args, ctx) => listFiles(ctx, args.include_trash),
 		}),

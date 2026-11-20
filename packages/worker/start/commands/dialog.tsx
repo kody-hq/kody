@@ -248,9 +248,10 @@ export function CommandDialog({
 	const active = selectionId
 		? rows.find((command) => command.id === selectionId)
 		: rows[Math.min(index, Math.max(0, rows.length - 1))]
+	const activeId = active?.id
 	useEffect(() => {
-		if (selectionId === null && active) setSelectionId(active.id)
-	}, [selectionId, active?.id])
+		if (selectionId === null && activeId) setSelectionId(activeId)
+	}, [selectionId, activeId])
 	function selectIndex(next: number) {
 		setIndex(next)
 		setSelectionId(rows[next]?.id ?? null)

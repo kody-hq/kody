@@ -16,6 +16,7 @@ type BindingRow = {
 	provider_id: string
 	package_id: string
 	door_secret_name: string
+	door_credential_id: string | null
 	config_json: string
 	placement_json: string | null
 	created_at: string
@@ -56,6 +57,7 @@ function toBindingRecord(row: BindingRow): SecretProviderBindingRecord {
 		providerId: row.provider_id,
 		packageId: row.package_id,
 		doorSecretName: row.door_secret_name,
+		doorCredentialId: row.door_credential_id ?? null,
 		config: parseSecretProviderConfigJson(row.config_json),
 		placement: readCredentialFillPlacement(row.placement_json),
 		createdAt: row.created_at,
@@ -93,6 +95,7 @@ export async function upsertSecretProviderBinding(
 		providerId: string
 		packageId: string
 		doorSecretName: string
+		doorCredentialId: string
 		configJson: string
 	},
 ) {
@@ -109,15 +112,16 @@ export async function upsertSecretProviderBinding(
 	await db
 		.prepare(
 			`INSERT INTO secret_provider_bindings (
-				user_id, provider_id, package_id, door_secret_name, config_json,
+				user_id, provider_id, package_id, door_secret_name, door_credential_id, config_json,
 				source_json, placement_json, created_at, updated_at
 			) VALUES (
-				?, ?, ?, ?, ?, json_object('vault', ?), ?, CURRENT_TIMESTAMP,
+				?, ?, ?, ?, ?, ?, json_object('vault', ?), ?, CURRENT_TIMESTAMP,
 				CURRENT_TIMESTAMP
 			)
 			ON CONFLICT(user_id, provider_id) DO UPDATE SET
 				package_id = excluded.package_id,
 				door_secret_name = excluded.door_secret_name,
+				door_credential_id = excluded.door_credential_id,
 				config_json = excluded.config_json,
 				updated_at = CURRENT_TIMESTAMP`,
 		)
@@ -126,6 +130,7 @@ export async function upsertSecretProviderBinding(
 			input.providerId,
 			input.packageId,
 			input.doorSecretName,
+			input.doorCredentialId,
 			input.configJson,
 			input.providerId,
 			serializeCredentialFillPlacement(defaultNewCredentialFillPlacement),
@@ -156,7 +161,9 @@ export async function getSecretProviderBinding(
 ): Promise<SecretProviderBindingRecord | null> {
 	const row = await db
 		.prepare(
-			`SELECT id, user_id, provider_id, package_id, door_secret_name, config_json,
+			`SELECT id, user_id, provider_id, package_id, door_credential_id,
+				coalesce((SELECT name FROM secret_entries WHERE id = door_credential_id AND deleted_at IS NULL),
+					door_secret_name) AS door_secret_name, config_json,
 				placement_json, created_at, updated_at
 			FROM secret_provider_bindings
 			WHERE user_id = ? AND provider_id = ?${andLiveDeletedAtSql()}`,
@@ -172,7 +179,9 @@ export async function listSecretProviderBindings(
 ): Promise<Array<SecretProviderBindingRecord>> {
 	const result = await db
 		.prepare(
-			`SELECT id, user_id, provider_id, package_id, door_secret_name, config_json,
+			`SELECT id, user_id, provider_id, package_id, door_credential_id,
+				coalesce((SELECT name FROM secret_entries WHERE id = door_credential_id AND deleted_at IS NULL),
+					door_secret_name) AS door_secret_name, config_json,
 				placement_json, created_at, updated_at
 			FROM secret_provider_bindings
 			WHERE user_id = ?${andLiveDeletedAtSql()}

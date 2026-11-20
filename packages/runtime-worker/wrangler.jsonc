@@ -51,6 +51,8 @@
 				"generated/guide-metadata.mjs",
 				"./generated/guide-catalog.mjs",
 				"./generated/guide-metadata.mjs",
+				"mcp/capabilities/capability-manifest.generated.mjs",
+				"./mcp/capabilities/capability-manifest.generated.mjs",
 				"node_modules/.kody-generated/worker-bundler.mjs",
 				"node_modules/.kody-generated/worker-bundler-typescript.mjs",
 				"node_modules/.kody-generated/oauth-provider.mjs",
@@ -268,6 +270,12 @@
 					"binding": "EMAIL_BLOBS",
 					"bucket_name": "kody-email-blobs",
 				},
+				// Durable package check and publish runs store their full result
+				// (and read the staged check upload) under package-runs/.
+				{
+					"binding": "REPO_SESSION_BLOBS",
+					"bucket_name": "kody-repo-session-blobs",
+				},
 			],
 			"queues": {
 				"producers": [
@@ -316,10 +324,25 @@
 					"binding": "ONBOARDING_FUNNEL_EVENTS",
 					"dataset": "kody_onboarding_funnel_events",
 				},
+				// Legacy `{username}.kody.run/packages/{name}` hits (#4119). Only
+				// this Worker serves package-app hosts, so the binding lives here.
+				{
+					"binding": "PACKAGE_APP_LEGACY_EVENTS",
+					"dataset": "kody_package_app_legacy_events",
+				},
 			],
 			"ai": {
 				"binding": "AI",
 			},
+			// Every package publish runs as a durable workflow in this Worker and
+			// reads the pushed commit from Artifacts. Without the binding, REST is
+			// used, which a preview points at its mock Cloudflare API.
+			"artifacts": [
+				{
+					"binding": "ARTIFACTS",
+					"namespace": "production",
+				},
+			],
 			"vars": {
 				"SENTRY_ENVIRONMENT": "production",
 				"SENTRY_TRACES_SAMPLE_RATE": 0,
@@ -480,6 +503,12 @@
 					"binding": "EMAIL_BLOBS",
 					"bucket_name": "kody-preview-email-blobs",
 				},
+				// Durable package check and publish runs store their full result
+				// (and read the staged check upload) under package-runs/.
+				{
+					"binding": "REPO_SESSION_BLOBS",
+					"bucket_name": "kody-preview-repo-session-blobs",
+				},
 			],
 			// Kept in lockstep with origin env.preview producers.
 			// See tools/ci/preview-queue-plan.ts.
@@ -526,10 +555,25 @@
 					"binding": "ONBOARDING_FUNNEL_EVENTS",
 					"dataset": "kody_onboarding_funnel_events_preview",
 				},
+				// Legacy `{username}.kody.run/packages/{name}` hits (#4119). Only
+				// this Worker serves package-app hosts, so the binding lives here.
+				{
+					"binding": "PACKAGE_APP_LEGACY_EVENTS",
+					"dataset": "kody_package_app_legacy_events_preview",
+				},
 			],
 			"ai": {
 				"binding": "AI",
 			},
+			// Every package publish runs as a durable workflow in this Worker and
+			// reads the pushed commit from Artifacts. Without the binding, REST is
+			// used, which a preview points at its mock Cloudflare API.
+			"artifacts": [
+				{
+					"binding": "ARTIFACTS",
+					"namespace": "preview",
+				},
+			],
 			"vars": {
 				"SENTRY_ENVIRONMENT": "preview",
 				"ARTIFACTS_NAMESPACE": "preview",

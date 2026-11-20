@@ -1,11 +1,12 @@
 # UI components
 
 Shared UI primitives live in `packages/worker/start/components`. Render these
-instead of raw elements or copied style objects.
-`kody-custom/no-raw-button-style`, `kody-custom/no-raw-form-control`,
-`kody-custom/no-raw-dialog`, `kody-custom/no-raw-overlay`, and
-`kody-custom/no-raw-table` reject the raw forms in `packages/worker/start` and
-`packages/worker/client`.
+instead of raw elements or copied style objects. When a primitive lacks
+something, extend it here instead of building a one-off. Check rendering with
+[UI verify](./ui-verify.md). `kody-custom/no-raw-button-style`,
+`kody-custom/no-raw-form-control`, `kody-custom/no-raw-dialog`,
+`kody-custom/no-raw-overlay`, and `kody-custom/no-raw-table` reject the raw
+forms in `packages/worker/start` and `packages/worker/client`.
 
 Every component passes native attributes through. Refs are ordinary props (React
 19), so `ref` reaches the underlying element. Pass `css` to adjust layout

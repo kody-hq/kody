@@ -157,6 +157,8 @@ export function AccountMcpServerAuthorizePage({
 							disabled={submitting}
 							data-testid="mcp-authorize-continue"
 							variant="primary"
+							mobileFullWidth
+							css={{ overflowWrap: 'anywhere' }}
 						>
 							{submitting
 								? `Opening ${pending.authorizationServerHost}…`
@@ -165,6 +167,7 @@ export function AccountMcpServerAuthorizePage({
 						<Button
 							href={data.serverHref}
 							variant="secondary"
+							mobileFullWidth
 							css={{ textDecoration: 'none' }}
 						>
 							Cancel
@@ -181,6 +184,7 @@ export function AccountMcpServerAuthorizePage({
 						<Button
 							href={data.serverHref}
 							variant="primary"
+							mobileFullWidth
 							css={{ textDecoration: 'none' }}
 						>
 							Open {data.serverName}

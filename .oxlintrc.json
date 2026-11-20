@@ -5,6 +5,10 @@
 		"./tools/oxlint/oxlint-rules.json"
 	],
 	"plugins": ["import", "jsx-a11y", "react", "typescript", "vitest"],
+	"ignorePatterns": ["packages/worker/worker-configuration.d.ts"],
+	"options": {
+		"reportUnusedDisableDirectives": "error"
+	},
 	"overrides": [
 		{
 			"files": ["**/*.ts", "**/*.tsx"],

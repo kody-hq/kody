@@ -10,6 +10,8 @@ export const profileTreeMaxDepth = 5
 export type ProfileStatus = 'active' | 'expired' | 'revoked' | 'parent_inactive'
 
 type ProfileGrantItem = {
+	/** Null for grants listed without an id. */
+	grantId: string | null
 	resourceType: string
 	resourceId: string
 	permissions: Array<string>

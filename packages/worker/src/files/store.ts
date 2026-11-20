@@ -4,7 +4,9 @@ import { providerObjectStore, storageEndpoint } from './object-storage.ts'
 import {
 	type FileStorageConfig,
 	fileStorageConfigSchema,
+	fileStorageQuotaError,
 } from '#universal/file-storage.ts'
+import { readFileStorageQuota } from './quota.ts'
 import { FileCatalog } from './catalog.ts'
 import { fileRoomRpc } from './room.ts'
 import { fileBlobPrefix, fileBlobKey as blobKey } from './object-keys.ts'
@@ -50,6 +52,7 @@ export type FileStoreRpc = Pick<
 	FileStore,
 	| 'objectProvider'
 	| 'storageStatus'
+	| 'storageUsage'
 	| 'configureStorage'
 	| 'history'
 	| 'revision'
@@ -146,6 +149,19 @@ export class FileStore extends DurableObject<Env> {
 	}
 	private async objects(ownerId: OwnerId, id?: string) {
 		return providerObjectStore(this.env, ownerId, await this.provider(id))
+	}
+	async storageUsage(ownerId: OwnerId) {
+		await this.scope(ownerId)
+		const { includedBytes } = await readFileStorageQuota(
+			this.env.APP_DB,
+			Number(this.env.FILES_INCLUDED_BYTES ?? 0),
+			ownerId,
+		)
+		return {
+			includedBytes,
+			usedBytes: this.catalog().usedBytes(),
+			external: Boolean(await this.ctx.storage.get('active-provider')),
+		}
 	}
 	async storageStatus(ownerId: OwnerId) {
 		await this.scope(ownerId)
@@ -357,14 +373,18 @@ export class FileStore extends DurableObject<Env> {
 					total + (key === `reservation:${input.fileId}` ? 0 : bytes),
 				0,
 			)
+			const { includedBytes } = await readFileStorageQuota(
+				this.env.APP_DB,
+				input.maxBytes,
+				input.ownerId,
+			)
 			if (
 				!Number.isSafeInteger(input.bytes) ||
 				input.bytes < 0 ||
-				!Number.isSafeInteger(input.maxBytes) ||
-				input.maxBytes <= 0 ||
-				used + other + pendingBytes + input.bytes > input.maxBytes
+				includedBytes <= 0 ||
+				used + other + pendingBytes + input.bytes > includedBytes
 			)
-				throw new Error('This workspace has reached its storage allowance.')
+				throw new Error(fileStorageQuotaError)
 			await this.ctx.storage.put({
 				[`reservation:${input.fileId}`]: input.bytes,
 				[`reservation-provider:${input.fileId}`]: null,
@@ -575,30 +595,35 @@ export class FileStore extends DurableObject<Env> {
 				throw new Error(
 					'Too many incomplete uploads. Retry an existing upload or delete its file.',
 				)
-			const reservations = await this.ctx.storage.list<number>({
-				prefix: 'reservation:',
-			})
-			const reserved = Array.from(reservations.entries()).reduce(
-				(total, [key, bytes]) =>
-					total + (key === `reservation:${input.fileId}` ? 0 : bytes),
-				0,
-			)
-			const used =
-				reserved +
-				this.catalog().usedBytes() +
-				Array.from(pending.values()).reduce(
-					(total, item) => total + (item.storageId ? 0 : item.bytes),
-					0,
-				)
-			if (
-				!storageId &&
-				(!Number.isSafeInteger(input.maxBytes) ||
-					input.maxBytes <= 0 ||
-					used + (intent ? 0 : retainedBytes) > input.maxBytes)
-			)
-				throw new Error(
-					'This workspace has reached its included file storage limit.',
-				)
+			if (!storageId && !intent) {
+				const reservations = await this.ctx.storage.list<number>({
+					prefix: 'reservation:',
+				})
+				const reservationKey = `reservation:${input.fileId}`
+				const checkpointReserved =
+					input.collaborationState &&
+					reservedProvider === null &&
+					(reservations.get(reservationKey) ?? 0) >= retainedBytes
+				if (!checkpointReserved) {
+					const { includedBytes } = await readFileStorageQuota(
+						this.env.APP_DB,
+						input.maxBytes,
+						input.ownerId,
+					)
+					const used =
+						this.catalog().usedBytes() +
+						Array.from(reservations.values()).reduce(
+							(total, bytes) => total + bytes,
+							0,
+						) +
+						Array.from(pending.values()).reduce(
+							(total, item) => total + (item.storageId ? 0 : item.bytes),
+							0,
+						)
+					if (includedBytes <= 0 || used + retainedBytes > includedBytes)
+						throw new Error(fileStorageQuotaError)
+				}
+			}
 			const now = new Date().toISOString()
 			file ??= {
 				id: input.fileId,

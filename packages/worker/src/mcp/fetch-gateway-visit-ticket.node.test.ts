@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -5,10 +6,7 @@ import {
 import { expect, test, vi } from 'vitest'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import * as usageModule from '#worker/usage/record-usage.ts'
-import {
-	mintPackageAppVisitTicket,
-	resetPackageAppVisitNoncesForTests,
-} from '#worker/package-runtime/package-app-visit-ticket.ts'
+import { mintPackageAppVisitTicket } from '#worker/package-runtime/package-app-visit-ticket.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 
 const userMeter = createInMemoryUserMeterEnv()
@@ -38,7 +36,7 @@ const env = {
 } as unknown as Env
 
 test('executeGatewayFetch verifies a visit ticket and refuses a forged one', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const audience = {
 		host: 'https://apps.example',
 		packageId: 'pkg-1',
@@ -104,7 +102,7 @@ test('executeGatewayFetch verifies a visit ticket and refuses a forged one', asy
 })
 
 test('a ticketless gateway fetch does not inherit a warm isolate first visitor', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const recordUsageSpy = vi
 		.spyOn(usageModule, 'recordUsage')
 		.mockResolvedValue(undefined)

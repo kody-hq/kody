@@ -78,14 +78,14 @@ const handWrittenSubjectMatches: Record<
 			"Profile subject identity (ADR 0092): checks the profile's own live creator grant.",
 	},
 	'profiles/package-grants.ts': {
-		count: 3,
+		count: 4,
 		reason:
 			'Profile subject identity (ADR 0092): replace, remove, and list grants to one profile.',
 	},
 	'profiles/store.ts': {
-		count: 2,
+		count: 3,
 		reason:
-			"Profile subject identity (ADR 0092): loads and counts a profile chain's own grants.",
+			"Profile subject identity (ADR 0092): loads and counts a profile chain's own grants and finds one profile grant by id.",
 	},
 	'orgs/offboarding.ts': {
 		count: 1,

@@ -108,11 +108,14 @@ export async function resolveGrantTarget(
 /** Org membership roles, including Admin (Owner authority without `org:delete`). */
 export const orgRoleSchema = z.enum(['owner', 'admin', 'member', 'billing'])
 
+/** Grant subjects `accessGrant`, `accessRevoke`, and `accessList` take. */
+export const accessSubjectTypes = [...grantSubjectTypes, 'profile'] as const
+
 export const accessGrantSchema = z.object({
 	id: z.string(),
 	resource_type: grantResourceTypeSchema,
 	resource_id: z.string(),
-	subject_type: z.enum(grantSubjectTypes),
+	subject_type: z.enum(accessSubjectTypes),
 	subject_id: z.string(),
 	preset: grantPresetSchema.nullable(),
 	permissions: z.array(z.string()),
@@ -223,7 +226,9 @@ export async function requireOrgPermission(
 	return { user, request, db: ctx.env.APP_DB }
 }
 
-function manageAccessPermission(resourceType: OrgResourceType): OrgPermission {
+export function manageAccessPermission(
+	resourceType: OrgResourceType,
+): OrgPermission {
 	switch (resourceType) {
 		case 'file':
 			return 'file:manage_access'
@@ -404,6 +409,33 @@ export async function authorizeGrantRevoke(
 	resourceId: string,
 ) {
 	return await authorizeGrantChange(ctx, resourceType, resourceId, 'revoke')
+}
+
+/**
+ * The permission family a live resource's grants resolve against, without
+ * the manage-access check. A profile grant needs only that the caller holds
+ * each permission it hands out (ADR 0092).
+ */
+export async function grantTargetFamily(
+	ctx: GrantChangeContext,
+	resourceType: GrantResourceType,
+	resourceId: string,
+) {
+	const request = requireMcpRequest(ctx.callerContext)
+	if (resourceType === 'memory') {
+		await assertMemoryGrantsAllowedOnOrg(ctx.env.APP_DB, request.org.id)
+	}
+	// A profile may get run access the person it acts for already holds, as
+	// profileCreate allows; the caller-holds check covers the context itself.
+	if (resourceType === 'execution_context') return resourceType
+	const check = await grantTargetCheck(
+		ctx,
+		request.org.id,
+		resourceType,
+		resourceId,
+		'grant',
+	)
+	return check.family
 }
 
 async function authorizeGrantChange(

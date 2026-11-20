@@ -126,8 +126,15 @@ export class SecretHostNotApprovedError extends Error {
 	readonly secretName: string
 	readonly host: string
 	readonly scope: SecretScope
+	/** Slug of the org that owns the secret, so its approval link opens there. */
+	readonly orgSlug: string | null
 
-	constructor(input: { secretName: string; host: string; scope: SecretScope }) {
+	constructor(input: {
+		secretName: string
+		host: string
+		scope: SecretScope
+		orgSlug: string | null
+	}) {
 		super(
 			`Secret "${input.secretName}" is not allowed for host "${input.host}".`,
 		)
@@ -135,6 +142,7 @@ export class SecretHostNotApprovedError extends Error {
 		this.secretName = input.secretName
 		this.host = input.host
 		this.scope = input.scope
+		this.orgSlug = input.orgSlug
 	}
 }
 
@@ -207,18 +215,6 @@ export function createUnboundLockedSecretUseMessage(input: {
 		return `${why} Fix: call an export of "${input.listedPackageNameInRun}" and let it make the request. If "${input.listedPackageNameInRun}" itself made this request, it reached fetch in a way that cannot be tied to it (for example through an alias of globalThis): have it call fetch directly, then publish it again.`
 	}
 	return `${why} Fix: call an export of a listed package and let it make the request, or ask the account owner to add the calling package to the list (a package must make the request with its own fetch or kody:runtime helpers).`
-}
-
-export function createSecretPackageGrantRequiresWebsiteMessage(input: {
-	approvalUrl: string
-}) {
-	return `Agents cannot add packages to a user secret's allowed_packages. Only the account owner can grant access on the website. Send the user this approval link and wait: ${input.approvalUrl}`
-}
-
-export function createSecretPackageGrantAlreadyPresentMessage(input: {
-	packageName: string
-}) {
-	return `Package "${input.packageName}" already has an allowed_packages grant on this secret.`
 }
 
 export function createPackageSecretAccessDeniedBatchMessage(

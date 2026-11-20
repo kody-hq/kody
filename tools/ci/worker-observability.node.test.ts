@@ -16,14 +16,15 @@ async function readConfig(path: string) {
 	return parseJsonc<WranglerConfig>(await readFile(path, 'utf8'))
 }
 
-// Per-Worker sampling: high-volume Workers trace at 10%, mid-volume at 25%,
+// Per-Worker trace sampling sized by spans per day (spans bill as observability
+// events): kody-production and platform 2%, runtime 10%, jobs and API 5%,
 // low-volume Workers keep everything. Logs stay at 100% in production.
 const productionSampling = [
-	['packages/worker/wrangler.jsonc', 0.1],
-	['packages/platform-worker/wrangler.jsonc', 0.1],
+	['packages/worker/wrangler.jsonc', 0.02],
+	['packages/platform-worker/wrangler.jsonc', 0.02],
 	['packages/runtime-worker/wrangler.jsonc', 0.1],
-	['packages/jobs-worker/wrangler.jsonc', 0.25],
-	['packages/api-worker/wrangler.jsonc', 0.25],
+	['packages/jobs-worker/wrangler.jsonc', 0.05],
+	['packages/api-worker/wrangler.jsonc', 0.05],
 	['packages/highlight-worker/wrangler.jsonc', 1],
 	['packages/push-queue-worker/wrangler.jsonc', 1],
 	['packages/api-docs-worker/wrangler.jsonc', 1],
@@ -52,13 +53,22 @@ test.each(productionSampling)(
 
 test.each([
 	'packages/status/wrangler.jsonc',
-	'packages/nx-cache/wrangler.jsonc',
 	'packages/backup-control-plane/wrangler.jsonc',
 ])('%s keeps every log and no traces', async (path) => {
 	const config = await readConfig(path)
 	expect(config.observability?.logs).toMatchObject({
 		enabled: true,
 		head_sampling_rate: 1,
+	})
+	expect(config.observability?.traces).toBeUndefined()
+})
+
+// CI cache traffic: a 10% log sample is enough to diagnose R2 failures.
+test('packages/nx-cache/wrangler.jsonc samples logs and has no traces', async () => {
+	const config = await readConfig('packages/nx-cache/wrangler.jsonc')
+	expect(config.observability?.logs).toMatchObject({
+		enabled: true,
+		head_sampling_rate: 0.1,
 	})
 	expect(config.observability?.traces).toBeUndefined()
 })

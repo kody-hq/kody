@@ -1220,6 +1220,18 @@ export function __kodyCreatePackageBoundStorage(packageId) {
 	};
 }
 
+// Local execute cannot prove which package produced an event (the caller
+// controls the code), so it cannot emit. Run the export on Kody instead.
+export function __kodyCreatePackageBoundEvents() {
+	return {
+		dispatch: async () => {
+			throw new Error(
+				"events.dispatch is not available in local execute: Kody cannot verify that package code produced the event. Run the package's export on Kody (hosted execute, a job, or a webhook) to emit.",
+			);
+		},
+	};
+}
+
 // Same exports as the hosted per-package facade, so artifacts bundled against
 // it run locally. Package-scoped calls carry this package's binding (any
 // packageId the caller passes is replaced); every other call goes to the
@@ -1281,6 +1293,28 @@ const __kodyLocalExecuteFetchPatchedSymbol = Symbol.for(
 if (!globalThis[__kodyLocalExecuteFetchPatchedSymbol]) {
 	globalThis.fetch = (input, init) => __kodyGatewayFetch(input, init);
 	globalThis[__kodyLocalExecuteFetchPatchedSymbol] = true;
+}
+
+// Same contract as the hosted creator: a package's modules read its own id,
+// with the run's context only when the run belongs to this package.
+export function __kodyCreatePackageBoundPackageContext(packageId) {
+	const own = Object.freeze({ packageId });
+	const current = () =>
+		packageContext != null && packageContext.packageId === packageId
+			? packageContext
+			: own;
+	return new Proxy({}, {
+		get: (_target, property) => current()[property],
+		has: (_target, property) => property in current(),
+		ownKeys: () => Reflect.ownKeys(current()),
+		getOwnPropertyDescriptor(_target, property) {
+			const descriptor = Reflect.getOwnPropertyDescriptor(current(), property);
+			return descriptor === undefined ? undefined : { ...descriptor, configurable: true };
+		},
+		set: () => false,
+		defineProperty: () => false,
+		deleteProperty: () => false,
+	});
 }
 
 export function __kodyCreatePackageBoundSecrets(packageId) {

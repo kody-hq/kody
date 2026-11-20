@@ -18,12 +18,13 @@ import {
 	setMcpServerOAuthClient,
 	removeMcpServerOAuthClient,
 } from '#start/server/account-mutations'
-import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { colors, spacing } from '#universal/styles/tokens.ts'
+import { cardTitleCss } from '#universal/styles/style-primitives.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { mcpServerMutationOptions } from './account-mcp-server-mutation.ts'
-import { textSearch } from '../filter-search.ts'
+import { searchText, textSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import {
 	AccountManagementMessage,
@@ -328,6 +329,9 @@ export function AccountMcpServersPage({
 
 	const isMutating = actionState !== 'idle'
 	const filters = textSearch(pageLocation.search)
+	const approvalSearch: Record<string, unknown> = pageLocation.search
+	const approvalPackageId =
+		searchText(approvalSearch.package_id)?.trim() || null
 	const search = filters.q?.trim() ?? ''
 	const filteredServers = filterServers(servers, search)
 	const server =
@@ -343,7 +347,7 @@ export function AccountMcpServersPage({
 			<AccountPageHeader
 				entity="mcp-servers"
 				title="MCP servers"
-				description="Connect remote MCP servers so their tools are available to Kody as kody.mcp capabilities. Use a bearer token for static Authorization, or complete OAuth when the server requires it."
+				description="Connect remote MCP servers and use their tools as kody.mcp capabilities. Add a bearer token, or sign in with OAuth when a server asks."
 				currentHref={currentHref}
 				actions={
 					<Button
@@ -383,6 +387,7 @@ export function AccountMcpServersPage({
 			{
 				<RecordTable
 					mode="expand"
+					stackWhenNarrow
 					ariaLabel="Connected MCP servers"
 					selectedId={selection.selectedId}
 					recordLoading={Boolean(
@@ -483,6 +488,39 @@ export function AccountMcpServersPage({
 						) : server ? (
 							renderMcpServerDetail({
 								server,
+								packageApproval: approvalPackageId
+									? {
+											packageId: approvalPackageId,
+											packageName:
+												savedPackages.find(
+													(item) => item.id === approvalPackageId,
+												)?.kodyId ??
+												searchText(approvalSearch.package) ??
+												approvalPackageId,
+											alreadyGranted:
+												server.usageMode !== 'packages' ||
+												(server.allowedPackageIds ?? []).includes(
+													approvalPackageId,
+												),
+										}
+									: null,
+								onPackageApprove: () => {
+									if (!approvalPackageId) return
+									void postAction({
+										write: () =>
+											usageMutation.mutateAsync({
+												orgSlug: orgSlug ?? undefined,
+												id: server.id,
+												usageMode: 'packages',
+												allowedPackageIds: [
+													...(server.allowedPackageIds ?? []),
+													approvalPackageId,
+												],
+											}),
+										successMessage: () => 'Approved package for this server.',
+										failureMessage: 'Unable to approve this package.',
+									})
+								},
 								savedPackages,
 								usageDraft: getUsageDraft(server),
 								usageSaving:
@@ -603,16 +641,7 @@ export function AccountMcpServersPage({
 							})
 						) : showServerNotFound ? (
 							<div css={{ ...recordBodyCss, gap: spacing.sm }}>
-								<h2
-									css={{
-										margin: 0,
-										fontSize: typography.fontSize.lg,
-										fontWeight: typography.fontWeight.semibold,
-										color: colors.text,
-									}}
-								>
-									Server not found
-								</h2>
+								<h2 css={cardTitleCss}>Server not found</h2>
 								<p css={{ margin: 0, color: colors.textMuted }}>
 									This MCP server does not exist for this account or is
 									unavailable.

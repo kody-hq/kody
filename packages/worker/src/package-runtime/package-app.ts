@@ -166,18 +166,17 @@ import type {
 import {
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
-	resolveHostedPackageAppUrl,
 	type PackageAppMount,
 } from '@kody-internal/shared/public-urls.ts'
-import {
-	getPackageAppBaseUrl,
-	listPackageAppOrigins,
-} from '#worker/app-base-url.ts'
+import { listPackageAppOrigins } from '#worker/app-base-url.ts'
 import { createPackageAppSetCookieScrubHostSource } from '#worker/package-runtime/package-app-set-cookie.ts'
 import { packageAppCookiePrefix } from '#worker/package-runtime/package-app-cookie-prefix.ts'
 import { checkPackageAppRateLimit } from '#worker/package-runtime/package-app-rate-limit.ts'
 import { packageAppSpendGet } from '#worker/package-runtime/package-app-spend.ts'
-import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
+import {
+	resolveCanonicalPackageAppLocation,
+	resolvePackageAppRunLocations,
+} from '#worker/package-app-public-url.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	packageAppSyntheticHeaderName,
@@ -575,6 +574,15 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 					op: 'packageStorage',
 					name: method,
 					args: args ?? {},
+					visitTicket: __kodyCurrentVisitTicket(),
+				}),
+			// events.dispatch as this package only.
+			packageEventDispatch: async (input) =>
+				await bridge.packageBoundCall({
+					token,
+					packageId,
+					op: 'packageEvent',
+					args: input ?? {},
 					visitTicket: __kodyCurrentVisitTicket(),
 				}),
 			packageSecretGet: async (alias) => {
@@ -1110,7 +1118,7 @@ function createCredentialRuntime(runtimeBridge, call) {
 	);
 }
 
-function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, identity = null) {
+function createRuntime(runtimeBridge, packageContext, packageApps, mcpServerNamesOrLoader, identity = null) {
 	const packageId = packageContext?.packageId ?? '';
 	const packageSecrets =
 		packageId.length > 0
@@ -1184,6 +1192,7 @@ function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, id
 		packages: null,
 		events: createEventsProxy(runtimeBridge),
 		packageContext,
+		packageApps,
 	};
 }
 
@@ -1438,6 +1447,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		const runtime = createRuntime(
 			runtimeBridge,
 			this.env.__kodyPackageContext ?? null,
+			this.env.__kodyPackageApps ?? null,
 			${mcpServerNamesExpr},
 			identityOnlyVisitor,
 		);
@@ -1582,6 +1592,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		const runtime = createRuntime(
 			runtimeBridge,
 			this.env.__kodyPackageContext ?? null,
+			this.env.__kodyPackageApps ?? null,
 			${mcpServerNamesExpr},
 		);
 		try {
@@ -2201,6 +2212,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			| 'packageSecretGet'
 			| 'packageSecretHas'
 			| 'packageStorage'
+			| 'packageEvent'
 			| 'credentialClient'
 		name?: string
 		args?: unknown
@@ -2238,6 +2250,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				return await this.packageStorageCallAs(
 					packageId,
 					String(input.name ?? ''),
+					input.args,
+					visitTicket,
+				)
+			case 'packageEvent':
+				return await this.packageEventDispatchAs(
+					packageId,
 					input.args,
 					visitTicket,
 				)
@@ -3231,35 +3249,21 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	async createPackageEventTools(visitTicket?: string | null) {
-		return await this.packageEventToolsFor(
-			await this.createCallerContext(this.ctx.props.packageId, visitTicket),
-		)
-	}
-
-	/** Never public: a sandbox-supplied caller context would pick authority. */
-	private async packageEventToolsFor(callerContext: McpCallerContext) {
-		// Avoid a top-level package-app -> package-invocations cycle during worker
-		// startup; apps only need this helper when package code calls it.
-		// Do not cache: a warm isolate would reuse the first visitor's caller.
-		const { createPackageEventTools } =
-			await import('#worker/package-invocations/service.ts')
-		return createPackageEventTools({
-			env: this.env,
-			baseUrl: this.ctx.props.baseUrl,
-			callerContext,
-			packageContext: {
-				packageId: this.ctx.props.packageId,
-				kodyId: this.ctx.props.kodyId,
-				sourceId: this.ctx.props.sourceId,
-			},
-			parentRunRecord: null,
-			packageInvokeDepth: 0,
-		})
-	}
-
 	async packageEventDispatch(
 		input: Record<string, unknown>,
+		visitTicket?: string | null,
+	) {
+		return await this.packageEventDispatchAs(null, input, visitTicket)
+	}
+
+	/**
+	 * events.dispatch from app code: as the bound package when a stamped
+	 * module calls through its binding (GHSA-5fv3), else as the app package.
+	 * Same dispatch path as every other surface (`createRunPackageEventTools`).
+	 */
+	private async packageEventDispatchAs(
+		boundPackageId: string | null,
+		input: unknown,
 		visitTicket?: string | null,
 	) {
 		return await this.runWithAuthority({
@@ -3267,8 +3271,24 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			storageId: this.ctx.props.packageId,
 			visitTicket,
 			run: async (callerContext) => {
-				const tools = await this.packageEventToolsFor(callerContext)
-				return await tools.dispatch(input)
+				// Avoid a top-level package-app -> package-invocations cycle during
+				// worker startup. Do not cache: a warm isolate would reuse the
+				// first visitor's caller.
+				const { createRunPackageEventTools } =
+					await import('#worker/package-invocations/service.ts')
+				return await createRunPackageEventTools({
+					env: this.env,
+					baseUrl: this.ctx.props.baseUrl,
+					callerContext,
+					runPackageContext: {
+						packageId: this.ctx.props.packageId,
+						kodyId: this.ctx.props.kodyId,
+						sourceId: this.ctx.props.sourceId,
+					},
+					loadedPackageIds: new Set(this.ctx.props.packageStorageGrantIds),
+					parentRunRecord: null,
+					packageInvokeDepth: 0,
+				}).dispatch((input ?? {}) as Record<string, unknown>, boundPackageId)
 			},
 		})
 	}
@@ -3856,26 +3876,14 @@ async function buildPackageAppPublicContext(input: {
 			cookiePrefix,
 		}
 	}
-	// Background/synthetic callers get the canonical hosted URL: a verified
-	// app-level custom hostname, otherwise the per-user subdomain, otherwise
-	// the inline path-based mount.
-	const canonical = await resolvePublicPackageAppLocation({
+	// Background/synthetic callers get the canonical hosted URL, the same one
+	// non-app runs read in packageContext.
+	const canonical = await resolveCanonicalPackageAppLocation({
 		env: input.env,
-		username,
-		kodyId: urlSlug,
+		baseUrl: input.baseUrl,
+		packageName: input.savedPackage.name,
 	})
-	if (canonical) return { ...canonical, cookiePrefix }
-	const hostedUrl = resolveHostedPackageAppUrl({
-		packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
-		appBaseUrl: input.baseUrl,
-		username,
-		kodyId: urlSlug,
-	})
-	return {
-		appBasePath: new URL(hostedUrl).pathname,
-		hostedUrl,
-		cookiePrefix,
-	}
+	return { ...canonical, cookiePrefix }
 }
 
 function resolvePackageAppManifest(input: {
@@ -4235,6 +4243,11 @@ async function buildPackageAppWorkerOptionsUncached(
 			dynamicDependencyPackageIds,
 		}),
 	]
+	const packageApps = await resolvePackageAppRunLocations({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		packageIds: packageStorageGrantIds,
+	})
 	// Per-build capability for the trusted per-package bindings (GHSA-5fv3).
 	// Embedded only in the wrapper's module scope and the bridge props. A
 	// cached build derives it from its cache key so a rebuild after cache
@@ -4317,6 +4330,7 @@ async function buildPackageAppWorkerOptionsUncached(
 					...publicContext,
 					...assetContext,
 				},
+				__kodyPackageApps: packageApps,
 			},
 		},
 		bridgeProps: {

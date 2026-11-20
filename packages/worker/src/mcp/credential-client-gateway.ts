@@ -33,7 +33,9 @@ export async function resolveCredentialClientPlacement(input: {
 	props: FetchGatewayProps
 	token: string
 	request: Request
+	attestedPackageId?: string
 	rejectedLoginSessionId?: string | null
+	registerLogout?: (logout: () => Promise<void>) => void
 }) {
 	return await applyCredentialClient({
 		env: input.env as Env,
@@ -56,7 +58,12 @@ export async function resolveCredentialClientPlacement(input: {
 			: null,
 		token: input.token,
 		requestUrl: new URL(input.request.url),
+		outboundRequest: input.request,
+		...(input.attestedPackageId
+			? { attestedPackageId: input.attestedPackageId }
+			: {}),
 		rejectedLoginSessionId: input.rejectedLoginSessionId ?? null,
+		registerLogout: input.registerLogout,
 	})
 }
 
@@ -74,6 +81,27 @@ export function withoutCodePlacement(
 		case 'query':
 			url.searchParams.delete(placement.param)
 			break
+		case 'single-request-login':
+			for (const name of placement.headers.keys()) headers.delete(name)
+			for (const name of Array.from(headers.keys())) {
+				if (name.startsWith('x-kody-')) headers.delete(name)
+			}
+			for (const name of [
+				'host',
+				'connection',
+				'upgrade',
+				'x-http-method-override',
+				'x-method-override',
+			]) {
+				headers.delete(name)
+			}
+			if (!headers.has('user-agent'))
+				headers.set('user-agent', 'kody-agent/1.0')
+			break
+		case 'body':
+		case 'path':
+		case 'composition':
+			return request
 		case 'url': {
 			const rebased = new URL(
 				`${url.pathname}${url.search}`,
@@ -105,6 +133,38 @@ export function applyCredentialClientPlacement(
 		case 'query':
 			url.searchParams.set(placement.param, placement.value)
 			return rebuild(request, url, headers)
+		case 'single-request-login':
+			for (const [name, value] of placement.headers) headers.set(name, value)
+			return rebuild(request, url, headers)
+		case 'path': {
+			const allowed = new Headers({ 'user-agent': 'kody-agent/1.0' })
+			for (const header of ['accept', 'content-type']) {
+				const value = headers.get(header)
+				if (value !== null) allowed.set(header, value)
+			}
+			return rebuild(request, placement.url, allowed)
+		}
+		case 'composition':
+			return new Request(placement.url, {
+				method: stripped.method,
+				body: placement.body,
+				headers: placement.headers,
+				redirect: 'manual',
+				signal: stripped.signal,
+			})
+		case 'body':
+			// Pin the wire format and leave out caller headers that could
+			// reinterpret the method, endpoint, resource, or uploaded bytes.
+			return new Request(stripped.url, {
+				method: stripped.method,
+				body: placement.body,
+				headers: {
+					'content-type': 'application/json',
+					'user-agent': 'kody-agent/1.0',
+				},
+				redirect: 'manual',
+				signal: stripped.signal,
+			})
 		case 'url': {
 			const before = new URL(stripped.url)
 			if (

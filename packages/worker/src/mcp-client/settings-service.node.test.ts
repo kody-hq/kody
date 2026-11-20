@@ -388,13 +388,14 @@ test('MCP server usage lock hides the server from execute and grants a package',
 		id: 'pkg-drafts',
 		kodyId: 'gmail-drafts',
 	})
-	const locked = await lockMcpServerToPackage({
+	const { outcome, server: locked } = await lockMcpServerToPackage({
 		env,
 		userId: ownerIdFromStored('user-1'),
 		id: 'server-1',
 		packageId: 'pkg-drafts',
 		audit: null,
 	})
+	expect(outcome).toBe('locked')
 	expect(locked.usageMode).toBe('packages')
 	expect(locked.allowedPackageIds).toEqual(['pkg-drafts'])
 	expect(repo.updateMcpServerSettingUsageRow).toHaveBeenCalledWith(

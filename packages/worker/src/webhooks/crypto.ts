@@ -1,4 +1,5 @@
 import {
+	base64ToBytes,
 	bytesToBase64,
 	bytesToBase64Url,
 } from '@kody-internal/shared/base64.ts'
@@ -88,14 +89,16 @@ function encodeSignature(
 
 export async function computeWebhookHmacSignature(input: {
 	algorithm: WebhookHmacAlgorithm
-	secret: string
+	secret: string | Uint8Array<ArrayBuffer>
 	body: ArrayBuffer
 	encoding: WebhookSignatureEncoding
 	prefix?: string
 }) {
 	const key = await crypto.subtle.importKey(
 		'raw',
-		new TextEncoder().encode(input.secret),
+		typeof input.secret === 'string'
+			? new TextEncoder().encode(input.secret)
+			: input.secret,
 		{ name: 'HMAC', hash: hmacHashName(input.algorithm) },
 		false,
 		['sign'],
@@ -121,6 +124,51 @@ export async function verifyWebhookHmacSignature(input: {
 		prefix: input.prefix,
 	})
 	return timingSafeEqualString(expected, input.provided.trim())
+}
+
+export async function verifyStandardWebhookSignature(input: {
+	secret: string
+	deliveryId: string
+	timestampToken: string
+	body: ArrayBuffer
+	provided: string
+}) {
+	if (
+		!input.secret.startsWith('whsec_') ||
+		!/^[A-Za-z0-9_-]{1,256}$/.test(input.deliveryId) ||
+		!unixIntegerPattern.test(input.timestampToken) ||
+		input.provided.length > 2048
+	) {
+		return false
+	}
+	let key: Uint8Array<ArrayBuffer>
+	try {
+		const encoded = input.secret.slice('whsec_'.length)
+		key = base64ToBytes(encoded)
+		if (key.length < 24 || key.length > 64 || bytesToBase64(key) !== encoded)
+			return false
+	} catch {
+		return false
+	}
+	const body = buildWebhookTimestampBodyPayload({
+		timestampToken: `${input.deliveryId}.${input.timestampToken}`,
+		body: input.body,
+	})
+	const expected = await computeWebhookHmacSignature({
+		algorithm: 'hmac-sha256',
+		secret: key,
+		body,
+		encoding: 'base64',
+		prefix: 'v1,',
+	})
+	const signatures = input.provided
+		.trim()
+		.split(/\s+/)
+		.filter((signature) => /^v1,[A-Za-z0-9+/]{43}=$/.test(signature))
+	const matches = await Promise.all(
+		signatures.map((signature) => timingSafeEqualString(expected, signature)),
+	)
+	return matches.includes(true)
 }
 
 export function extractStripeSignatureParts(header: string): {

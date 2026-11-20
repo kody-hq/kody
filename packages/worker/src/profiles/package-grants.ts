@@ -7,7 +7,11 @@ import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import { isProfilesEnabledFor } from './flag.ts'
-import { maxGrantsPerProfile, profileStatus } from './rules.ts'
+import {
+	maxGrantsPerProfile,
+	profileStatus,
+	type ProfileGrantResourceType,
+} from './rules.ts'
 import { loadProfileChain, loadProfileGrants } from './store.ts'
 
 /**
@@ -56,7 +60,7 @@ export async function grantResourceToProfile(input: {
 	request: RequestContext
 	profileId: string
 	resource: {
-		type: 'package' | 'machine_capability'
+		type: ProfileGrantResourceType
 		id: string
 		label: string
 	}
@@ -64,7 +68,8 @@ export async function grantResourceToProfile(input: {
 	permissions: ReadonlyArray<OrgPermission>
 	ifParentLacks: string
 }): Promise<{ grantId: string; profileName: string }> {
-	const { env, request, resource, permissions } = input
+	const { env, request, resource } = input
+	const permissions = [...new Set(input.permissions)]
 	const db = env.APP_DB
 	const orgId = request.org.id
 	if (
@@ -165,6 +170,24 @@ export async function grantResourceToProfile(input: {
 	]
 	await db.batch(statements)
 	return { grantId, profileName: self.name }
+}
+
+/** Soft-deletes one live profile grant by id; false when none matched. */
+export async function removeProfileGrant(input: {
+	db: D1Database
+	orgId: string
+	grantId: string
+}): Promise<boolean> {
+	const now = new Date().toISOString()
+	const result = await input.db
+		.prepare(
+			`UPDATE grants SET deleted_at = ?, updated_at = ?
+			 WHERE id = ? AND org_id = ? AND subject_type = 'profile'
+			   AND deleted_at IS NULL`,
+		)
+		.bind(now, now, input.grantId, input.orgId)
+		.run()
+	return (result.meta.changes ?? 0) > 0
 }
 
 /** Soft-deletes one profile grant on the package; false when none matched. */

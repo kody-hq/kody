@@ -82,9 +82,8 @@ already set at GitHub. Fill it only when they want Kody to stop sending the
 token on a chosen date.
 
 The link already lists `api.github.com` under **Where this secret can be sent**.
-Saving stores the token and that host. To use it through `@kody/github` (or a
-fork of it), set the credential's provider to `github` on its credential page,
-so it matches the package's `github` credential.
+Saving stores the token and that host. Set the Key's provider to `github` on its
+credential page so the smoke test and `@kody/github` can select it.
 
 When they confirm the save, open
 `search({ entity: "guide:provider_github#confirm-the-call" })`.
@@ -94,11 +93,13 @@ When they confirm the save, open
 Run this in `execute`:
 
 ```ts
+import { credential } from 'kody:runtime'
+
 export default async function main() {
-	const response = await fetch('https://api.github.com/user', {
+	const github = await credential('github')
+	const response = await github.fetch('https://api.github.com/user', {
 		headers: {
 			Accept: 'application/vnd.github+json',
-			Authorization: 'Bearer {{secret:githubAccessToken}}',
 			'X-GitHub-Api-Version': '2022-11-28',
 		},
 	})
@@ -155,11 +156,13 @@ call a fine-grained token can make:
 The verdict query, run in `execute`:
 
 ```ts
+import { credential } from 'kody:runtime'
+
 export default async function main() {
-	const response = await fetch('https://api.github.com/graphql', {
+	const github = await credential('github')
+	const response = await github.fetch('https://api.github.com/graphql', {
 		method: 'POST',
 		headers: {
-			Authorization: 'Bearer {{secret:githubAccessToken}}',
 			'Content-Type': 'application/json',
 		},
 		body: JSON.stringify({

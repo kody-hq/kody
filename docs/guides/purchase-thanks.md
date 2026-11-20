@@ -82,11 +82,11 @@ await events.dispatch({
 }
 ```
 
-`events.dispatch` is unavailable in ad hoc `execute`, including a statically
-imported package export. Emit from a package job, subscription handler, or
-package app. Payloads are JSON objects capped at 64 KiB. Store Gmail threads and
-draft ids in `packageStorage()` and emit a reference when the thank-you record
-is large.
+Emit from any of the commerce package's code: a job, export, subscription
+handler, webhook handler, or app, including an export you call from `execute`.
+An ad hoc `execute` snippet outside any package cannot emit. Payloads are JSON
+objects capped at 64 KiB. Store Gmail threads and draft ids in
+`packageStorage()` and emit a reference when the thank-you record is large.
 
 ## Package shape
 

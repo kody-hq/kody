@@ -36,13 +36,13 @@ failures fail locally. `npm run deps:check` runs the dependency group (lockfile
 peer drift, dependency overrides, skills-lock hash, and the npm floor),
 including a `ship-pr` edit that did not refresh `computedHash`.
 `npm run slop-ratchet:check` holds the client-route and node-test file-size
-allowlists (line budgets counted after `oxfmt`), the root `AGENTS.md` line
-budget (`agents-md`), and rejects decorative `========` / `----------` comment
-banners. `kody-custom/no-tautological-absence` rejects vanished-copy
-`not.toContain` leftovers in tests during `npm run lint`. `npm run knip` fails
-on unused files, exports, and types against the configured entrypoints.
-`kody-custom/no-oversized-guide-section` rejects official guide headings that
-exceed the search response budget. These run as part of `npm run validate`.
+allowlists (line budgets counted after `oxfmt`) and rejects decorative
+`========` / `----------` comment banners. `kody-custom/no-tautological-absence`
+rejects vanished-copy `not.toContain` leftovers in tests during `npm run lint`.
+`npm run knip` fails on unused files, exports, and types against the configured
+entrypoints. `kody-custom/no-oversized-guide-section` rejects official guide
+headings that exceed the search response budget. These run as part of
+`npm run validate`.
 
 Docs-like product copy follows the same rule: MCP server instructions, tool and
 schema descriptions, and user-visible UI strings should not read like release
@@ -72,6 +72,15 @@ interprocedural reasoning a cheap checker cannot do, describe the failure mode
 and stop — do not add a noisy half-rule. See
 [harness engineering](./harness-engineering.md) (promote into enforcement) and
 [oxlint JS plugins](./oxlint-js-plugins.md).
+
+**Security claims cite their proof.** A sentence that promises a security
+property (an agent "cannot" do something, a lock "keeps" something from
+happening, only the owner can approve) links the test or code that enforces it,
+for example the
+[`resourceLock` contract test](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts).
+Keep the claim exactly as strong as that test. When a change touches a guide
+with such a claim, check the claim against the code in the same change; the
+daily docs-freshness pass checks changed security claims the same way.
 
 **MCP instructions and tool descriptions stay tight.** Server-level instructions
 and per-tool descriptions should give the model what it needs **before**

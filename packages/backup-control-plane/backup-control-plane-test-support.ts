@@ -15,7 +15,7 @@ import {
 	backupSqlStatsSchemaVersion,
 	type BackupSqlStats,
 } from '@kody-internal/shared/backup-sql-stats.ts'
-import { encodeJwtPartForTests } from './access-auth.ts'
+import { utf8ToBase64Url } from '@kody-internal/shared/base64.ts'
 import type { BackupRuntimeStep } from './workflow-step-boundary.ts'
 import { BackupError, objectKeyForBookmark } from './backup-policy.ts'
 import type { BackupEnvironment, BackupManifest } from './backup-types.ts'
@@ -48,7 +48,7 @@ export function accessSigner(kid = 'test-kid') {
 		jwks,
 		fetcher: async () => Response.json(jwks),
 		sign(payload: Record<string, unknown>, headerKid = kid) {
-			const encoded = `${encodeJwtPartForTests({ alg: 'RS256', kid: headerKid })}.${encodeJwtPartForTests(payload)}`
+			const encoded = `${encodeJwtPart({ alg: 'RS256', kid: headerKid })}.${encodeJwtPart(payload)}`
 			const signature = signBytes(
 				'RSA-SHA256',
 				Buffer.from(encoded),
@@ -521,4 +521,8 @@ export async function putPacedSealsForDay(
 	}>) {
 		await putPacedSeal(bucket, source, day)
 	}
+}
+
+function encodeJwtPart(value: unknown): string {
+	return utf8ToBase64Url(JSON.stringify(value))
 }
