@@ -22,7 +22,7 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import { cardTitleCss } from '#universal/styles/style-primitives.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { mcpServerMutationOptions } from './account-mcp-server-mutation.ts'
 import { searchText, textSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -132,12 +132,15 @@ export function AccountMcpServersPage({
 	const prefill = readAddServerPrefill(currentHref)
 	const [addName, setAddName] = useState(creating ? prefill.name : '')
 	const [addUrl, setAddUrl] = useState(creating ? prefill.url : '')
-	useEffect(() => {
+	const prefillKey = creating ? `${prefill.name}\n${prefill.url}` : null
+	const [seenPrefill, setSeenPrefill] = useState(prefillKey)
+	if (prefillKey !== seenPrefill) {
+		setSeenPrefill(prefillKey)
 		if (creating) {
 			setAddName(prefill.name)
 			setAddUrl(prefill.url)
 		}
-	}, [creating, prefill.name, prefill.url])
+	}
 	const [addBearerToken, setAddBearerToken] = useState('')
 	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
 		createUiFeedback(
@@ -152,10 +155,6 @@ export function AccountMcpServersPage({
 	const router = useRouter()
 	const navigate = (href: string) =>
 		void router.navigate({ to: href, resetScroll: false })
-	useEffect(() => {
-		if (!closeOnboardingMcpOAuthPopupIfOpened())
-			clearOnboardingMcpOAuthReturnCookie()
-	}, [])
 
 	function getCurrentHref() {
 		return currentHref
@@ -327,6 +326,7 @@ export function AccountMcpServersPage({
 
 	return (
 		<AccountManagementShell
+			ref={finishOAuthReturn}
 			layout="list"
 			currentHref={currentHref}
 			busy={false}
@@ -640,4 +640,9 @@ export function AccountMcpServersPage({
 			}
 		</AccountManagementShell>
 	)
+}
+
+function finishOAuthReturn(node: HTMLElement | null) {
+	if (node && !closeOnboardingMcpOAuthPopupIfOpened())
+		clearOnboardingMcpOAuthReturnCookie()
 }
