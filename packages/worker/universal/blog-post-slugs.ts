@@ -60,6 +60,7 @@ export const blogPostSlugs = [
 	'kody-weekly-2026-10-30',
 	'kody-weekly-2026-11-06',
 	'kody-weekly-2026-11-13',
+	'kody-weekly-2026-11-20',
 	'least-privilege-for-ai-agents',
 	'mcp-security-checklist-for-engineering-managers',
 	'openclaw-2-needs-a-home',
