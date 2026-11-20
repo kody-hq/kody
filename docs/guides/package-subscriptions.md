@@ -266,6 +266,9 @@ Rules:
 
 - Package code imported into another package's run still emits as its own
   package and must declare the topic in its own `kody.emits`.
+- Emitting needs a hosted run. `execute --local` runs code on your machine,
+  where Kody cannot verify that package code produced the event, so
+  `events.dispatch` fails there. Run the export on Kody instead.
 
 ### Delivery semantics
 
