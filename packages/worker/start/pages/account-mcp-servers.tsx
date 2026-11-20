@@ -22,10 +22,11 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import { cardTitleCss } from '#universal/styles/style-primitives.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { mcpServerMutationOptions } from './account-mcp-server-mutation.ts'
 import { searchText, textSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementShell,
@@ -81,23 +82,8 @@ export function AccountMcpServersPage({
 	currentHref: string
 	selection: { selectedId: string | null; isCreating: boolean }
 }) {
-	const { actorKey, orgSlug, pageLocation } = useMatchedPageScope()
-	const currentScope = useRef<{ actorKey: string | null; href: string } | null>(
-		null,
-	)
-	useEffect(() => {
-		currentScope.current = { actorKey, href: currentHref }
-		return () => {
-			currentScope.current = null
-		}
-	}, [actorKey, currentHref])
-	function isSubmitterCurrent() {
-		return (
-			currentScope.current !== null &&
-			currentScope.current.actorKey === actorKey &&
-			currentScope.current.href === currentHref
-		)
-	}
+	const { orgSlug, pageLocation } = useMatchedPageScope()
+	const captureSubmitter = useSubmitterScope()
 	const addMutation = useMcpWrite(addMcpServer)
 	const reconnectMutation = useMcpWrite(reconnectMcpServer)
 	const refreshMutation = useMcpWrite(refreshMcpServer)
@@ -242,6 +228,7 @@ export function AccountMcpServersPage({
 	}) {
 		if (actionState !== 'idle') return false
 		showMessage(null)
+		const isSubmitterCurrent = captureSubmitter()
 		try {
 			const payload = await input.write()
 			if (!isSubmitterCurrent() || router.state.location.href !== currentHref)

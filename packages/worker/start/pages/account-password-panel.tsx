@@ -5,10 +5,10 @@ import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
-import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useHydrated } from '../components/use-hydrated.ts'
-import { useState, useEffect, useRef, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from '#client/toast.ts'
 import {
@@ -27,15 +27,7 @@ export function AccountPasswordPanel(props: {
 	const invalidatePages = usePageInvalidation(mutationResources, {
 		refreshShell: true,
 	})
-	const { actorKey } = useMatchedPageScope()
-	const href = useMatchedPageScope().pageLocation.href
-	const scope = useRef<object | null>(null)
-	useEffect(() => {
-		scope.current = {}
-		return () => {
-			scope.current = null
-		}
-	}, [actorKey, href])
+	const captureScope = useSubmitterScope()
 	const mutation = useMutation({
 		gcTime: 0,
 		mutationFn: async (data: {
@@ -110,13 +102,13 @@ export function AccountPasswordPanel(props: {
 
 				setFeedback(createUiFeedback(null, 'info'))
 
-				const submittedScope = scope.current
+				const isSubmissionCurrent = captureScope()
 				try {
 					const payload = await mutation.mutateAsync({
 						...(props.hasUsablePassword ? { currentPassword } : {}),
 						newPassword,
 					})
-					if (!submittedScope || scope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					setCurrentPassword('')
 					setNewPassword('')
 					setConfirmPassword('')
@@ -128,7 +120,7 @@ export function AccountPasswordPanel(props: {
 					}
 					toast.success('Password updated.')
 				} catch (error) {
-					if (!submittedScope || scope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					setFeedback(
 						createUiFeedback(
 							error instanceof Error
