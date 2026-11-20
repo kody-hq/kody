@@ -965,7 +965,7 @@ const noTestHooksInProductionRule = {
 
 const EXIT_CONDITION_TOPIC_PATTERN =
 	/\b(?:legacy|compat|compatibility|back(?:wards?)?[- ]compat\w*|for now|temporar(?:y|ily) (?:fix|workaround|shim|hack|path|alias|bridge|branch|copy|redirect|lane|support))\b/i
-const EXIT_CONDITION_MARKER_PATTERN = /\b(?:Remove when|Permanent):/
+const EXIT_CONDITION_MARKER_PATTERN = /\b(?:Remove when|Permanent):[ \t]*[^\s*]/
 
 function commentGroups(comments, sourceText) {
 	const groups = []
@@ -1013,6 +1013,7 @@ const requireExitConditionCommentRule = {
 						.map((comment) => comment.value)
 						.join('\n')
 						.replaceAll(/`[^`\n]*`/g, '')
+						.replaceAll(/\s*\n[\s*]*/g, ' ')
 					if (/oxlint-disable|eslint-disable/.test(text)) continue
 					if (!EXIT_CONDITION_TOPIC_PATTERN.test(text)) continue
 					if (EXIT_CONDITION_MARKER_PATTERN.test(text)) continue
