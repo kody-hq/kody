@@ -138,7 +138,7 @@ export function DesktopExecutionProvider({
 
 	const step = wizard.status
 
-	const [name, setName] = useState('')
+	const [editedName, setEditedName] = useState('')
 	const [replace, setReplace] = useState('')
 	const [setup, setSetup] = useState<SetupData | null>(null)
 	// Team org this machine should become available to after personal registration.
@@ -192,17 +192,15 @@ export function DesktopExecutionProvider({
 		refetchInterval: (query) =>
 			query.state.data?.payload.needsOnboarding ? 4000 : false,
 	})
-	useEffect(() => {
-		if (machine.data && !name) setName(machine.data.name)
-	}, [machine.data, name])
 	const existingContext = machine.data?.contextId
 		? null
 		: (machine.data?.existingContext ?? null)
-	useEffect(() => {
-		const existing = existingContext?.name
-		if (existing && /^[a-z0-9][a-z0-9-]{0,62}$/.test(existing))
-			setName(existing)
-	}, [existingContext?.name])
+	const existingName =
+		existingContext?.name &&
+		/^[a-z0-9][a-z0-9-]{0,62}$/.test(existingContext.name)
+			? existingContext.name
+			: null
+	const name = editedName || existingName || machine.data?.name || ''
 	useEffect(() => {
 		if (
 			bridge &&
@@ -550,7 +548,7 @@ export function DesktopExecutionProvider({
 								onClick={() =>
 									void run(async () => {
 										await bridge.forgetSetup()
-										setName('')
+										setEditedName('')
 										setSetup(null)
 										setAttached(false)
 										transitionStep({ type: 'RESET', data: {} })
@@ -625,7 +623,7 @@ export function DesktopExecutionProvider({
 									Machine name
 									<Input
 										value={name}
-										onChange={(event) => setName(event.target.value)}
+										onChange={(event) => setEditedName(event.target.value)}
 										pattern="[a-z0-9][a-z0-9-]{0,62}"
 										maxLength={63}
 										disabled={busy || !!machine.data?.contextId}
