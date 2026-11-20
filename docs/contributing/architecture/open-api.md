@@ -313,8 +313,11 @@ module and does not silently hop to `kody.execute`. See
   `credentialClientSign` / `credentialClientCallTool` /
   `credentialClientRefresh`, which return `{ ok: true, value }` or
   `{ ok: false, error: { code, message, retryWith } }`. The CLI sends its
-  `--credential` picks as the call's top-level `credentials` map (code inside
-  local workerd controls only `args`, so it cannot pick by name), and
+  `--credential` picks as the call's top-level `credentials` map. Prefer
+  `{ id }` picks from `credentialList`; the
+  [call map schema](../../../packages/worker/src/credentials/credential-call-map.ts)
+  also accepts legacy name picks with optional scope. Use the top-level map, not
+  the package's `args`, to select credentials.
   `kody.credentialClientCheck({ packageId?, strict? })` checks the map before
   code runs. The session's `features` lists `credential-call-map` when origin
   serves both. Handles bind to the CapabilityProxy token, not a run, and a

@@ -1,12 +1,12 @@
 /**
  * The fields a credential owns for the opt-in types (ADR 0068): its provider,
  * how a scoped client places it (`inject`), and, for the `url`, `login`, and
- * `signing` kinds, its kind, hosts, and login exchange. Key placeholders
- * ignore `provider` and `inject` and keep their own placement.
+ * `signing` kinds, its kind, hosts, and login exchange. Ordinary Key
+ * placeholders use fill placement, not `inject`. A Key with an approved
+ * request profile uses it through a scoped client instead.
  *
- * Only the credential's manager edits these, and every edit is audited. Hosts
- * are set only together with a new value: whoever supplies the value decides
- * where it may go, and an existing value's hosts keep the approval flow.
+ * Field updates here are audited. Hosts are supplied with the value or edited
+ * through the dedicated website host flow for eligible Keys and connections.
  */
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getDomain, getPublicSuffix } from 'tldts'

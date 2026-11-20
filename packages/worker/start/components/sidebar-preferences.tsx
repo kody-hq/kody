@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
+import type { AnyRouter } from '@tanstack/react-router'
 
 import {
 	parseSidebarPreferences,
@@ -7,6 +8,25 @@ import {
 	cookieName,
 	type SidebarPreferences,
 } from '#universal/sidebar-preferences.ts'
+/** Keep the cookie's viewport fields current while an `/_app` page is open. */
+export function syncSidebarViewportWithRouter(router: AnyRouter) {
+	const save = () => saveSidebarPreferences({})
+	let listening = false
+	const sync = () => {
+		const inApp = router.state.matches.some(
+			(match) => match.routeId === '/_app',
+		)
+		if (inApp === listening) return
+		listening = inApp
+		if (inApp) {
+			save()
+			window.addEventListener('resize', save)
+		} else window.removeEventListener('resize', save)
+	}
+	sync()
+	router.subscribe('onResolved', sync)
+}
+
 export function saveSidebarPreferences(patch: Partial<SidebarPreferences>) {
 	try {
 		const value = {
@@ -28,11 +48,5 @@ export function SidebarPreferencesProvider({
 	value: SidebarPreferences
 	children: ReactNode
 }) {
-	useEffect(() => {
-		const save = () => saveSidebarPreferences({})
-		save()
-		window.addEventListener('resize', save)
-		return () => window.removeEventListener('resize', save)
-	}, [])
 	return <SidebarContext value={value}>{children}</SidebarContext>
 }

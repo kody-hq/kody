@@ -2,9 +2,10 @@
  * The `login` credential kind (ADR 0068): the value holds login fields (for
  * example a username and password) as one JSON object, and the credential's
  * `config_json` holds the exchange that turns them into a session token. The
- * gateway runs the exchange, keeps the session for its lifetime (encrypted in
- * `login_credential_sessions`, with a per-isolate front cache), and places it
- * on a request to one of the credential's hosts by the credential's `inject`.
+ * gateway runs the exchange and places the session on the outbound request
+ * using the credential's `inject`. Reusable sessions are cached in memory
+ * and encrypted in `login_credential_sessions`; single-request sessions skip
+ * the cache and register logout with the caller.
  * Neither the fields, the login response, nor the session ever reach code.
  */
 import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'

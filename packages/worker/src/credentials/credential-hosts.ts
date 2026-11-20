@@ -1,7 +1,6 @@
 /**
- * Editing where a Key or an OAuth connection may be sent. Only the website
- * edits these: an agent that could add a host could send the value anywhere.
- * Every change is committed together with its audit event.
+ * Reads and persists editable hosts for Keys and user-managed OAuth
+ * connections. The website handler authorizes the write and validates input.
  */
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -150,10 +149,9 @@ function sameHosts(left: ReadonlyArray<string>, right: ReadonlyArray<string>) {
 }
 
 /**
- * Replaces the editable hosts of one Key or OAuth connection of `orgId`. A
- * connection keeps its fixed hosts whatever is submitted. The caller has
- * already authorized the manager's write permission and parsed `hosts` with
- * `parseCredentialHostsInput`.
+ * Replaces editable hosts and audits changes. For OAuth, retain stored fixed
+ * hosts and include the token host when writing. The caller authorizes the
+ * edit and parses `hosts` with `parseCredentialHostsInput`.
  */
 export async function updateCredentialHosts(input: {
 	db: D1Database

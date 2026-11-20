@@ -165,21 +165,23 @@ it. Refresh enforces the connection's `requiredHosts` against the token host.
 host; reconnect at `/connect/oauth` to approve a new destination. Platform-lane
 destinations are operator-pinned rows, so no user-secret allowlist applies.
 
-The website can also replace a connection's (or a Key's) hosts via
-`saveCredentialHosts` (`packages/worker/src/credentials/credential-hosts.ts`):
-requires the credential family's `:write` permission, accepts public HTTPS host
-names only, always keeps the app's API base and token hosts (refresh needs the
-token host), and commits with a `credential.hosts_updated` org audit event.
-There is no capability for it: an agent that could add a host could send the
-token anywhere. Platform-lane connections are refused: reconnect resets them to
-the app's hosts. Migration `0143` backfilled `api.dropboxapi.com`,
-`content.dropboxapi.com`, and `notify.dropboxapi.com` onto the host allowlists
-of existing connections whose app mints tokens at Dropbox's token endpoint
-([Dropbox guide](../../guides/providers/dropbox.md)). Nothing keeps them there
-afterward: `saveCredentialHosts` only pins the app's API base and token hosts,
-so a later user-lane host edit can remove `content.dropboxapi.com` and
-`notify.dropboxapi.com`. Support can check a connection's hosts with the
-`adminOauthConnectionHostsList` capability.
+The website's
+[`setCredentialHosts` handler](../../../packages/worker/src/app/credential-host-mutation.ts)
+updates a Key or user-lane connection with the credential family's `:write`
+permission. The
+[host input parser](../../../packages/worker/universal/credential-host-input.ts)
+accepts exact public hostnames, optionally prefixed with `https://`. The
+[host editor](../../../packages/worker/src/credentials/credential-hosts.ts) caps
+editable hosts at 20 unless an existing longer list stays the same size or
+shrinks. On a connection update it retains any stored API base host, includes
+the token host, and records `credential.hosts_updated`. Platform-lane
+connections use the app's hosts instead. Migration `0143` backfilled
+`api.dropboxapi.com`, `content.dropboxapi.com`, and `notify.dropboxapi.com` onto
+the host allowlists of existing connections whose app mints tokens at Dropbox's
+token endpoint ([Dropbox guide](../../guides/providers/dropbox.md)). A user-lane
+host edit can remove `content.dropboxapi.com` and `notify.dropboxapi.com`.
+Support can check a connection's hosts with the `adminOauthConnectionHostsList`
+capability.
 
 Each `/connect/oauth` token persist writes `user_integrations.refresh_policy`
 from the provider token response (`refresh-policy.ts`): `required` when it
