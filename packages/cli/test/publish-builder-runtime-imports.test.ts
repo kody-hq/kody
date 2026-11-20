@@ -105,11 +105,10 @@ test('the shipped publish builder rewrites kody:runtime in app, job, and export 
 })
 
 /**
- * The bundler's typecheck downloaded TypeScript's lib files from the npm
- * registry inside workerd, so every build on a machine that could not reach
- * it failed with workerd's opaque `internal error; reference = …`. The
- * shipped builder carries those files, and a type error that needs them
- * still reports normally.
+ * The shipped builder must typecheck without reaching npm, so it carries
+ * TypeScript's lib files. `toUpperCase` is declared only in lib.es5.d.ts:
+ * the arity error proves the builder loaded the libs, and the bundle must not
+ * name the npm tarball it would otherwise download.
  */
 test('the shipped publish builder typechecks with embedded TypeScript lib files', async () => {
 	const builderDir = mkdtempSync(join(tmpdir(), 'kody-builder-under-test-'))

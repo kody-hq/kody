@@ -28,12 +28,11 @@ const workerGeneratedModulesBuildsNeverLoad = new Set([
 	'postal-mime',
 ])
 
-// The bundler's typecheck downloads TypeScript's lib .d.ts files from the npm
-// registry on every run. Inside the CLI's workerd that made every local and
-// context build fail with workerd's opaque `internal error; reference = …`
-// on any machine that cannot reach registry.npmjs.org. The builder embeds
-// the exact lib files the bundler pins instead, read from the
-// `publish-builder-typescript-libs` dev dependency.
+// The bundler's typecheck loads TypeScript's lib .d.ts files by downloading
+// the TypeScript tarball it pins. The builder runs on publishers' machines,
+// where npm may be unreachable and workerd reports a failed fetch only as
+// `internal error; reference = …`, so it embeds that exact version's lib
+// files from the `publish-builder-typescript-libs` dev dependency instead.
 const typescriptLibsPackage = 'publish-builder-typescript-libs'
 const typescriptLibMapPattern =
 	/async function createDefaultTypeScriptLibMap\(\) \{\n[\s\S]*?version: "([^"]+)",[\s\S]*?\n\treturn result;\n\}/
