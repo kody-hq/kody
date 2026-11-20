@@ -12,9 +12,9 @@ The installed version is pinned in `packages/worker/package.json`.
   `MCP.serve(...)`). The `MCP` Durable Object class (`McpAgent` in
   `packages/worker/src/mcp/index.ts`) is owned by `kody-platform`.
 - Capabilities exposed through the compact `search` / `execute` tools are
-  registered per-domain (`packages/worker/src/mcp/capabilities/*/domain.ts`) and
-  merged in `packages/worker/src/mcp/capabilities/builtin-domains.ts`; see
-  [adding capabilities](./adding-capabilities.md).
+  defined per domain (`packages/worker/src/mcp/capabilities/*/domain.ts`). The
+  registry reads a generated manifest, and dispatch loads the called
+  capability's domain. See [adding capabilities](./adding-capabilities.md).
 - This project is not organized around the React hook APIs from the SDK; for
   non-React clients, use `AgentClient` from `agents/client`.
 

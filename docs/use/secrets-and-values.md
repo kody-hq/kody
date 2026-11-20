@@ -34,12 +34,14 @@ Package-scoped secrets belong to one saved package. To create or update one from
 **execute**, the Open API, or `kody execute --local`, pass the package:
 `await kody.secretSet({ name, value, scope: 'package', package_id })`, where
 `package_id` is a saved package of the run's org (from `packageList` or
-`search`). The secret is stored in that package's scope, so only that package
-can use it; there is no org Key to lock by hand. The caller needs the same
-permission as setting it on the website (`secret:create`, or `secret:write` to
-update an existing one), and a package id from another org is refused. Package
-code may only name its own package; inside a package run, omitting `package_id`
-writes to the running package.
+`search`). This targets package storage, not an org Key.
+[`secretSet` authorization](../../packages/worker/src/mcp/capabilities/secrets/authorize-secret.ts)
+requires org-level `secret:create` to create the secret or `secret:write` on the
+existing secret to update it. The
+[target resolver](../../packages/worker/src/mcp/capabilities/secrets/package-scoped-secret-write.ts)
+rejects package IDs from another org and restricts hosted package code to its
+own package. In a hosted package run, omitting `package_id` uses the package
+already attached to the request.
 
 **`packageGet`** includes their metadata as an FYI when you are inspecting that
 package. User-scoped secrets follow the bundler stamp: code that originates from

@@ -747,9 +747,10 @@ instead of one RPC per resource:
 `saved_packages`, `secrets`). Resources whose authority is elsewhere
 (`scheduled_jobs` via `jobsData`, `repo_sessions` via `RepoSessionIndex`, daily
 counters via UserMeter, `stored_email_messages` via Mailbox,
-`concurrent_workflows` via RunLog, `storage_bytes` via UserMeter, and
-`email_message_bytes` via caller `getCurrent`) throw from that helper and must
-use `readCurrentEntitlementResourceUsage` or an explicit `getCurrent` callback.
+`concurrent_workflows` via RunLog, and `storage_bytes` via UserMeter) use
+`readCurrentEntitlementResourceUsage`. Per-operation limits such as
+`email_message_bytes` need a usage value from the caller (`getCurrent`), not a
+stored count.
 
 **Inbound retry idempotency:** inbound receive quota uses
 `UserMeter.consumeInboundDelivery`, which atomically claims `delivery_id` and

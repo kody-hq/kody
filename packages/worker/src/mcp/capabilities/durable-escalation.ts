@@ -37,8 +37,8 @@ export type DurableDispatchOutcome =
  * createDynamicCallableWorkflow: active Cloudflare statuses plus any
  * transitional RunLog projection status written before the instance is queued
  * (today that transitional value is `creating`). New pre-active statuses are
- * covered automatically; only terminal runs (complete/errored/terminated/
- * cancelled) allow another dispatch.
+ * covered automatically. This lookup excludes terminal runs; dispatch can
+ * still replay a completed run unless `rerunComplete` is set.
  */
 export const alreadyDispatchedWorkflowStatusExclusion =
 	terminalWorkflowStatusValues

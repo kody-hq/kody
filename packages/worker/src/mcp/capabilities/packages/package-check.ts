@@ -130,7 +130,7 @@ export const packageCheckCapability = defineDomainCapability(
 				user,
 				request,
 			})
-			// The key embeds the owner, so only the uploading account finds it.
+			// Stage and read the tree under the same resolved workspace owner.
 			const upload = await ctx.env.REPO_SESSION_BLOBS.head(
 				packageCheckUploadKey(owner.ownerUserId, args.upload_id),
 			)

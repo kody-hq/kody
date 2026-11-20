@@ -148,11 +148,11 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
 - **MCP capabilities**: `adminFeatureFlagList`, `adminFeatureFlagSet`,
   `adminFeatureFlagOverride`, `adminFeatureFlagOrgOverride` (`{ key, orgId }` or
   `{ key, orgSlug }` with `enabled` and an optional `note`, or `clear: true`),
-  `adminFeatureFlagDeleteStale({ key, dryRun? })` (deletes a stale key's global
-  row and every user, org, and repo override through the same
-  `deleteStaleFeatureFlagWithAudit` path as the admin UI Delete button; returns
-  per-table counts plus the pre-delete flag) (admin role required, audited,
-  `contextRuns: 'deny'`).
+  [`adminFeatureFlagDeleteStale({ key, dryRun? })`](../../../packages/worker/src/mcp/capabilities/admin/admin-feature-flag-delete-stale.ts).
+  Use `dryRun: true` to count the stale key's global row and user, org, and repo
+  overrides without deleting them. A deletion uses the same audited path as the
+  admin UI. Both return counts per table and the pre-delete flag, if present
+  (admin role required, `contextRuns: 'deny'`).
 - **Client**: evaluated per-request in `loadSessionInfo` (cached per request in
   `request-feature-flags-cache.ts`) and shipped as `session.featureFlags`; gate
   UI with `isFeatureFlagEnabled(session, key)` from

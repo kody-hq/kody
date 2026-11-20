@@ -47,9 +47,8 @@ export async function authorizeEmailMessageInbox(input: {
 }
 
 /**
- * Loads one stored message and checks `permission` on the message's own
- * inbox. Returns null when the message does not exist in this owner's
- * mailbox.
+ * Checks `permission` before looking up the message, then checks it on the
+ * message's inbox. Returns null if the lookup finds no message.
  */
 export async function authorizeEmailMessageChange(input: {
 	env: Env

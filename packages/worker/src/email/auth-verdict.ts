@@ -125,10 +125,8 @@ function trustedLeftmostStamp(headers: Headers, name: string): string | null {
 }
 
 /**
- * Prefer Cloudflare-stamped Authentication-Results on the Worker message
- * headers. Never trust sender-forged AR/ARC rows (wrong authserv-id), never
- * scan later comma-joined stamps for a Cloudflare id, and do not fall back to
- * third-party ARC seals when Cloudflare did not stamp first.
+ * Use the first Authentication-Results stamp if its authserv-id matches
+ * Cloudflare. Otherwise check the first ARC-Authentication-Results stamp.
  *
  * Reads `message.headers` only (Email Worker), not postal-mime body headers.
  */
@@ -148,7 +146,8 @@ export function selectTrustedCloudflareAuthResults(
  * Policy:
  * - SPF and DMARC use the first clause; DKIM passes if any signature passes.
  * - Quarantine (suspect) when DMARC is `fail`, or when there is no DMARC
- *   policy result (`none`) and both SPF and DKIM failed (`fail`/`softfail`).
+ *   policy result (`none` or `unknown`) and both SPF and DKIM failed
+ *   (`fail`/`softfail`).
  * - `authenticated` when DMARC is `pass`, or when (SPF or DKIM is `pass`) and
  *   DMARC is not `fail`.
  * - Missing / untrusted header (all three methods `unknown`) fails open:
