@@ -27,6 +27,7 @@ import {
 } from '#worker/entitlements/service.ts'
 import { userMeterRpc } from '#worker/entitlements/user-meter-client.ts'
 import { recordUsage } from '#worker/usage/record-usage.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	findWalletGuardLimitError,
 	prepareWalletGuard,
@@ -58,7 +59,11 @@ export const identicalExecuteCallWindowMs = 60_000
 
 export const executeLoopDetectedErrorCode = 'execute_loop_detected' as const
 
-export class ExecuteLoopDetectedError extends Error {
+/**
+ * Brake refusals are caller-clearable (wait or stop looping), so they are
+ * {@link McpCallerError}s: they stay on `mcp-event` lines and out of Sentry.
+ */
+export class ExecuteLoopDetectedError extends McpCallerError {
 	readonly code = executeLoopDetectedErrorCode
 	readonly retryAfterMs: number
 
@@ -102,7 +107,7 @@ export async function executeRepeatKey(input: {
 	)
 }
 
-export class ExecuteRateLimitedError extends Error {
+export class ExecuteRateLimitedError extends McpCallerError {
 	readonly code = executeRateLimitedErrorCode
 	readonly retryAfterMs: number
 
