@@ -5,11 +5,8 @@ import {
 	isInboundDeliveryEffectsQueueBody,
 	parseInboundDeliveryEffectsQueueMessage,
 } from '#worker/email/inbound-effects-queue.ts'
-import {
-	deliverWhatsNewConsentOutboxRow,
-	isWhatsNewConsentOutboxQueueBody,
-	parseWhatsNewConsentOutboxQueueMessage,
-} from '#worker/newsletter/consent-outbox.ts'
+import { isWhatsNewConsentOutboxQueueBody } from '#worker/newsletter/consent-outbox.ts'
+import { handleConsentOutboxMessages } from '#worker/newsletter/edges.ts'
 import {
 	claimPackageEventSlot,
 	releasePackageEventSlot,
@@ -64,45 +61,14 @@ export async function handlePackageEventsDispatchQueue(
 					),
 			),
 		),
-		handleWhatsNewConsentOutboxQueueMessages(consentOutbox, env, ctx),
+		handleConsentOutboxMessages({
+			env,
+			messages: consentOutbox,
+			waitUntil: (promise) => ctx.waitUntil(promise),
+			retryDelaySeconds: packageEventsDispatchRetryDelaySeconds,
+		}),
 		handlePackageEventsQueueMessages(packageEvents, env, ctx),
 	])
-}
-
-// One at a time and in order: two changes for one recipient must reach the
-// subscriber in the order they happened.
-async function handleWhatsNewConsentOutboxQueueMessages(
-	messages: Array<Message<unknown>>,
-	env: Env,
-	ctx: ExecutionContext,
-) {
-	for (const queueMessage of messages) {
-		const message = parseWhatsNewConsentOutboxQueueMessage(queueMessage.body)
-		if (!message) {
-			console.error('whats-new-consent-outbox-message-invalid', {
-				queueMessageId: queueMessage.id,
-			})
-			queueMessage.ack()
-			continue
-		}
-		try {
-			await deliverWhatsNewConsentOutboxRow({
-				env,
-				outboxId: message.outboxId,
-				waitUntil: (promise) => ctx.waitUntil(promise),
-			})
-			queueMessage.ack()
-		} catch (error) {
-			console.error('whats-new-consent-outbox-queue-processing-failed', {
-				queueMessageId: queueMessage.id,
-				outboxId: message.outboxId,
-				error,
-			})
-			queueMessage.retry({
-				delaySeconds: packageEventsDispatchRetryDelaySeconds,
-			})
-		}
-	}
 }
 
 async function handleInboundDeliveryEffectsQueueMessage(

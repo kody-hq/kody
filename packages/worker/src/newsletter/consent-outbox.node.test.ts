@@ -1,5 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
+import { Effect, Layer, Schema } from 'effect'
 import { beforeEach, expect, test, vi } from 'vitest'
+import { Background } from '#worker/effect/background.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -13,12 +15,28 @@ vi.mock('#worker/package-invocations/admin-package-subscriptions.ts', () => ({
 }))
 
 const {
-	deliverWhatsNewConsentOutboxRow,
-	parseWhatsNewConsentOutboxQueueMessage,
+	consentOutboxLayer,
+	deliverConsentOutboxRow,
+	WhatsNewConsentOutboxQueueMessage,
 	recordWhatsNewConsentChange,
 	recordWhatsNewVerifiedAccount,
 	whatsNewConsentChangedTopic,
 } = await import('./consent-outbox.ts')
+
+const deliverWhatsNewConsentOutboxRow = (input: {
+	env: Env
+	outboxId: string
+}) =>
+	Effect.runPromise(
+		deliverConsentOutboxRow(input.outboxId).pipe(
+			Effect.provide(
+				Layer.merge(
+					Background.layer(() => {}),
+					consentOutboxLayer(input.env),
+				),
+			),
+		),
+	)
 
 const now = new Date('2026-11-15T12:00:00.000Z')
 const accountId = 'a'.repeat(64)
@@ -31,6 +49,8 @@ type Dispatch = {
 }
 
 function setup(input: { failSend?: boolean } = {}) {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	vi.setSystemTime(now)
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
 	const db = createD1FromSqlite(sqlite)
@@ -83,7 +103,6 @@ test('a consent change is stored and enqueued, then delivered to admin subscribe
 		optedIn: true,
 		source: 'newsletter_page',
 		occurredAt: now.toISOString(),
-		now,
 	})
 	const [row] = outbox()
 	expect(row).toMatchObject({
@@ -95,7 +114,9 @@ test('a consent change is stored and enqueued, then delivered to admin subscribe
 	expect(sent).toEqual([
 		{ kind: 'whats-new-consent-outbox', outboxId: row!.id },
 	])
-	expect(parseWhatsNewConsentOutboxQueueMessage(sent[0])).toEqual(sent[0])
+	expect(
+		Schema.decodeUnknownSync(WhatsNewConsentOutboxQueueMessage)(sent[0]),
+	).toEqual(sent[0])
 
 	let dispatched: Dispatch | undefined
 	mocks.dispatchAdminPackageSubscriptionEvent.mockImplementation(
@@ -143,7 +164,6 @@ test('a failed queue send never throws and the next change enqueues the stranded
 			optedIn: true,
 			source: 'newsletter_page',
 			occurredAt: now.toISOString(),
-			now,
 		}),
 	).resolves.toBeUndefined()
 	expect(consoleError).toHaveBeenCalledTimes(1)
@@ -154,13 +174,13 @@ test('a failed queue send never throws and the next change enqueues the stranded
 	failing.queue.send.mockImplementation(async (body: unknown) => {
 		sent.push(body)
 	})
+	vi.setSystemTime(new Date(now.getTime() + 5 * 60 * 1000))
 	await recordWhatsNewConsentChange({
 		env: failing.env,
 		stableUserId: accountId,
 		optedIn: false,
 		source: 'admin',
 		occurredAt: now.toISOString(),
-		now: new Date(now.getTime() + 5 * 60 * 1000),
 	})
 	const rows = failing.outbox()
 	expect(rows).toHaveLength(2)
@@ -178,7 +198,6 @@ test('a failed delivery keeps the row and throws so the queue retries with a fre
 		optedIn: false,
 		source: 'admin',
 		occurredAt: now.toISOString(),
-		now,
 	})
 	const [row] = outbox()
 	const keys: Array<string> = []
@@ -190,13 +209,17 @@ test('a failed delivery keeps the row and throws so the queue retries with a fre
 	)
 	await expect(
 		deliverWhatsNewConsentOutboxRow({ env, outboxId: row!.id }),
-	).rejects.toThrow('was not handled by 1 of 1 subscribers')
+	).rejects.toMatchObject({
+		_tag: 'ConsentDeliveryIncomplete',
+		failed: 1,
+		total: 1,
+	})
 	mocks.dispatchAdminPackageSubscriptionEvent.mockRejectedValueOnce(
 		new Error('discovery failed'),
 	)
 	await expect(
 		deliverWhatsNewConsentOutboxRow({ env, outboxId: row!.id }),
-	).rejects.toThrow('discovery failed')
+	).rejects.toMatchObject({ _tag: 'PackageDispatchFailed' })
 	expect(outbox()).toMatchObject([{ id: row!.id, attempts: 2 }])
 	mocks.dispatchAdminPackageSubscriptionEvent.mockImplementation(
 		async (input: Dispatch) => {
@@ -214,7 +237,7 @@ test('a failed delivery keeps the row and throws so the queue retries with a fre
 
 test('a verified account is announced with its sign-up choice, or with none', async () => {
 	const { env, sqlite, outbox } = setup()
-	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId, now })
+	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId })
 	expect(outbox()).toMatchObject([
 		{ stable_user_id: accountId, opted_in: 1, source: 'signup' },
 	])
@@ -224,14 +247,14 @@ test('a verified account is announced with its sign-up choice, or with none', as
 			`UPDATE users SET whats_new_email_opt_in = 0, whats_new_email_opt_in_updated_at = NULL, whats_new_email_opt_in_source = NULL`,
 		)
 		.run()
-	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId, now })
+	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId })
 	expect(outbox()).toMatchObject([
 		{ stable_user_id: accountId, opted_in: null, source: null },
 	])
 	// An unverified account is not a recipient yet.
 	sqlite.prepare(`DELETE FROM whats_new_consent_outbox`).run()
 	sqlite.prepare(`UPDATE users SET email_verified_at = NULL`).run()
-	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId, now })
+	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId })
 	expect(outbox()).toEqual([])
 })
 
@@ -243,7 +266,6 @@ test('a row whose recipient is gone is dropped without dispatching', async () =>
 		optedIn: true,
 		source: 'newsletter_page',
 		occurredAt: now.toISOString(),
-		now,
 	})
 	sqlite.prepare(`DELETE FROM newsletter_signups`).run()
 	await deliverWhatsNewConsentOutboxRow({ env, outboxId: outbox()[0]!.id })
@@ -259,7 +281,6 @@ test('a change is kept, uncounted, while no admin package subscribes', async () 
 		optedIn: true,
 		source: 'newsletter_page',
 		occurredAt: now.toISOString(),
-		now,
 	})
 	const [row] = outbox()
 	mocks.dispatchAdminPackageSubscriptionEvent.mockResolvedValue([])
@@ -283,9 +304,8 @@ test('an account with no choice of its own is announced with the public sign-up 
 		optedIn: null,
 		source: null,
 		occurredAt: '2026-11-16T09:00:00.000Z',
-		now,
 	})
-	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId, now })
+	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId })
 	const carried = outbox().find((row) => row.opted_in === 1)
 	expect(carried).toMatchObject({
 		stable_user_id: accountId,
@@ -318,7 +338,6 @@ test('without a queue binding a change is delivered inline', async () => {
 		optedIn: true,
 		source: 'newsletter_page',
 		occurredAt: now.toISOString(),
-		now,
 	})
 	expect(mocks.dispatchAdminPackageSubscriptionEvent).toHaveBeenCalledTimes(1)
 	expect(outbox()).toEqual([])
@@ -335,7 +354,6 @@ test('an older change that arrives late is dropped while a newer one for the sam
 		optedIn: true,
 		source: 'newsletter_page',
 		occurredAt: '2026-11-15T12:00:00.000Z',
-		now,
 	})
 	await recordWhatsNewConsentChange({
 		env,
@@ -343,7 +361,6 @@ test('an older change that arrives late is dropped while a newer one for the sam
 		optedIn: false,
 		source: 'admin',
 		occurredAt: '2026-11-15T12:05:00.000Z',
-		now,
 	})
 	const optIn = outbox().find((row) => row.opted_in === 1)
 	const optOut = outbox().find((row) => row.opted_in === 0)

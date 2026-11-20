@@ -131,10 +131,11 @@ test('public form protection defaults closed, rejects honeypots, and verifies Tu
 		expect(await foreign.response.json()).toEqual({
 			error: 'Human verification failed. Please try again.',
 		})
-		expect(consoleWarn).toHaveBeenCalledWith('turnstile-hostname-mismatch', {
-			expected: 'example.com',
-			received: 'kody-pr-99.kody-a99.workers.dev',
-		})
+		expect(consoleWarn).toHaveBeenCalledWith(
+			expect.stringContaining(
+				'"turnstile-hostname-mismatch",{"expected":"example.com","received":"kody-pr-99.kody-a99.workers.dev"}',
+			),
+		)
 	} finally {
 		vi.unstubAllGlobals()
 	}
