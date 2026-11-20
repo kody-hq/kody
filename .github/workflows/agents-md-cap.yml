@@ -34,13 +34,18 @@ jobs:
           CAP: 20
         run: |
           set -euo pipefail
-          lines=$(gh api "repos/$REPO/contents/AGENTS.md?ref=$HEAD_SHA" \
-            -H 'Accept: application/vnd.github.raw' | wc -l)
           files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" \
             --jq '.[] | .filename, (.previous_filename // empty)')
+          # Untouched AGENTS.md merges as main's copy, already within CAP.
+          lines=0
+          if grep -qx 'AGENTS.md' <<<"$files"; then
+            lines=$(gh api "repos/$REPO/contents/AGENTS.md?ref=$HEAD_SHA" \
+              -H 'Accept: application/vnd.github.raw' | wc -l)
+          fi
           self=$(grep -cx '.github/workflows/agents-md-cap.yml' <<<"$files" || true)
           conclusion=success
           title="AGENTS.md: $lines/$CAP lines"
+          [ "$lines" -eq 0 ] && title="AGENTS.md unchanged"
           summary="Keep AGENTS.md a pointer map; put detail in docs/."
           if [ "$lines" -gt "$CAP" ]; then
             conclusion=failure
