@@ -213,8 +213,8 @@ export type HardPurgeOrgMode = 'team' | 'personal'
  * `SOFT_DELETE_PURGE_ENABLED` is not `true`; this function only names the rows.
  *
  * Prefer {@link hardPurgeOrgDataTargets} when choosing personal vs team org
- * behavior: personal mode leaves owner-scoped rows only when a soft-deleted
- * person will purge next.
+ * behavior: personal mode runs after the person purge already removed the
+ * owner-scoped rows.
  */
 export function hardPurgeDataTargets(
 	subject: HardPurgeSubject,
@@ -233,8 +233,9 @@ export function hardPurgeDataTargets(
 
 /**
  * D1 targets for org hard purge. `team` includes owner-scoped account inventory
- * (after out-of-band keys are collected). `personal` is org-graph only so a
- * subsequent soft-deleted-user purge can still inventory KV/R2/vectors from D1.
+ * (after out-of-band keys are collected). `personal` is org-graph only: the
+ * person purge runs account deletion first, which removes owner inventory and
+ * reads the personal org's billing identity.
  */
 export function hardPurgeOrgDataTargets(
 	mode: HardPurgeOrgMode,

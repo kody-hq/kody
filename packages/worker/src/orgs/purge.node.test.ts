@@ -166,6 +166,49 @@ test('real purge with enabled flag hard-deletes idempotently', async () => {
 	expect(second.purged).toBe(0)
 })
 
+test('personal orgs of soft-deleted people purge with the person, not as org candidates', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'person-fallback')
+	await seedUser(db, {
+		id: 1,
+		stableUserId: 'person-fallback',
+		deletingAt: null,
+		deletedAt: oldDeletedAt,
+	})
+	await seedSoftDeletedOrg(db, 'personal-org-explicit')
+	await seedUser(db, {
+		id: 2,
+		stableUserId: 'person-explicit',
+		deletingAt: null,
+		deletedAt: oldDeletedAt,
+	})
+	await db
+		.prepare(`UPDATE users SET personal_org_id = ? WHERE id = ?`)
+		.bind('personal-org-explicit', 2)
+		.run()
+	await seedSoftDeletedOrg(db, 'team-org')
+
+	const preview = await listSoftDeletePurgeCandidates({ env, now })
+	expect(
+		preview.candidates.map((candidate) => [candidate.kind, candidate.id]),
+	).toEqual([
+		['org', 'team-org'],
+		['user', 'person-explicit'],
+		['user', 'person-fallback'],
+	])
+
+	// A person outside this pass's user batch still keeps its personal org
+	// for the pass that purges the person, so no earlier pass deletes it.
+	const smallBatch = await listSoftDeletePurgeCandidates({
+		env,
+		now,
+		batchSize: 1,
+	})
+	expect(
+		smallBatch.candidates.filter((candidate) => candidate.kind === 'org'),
+	).toEqual([expect.objectContaining({ id: 'team-org' })])
+})
+
 test('legacy stuck deletions are listed without the restore window', async () => {
 	const { env, db } = await createEnv(false)
 	// Fenced by the pre-soft-delete flow nine days ago, never finished.

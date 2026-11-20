@@ -490,8 +490,8 @@ after the restore window is `hardPurgeSoftDeletedUser`
   after a cleanup step warned. Those owners asked for a hard deletion and were
   never offered a restore window, so they skip the window and the flag, and keep
   the lane's claim, six-hour retry backoff, and `user.purge_failed` audit. The
-  lane purges the personal org graph, then re-runs `deleteUserAccount` on the
-  fenced row; storage that is already gone counts as done. The deletion is the
+  lane re-runs `deleteUserAccount` on the fenced row, then purges the personal
+  org graph; storage that is already gone counts as done. The deletion is the
   same across:
   - the user's active package workflow instances, terminated first so no step
     writes after the purge; if any termination fails, deletion stops before
