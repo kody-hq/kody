@@ -41,6 +41,12 @@ export type ProbeOutcome = {
 	ok: boolean
 	latencyMs: number | null
 	detail: string | null
+	/**
+	 * Origin-level `/health/components` failure (unreachable or non-JSON).
+	 * Not per-component evidence — do not record a sample or move incident
+	 * state. The App card already covers origin-down.
+	 */
+	skip?: boolean
 }
 
 export type ComponentStatus = 'operational' | 'down' | 'unknown'

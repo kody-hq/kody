@@ -31,9 +31,11 @@ deploys, code, or database are broken (see decision record 0004).
     stale telemetry is unknown, not an outage, and does not change overall
     status or hide other incidents.
 - Public storage cards are the main-worker bindings that take the product down
-  (`app_db`, `kv`, `assets`). Operator `GET /health/components` reports
-  `audit_db` as well; it is not a public card and does not open incidents or
-  send alert email.
+  (`app_db`, `kv`, `assets`). They move only when `GET /health/components`
+  returns a JSON report for that binding. An origin HTTP 503 or unreachable
+  fetch during a deploy is the App card, not a storage outage. Operator
+  `GET /health/components` reports `audit_db` as well; it is not a public card
+  and does not open incidents or send alert email.
 - A single `StatusStore` Durable Object (SQLite) stores per-minute samples (24
   h), daily uptime rollups (90 days), incidents, and sent notifications.
 - A component opens an incident after three consecutive probe failures (about

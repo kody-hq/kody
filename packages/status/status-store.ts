@@ -389,6 +389,7 @@ export class StatusStore extends DurableObject<StatusWorkerEnv> {
 	}
 
 	private recordOutcome(outcome: ProbeOutcome, now: number) {
+		if (outcome.skip) return
 		this.ctx.storage.sql.exec(
 			`INSERT INTO samples (component, checked_at, ok, latency_ms, detail)
 			VALUES (?, ?, ?, ?, ?)`,

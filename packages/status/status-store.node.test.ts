@@ -46,11 +46,13 @@ beforeEach(() => {
 	vi.useFakeTimers({ toFake: ['Date'] })
 	vi.setSystemTime(now)
 	vi.spyOn(console, 'info').mockImplementation(() => {})
+	vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
 afterEach(() => {
 	vi.useRealTimers()
 	vi.restoreAllMocks()
+	vi.unstubAllGlobals()
 })
 
 function insertIncident(
@@ -194,4 +196,59 @@ test('deleteIncident refuses open and unknown incidents', async () => {
 	})
 	expect(db.prepare(`SELECT id FROM incidents`).all()).toEqual([{ id: openId }])
 	expect(dailyFailed(db, 'app_db', '2026-10-12')).toBe(2)
+})
+
+test('origin HTTP 503 does not open storage incidents', async () => {
+	const { db, store } = createStore()
+	const fetchImpl = (async (input: RequestInfo | URL) => {
+		const url = typeof input === 'string' ? input : input.toString()
+		if (url.startsWith('https://kody.codes/health/components')) {
+			return new Response(null, { status: 503 })
+		}
+		if (url.startsWith('https://kody.codes/health')) {
+			return new Response(null, { status: 503 })
+		}
+		if (url.startsWith('https://kody.codes/mcp')) {
+			return new Response(null, { status: 503 })
+		}
+		if (url.startsWith('https://kody.run/__runtime/health')) {
+			return new Response(
+				JSON.stringify({
+					status: 'ok',
+					commitSha: 'abc123def4567890abcdef1234567890abcdef12',
+				}),
+			)
+		}
+		if (url.startsWith('https://kody-jobs.internal/health/components')) {
+			return new Response(
+				JSON.stringify({
+					ok: true,
+					components: [{ id: 'jobs_db', ok: true, latencyMs: 1 }],
+				}),
+			)
+		}
+		if (url.startsWith('https://kody-jobs.internal/health')) {
+			return new Response(
+				JSON.stringify({
+					ok: true,
+					commit: 'abc123def4567890abcdef1234567890abcdef12',
+				}),
+			)
+		}
+		return new Response(null, { status: 503 })
+	}) as typeof fetch
+	vi.stubGlobal('fetch', fetchImpl)
+
+	for (let tick = 0; tick < 3; tick += 1) {
+		await store.runProbes()
+	}
+
+	expect(
+		db.prepare(`SELECT component FROM incidents ORDER BY component`).all(),
+	).toEqual([{ component: 'app' }, { component: 'mcp' }])
+	expect(
+		db
+			.prepare(`SELECT COUNT(*) AS n FROM samples WHERE component = 'app_db'`)
+			.get(),
+	).toEqual({ n: 0 })
 })

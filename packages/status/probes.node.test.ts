@@ -218,7 +218,7 @@ test('probe failures isolate to the affected component and map error details', a
 				[`${primaryOrigin}/health`]: originUnreachable,
 				[`${primaryOrigin}/health/components`]: originUnreachable,
 			},
-			{ app: 'connection refused', app_db: 'unreachable' },
+			{ app: 'connection refused' },
 			['jobs'],
 		],
 	]
@@ -231,6 +231,52 @@ test('probe failures isolate to the affected component and map error details', a
 			stillOk.filter((component) => !outcome(result, component)?.ok),
 		).toEqual([])
 		expect(result).toMatchObject(fields)
+		for (const component of Object.keys(failing)) {
+			expect(outcome(result, component)?.skip).toBeUndefined()
+		}
+	}
+})
+
+test('origin-level /health/components failures skip storage cards instead of opening them', async () => {
+	const originUnreachable = { error: 'connection refused' }
+	const cases: Array<{
+		overrides: Record<string, FakeRoute>
+		appDetail: string
+		storageDetail: string
+	}> = [
+		{
+			overrides: {
+				[`${primaryOrigin}/health`]: { status: 503 },
+				[`${primaryOrigin}/health/components`]: { status: 503 },
+			},
+			appDetail: 'HTTP 503',
+			storageDetail: 'HTTP 503',
+		},
+		{
+			overrides: {
+				[`${primaryOrigin}/health`]: originUnreachable,
+				[`${primaryOrigin}/health/components`]: originUnreachable,
+			},
+			appDetail: 'connection refused',
+			storageDetail: 'unreachable',
+		},
+	]
+	for (const { overrides, appDetail, storageDetail } of cases) {
+		const result = await probe({ ...healthyRoutes(), ...overrides })
+		expect(outcome(result, 'app')).toMatchObject({
+			ok: false,
+			detail: appDetail,
+		})
+		for (const component of ['app_db', 'kv', 'assets'] as const) {
+			expect(outcome(result, component)).toMatchObject({
+				ok: false,
+				latencyMs: null,
+				detail: storageDetail,
+				skip: true,
+			})
+		}
+		expect(outcome(result, 'jobs')?.ok).toBe(true)
+		expect(outcome(result, 'package_apps')?.ok).toBe(true)
 	}
 })
 
