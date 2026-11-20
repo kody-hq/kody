@@ -27,6 +27,7 @@ import { Table } from '../components/table.tsx'
 import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Tooltip } from '../components/tooltip.tsx'
+import { AccountSectionTabs } from './account-section-tabs.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	visuallyHiddenCss,
@@ -246,6 +247,19 @@ const uiGallerySections: ReadonlyArray<{
 							Type, modified date, and location.
 						</TabPanel>
 					</Tabs>
+				</GalleryRow>
+				<GalleryRow label="link row, overflowing">
+					<div css={{ width: '15rem', maxWidth: '100%' }}>
+						<AccountSectionTabs
+							label="Gallery"
+							tabs={[
+								{ label: 'Overview', href: '#overview', active: false },
+								{ label: 'Members', href: '#members', active: false },
+								{ label: 'Teams', href: '#teams', active: false },
+								{ label: 'Grants', href: '#grants', active: true },
+							]}
+						/>
+					</div>
 				</GalleryRow>
 			</>
 		),

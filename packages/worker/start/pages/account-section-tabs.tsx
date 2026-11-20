@@ -1,6 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { revealCurrentTab } from '../components/reveal-current-tab.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { colors, spacing } from '#universal/styles/tokens.ts'
+import {
+	underlineLinkTabCss,
+	underlineLinkTabsCss,
+} from '#universal/styles/style-primitives.ts'
 import type { AccountRailTab } from '#client/routes/account-rail.ts'
 
 /**
@@ -16,45 +20,19 @@ export function AccountSectionTabs(props: {
 		<nav
 			aria-label={`${props.label} pages`}
 			data-testid="account-section-tabs"
-			css={sectionTabsCss}
+			ref={revealCurrentTab}
+			css={underlineLinkTabsCss}
 		>
 			{props.tabs.map((tab) => (
 				<SiteLink
 					key={tab.href}
 					href={tab.href}
 					aria-current={tab.active ? 'page' : undefined}
-					css={sectionTabCss}
+					css={underlineLinkTabCss}
 				>
 					{tab.label}
 				</SiteLink>
 			))}
 		</nav>
 	)
-}
-
-const sectionTabsCss = {
-	display: 'flex',
-	flexWrap: 'wrap' as const,
-	alignItems: 'center',
-	gap: spacing.md,
-	borderBottom: `1px solid ${colors.border}`,
-}
-
-const sectionTabCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	padding: '0.55rem 0.15rem',
-	marginBottom: '-1px',
-	borderBottom: '2px solid transparent',
-	color: colors.textMuted,
-	fontSize: '0.95rem',
-	fontWeight: 550,
-	textDecoration: 'none',
-	'&:hover': {
-		color: colors.text,
-	},
-	'&[aria-current="page"]': {
-		color: colors.text,
-		borderBottomColor: colors.primary,
-	},
 }

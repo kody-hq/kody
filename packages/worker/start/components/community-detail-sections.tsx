@@ -271,7 +271,7 @@ const missingHeadCss = {
 } satisfies CSSObject
 
 /* Quiet sections in the `.pkg-fork` voice: display-face h2, muted lede. */
-export const detailSectionCss = {
+const detailSectionCss = {
 	'& h2': {
 		margin: 0,
 		fontSize: 'clamp(1.4rem, 2.4vw, 1.65rem)',

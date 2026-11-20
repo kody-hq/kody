@@ -4,12 +4,15 @@ import { Switch } from '../components/choice-controls.tsx'
 import { Button } from '../components/button.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import type { ReactNode } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import {
 	canEditTrigger,
 	triggerMappingRows,
 } from '#client/routes/package-credentials-editing.ts'
-import { accountDisclosureCss } from './account-management-components.tsx'
+import {
+	AccountManagementPanel,
+	accountDisclosureCss,
+} from './account-management-components.tsx'
 import {
 	type CredentialMappingTarget,
 	type PackageTriggerInstanceView,
@@ -23,7 +26,6 @@ import {
 	triggerStateLabel,
 	withheldTriggerMappingsNote,
 } from '#universal/package-credentials-page.ts'
-import { cardCss, cardTitleCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	type PackageTabContext,
@@ -33,6 +35,7 @@ import {
 	renderMappingCell,
 	renderStatus,
 	rowCss,
+	tabLedeCss,
 } from './package-credentials-tabs.tsx'
 
 function renderTriggerMappings(
@@ -199,7 +202,7 @@ function renderInstanceCard(
 				display: 'grid',
 				gap: spacing.sm,
 				paddingTop: index === 0 ? 0 : spacing.sm,
-				borderTop: index === 0 ? 'none' : `1px solid ${colors.border}`,
+				borderTop: index === 0 ? 'none' : `1px solid ${colors.borderSubtle}`,
 			}}
 		>
 			<div
@@ -260,17 +263,17 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 	const { view } = context
 	if (view.triggers.length === 0) {
 		return (
-			<section css={cardCss}>
+			<AccountManagementPanel>
 				<p css={mutedCss}>
 					This package declares no schedules, subscriptions, or webhooks.
 				</p>
-			</section>
+			</AccountManagementPanel>
 		)
 	}
 	return (
 		<>
 			{renderIncomplete(context, 'triggers')}
-			<p css={mutedCss}>
+			<p css={tabLedeCss}>
 				Each trigger runs as the person who turned it on. A trigger can map its
 				own credentials; any need it leaves alone uses that person’s default
 				mapping. You can turn on more than one instance of a schedule or
@@ -312,23 +315,13 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 						})
 					: null
 				return (
-					<section
+					<AccountManagementPanel
 						key={id}
-						aria-labelledby={titleId}
-						data-testid={id}
-						css={cardCss}
-					>
-						<div
-							css={{
-								...rowCss,
-								justifyContent: 'space-between',
-								alignItems: 'center',
-							}}
-						>
-							<h2 id={titleId} css={cardTitleCss}>
-								{describeTrigger(trigger.trigger)}
-							</h2>
-							{instances.length === 0 ? (
+						headingId={titleId}
+						testId={id}
+						title={describeTrigger(trigger.trigger)}
+						actions={
+							instances.length === 0 ? (
 								canToggle ? (
 									renderEnablementSwitch({
 										context,
@@ -337,19 +330,15 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 										label: 'Off',
 									})
 								) : approveHref ? (
-									<SiteLink
-										href={approveHref}
-										css={{ fontSize: typography.fontSize.sm }}
-									>
-										Approve to turn on
-									</SiteLink>
+									<TextLink href={approveHref}>Approve to turn on</TextLink>
 								) : (
 									<span css={mutedCss}>{triggerStateLabel(trigger)}</span>
 								)
 							) : instances.length > 1 ? (
 								<span css={mutedCss}>{instances.length} instances</span>
-							) : null}
-						</div>
+							) : null
+						}
+					>
 						{instances.length === 0
 							? renderTriggerMappings(context, trigger, null)
 							: instances.map((instance, instanceIndex) =>
@@ -366,18 +355,18 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 								css={{
 									...accountDisclosureCss,
 									paddingTop: spacing.sm,
-									borderTop: `1px solid ${colors.border}`,
+									borderTop: `1px solid ${colors.borderSubtle}`,
 								}}
 								data-testid={`package-trigger-add-instance-${trigger.trigger.kind}-${trigger.trigger.name}`}
 							>
 								<summary>Add another instance</summary>
 								<div css={{ display: 'grid', gap: spacing.sm }}>
 									{trigger.trigger.kind === 'webhook' ? (
-										<SiteLink
+										<TextLink
 											href={`/@${context.username}/${context.kodyId}/settings#webhooks`}
 										>
 											Mint another labeled URL in Settings
-										</SiteLink>
+										</TextLink>
 									) : (
 										<>
 											<p css={mutedCss}>
@@ -417,7 +406,7 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 								}}
 							/>
 						) : null}
-					</section>
+					</AccountManagementPanel>
 				)
 			})}
 		</>

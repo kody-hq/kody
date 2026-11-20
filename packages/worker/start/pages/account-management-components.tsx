@@ -619,22 +619,41 @@ export function AccountManagementMessage(props: AccountManagementMessageProps) {
 
 type AccountManagementPanelProps = {
 	id?: string
-	title?: string
+	title?: AccountManagementSlot
 	description?: AccountManagementSlot
 	children?: AccountManagementSlot
 	asForm?: boolean
 	onSubmit?: (event: FormEvent<HTMLFormElement>) => void
 	ariaLabel?: string
+	/** Heading id; the section is then labelled by its heading. */
+	headingId?: string
+	/** Controls on the heading row, aligned to the end. */
+	actions?: AccountManagementSlot
+	/** `attention` marks a section that lists something to fix. */
+	tone?: 'default' | 'attention'
+	testId?: string
+	/** Marks the section `aria-busy` while its content loads or saves. */
+	busy?: boolean
 }
 
 export function AccountManagementPanel(props: AccountManagementPanelProps) {
+	const title = props.title ? (
+		<h2 id={props.headingId} css={accountSectionTitleCss}>
+			{props.title}
+		</h2>
+	) : null
 	const content = () => (
 		<>
-			{props.title || props.description ? (
+			{props.title || props.description || props.actions ? (
 				<div css={{ display: 'grid', gap: '0.6rem' }}>
-					{props.title ? (
-						<h2 css={accountSectionTitleCss}>{props.title}</h2>
-					) : null}
+					{props.actions ? (
+						<div css={accountSectionHeadRowCss}>
+							{title}
+							<div css={accountSectionHeadActionsCss}>{props.actions}</div>
+						</div>
+					) : (
+						title
+					)}
 					{props.description ? (
 						<p css={accountSectionLedeCss}>{props.description}</p>
 					) : null}
@@ -643,22 +662,60 @@ export function AccountManagementPanel(props: AccountManagementPanelProps) {
 			{props.children}
 		</>
 	)
+	const sectionCss =
+		props.tone === 'attention'
+			? [accountSectionCss, accountSectionAttentionCss]
+			: accountSectionCss
 
 	return props.asForm ? (
 		<form
 			id={props.id}
 			method="post"
 			noValidate
-			css={accountSectionCss}
+			css={sectionCss}
+			data-testid={props.testId}
 			onSubmit={props.onSubmit}
 		>
 			{content()}
 		</form>
 	) : (
-		<section id={props.id} aria-label={props.ariaLabel} css={accountSectionCss}>
+		<section
+			id={props.id}
+			aria-label={props.headingId ? undefined : props.ariaLabel}
+			aria-labelledby={props.headingId}
+			aria-busy={props.busy || undefined}
+			data-testid={props.testId}
+			css={sectionCss}
+		>
 			{content()}
 		</section>
 	)
+}
+
+const accountSectionHeadRowCss: CSSObject = {
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'space-between',
+	flexWrap: 'wrap',
+	gap: `${spacing.sm} ${spacing.md}`,
+	minWidth: 0,
+	'& > h2': { minWidth: 0, overflowWrap: 'anywhere' },
+}
+
+const accountSectionHeadActionsCss: CSSObject = {
+	display: 'flex',
+	alignItems: 'center',
+	flexWrap: 'wrap',
+	gap: spacing.sm,
+}
+
+/** Warning edge on the shared card; the copy carries the message. */
+const accountSectionAttentionCss: CSSObject = {
+	borderColor: `color-mix(in srgb, ${colors.warning} 55%, ${colors.borderSubtle})`,
+	boxShadow: `inset 3px 0 0 ${colors.warning}`,
+	'@media (prefers-color-scheme: dark)': {
+		boxShadow: `inset 3px 0 0 ${colors.warning}`,
+	},
 }
 
 type MetadataGridProps = {
