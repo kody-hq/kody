@@ -49,6 +49,7 @@ const {
 	buildKodyModuleBundle,
 	buildPackageRuntimeModulePath,
 	createPackageRuntimeModuleSource,
+	createPublishedPackageAppBundleCacheKey,
 	createRuntimeModuleReexportSource,
 	createRuntimeModuleSource,
 	hydrateKodyRuntimeModules,
@@ -98,6 +99,19 @@ function makeArtifact(
 		createdAt: '2026-05-11T00:00:00.000Z',
 		...overrides,
 	}
+}
+
+function appCacheKey(sourceId: string, entryPoint = 'app.js') {
+	return createPublishedPackageAppBundleCacheKey({
+		userId: ownerIdFromStored('user-1'),
+		source: {
+			id: sourceId,
+			published_commit: `commit-${sourceId}`,
+			manifest_path: 'package.json',
+			source_root: '/',
+		},
+		entryPoint,
+	})
 }
 
 async function withRuntimeGraph(
@@ -247,6 +261,76 @@ test('buildKodyAppBundle keeps package-supplied remix without injecting platform
 		'node_modules/remix/dist/router.js',
 		'node_modules/remix/package.json',
 	])
+})
+
+test('buildKodyAppBundle cache lifecycle reuses hits, shares in-flight builds, evicts failures, and keys by entrypoint', async () => {
+	mockModule.createWorker.mockResolvedValue(createBundleResult('warm-cache'))
+	const cacheKey = appCacheKey('source-1')
+	const first = await buildKodyAppBundle(createBundleInput({ cacheKey }))
+	const second = await buildKodyAppBundle(createBundleInput({ cacheKey }))
+	expect(mockModule.createWorker).toHaveBeenCalledTimes(1)
+	expect(first).toBe(second)
+
+	mockModule.createWorker.mockReset()
+	mockModule.createWorker
+		.mockResolvedValueOnce(createBundleResult('uncached-first'))
+		.mockResolvedValueOnce(createBundleResult('uncached-second'))
+	await buildKodyAppBundle(createBundleInput({ cacheKey: null }))
+	await buildKodyAppBundle(createBundleInput({ cacheKey: null }))
+	expect(mockModule.createWorker).toHaveBeenCalledTimes(2)
+
+	mockModule.createWorker.mockReset()
+	const { promise: bundlePromise, resolve: resolveBundle } =
+		Promise.withResolvers<ReturnType<typeof createBundleResult>>()
+	mockModule.createWorker.mockImplementation(async () => await bundlePromise)
+	const concurrentInput = createBundleInput({
+		cacheKey: appCacheKey('source-concurrent'),
+	})
+	const firstPromise = buildKodyAppBundle(concurrentInput)
+	const secondPromise = buildKodyAppBundle(concurrentInput)
+	resolveBundle(createBundleResult('shared-in-flight'))
+	const [inFlightFirst, inFlightSecond] = await Promise.all([
+		firstPromise,
+		secondPromise,
+	])
+	expect(mockModule.createWorker).toHaveBeenCalledTimes(1)
+	expect(inFlightFirst).toBe(inFlightSecond)
+
+	mockModule.createWorker.mockReset()
+	mockModule.createWorker
+		.mockRejectedValueOnce(new Error('bundle failed'))
+		.mockResolvedValueOnce(createBundleResult('retry-success'))
+	const failureInput = createBundleInput({
+		cacheKey: appCacheKey('source-failure'),
+	})
+	await expect(buildKodyAppBundle(failureInput)).rejects.toThrow(
+		'bundle failed',
+	)
+	expect(await buildKodyAppBundle(failureInput)).toEqual(
+		createBundleResult('retry-success'),
+	)
+	expect(mockModule.createWorker).toHaveBeenCalledTimes(2)
+
+	mockModule.createWorker.mockReset()
+	mockModule.createWorker
+		.mockResolvedValueOnce(createBundleResult('entry-app'))
+		.mockResolvedValueOnce(createBundleResult('entry-admin'))
+	const [appBundle, adminBundle] = [
+		await buildKodyAppBundle(
+			createBundleInput({
+				cacheKey: appCacheKey('source-shared', 'app.js'),
+				entryPoint: 'app.js',
+			}),
+		),
+		await buildKodyAppBundle(
+			createBundleInput({
+				cacheKey: appCacheKey('source-shared', 'admin.js'),
+				entryPoint: 'admin.js',
+			}),
+		),
+	]
+	expect(mockModule.createWorker).toHaveBeenCalledTimes(2)
+	expect(appBundle).not.toBe(adminBundle)
 })
 
 test('hydrateKodyRuntimeModules replaces stale persisted kody runtime modules', async () => {

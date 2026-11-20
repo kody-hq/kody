@@ -1,8 +1,11 @@
 import { expect, test } from 'vitest'
 import {
 	applyCredentialClientPlacement,
+	credentialClientHintHeaderName,
+	withCredentialClientHint,
 	withoutCodePlacement,
 } from './credential-client-gateway.ts'
+import { withLanding } from './secrets/echo-redaction.ts'
 
 const urlPlacement = {
 	kind: 'url' as const,
@@ -70,4 +73,23 @@ test('header and query placements replace the code value of the same name', () =
 	)
 	expect(placedQuery.searchParams.get('api_key')).toBe('k')
 	expect(placedQuery.searchParams.get('x')).toBe('1')
+})
+
+test('the 401 hint keeps where the response landed', () => {
+	const landed = withLanding(new Response('no', { status: 401 }), {
+		url: 'https://api.example.com/after',
+		redirected: true,
+	})
+	const hinted = withCredentialClientHint(landed, 'header X-Api-Key', {
+		providerLabel: 'GitHub',
+	})
+	expect(hinted.headers.get(credentialClientHintHeaderName)).toBe(
+		'header X-Api-Key',
+	)
+	expect(hinted.headers.get('x-kody-provider-error')).toBe(
+		'GitHub rejected this credential (HTTP 401). This is a provider auth failure, not a Kody plan limit.',
+	)
+	expect(hinted.url).toBe('https://api.example.com/after')
+	expect(hinted.redirected).toBe(true)
+	expect(hinted.clone().url).toBe('https://api.example.com/after')
 })
