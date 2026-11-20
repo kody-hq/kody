@@ -172,14 +172,11 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		reconciledFor.current = key
 		void reconcile()
 	}, [liveDone, fork?.viewerInstall, fork?.listingId, org, reconcile])
-	useEffect(() => {
-		if (
-			liveDone ||
-			fork?.viewerInstall ||
-			liveForkState?.state === 'in_progress'
-		)
-			setHoldForkRetry(false)
-	}, [liveDone, fork?.viewerInstall, liveForkState?.state])
+	if (
+		holdForkRetry &&
+		(liveDone || fork?.viewerInstall || liveForkState?.state === 'in_progress')
+	)
+		setHoldForkRetry(false)
 	const existingFork =
 		fork?.viewerInstall || !liveDone
 			? null
