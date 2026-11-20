@@ -376,7 +376,7 @@ test('failed legacy deletion records the specific cleanup errors without ids', a
 	const { AccountDeletionCleanupError } =
 		await import('#app/account-deletion.ts')
 	finishLegacyUserDeletion.mockImplementationOnce(async () => {
-		throw new AccountDeletionCleanupError(
+		throw AccountDeletionCleanupError.fromWarnings(
 			[
 				'Artifact repo delete failed for u-7f3a9c21e5-pkg-src: Repository not found',
 				'KV delete failed for bundle-artifact:v1:src-8812abc: timeout',

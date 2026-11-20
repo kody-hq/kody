@@ -12,6 +12,9 @@ export function promiseDouble<I extends object, A>(
 	return (input: Omit<I, 'env'>) =>
 		Effect.gen(function* () {
 			const env = yield* WorkerEnv
+			// A test double's rejection passes through as-is so tagged errors keep
+			// their `_tag` and class for the code under test.
+			// @effect-diagnostics-next-line unknownInEffectCatch:off
 			return yield* Effect.tryPromise({
 				try: () => double({ ...input, env } as I & { env: Env }),
 				catch: (error) => error,

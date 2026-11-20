@@ -33,7 +33,13 @@ function toTaggedStripeError(error: unknown) {
 			stripeMessage: error.stripeMessage,
 		})
 	}
-	return error
+	// A plain rejection from a test double reads like any other Stripe failure.
+	return new StripeApiError({
+		message: error instanceof Error ? error.message : String(error),
+		status: 500,
+		code: null,
+		stripeMessage: null,
+	})
 }
 
 /**

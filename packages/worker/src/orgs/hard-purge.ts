@@ -44,8 +44,10 @@ export class PersonalOrgHardPurgeBlockedForLiveUserError extends Schema.TaggedEr
 	'PersonalOrgHardPurgeBlockedForLiveUserError',
 	{ message: Schema.String },
 ) {
-	constructor(orgId: OwnerId) {
-		super({ message: `personal_org_hard_purge_blocked_live_user:${orgId}` })
+	static forOrg(orgId: OwnerId) {
+		return new PersonalOrgHardPurgeBlockedForLiveUserError({
+			message: `personal_org_hard_purge_blocked_live_user:${orgId}`,
+		})
 	}
 }
 
@@ -53,8 +55,10 @@ export class PersonalOrgPurgesWithPersonError extends Schema.TaggedError<Persona
 	'PersonalOrgPurgesWithPersonError',
 	{ message: Schema.String },
 ) {
-	constructor(orgId: OwnerId) {
-		super({ message: `personal_org_purges_with_person:${orgId}` })
+	static forOrg(orgId: OwnerId) {
+		return new PersonalOrgPurgesWithPersonError({
+			message: `personal_org_purges_with_person:${orgId}`,
+		})
 	}
 }
 
@@ -62,8 +66,8 @@ export class LegacyUserDeletionNotPendingError extends Schema.TaggedError<Legacy
 	'LegacyUserDeletionNotPendingError',
 	{ message: Schema.String },
 ) {
-	constructor(stableUserId: OwnerId, reason: string) {
-		super({
+	static forUser(stableUserId: OwnerId, reason: string) {
+		return new LegacyUserDeletionNotPendingError({
 			message: `legacy_user_deletion_not_pending:${reason}:${stableUserId}`,
 		})
 	}
@@ -191,10 +195,10 @@ export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(
 		yield* Effect.annotateCurrentSpan('kody.org_id', orgId)
 		const relation = yield* personalOrgHardPurgeRelation(orgId)
 		if (relation === 'live_person') {
-			return yield* new PersonalOrgHardPurgeBlockedForLiveUserError(orgId)
+			return yield* PersonalOrgHardPurgeBlockedForLiveUserError.forOrg(orgId)
 		}
 		if (relation === 'soft_deleted_person') {
-			return yield* new PersonalOrgPurgesWithPersonError(orgId)
+			return yield* PersonalOrgPurgesWithPersonError.forOrg(orgId)
 		}
 		yield* wipeOrgPinnedConnections(orgId)
 		yield* purgeOwnerOutOfBandSurfacesEffect({ ownerId: orgId })
@@ -337,20 +341,20 @@ export const finishLegacyUserDeletionEffect = Effect.fn(
 	if (Option.isNone(found)) return { alreadyGone: true }
 	const row = found.value
 	if (row.stable_user_id !== input.stableUserId) {
-		return yield* new LegacyUserDeletionNotPendingError(
+		return yield* LegacyUserDeletionNotPendingError.forUser(
 			input.stableUserId,
 			'id_mismatch',
 		)
 	}
 	if (row.deleted_at) {
 		// Soft-deleted rows belong to the regular purge lane and its window.
-		return yield* new LegacyUserDeletionNotPendingError(
+		return yield* LegacyUserDeletionNotPendingError.forUser(
 			input.stableUserId,
 			'soft_deleted',
 		)
 	}
 	if (!row.deleting_at) {
-		return yield* new LegacyUserDeletionNotPendingError(
+		return yield* LegacyUserDeletionNotPendingError.forUser(
 			input.stableUserId,
 			'live',
 		)

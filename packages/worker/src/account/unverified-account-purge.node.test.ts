@@ -391,7 +391,7 @@ test('a failed deletion is audited with a bounded reason, reported per account, 
 	const inventoryWarnings = ['simulated inventory', 'second inventory warning']
 	const inventoryError = 'AccountDeletionInventoryError: simulated inventory'
 	deleteUserAccount.mockImplementationOnce(async () => {
-		throw new AccountDeletionInventoryError(inventoryWarnings)
+		throw AccountDeletionInventoryError.fromWarnings(inventoryWarnings)
 	})
 
 	const result = await h.run()
@@ -441,7 +441,7 @@ test('failure details redact email addresses before they reach outcomes, audit r
 		email: 'leaky.person+tag@example.com',
 	})
 	deleteUserAccount.mockImplementationOnce(async () => {
-		throw new AccountDeletionInventoryError([
+		throw AccountDeletionInventoryError.fromWarnings([
 			`Failed to enumerate Stripe customer id: no customer for ${leaky.email}`,
 			`Failed to enumerate MCP servers: owner ${leaky.email} unreachable`,
 		])
@@ -478,7 +478,7 @@ test('a Stripe cancellation failure is a pre-cleanup failure: fence released, ac
 	const stripeWarning =
 		'Stripe subscription sub_1 could not be canceled: Stripe API request failed with HTTP 503.'
 	deleteUserAccount.mockImplementationOnce(async () => {
-		throw new AccountDeletionBillingError([stripeWarning])
+		throw AccountDeletionBillingError.fromWarnings([stripeWarning])
 	})
 
 	expect(await h.run()).toEqual(
@@ -504,7 +504,7 @@ test('a failed failure-audit write is logged and does not stop the rest of the b
 	const failing = await h.seed('failing-audit-down', 12)
 	const purgedUser = await h.seed('purged-after-audit-down', 11)
 	deleteUserAccount.mockImplementationOnce(async () => {
-		throw new AccountDeletionInventoryError(['simulated inventory'])
+		throw AccountDeletionInventoryError.fromWarnings(['simulated inventory'])
 	})
 	logAuditEvent.mockRejectedValueOnce(new Error('audit db down'))
 
@@ -525,7 +525,7 @@ test('a failed fence release is logged and does not stop the rest of the batch',
 	const stuck = await h.seed('stuck-fence', 12)
 	const afterStuck = await h.seed('purged-after-stuck', 11)
 	deleteUserAccount.mockImplementationOnce(async () => {
-		throw new AccountDeletionInventoryError(['simulated inventory'])
+		throw AccountDeletionInventoryError.fromWarnings(['simulated inventory'])
 	})
 	abortAccountDeleting.mockImplementationOnce(async () => {
 		throw new Error('simulated release failure')
@@ -594,7 +594,7 @@ test('a cleanup error keeps a claim-created fence so the damaged account retries
 	const h = createHarness()
 	const damaged = await h.seed('cleanup-fail', 8)
 	deleteUserAccount.mockImplementationOnce(async () => {
-		throw new AccountDeletionCleanupError(['simulated cleanup'], {
+		throw AccountDeletionCleanupError.fromWarnings(['simulated cleanup'], {
 			deletedRowCounts: {},
 			updatedRowCounts: {},
 			deletedKvKeys: 0,

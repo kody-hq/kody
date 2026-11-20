@@ -57,9 +57,7 @@ const StringRecord = Schema.Record(Schema.String, Schema.String)
  * `undefined`), matching the shapes the billing helpers take.
  */
 const omittable = <S extends Schema.Top>(schema: S) =>
-	Schema.UndefinedOr(schema).pipe(
-		Schema.withDecodingDefaultKey(Effect.succeed(undefined)),
-	)
+	Schema.UndefinedOr(schema).pipe(Schema.withDecodingDefaultKey(Effect.void))
 
 const StripeErrorBody = Schema.Struct({
 	error: Schema.Struct({

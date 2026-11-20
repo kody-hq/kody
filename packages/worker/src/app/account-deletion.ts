@@ -178,8 +178,8 @@ export class AccountDeletionInventoryError extends Schema.TaggedError<AccountDel
 		inventoryErrors: Schema.Array(Schema.String),
 	},
 ) {
-	constructor(inventoryErrors: ReadonlyArray<string>) {
-		super({
+	static fromWarnings(inventoryErrors: ReadonlyArray<string>) {
+		return new AccountDeletionInventoryError({
 			message: 'Account deletion inventory could not be collected safely.',
 			inventoryErrors: [...inventoryErrors],
 		})
@@ -199,8 +199,8 @@ export class AccountDeletionBillingError extends Schema.TaggedError<AccountDelet
 		billingErrors: Schema.Array(Schema.String),
 	},
 ) {
-	constructor(billingErrors: ReadonlyArray<string>) {
-		super({
+	static fromWarnings(billingErrors: ReadonlyArray<string>) {
+		return new AccountDeletionBillingError({
 			message:
 				'Account deletion could not refund or cancel the active Stripe subscription.',
 			billingErrors: [...billingErrors],
@@ -216,11 +216,11 @@ export class AccountDeletionCleanupError extends Schema.TaggedError<AccountDelet
 		partialResult: AccountDeletionResultValue,
 	},
 ) {
-	constructor(
+	static fromWarnings(
 		cleanupErrors: ReadonlyArray<string>,
 		partialResult: AccountDeletionResult,
 	) {
-		super({
+		return new AccountDeletionCleanupError({
 			message: 'Account deletion cleanup could not complete safely.',
 			cleanupErrors: [...cleanupErrors],
 			partialResult,
@@ -228,7 +228,7 @@ export class AccountDeletionCleanupError extends Schema.TaggedError<AccountDelet
 	}
 
 	static fromResult(result: AccountDeletionResult) {
-		return new AccountDeletionCleanupError(result.warnings, result)
+		return AccountDeletionCleanupError.fromWarnings(result.warnings, result)
 	}
 }
 
@@ -662,7 +662,7 @@ const collectUserDeletionInventory = Effect.fn(
 		[],
 	)
 	if (inventoryErrors.length > 0) {
-		return yield* new AccountDeletionInventoryError(inventoryErrors)
+		return yield* AccountDeletionInventoryError.fromWarnings(inventoryErrors)
 	}
 	yield* Effect.logInfo('account deletion inventory collected', {
 		vectorIds: vectorIds.length,
@@ -918,11 +918,10 @@ const cancelActiveStripeSubscriptions = Effect.fn(
 	const subscriptions = yield* stripe
 		.listSubscriptions(input.customerId)
 		.pipe(
-			Effect.mapError(
-				(error) =>
-					new AccountDeletionBillingError([
-						`Stripe subscriptions could not be listed: ${error.message}`,
-					]),
+			Effect.mapError((error) =>
+				AccountDeletionBillingError.fromWarnings([
+					`Stripe subscriptions could not be listed: ${error.message}`,
+				]),
 			),
 		)
 	// Shared Stripe account: only cancel Kody subscriptions. Never touch
@@ -943,12 +942,11 @@ const cancelActiveStripeSubscriptions = Effect.fn(
 				email: input.email,
 				nowSeconds,
 			}).pipe(
-				Effect.mapError(
-					(error) =>
-						new AccountDeletionBillingError([
-							...failures,
-							`Stripe subscription ${subscription.id} unused time could not be refunded: ${error.message}`,
-						]),
+				Effect.mapError((error) =>
+					AccountDeletionBillingError.fromWarnings([
+						...failures,
+						`Stripe subscription ${subscription.id} unused time could not be refunded: ${error.message}`,
+					]),
 				),
 			)
 			if (Option.isSome(refunded)) {
@@ -982,16 +980,15 @@ const cancelActiveStripeSubscriptions = Effect.fn(
 			.listSubscriptions(input.customerId)
 			.pipe(
 				Effect.map((listed) => listed.filter(billableKody)),
-				Effect.mapError(
-					(error) =>
-						new AccountDeletionBillingError([
-							...failures,
-							`Stripe subscriptions could not be re-verified: ${error.message}`,
-						]),
+				Effect.mapError((error) =>
+					AccountDeletionBillingError.fromWarnings([
+						...failures,
+						`Stripe subscriptions could not be re-verified: ${error.message}`,
+					]),
 				),
 			)
 		if (stillBillable.length > 0) {
-			return yield* new AccountDeletionBillingError(failures)
+			return yield* AccountDeletionBillingError.fromWarnings(failures)
 		}
 		canceled = billable.length
 	}
