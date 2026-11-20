@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
 import { colors } from '#universal/styles/tokens.ts'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useExternalInstanceSync } from '../../lib/primitives.ts'
 import scripts from 'virtual:kody-office-viewers'
 function OfficeViewer({
 	kind,
@@ -58,7 +59,7 @@ function OfficeViewer({
 			window.removeEventListener('message', handle)
 		}
 	}, [])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		const controller = new AbortController()
 		void fetch(src, { signal: controller.signal })
 			.then((response) => {

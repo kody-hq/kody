@@ -21,12 +21,12 @@ import {
 	useCallback,
 	useId,
 	useRef,
-	useLayoutEffect,
 	useMemo,
 	useState,
 	type ReactNode,
 	type MouseEvent,
 } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	colors,
@@ -524,7 +524,7 @@ export function RecordTable(props: RecordTableProps) {
 					rowIndex: item.index,
 				}))
 			: rows.map((row, rowIndex) => ({ row, rowIndex }))
-		useLayoutEffect(() => {
+		useLayoutMeasure(() => {
 			if (!pendingFocus.current) return
 			const link = scrollElement.current?.querySelector<HTMLElement>(
 				`[data-browser-item="${CSS.escape(pendingFocus.current)}"]`,
@@ -533,7 +533,7 @@ export function RecordTable(props: RecordTableProps) {
 				pendingFocus.current = null
 				link.focus({ preventScroll: true })
 			}
-		})
+		}, [renderedRows])
 
 		const selectedId = resolved.selectedId
 		const hasSelection = Boolean(props.dataControls?.selection)

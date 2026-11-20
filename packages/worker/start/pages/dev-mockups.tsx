@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { SiteHeader } from '../components/site-header.tsx'
 import { SiteFooter } from '../components/site-footer.tsx'
 import { TextLink } from '../components/text-link.tsx'
@@ -126,7 +127,7 @@ export function DevMockupPage({
 	const { loaded, error } = useMockups([name])
 	const wantedRail = loaded?.[0]?.mockup.rail
 	const railPending = Boolean(onRail && wantedRail && wantedRail !== rail)
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (railPending && wantedRail) onRail?.(wantedRail)
 	}, [railPending, wantedRail, onRail])
 	if (error)

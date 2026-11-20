@@ -3,16 +3,18 @@ import {
 	lazy,
 	Suspense,
 	useCallback,
-	useEffect,
 	useEffectEvent,
-	useLayoutEffect,
 	type RefObject,
 	useRef,
 	useState,
 	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
-import { useLayoutMeasure } from '../lib/primitives.ts'
+import {
+	useExternalInstanceSync,
+	useLayoutMeasure,
+	useResourceLifetime,
+} from '../lib/primitives.ts'
 import { useNow } from '../lib/use-now.ts'
 import { FileAnchorContext } from './file-anchor-context.ts'
 import * as Y from 'yjs'
@@ -114,7 +116,7 @@ function CollaborationView({
 	...props
 }: Parameters<typeof CollaborativeFileView>[0] & { client: FileRoomClient }) {
 	const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null)
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		setToolbarHost(props.toolbarRef.current)
 	}, [props.toolbarRef])
 	const state = useSyncExternalStore(
@@ -125,7 +127,7 @@ function CollaborationView({
 	const refreshedVersion = useRef(props.revisionId)
 	const snapshotRevisionId = state.snapshot?.revisionId
 	const { revisionId: propsRevisionId, onVersionChange } = props
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (
 			snapshotRevisionId &&
 			snapshotRevisionId !== propsRevisionId &&
@@ -228,7 +230,7 @@ function CollaborationView({
 			preventDefault: false,
 		},
 	)
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const update = () => {
 			try {
 				setContent(collaborativeContent(client.doc, props.mediaType))
@@ -344,8 +346,8 @@ function CollaborationView({
 			.sort()
 			.join(',') ?? ''
 	const lastRead = useRef('')
-	useEffect(() => {
-		if (!open || !active || !unreadActive) return
+	useResourceLifetime(() => {
+		if (!open || !active || !unreadActive) return () => {}
 		const read = () => {
 			if (!document.hasFocus() || document.visibilityState !== 'visible') return
 			const key = `${active}:${unreadActive}`

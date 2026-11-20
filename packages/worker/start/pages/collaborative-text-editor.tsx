@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useLayoutMeasure } from '../lib/primitives.ts'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useExternalInstanceSync, useLayoutMeasure } from '../lib/primitives.ts'
+import { useCallback, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import type {
 	CommentAnchor,
@@ -126,7 +126,7 @@ export function CollaborativeTextEditor({
 		enabled: !!onComment && !!selectedAnchor,
 		meta: { name: 'Comment on selected text' },
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (!selectedRange || !selectedAnchor) {
 			setCommentRect(null)
 			return
@@ -144,6 +144,7 @@ export function CollaborativeTextEditor({
 			window.removeEventListener('scroll', update, true)
 			window.removeEventListener('resize', update)
 		}
+		// oxlint-disable-next-line react/exhaustive-deps -- a new width repositions the comment anchors
 	}, [selectedRange, selectedAnchor, width])
 	const inputRef = useCallback((element: HTMLTextAreaElement | null) => {
 		input.current = element

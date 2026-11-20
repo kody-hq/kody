@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import peleScriptUrl from 'pele/global?url'
 
 function diagramDocument(nonce: string, origin: string, scriptUrl: string) {
@@ -76,7 +77,7 @@ export default function WorkspaceMermaid({ source }: { source: string }) {
 			window.removeEventListener('message', resize)
 		}
 	}, [])
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const timer = window.setTimeout(sendSource, 250)
 		return () => window.clearTimeout(timer)
 	}, [sendSource])

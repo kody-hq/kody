@@ -3,7 +3,6 @@ import { Button } from '../components/button.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import type { CSSObject } from '@emotion/react'
 import {
-	useEffect,
 	useState,
 	useRef,
 	useCallback,
@@ -11,6 +10,7 @@ import {
 	useSyncExternalStore,
 	type CSSProperties,
 } from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { useRouter } from '@tanstack/react-router'
 import type { OnboardingPayload } from '#universal/onboarding-types.ts'
 import {
@@ -155,12 +155,12 @@ export function OnboardingRoute({
 		setPreviousSelectedAgent(selectedAgent)
 		setRememberedAgent(selectedAgent)
 	}
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (activeStep === 1 && selectedAgent) {
 			rememberOnboardingSelectedAgent(selectedAgent)
 		}
 	}, [activeStep, selectedAgent])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (activeStep === 3 && selectedAgent && !visibleSelectedAgent)
 			void router.navigate({
 				to: onboardingSecondAgentHref(null, search),
@@ -198,7 +198,7 @@ export function OnboardingRoute({
 		username: payload.username,
 		connected: payload.hasMcpClient,
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		const previous = previousConnection.current
 		previousConnection.current = {
 			username: payload.username,

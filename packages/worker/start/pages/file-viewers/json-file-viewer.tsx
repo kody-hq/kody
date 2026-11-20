@@ -2,15 +2,12 @@
 import { FileAnchorContext } from '../file-anchor-context.ts'
 import { FileAnchorMarker } from '../file-anchor-markers.tsx'
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
+import { useContext, useEffectEvent, useMemo, useRef, useState } from 'react'
 import {
-	useContext,
-	useEffect,
-	useEffectEvent,
-	useMemo,
-	useRef,
-	useState,
-} from 'react'
-import { useLayoutMeasure, useResourceLifetime } from '../../lib/primitives.ts'
+	useExternalInstanceSync,
+	useLayoutMeasure,
+	useResourceLifetime,
+} from '../../lib/primitives.ts'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import type {
 	JsonLine,
@@ -256,8 +253,9 @@ export default function JsonFileViewer({
 		else revealAfter.current = pointer
 		revealed.current = selected.id
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		revealPointer()
+		// oxlint-disable-next-line react/exhaustive-deps -- a new pointer or rendered range reveals the target
 	}, [pointer, selected?.id, root, children, pending])
 
 	if (error)

@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset, publicAssetSrcSet } from '../public-assets.ts'
-import { useEffect, useEffectEvent, useRef, type CSSProperties } from 'react'
+import { useEffectEvent, useRef, type CSSProperties } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import {
 	attachLanternOrbMotion,
 	lanternOrbReleaseEvent,
@@ -56,8 +57,8 @@ export function LandingLantern(props: LandingLanternProps) {
 		const orb = landingLanternOrbs.find((orb) => orb.id === id)
 		if (orb) leave(orb.id)
 	})
-	useEffect(() => {
-		if (!node.current) return
+	useResourceLifetime(() => {
+		if (!node.current) return () => {}
 		const controller = new AbortController()
 		attachLanternOrbMotion(node.current, controller.signal)
 		node.current.addEventListener(lanternOrbReleaseEvent, release, {

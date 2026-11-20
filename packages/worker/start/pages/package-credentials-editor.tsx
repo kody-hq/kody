@@ -4,7 +4,8 @@ import { isRedirect } from '@tanstack/react-router'
 import { postPackageCredentialChanges } from '../package-credential-changes.ts'
 import { TextLink } from '../components/text-link.tsx'
 
-import { type ReactNode, useState, useRef, useEffect } from 'react'
+import { type ReactNode, useState, useRef } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import type {
@@ -91,7 +92,7 @@ export function usePackageMappingEditor(
 ) {
 	const [open, setOpen] = useState<OpenEditor | null>(null)
 	const session = useRef(0)
-	useEffect(
+	useResourceLifetime(
 		() => () => {
 			session.current += 1
 		},

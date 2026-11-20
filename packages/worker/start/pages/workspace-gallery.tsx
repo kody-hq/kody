@@ -1,11 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import {
-	useCallback,
-	useLayoutEffect,
-	useRef,
-	useState,
-	type ReactNode,
-} from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import type { FileMetadata } from '#universal/files.ts'
 import { workspaceDirectoryMediaType } from '#universal/workspace-page.ts'
@@ -76,7 +71,7 @@ export function WorkspaceGallery({
 		[selectedIndex, virtual],
 	)
 
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		if (!pendingFocus.current) return
 		const item = strip.current?.querySelector<HTMLElement>(
 			`[data-browser-item="${CSS.escape(pendingFocus.current)}"]`,
@@ -85,7 +80,7 @@ export function WorkspaceGallery({
 			pendingFocus.current = null
 			item.focus({ preventScroll: true })
 		}
-	})
+	}, [selectedId, files])
 	function select(file: FileMetadata) {
 		if (requestedSelection.current === file.id) return
 		requestedSelection.current = file.id
