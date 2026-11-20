@@ -30,7 +30,10 @@ import {
 } from '#worker/orgs/purge-failure-details.ts'
 import { type Clock, systemClock } from '#worker/scheduled/retention/clock.ts'
 import { startPassBudget } from '#worker/scheduled/retention/budget.ts'
-import { runClaimed } from '#worker/scheduled/retention/claim.ts'
+import {
+	type ClaimOutcome,
+	runClaimed,
+} from '#worker/scheduled/retention/claim.ts'
 import {
 	d1All,
 	d1Run,
@@ -413,50 +416,44 @@ function purgeOneCandidate(input: {
 				ageDays: candidate.ageDays,
 				...(candidate.legacy ? { legacy: true as const } : {}),
 			}
-			let claimError: { error: unknown } | null = null
-			const outcome = await runClaimed({
-				acquire: async () => {
-					try {
-						return (await claimCandidate(
-							input.ctx,
-							lane,
-							candidate.id,
-							input.stamp,
-						))
+			const failed = async (error: unknown) => {
+				span.setAttribute('retention.outcome', 'failed')
+				return {
+					...base,
+					outcome: 'failed' as const,
+					error: await recordCandidateFailure({
+						env: input.env,
+						candidate,
+						error,
+						nowIso: input.stamp.nowIso,
+					}),
+				}
+			}
+			let outcome: ClaimOutcome<void>
+			try {
+				outcome = await runClaimed({
+					acquire: async () =>
+						(await claimCandidate(input.ctx, lane, candidate.id, input.stamp))
 							? candidate
-							: null
-					} catch (error) {
-						claimError = { error }
-						return null
-					}
-				},
-				body: () => hardPurgeCandidate(input.env, lane, candidate),
-				// The restamped `deleting_at` is the 6 hour retry fence.
-				onFailure: () => 'keep',
-				release: async () => {},
-			})
-			const failure: { error: unknown } | null =
-				outcome.status === 'failed' ? { error: outcome.error } : claimError
-			span.setAttribute(
-				'retention.outcome',
-				failure ? 'failed' : outcome.status,
-			)
-			if (failure) {
-				const error = await recordCandidateFailure({
-					env: input.env,
-					candidate,
-					error: failure.error,
-					nowIso: input.stamp.nowIso,
+							: null,
+					body: () => hardPurgeCandidate(input.env, lane, candidate),
+					// The restamped `deleting_at` is the 6 hour retry fence.
+					onFailure: () => 'keep',
+					release: async () => {},
 				})
-				return { ...base, outcome: 'failed', error }
+			} catch (claimError) {
+				// The claim write itself failed, so no fence was stamped.
+				return failed(claimError)
 			}
 			switch (outcome.status) {
 				case 'not_claimed':
+					span.setAttribute('retention.outcome', 'skipped_claim')
 					return { ...base, outcome: 'skipped_claim' }
 				case 'completed':
+					span.setAttribute('retention.outcome', 'purged')
 					return { ...base, outcome: 'purged' }
 				case 'failed':
-					throw new Error('unreachable: failed outcome handled above')
+					return failed(outcome.error)
 				default:
 					return assertNever(outcome)
 			}

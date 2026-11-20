@@ -28,27 +28,23 @@ export async function runClaimed<C, T>(input: {
 }): Promise<ClaimOutcome<T>> {
 	const claim = await input.acquire()
 	if (claim === null) return { status: 'not_claimed' }
-	let settled: ClaimOutcome<T> | null = null
 	try {
 		const value = await input.body(claim)
-		settled = { status: 'completed', value, disposition: 'consumed' }
-		return settled
+		return { status: 'completed', value, disposition: 'consumed' }
 	} catch (error) {
 		if (input.onFailure(claim, error) === 'keep') {
-			settled = { status: 'failed', error, disposition: 'kept' }
-			return settled
+			return { status: 'failed', error, disposition: 'kept' }
 		}
 		try {
 			await input.release(claim)
-			settled = { status: 'failed', error, disposition: 'released' }
+			return { status: 'failed', error, disposition: 'released' }
 		} catch (releaseError) {
-			settled = {
+			return {
 				status: 'failed',
 				error,
 				disposition: 'release_failed',
 				releaseError,
 			}
 		}
-		return settled
 	}
 }
