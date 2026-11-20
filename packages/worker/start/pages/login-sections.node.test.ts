@@ -21,7 +21,6 @@ test.each([true, false])(
 				usernameConfirming: false,
 				onSignupUsernameInput: vi.fn(),
 				onSignupEmailInput: vi.fn(),
-				onUsernameAvailabilityChange: vi.fn(),
 				submitLabel: 'Continue',
 				submitBusyLabel: 'Working',
 				onSubmit: vi.fn(),

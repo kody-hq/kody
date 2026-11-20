@@ -1,11 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useEffect, useId, useRef, type ChangeEvent } from 'react'
-import { useActor } from '@xstate/react'
-import {
-	usernameAvailabilityState,
-	type UsernameAvailabilityView as AvailabilityView,
-} from '#client/routes/username-availability-state.ts'
+import { useId, useRef, type ChangeEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import type { UsernameAvailabilityView as AvailabilityView } from '#client/routes/username-availability-state.ts'
 import { useServerFn } from '@tanstack/react-start'
 import {
 	handleFormatHint,
@@ -19,6 +15,7 @@ import {
 } from '@kody-internal/shared/handle-permanence.ts'
 import { permanentHandleInputProps } from '#client/handle-field.ts'
 import { checkWebsiteUsernameAvailability } from '#start/server/auth-mutations'
+import { waitForDebounce } from '#client/verified-handle-suggestion.ts'
 import {
 	colors,
 	radius,
@@ -49,10 +46,110 @@ export type UsernameChoiceSeeds = {
 const availabilityDebounceMs = 300
 const visibleSuggestionLimit = 2
 
+const unknownAvailabilityReason =
+	"Couldn't check availability. We'll verify on submit."
+
+function unknownAvailability(
+	username: string,
+	reason = unknownAvailabilityReason,
+): UsernameAvailabilityView {
+	return { status: 'unknown', username, reason, suggestions: [] }
+}
+
+function availabilityFromResponse(
+	trimmed: string,
+	result: unknown,
+): UsernameAvailabilityView {
+	const response =
+		result && typeof result === 'object'
+			? (result as Record<string, unknown>)
+			: null
+	if (!response || response.ok !== true)
+		return unknownAvailability(
+			trimmed.toLowerCase(),
+			typeof response?.error === 'string'
+				? response.error
+				: unknownAvailabilityReason,
+		)
+	const status = response.status
+	const username =
+		typeof response.username === 'string'
+			? response.username
+			: trimmed.toLowerCase()
+	if (
+		status !== 'available' &&
+		status !== 'taken' &&
+		status !== 'reserved' &&
+		status !== 'invalid'
+	)
+		return unknownAvailability(username)
+	return {
+		status,
+		username,
+		reason:
+			typeof response.reason === 'string' || response.reason === null
+				? response.reason
+				: null,
+		suggestions: Array.isArray(response.suggestions)
+			? response.suggestions.filter(
+					(value): value is string => typeof value === 'string',
+				)
+			: [],
+	}
+}
+
+/**
+ * Live availability for a username draft: idle when empty, invalid on a
+ * format problem, otherwise a debounced server check. Fields and forms that
+ * pass the same value and seeds share one check.
+ */
+export function useUsernameAvailability(
+	value: string,
+	seeds?: UsernameChoiceSeeds,
+): UsernameAvailabilityView {
+	const checkAvailability = useServerFn(checkWebsiteUsernameAvailability)
+	const trimmed = value.trim()
+	const formatError = trimmed ? getHandleFormatProblem(trimmed)?.message : null
+	const data = {
+		username: trimmed,
+		email: seeds?.email ?? null,
+		providerUsername: seeds?.providerUsername ?? null,
+		displayName: seeds?.displayName ?? null,
+	}
+	const query = useQuery({
+		queryKey: ['username-availability', data],
+		queryFn: async ({ signal }) => {
+			await waitForDebounce(availabilityDebounceMs, signal)
+			try {
+				return availabilityFromResponse(
+					trimmed,
+					await checkAvailability({ signal, data }),
+				)
+			} catch (error) {
+				if (signal.aborted) throw error
+				return unknownAvailability(trimmed.toLowerCase())
+			}
+		},
+		enabled: Boolean(trimmed) && !formatError,
+		staleTime: 0,
+		gcTime: 0,
+		retry: false,
+		refetchOnWindowFocus: false,
+	})
+	if (!trimmed) return { status: 'idle' }
+	if (formatError)
+		return {
+			status: 'invalid',
+			username: trimmed.toLowerCase(),
+			reason: formatError,
+			suggestions: [],
+		}
+	return query.data && !query.isFetching ? query.data : { status: 'checking' }
+}
+
 export function UsernameChoiceField(props: {
 	value: string
 	onChange: (value: string) => void
-	onAvailabilityChange?: (view: UsernameAvailabilityView) => void
 	seeds?: UsernameChoiceSeeds
 	disabled?: boolean
 	autoFocus?: boolean
@@ -63,187 +160,13 @@ export function UsernameChoiceField(props: {
 	/** When true, show the confirm-step permanence restatement under the field. */
 	confirming?: boolean
 }) {
-	const checkAvailability = useServerFn(checkWebsiteUsernameAvailability)
 	const generatedId = useId()
 	const inputId = props.inputId ?? `${generatedId}-username`
 	const idPrefix = props.inputId ?? generatedId
 	const tipId = `${idPrefix}-username-tip`
 	const tipAnchor = `--${idPrefix.replace(/:/g, '')}-username-tip`
 	const availabilityId = `${idPrefix}-username-availability`
-	const [availabilitySnapshot, , availabilityActor] = useActor(
-		usernameAvailabilityState,
-	)
-	const availability = uiState<UsernameAvailabilityView>(availabilitySnapshot)
-	const setAvailability = useCallback(
-		(event: Parameters<typeof availabilityActor.send>[0]) =>
-			sendUiEvent(availabilityActor, event),
-		[availabilityActor],
-	)
-
-	const requestSeq = useRef(0)
-	const lifecycle = useRef<AbortController | null>(null)
-
-	useEffect(() => {
-		const controller = new AbortController()
-		lifecycle.current = controller
-		return () => controller.abort()
-	}, [])
-
-	const onAvailabilityChange = props.onAvailabilityChange
-	useEffect(() => {
-		onAvailabilityChange?.(availability)
-	}, [availability, onAvailabilityChange])
-
-	useEffect(() => {
-		const seq = ++requestSeq.current
-		const trimmed = props.value.trim()
-		if (!trimmed) {
-			setAvailability({
-				...({
-					type: 'EDIT',
-					data: uiContext({ status: 'idle' }).data,
-				} as Parameters<typeof availabilityActor.send>[0]),
-				requestId: seq,
-			})
-			return
-		}
-
-		const formatError = getHandleFormatProblem(trimmed)?.message
-		if (formatError) {
-			setAvailability({
-				...({
-					type: 'INVALID_DRAFT',
-					data: uiContext({
-						status: 'invalid',
-						username: trimmed.toLowerCase(),
-						reason: formatError,
-						suggestions: [],
-					}).data,
-				} as Parameters<typeof availabilityActor.send>[0]),
-				requestId: seq,
-			})
-			return
-		}
-
-		setAvailability({
-			...({
-				type: 'CHECK',
-				data: uiContext({ status: 'checking' }).data,
-			} as Parameters<typeof availabilityActor.send>[0]),
-			requestId: seq,
-		})
-		const timer = setTimeout(() => {
-			void (async () => {
-				try {
-					const result = await checkAvailability({
-						signal: lifecycle.current?.signal,
-						data: {
-							username: trimmed,
-							email: props.seeds?.email ?? null,
-							providerUsername: props.seeds?.providerUsername ?? null,
-							displayName: props.seeds?.displayName ?? null,
-						},
-					})
-					if (lifecycle.current?.signal.aborted) return
-					if (seq !== requestSeq.current) return
-					if (!result || result.ok !== true) {
-						setAvailability({
-							...({
-								type: 'RESPONSE_UNKNOWN',
-								data: uiContext({
-									status: 'unknown',
-									username: trimmed.toLowerCase(),
-									reason:
-										typeof result?.error === 'string'
-											? result.error
-											: "Couldn't check availability. We'll verify on submit.",
-									suggestions: [],
-								}).data,
-							} as Parameters<typeof availabilityActor.send>[0]),
-							requestId: seq,
-						})
-						return
-					}
-					const status = result.status
-					const username =
-						typeof result.username === 'string'
-							? result.username
-							: trimmed.toLowerCase()
-					if (
-						status !== 'available' &&
-						status !== 'taken' &&
-						status !== 'reserved' &&
-						status !== 'invalid'
-					) {
-						setAvailability({
-							...({
-								type: 'RESPONSE_UNKNOWN',
-								data: uiContext({
-									status: 'unknown',
-									username,
-									reason:
-										"Couldn't check availability. We'll verify on submit.",
-									suggestions: [],
-								}).data,
-							} as Parameters<typeof availabilityActor.send>[0]),
-							requestId: seq,
-						})
-						return
-					}
-					setAvailability({
-						...({
-							type:
-								status === 'available'
-									? 'RESPONSE_AVAILABLE'
-									: status === 'taken'
-										? 'RESPONSE_TAKEN'
-										: status === 'reserved'
-											? 'RESPONSE_RESERVED'
-											: 'RESPONSE_INVALID',
-							data: uiContext({
-								status,
-								username,
-								reason:
-									typeof result.reason === 'string' || result.reason === null
-										? result.reason
-										: null,
-								suggestions: Array.isArray(result.suggestions)
-									? result.suggestions.filter(
-											(value): value is string => typeof value === 'string',
-										)
-									: [],
-							}).data,
-						} as Parameters<typeof availabilityActor.send>[0]),
-						requestId: seq,
-					})
-				} catch {
-					if (lifecycle.current?.signal.aborted) return
-					if (seq !== requestSeq.current) return
-					setAvailability({
-						...({
-							type: 'RESPONSE_UNKNOWN',
-							data: uiContext({
-								status: 'unknown',
-								username: trimmed.toLowerCase(),
-								reason: "Couldn't check availability. We'll verify on submit.",
-								suggestions: [],
-							}).data,
-						} as Parameters<typeof availabilityActor.send>[0]),
-						requestId: seq,
-					})
-				}
-			})()
-		}, availabilityDebounceMs)
-
-		return () => clearTimeout(timer)
-	}, [
-		props.value,
-		props.seeds?.email,
-		props.seeds?.providerUsername,
-		props.seeds?.displayName,
-		checkAvailability,
-		setAvailability,
-	])
+	const availability = useUsernameAvailability(props.value, props.seeds)
 
 	const inputRef = useRef<HTMLInputElement>(null)
 	const formatProblem = props.value.trim()
