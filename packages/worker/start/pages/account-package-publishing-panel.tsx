@@ -114,7 +114,11 @@ export function PackagePublishingPanel(input: {
 			testId="package-publishing-panel"
 			headingId={headingId}
 			title="Public release"
-			description="Choose which version of this package is live."
+			description={
+				<span data-testid="package-public-release-intro">
+					Choose which version of this package is live.
+				</span>
+			}
 		>
 			<div css={css({ display: 'grid', gap: spacing.xs })}>
 				<p
