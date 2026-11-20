@@ -22,7 +22,11 @@ import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-me
 import {
 	durableObjectIsolateCpuResetMessage,
 	durableObjectIsolateMemoryResetMessage,
+	filterSentryEvent,
 } from '#worker/sentry-options.ts'
+import type { ErrorEvent } from '@sentry/cloudflare'
+import { isMcpCallerError } from '#mcp/caller-error.ts'
+import { buildArtifactsHeadChangedBeforePublishMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
 import { durablePublishWorkflowCode } from './durable-publish-result.ts'
 import {
 	DynamicCallableWorkflowBase,
@@ -727,6 +731,83 @@ test('a durable publish can still retry a deploy reset', async () => {
 	} finally {
 		invoke.mockReset()
 	}
+})
+
+function sentryEventFor(error: Error) {
+	const event = {
+		exception: { values: [{ type: error.name, value: error.message }] },
+	} as ErrorEvent
+	return filterSentryEvent(event, { originalException: error })
+}
+
+async function failDurablePublish(idempotencyKey: string, error: string) {
+	const { step, attempts } = createRetryingStep()
+	const { env, queued, created, run } = await queueWorkflow(
+		{
+			code: durablePublishWorkflowCode,
+			workflowName: 'packagePublishExternalPush',
+			runAt,
+			idempotencyKey,
+		},
+		{ packageId: 'pkg-1', kodyId: 'shade-automation', sourceId: 'source-1' },
+		{ step, publishedCommit: 'a'.repeat(40) },
+	)
+	const invoke = invocationMocks.runModuleWithRegistry
+	invoke.mockReset()
+	invoke.mockResolvedValue({ result: undefined, error, logs: [] })
+	try {
+		const failure = await run({
+			...(queued.params as object),
+			enqueuedCommit: 'a'.repeat(40),
+		}).catch((caught: unknown) => caught)
+		if (!(failure instanceof Error)) throw new Error('Expected a failure.')
+		const source = await env.APP_DB.prepare(
+			'SELECT external_check_until FROM entity_sources WHERE id = ?',
+		)
+			.bind('source-1')
+			.first<{ external_check_until: string | null }>()
+		return {
+			failure,
+			attempts: attempts.get('execute inline workflow code'),
+			run: findRun(created.id),
+			externalCheckUntil: source?.external_check_until ?? null,
+		}
+	} finally {
+		invoke.mockReset()
+	}
+}
+
+test('a durable publish that loses the HEAD race fails off Sentry and reopens reconcile', async () => {
+	runRecordMocks.resetProjections()
+	const race = buildArtifactsHeadChangedBeforePublishMessage(
+		'a'.repeat(40),
+		'b'.repeat(40),
+	)
+	const result = await failDurablePublish('publish-head-race', race)
+	expect(result.failure).toBeInstanceOf(NonRetryableError)
+	expect(isMcpCallerError(result.failure)).toBe(true)
+	expect(sentryEventFor(result.failure)).toBeNull()
+	expect(result.attempts).toBe(1)
+	expect(result.run).toMatchObject({
+		status: 'errored',
+		lastError: expect.stringContaining('Publish workflow: Publish applied:'),
+	})
+	expect(result.run?.lastError).toContain(race)
+	expect(result.externalCheckUntil).not.toBeNull()
+})
+
+test('an unrelated durable publish failure still reaches Sentry', async () => {
+	runRecordMocks.resetProjections()
+	const result = await failDurablePublish(
+		'publish-server-fault',
+		'Artifacts fetch failed with status 500.',
+	)
+	expect(isMcpCallerError(result.failure)).toBe(false)
+	expect(sentryEventFor(result.failure)).not.toBeNull()
+	expect(result.run?.lastError).toContain(
+		'Artifacts fetch failed with status 500.',
+	)
+	expect(result.externalCheckUntil).toBeNull()
 })
 
 test('a failed inline workflow run names the package and commit it ran for', async () => {

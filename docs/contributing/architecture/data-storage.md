@@ -1449,9 +1449,12 @@ For each pending source, reconcile resolves the Artifacts default-branch HEAD.
 When HEAD matches `published_commit`, it advances `last_external_check_at`
 without any Durable Object work; once the token horizon has passed, that final
 matching check also clears `external_check_until`. A successful explicit or
-reconcile publish clears the pending horizon immediately. Unresolvable or
-changed HEADs remain pending, and the RepoSession publish path is spun up only
-when HEAD differs.
+reconcile publish clears the pending horizon immediately. A durable publish that
+fails because a newer push or publish won the race reopens the horizon, so the
+next tick publishes the newest HEAD instead of waiting for the daily backstop.
+That race fails the run without retries as a caller error, so it keeps its
+`last_error` and stays off Sentry. Unresolvable or changed HEADs remain pending,
+and the RepoSession publish path is spun up only when HEAD differs.
 
 The reconcile loop is idempotent: if another caller publishes the same commit
 first, the publish path returns `already_published`. Check failures and
