@@ -3,17 +3,18 @@ import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
-import type { McpServerListItem } from './account-mcp-servers-shared.tsx'
 import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+	type McpServerListItem,
+	mcpCodeCss,
+	mcpDetailSectionCss,
+} from './account-mcp-servers-shared.tsx'
+import { accountActionsCss } from './account-management-components.tsx'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
+	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
 import { Input } from '../components/input.tsx'
 
@@ -49,25 +50,20 @@ export function McpServerOAuthClientSection({
 		<section
 			data-testid="mcp-server-oauth-client"
 			aria-labelledby={headingId}
-			css={{
-				display: 'grid',
-				gap: spacing.sm,
-				padding: spacing.md,
-				borderRadius: radius.md,
-				border: `1px solid ${colors.border}`,
-				backgroundColor: colors.background,
-			}}
+			css={mcpDetailSectionCss}
 		>
 			<div css={{ display: 'grid', gap: spacing.xs }}>
-				<h3 id={headingId} css={{ ...fieldLabelCss, margin: 0 }}>
-					OAuth client <span css={{ color: colors.textMuted }}>(optional)</span>
+				<h3 id={headingId} css={sectionTitleCss}>
+					OAuth client{' '}
+					<span css={{ color: colors.textMuted, fontWeight: 400 }}>
+						(optional)
+					</span>
 				</h3>
-				<p css={{ ...descriptionCss, margin: 0 }}>
-					Kody registers itself with most authorization servers on its own. Add
-					a client ID and secret only when the server supports neither Client ID
-					Metadata Documents nor dynamic client registration (for example
-					GitHub), or when you must use a client you registered. Set its
-					redirect URI to the OAuth redirect URI shown above.
+				<p css={{ ...descriptionCss, fontSize: typography.fontSize.sm }}>
+					Kody registers itself with most servers. Add a client only when the
+					server supports neither Client ID Metadata Documents nor dynamic
+					client registration (for example GitHub), or when you must use your
+					own. Set its redirect URI to the OAuth redirect URI above.
 				</p>
 			</div>
 			{configured ? (
@@ -83,15 +79,14 @@ export function McpServerOAuthClientSection({
 						}}
 					>
 						<strong>Configured.</strong> Client ID{' '}
-						<code css={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
-							{server.oauthClientId}
-						</code>
-						. The secret is stored sealed and is not shown again.
+						<code css={mcpCodeCss}>{server.oauthClientId}</code>. The secret is
+						stored sealed and is not shown again.
 					</p>
 					{!editing ? (
-						<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+						<div css={accountActionsCss}>
 							<Button
 								type="button"
+								mobileFullWidth
 								disabled={isMutating}
 								variant="secondary"
 								onClick={() => {
@@ -105,6 +100,7 @@ export function McpServerOAuthClientSection({
 							</Button>
 							<Button
 								type="button"
+								mobileFullWidth
 								disabled={isMutating}
 								variant="danger"
 								onBlur={() => setRemoveArmed(false)}
@@ -165,9 +161,10 @@ export function McpServerOAuthClientSection({
 							onChange={(event) => setClientSecret(event.currentTarget.value)}
 						/>
 					</div>
-					<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+					<div css={accountActionsCss}>
 						<Button
 							type="submit"
+							mobileFullWidth
 							disabled={isMutating || !clientId.trim() || !clientSecret.trim()}
 							variant="primary"
 						>
@@ -180,6 +177,7 @@ export function McpServerOAuthClientSection({
 						{editing ? (
 							<Button
 								type="button"
+								mobileFullWidth
 								disabled={isMutating}
 								variant="secondary"
 								onClick={reset}

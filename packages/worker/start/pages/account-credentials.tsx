@@ -362,6 +362,7 @@ export function AccountCredentialsRoute({
 
 			<RecordTable
 				mode="expand"
+				stackWhenNarrow
 				ariaLabel="Credentials"
 				selectedId={selectedItem ? selectedItem.id : null}
 				recordLoading={false}

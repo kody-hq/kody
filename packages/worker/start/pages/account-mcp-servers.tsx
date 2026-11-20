@@ -18,7 +18,8 @@ import {
 	setMcpServerOAuthClient,
 	removeMcpServerOAuthClient,
 } from '#start/server/account-mutations'
-import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { colors, spacing } from '#universal/styles/tokens.ts'
+import { cardTitleCss } from '#universal/styles/style-primitives.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
@@ -346,7 +347,7 @@ export function AccountMcpServersPage({
 			<AccountPageHeader
 				entity="mcp-servers"
 				title="MCP servers"
-				description="Connect remote MCP servers so their tools are available to Kody as kody.mcp capabilities. Use a bearer token for static Authorization, or complete OAuth when the server requires it."
+				description="Connect remote MCP servers and use their tools as kody.mcp capabilities. Add a bearer token, or sign in with OAuth when a server asks."
 				currentHref={currentHref}
 				actions={
 					<Button
@@ -386,6 +387,7 @@ export function AccountMcpServersPage({
 			{
 				<RecordTable
 					mode="expand"
+					stackWhenNarrow
 					ariaLabel="Connected MCP servers"
 					selectedId={selection.selectedId}
 					recordLoading={Boolean(
@@ -639,16 +641,7 @@ export function AccountMcpServersPage({
 							})
 						) : showServerNotFound ? (
 							<div css={{ ...recordBodyCss, gap: spacing.sm }}>
-								<h2
-									css={{
-										margin: 0,
-										fontSize: typography.fontSize.lg,
-										fontWeight: typography.fontWeight.semibold,
-										color: colors.text,
-									}}
-								>
-									Server not found
-								</h2>
+								<h2 css={cardTitleCss}>Server not found</h2>
 								<p css={{ margin: 0, color: colors.textMuted }}>
 									This MCP server does not exist for this account or is
 									unavailable.
