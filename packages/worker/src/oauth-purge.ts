@@ -1,6 +1,13 @@
 import { DurableObject } from 'cloudflare:workers'
 
 const oauthPurgeBatchSize = 50
+const oauthPurgeKeyConcurrency = 8
+/**
+ * Each run stops starting new KV work after this long and saves what it
+ * finished. Slow KV windows then cost a few runs instead of one run that
+ * never saves its progress.
+ */
+const oauthPurgeRunBudgetMs = 10_000
 export const oauthPurgeContinuationStorageKey = 'continuation'
 
 type PurgePhase = 'grants' | 'tokens'
@@ -9,12 +16,20 @@ type PendingGrantRevocation = {
 	grantKey: string
 	tokenPrefix: string
 	tokenCursor?: string
+	tokenPage?: PendingTokenPage
 }
 
 type PendingGrantPage = {
 	complete: boolean
 	nextCursor?: string
 	revocations: Array<PendingGrantRevocation>
+	unscannedKeys?: Array<string>
+}
+
+type PendingTokenPage = {
+	complete: boolean
+	nextCursor?: string
+	unscannedKeys: Array<string>
 }
 
 export type PurgeContinuation = {
@@ -23,6 +38,7 @@ export type PurgeContinuation = {
 	grantCursor?: string
 	tokenCursor?: string
 	pendingGrantPage?: PendingGrantPage
+	pendingTokenPage?: PendingTokenPage
 }
 
 type GrantRecord = {
@@ -41,6 +57,7 @@ export type OAuthPurgeResult = {
 	grantsPurged: number
 	tokensPurged: number
 	phaseComplete: boolean
+	budgetExhausted: boolean
 }
 
 function isPurgePhase(value: unknown): value is PurgePhase {
@@ -59,31 +76,54 @@ function isPendingGrantRevocation(
 		typeof value.tokenPrefix === 'string' &&
 		(!('tokenCursor' in value) ||
 			value.tokenCursor === undefined ||
-			typeof value.tokenCursor === 'string')
+			typeof value.tokenCursor === 'string') &&
+		(!('tokenPage' in value) ||
+			value.tokenPage === undefined ||
+			parsePendingTokenPage(value.tokenPage) !== undefined)
 	)
 }
 
-function parsePendingGrantPage(value: unknown): PendingGrantPage | undefined {
-	if (
-		typeof value !== 'object' ||
-		value === null ||
-		!('complete' in value) ||
-		typeof value.complete !== 'boolean' ||
-		!('revocations' in value) ||
-		!Array.isArray(value.revocations) ||
-		!value.revocations.every(isPendingGrantRevocation)
-	) {
+function isStringArray(value: unknown): value is Array<string> {
+	return (
+		Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+	)
+}
+
+function parsePendingPageCursor(value: object) {
+	if (!('complete' in value) || typeof value.complete !== 'boolean') {
 		return undefined
 	}
 	const nextCursor =
 		'nextCursor' in value && typeof value.nextCursor === 'string'
 			? value.nextCursor
 			: undefined
-	return {
-		complete: value.complete,
-		nextCursor,
-		revocations: value.revocations,
+	const unscannedKeys =
+		'unscannedKeys' in value && isStringArray(value.unscannedKeys)
+			? value.unscannedKeys
+			: undefined
+	return { complete: value.complete, nextCursor, unscannedKeys }
+}
+
+function parsePendingGrantPage(value: unknown): PendingGrantPage | undefined {
+	if (
+		typeof value !== 'object' ||
+		value === null ||
+		!('revocations' in value) ||
+		!Array.isArray(value.revocations) ||
+		!value.revocations.every(isPendingGrantRevocation)
+	) {
+		return undefined
 	}
+	const cursor = parsePendingPageCursor(value)
+	if (!cursor) return undefined
+	return { ...cursor, revocations: value.revocations }
+}
+
+function parsePendingTokenPage(value: unknown): PendingTokenPage | undefined {
+	if (typeof value !== 'object' || value === null) return undefined
+	const cursor = parsePendingPageCursor(value)
+	if (!cursor?.unscannedKeys) return undefined
+	return { ...cursor, unscannedKeys: cursor.unscannedKeys }
 }
 
 function parseContinuation(value: unknown): PurgeContinuation {
@@ -110,12 +150,17 @@ function parseContinuation(value: unknown): PurgeContinuation {
 		'pendingGrantPage' in value
 			? parsePendingGrantPage(value.pendingGrantPage)
 			: undefined
+	const pendingTokenPage =
+		'pendingTokenPage' in value
+			? parsePendingTokenPage(value.pendingTokenPage)
+			: undefined
 	return {
 		version: 1,
 		nextPhase: value.nextPhase,
 		grantCursor,
 		tokenCursor,
 		pendingGrantPage,
+		pendingTokenPage,
 	}
 }
 
@@ -185,82 +230,157 @@ function grantRevocationForKey(
 	}
 }
 
-async function loadGrantPage(
+type RunBudget = { hasTime: () => boolean }
+
+function startRunBudget(): RunBudget {
+	const deadline = Date.now() + oauthPurgeRunBudgetMs
+	return { hasTime: () => Date.now() < deadline }
+}
+
+/**
+ * Runs `work` over the leading keys in small parallel chunks and stops between
+ * chunks once the run is out of time. Results line up with the keys they
+ * finished; keys past `results.length` were not touched.
+ */
+async function processKeysWithinBudget<T>(
+	keys: Array<string>,
+	budget: RunBudget,
+	work: (key: string) => Promise<T>,
+) {
+	const results = new Array<T>()
+	while (results.length < keys.length && budget.hasTime()) {
+		const chunk = keys.slice(
+			results.length,
+			results.length + oauthPurgeKeyConcurrency,
+		)
+		results.push(...(await Promise.all(chunk.map(work))))
+	}
+	return results
+}
+
+async function scanGrantPage(
 	kv: KVNamespace,
 	continuation: PurgeContinuation,
 	now: number,
+	budget: RunBudget,
 ) {
-	const page = await listOAuthPurgePage(kv, {
-		prefix: 'grant:',
-		cursor: continuation.grantCursor,
-	})
-	const clients = new Map<string, boolean>()
-	const revocations = new Array<PendingGrantRevocation>()
-
-	for (const key of page.keys) {
-		const grant = await kv.get(key.name, { type: 'json' })
-		if (!isGrantRecord(grant)) continue
-
-		let shouldPurge =
-			typeof grant.expiresAt === 'number' && now >= grant.expiresAt
-		if (!shouldPurge && !isClientMetadataUrl(grant.clientId)) {
-			let clientExists = clients.get(grant.clientId)
-			if (clientExists === undefined) {
-				clientExists =
-					(await kv.get(`client:${grant.clientId}`, { type: 'json' })) !== null
-				clients.set(grant.clientId, clientExists)
-			}
-			shouldPurge = !clientExists
+	let page = continuation.pendingGrantPage
+	if (!page) {
+		const listed = await listOAuthPurgePage(kv, {
+			prefix: 'grant:',
+			cursor: continuation.grantCursor,
+		})
+		page = {
+			complete: listed.list_complete,
+			nextCursor: listed.list_complete ? undefined : listed.cursor,
+			revocations: [],
+			unscannedKeys: listed.keys.map((key) => key.name),
 		}
-
-		if (shouldPurge) {
-			const revocation = grantRevocationForKey(key.name)
-			if (revocation) revocations.push(revocation)
+		continuation.pendingGrantPage = page
+	}
+	const unscannedKeys = page.unscannedKeys ?? []
+	const clients = new Map<string, Promise<boolean>>()
+	const clientExists = (clientId: string) => {
+		let exists = clients.get(clientId)
+		if (!exists) {
+			exists = kv
+				.get(`client:${clientId}`, { type: 'json' })
+				.then((client) => client !== null)
+			clients.set(clientId, exists)
 		}
+		return exists
 	}
 
-	continuation.pendingGrantPage = {
-		complete: page.list_complete,
-		nextCursor: page.list_complete ? undefined : page.cursor,
-		revocations,
+	const scanned = await processKeysWithinBudget(
+		unscannedKeys,
+		budget,
+		async (grantKey) => {
+			const grant = await kv.get(grantKey, { type: 'json' })
+			if (!isGrantRecord(grant)) return undefined
+			const shouldPurge =
+				(typeof grant.expiresAt === 'number' && now >= grant.expiresAt) ||
+				(!isClientMetadataUrl(grant.clientId) &&
+					!(await clientExists(grant.clientId)))
+			return shouldPurge ? grantRevocationForKey(grantKey) : undefined
+		},
+	)
+	for (const revocation of scanned) {
+		if (revocation) page.revocations.push(revocation)
 	}
-	return page.keys.length
+	const remaining = unscannedKeys.slice(scanned.length)
+	page.unscannedKeys = remaining.length > 0 ? remaining : undefined
+	return scanned.length
 }
 
 function finishGrantPage(continuation: PurgeContinuation) {
 	const page = continuation.pendingGrantPage
-	if (!page || page.revocations.length > 0) return
+	if (!page || page.unscannedKeys || page.revocations.length > 0) return
 	continuation.grantCursor = page.complete ? undefined : page.nextCursor
 	continuation.pendingGrantPage = undefined
+}
+
+async function revokeNextPendingGrant(
+	kv: KVNamespace,
+	continuation: PurgeContinuation,
+	budget: RunBudget,
+) {
+	const pending = continuation.pendingGrantPage?.revocations[0]
+	if (!pending || continuation.pendingGrantPage?.unscannedKeys) {
+		return { grantsPurged: 0, tokensPurged: 0 }
+	}
+	if (!budget.hasTime()) return { grantsPurged: 0, tokensPurged: 0 }
+
+	let tokenPage = pending.tokenPage
+	if (!tokenPage) {
+		const listed = await listOAuthPurgePage(kv, {
+			prefix: pending.tokenPrefix,
+			cursor: pending.tokenCursor,
+		})
+		tokenPage = {
+			complete: listed.list_complete,
+			nextCursor: listed.list_complete ? undefined : listed.cursor,
+			unscannedKeys: listed.keys.map((key) => key.name),
+		}
+		pending.tokenPage = tokenPage
+	}
+	const deleted = await processKeysWithinBudget(
+		tokenPage.unscannedKeys,
+		budget,
+		(key) => kv.delete(key),
+	)
+	tokenPage.unscannedKeys = tokenPage.unscannedKeys.slice(deleted.length)
+	if (tokenPage.unscannedKeys.length > 0) {
+		return { grantsPurged: 0, tokensPurged: deleted.length }
+	}
+	if (!tokenPage.complete) {
+		pending.tokenCursor = tokenPage.nextCursor
+		pending.tokenPage = undefined
+		return { grantsPurged: 0, tokensPurged: deleted.length }
+	}
+	if (!budget.hasTime()) {
+		return { grantsPurged: 0, tokensPurged: deleted.length }
+	}
+	await kv.delete(pending.grantKey)
+	continuation.pendingGrantPage?.revocations.shift()
+	return { grantsPurged: 1, tokensPurged: deleted.length }
 }
 
 async function purgeGrantPhase(
 	kv: KVNamespace,
 	continuation: PurgeContinuation,
 	now: number,
+	budget: RunBudget,
 ): Promise<OAuthPurgeResult> {
-	const checked = continuation.pendingGrantPage
-		? 0
-		: await loadGrantPage(kv, continuation, now)
-	const pending = continuation.pendingGrantPage?.revocations[0]
-	let grantsPurged = 0
-	let tokensPurged = 0
-
-	if (pending) {
-		const tokenPage = await listOAuthPurgePage(kv, {
-			prefix: pending.tokenPrefix,
-			cursor: pending.tokenCursor,
-		})
-		await Promise.all(tokenPage.keys.map((key) => kv.delete(key.name)))
-		tokensPurged = tokenPage.keys.length
-		if (tokenPage.list_complete) {
-			await kv.delete(pending.grantKey)
-			continuation.pendingGrantPage?.revocations.shift()
-			grantsPurged = 1
-		} else {
-			pending.tokenCursor = tokenPage.cursor
-		}
-	}
+	const pendingPage = continuation.pendingGrantPage
+	const checked =
+		!pendingPage || pendingPage.unscannedKeys
+			? await scanGrantPage(kv, continuation, now, budget)
+			: 0
+	const { grantsPurged, tokensPurged } = await revokeNextPendingGrant(
+		kv,
+		continuation,
+		budget,
+	)
 
 	finishGrantPage(continuation)
 	const phaseComplete =
@@ -273,44 +393,66 @@ async function purgeGrantPhase(
 		grantsPurged,
 		tokensPurged,
 		phaseComplete,
+		budgetExhausted: !budget.hasTime(),
 	}
 }
 
 async function purgeTokenPhase(
 	kv: KVNamespace,
 	continuation: PurgeContinuation,
+	budget: RunBudget,
 ): Promise<OAuthPurgeResult> {
-	const page = await listOAuthPurgePage(kv, {
-		prefix: 'token:',
-		cursor: continuation.tokenCursor,
-	})
-	const grants = new Map<string, boolean>()
-	let tokensPurged = 0
-
-	for (const key of page.keys) {
-		const token = await kv.get(key.name, { type: 'json' })
-		if (!isTokenRecord(token)) continue
-
-		const grantKey = `grant:${token.userId}:${token.grantId}`
-		let grantExists = grants.get(grantKey)
-		if (grantExists === undefined) {
-			grantExists = (await kv.get(grantKey)) !== null
-			grants.set(grantKey, grantExists)
+	let page = continuation.pendingTokenPage
+	if (!page) {
+		const listed = await listOAuthPurgePage(kv, {
+			prefix: 'token:',
+			cursor: continuation.tokenCursor,
+		})
+		page = {
+			complete: listed.list_complete,
+			nextCursor: listed.list_complete ? undefined : listed.cursor,
+			unscannedKeys: listed.keys.map((key) => key.name),
 		}
-		if (!grantExists) {
-			await kv.delete(key.name)
-			tokensPurged++
+		continuation.pendingTokenPage = page
+	}
+	const grants = new Map<string, Promise<boolean>>()
+	const grantExists = (grantKey: string) => {
+		let exists = grants.get(grantKey)
+		if (!exists) {
+			exists = kv.get(grantKey).then((grant) => grant !== null)
+			grants.set(grantKey, exists)
 		}
+		return exists
 	}
 
-	continuation.tokenCursor = page.list_complete ? undefined : page.cursor
+	const scanned = await processKeysWithinBudget(
+		page.unscannedKeys,
+		budget,
+		async (tokenKey) => {
+			const token = await kv.get(tokenKey, { type: 'json' })
+			if (!isTokenRecord(token)) return false
+			if (await grantExists(`grant:${token.userId}:${token.grantId}`)) {
+				return false
+			}
+			await kv.delete(tokenKey)
+			return true
+		},
+	)
+	page.unscannedKeys = page.unscannedKeys.slice(scanned.length)
+	if (page.unscannedKeys.length === 0) {
+		continuation.tokenCursor = page.complete ? undefined : page.nextCursor
+		continuation.pendingTokenPage = undefined
+	}
 	continuation.nextPhase = 'grants'
 	return {
 		phase: 'tokens',
-		checked: page.keys.length,
+		checked: scanned.length,
 		grantsPurged: 0,
-		tokensPurged,
-		phaseComplete: page.list_complete,
+		tokensPurged: scanned.filter(Boolean).length,
+		phaseComplete:
+			continuation.pendingTokenPage === undefined &&
+			continuation.tokenCursor === undefined,
+		budgetExhausted: !budget.hasTime(),
 	}
 }
 
@@ -319,13 +461,14 @@ async function continueOAuthPurge(
 	storage: DurableObjectStorage,
 	now: number,
 ): Promise<OAuthPurgeResult> {
+	const budget = startRunBudget()
 	const continuation = parseContinuation(
 		await storage.get(oauthPurgeContinuationStorageKey),
 	)
 	const result =
 		continuation.nextPhase === 'grants'
-			? await purgeGrantPhase(kv, continuation, now)
-			: await purgeTokenPhase(kv, continuation)
+			? await purgeGrantPhase(kv, continuation, now, budget)
+			: await purgeTokenPhase(kv, continuation, budget)
 	await storage.put(oauthPurgeContinuationStorageKey, continuation)
 	return result
 }
@@ -334,15 +477,24 @@ async function continueOAuthPurge(
  * A single global instance serializes purge invocations and stores continuation
  * in strongly consistent Durable Object storage. KV remains only the provider's
  * data plane; it is not used as a lock or continuation-state authority.
+ *
+ * Runs queue on an in-object promise chain instead of `blockConcurrencyWhile`:
+ * KV awaits let other RPCs in, and `blockConcurrencyWhile` resets the whole
+ * object (dropping the unsaved continuation) when a slow KV window outlasts
+ * its ~30s limit.
  */
 export class OAuthPurgeCoordinator extends DurableObject<Env> {
+	#previousRun: Promise<unknown> = Promise.resolve()
+
 	run(input: { scheduledAt: number }): Promise<OAuthPurgeResult> {
-		return this.ctx.blockConcurrencyWhile(() =>
+		const result = this.#previousRun.then(() =>
 			continueOAuthPurge(
 				this.env.OAUTH_KV,
 				this.ctx.storage,
 				Math.floor(input.scheduledAt / 1000),
 			),
 		)
+		this.#previousRun = result.catch(() => {})
+		return result
 	}
 }
