@@ -173,7 +173,10 @@ import { createPackageAppSetCookieScrubHostSource } from '#worker/package-runtim
 import { packageAppCookiePrefix } from '#worker/package-runtime/package-app-cookie-prefix.ts'
 import { checkPackageAppRateLimit } from '#worker/package-runtime/package-app-rate-limit.ts'
 import { packageAppSpendGet } from '#worker/package-runtime/package-app-spend.ts'
-import { resolveCanonicalPackageAppLocation } from '#worker/package-app-public-url.ts'
+import {
+	resolveCanonicalPackageAppLocation,
+	resolvePackageAppRunLocations,
+} from '#worker/package-app-public-url.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	packageAppSyntheticHeaderName,
@@ -1106,7 +1109,7 @@ function createCredentialRuntime(runtimeBridge, call) {
 	);
 }
 
-function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, identity = null) {
+function createRuntime(runtimeBridge, packageContext, packageApps, mcpServerNamesOrLoader, identity = null) {
 	const packageId = packageContext?.packageId ?? '';
 	const packageSecrets =
 		packageId.length > 0
@@ -1180,6 +1183,7 @@ function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, id
 		packages: null,
 		events: createEventsProxy(runtimeBridge),
 		packageContext,
+		packageApps,
 	};
 }
 
@@ -1434,6 +1438,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		const runtime = createRuntime(
 			runtimeBridge,
 			this.env.__kodyPackageContext ?? null,
+			this.env.__kodyPackageApps ?? null,
 			${mcpServerNamesExpr},
 			identityOnlyVisitor,
 		);
@@ -1578,6 +1583,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		const runtime = createRuntime(
 			runtimeBridge,
 			this.env.__kodyPackageContext ?? null,
+			this.env.__kodyPackageApps ?? null,
 			${mcpServerNamesExpr},
 		);
 		try {
@@ -4219,6 +4225,11 @@ async function buildPackageAppWorkerOptionsUncached(
 			dynamicDependencyPackageIds,
 		}),
 	]
+	const packageApps = await resolvePackageAppRunLocations({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		packageIds: packageStorageGrantIds,
+	})
 	// Per-build capability for the trusted per-package bindings (GHSA-5fv3).
 	// Embedded only in the wrapper's module scope and the bridge props. A
 	// cached build derives it from its cache key so a rebuild after cache
@@ -4301,6 +4312,7 @@ async function buildPackageAppWorkerOptionsUncached(
 					...publicContext,
 					...assetContext,
 				},
+				__kodyPackageApps: packageApps,
 			},
 		},
 		bridgeProps: {

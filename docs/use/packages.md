@@ -700,8 +700,9 @@ imports, jobs, webhooks, package invocations, workflows) the package's code
 still reads `packageContext.hostedUrl` and `appBasePath`: the canonical URL its
 app is served at (verified custom hostname, else its `kody.run` host or
 subdomain mount), so links it builds there match the app. They are `null` only
-when the package has no app. Request-only fields such as `cookiePrefix` and
-`clientModuleUrl` stay app-only.
+when the package has no app. Exports a package app imports from another package
+read that package's own URL the same way. Request-only fields such as
+`cookiePrefix` and `clientModuleUrl` stay app-only.
 
 Use the package app model when the package needs:
 

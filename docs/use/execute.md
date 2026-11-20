@@ -344,15 +344,16 @@ The imported package's own modules read `packageContext` as
 `{ packageId, hostedUrl, appBasePath }`: their package's id plus the URL its app
 is served at (the same canonical URL a browser opens, including a verified
 custom hostname). Both app fields are `null` when the package has no app.
-`kodyId` and other run fields are absent because the module has not been entered
-as its own package runtime. Imported modules keep stamped `packageStorage()` and
-stamp-aligned secret authority: A's export may use secrets locked to A (or A's
-`kody.secretMounts`) without granting those secrets to the execute entry. The
-execute entry cannot select A's id on `kody.packageSecretGet` / `Has`; only A's
-stamped `packageSecrets` binding carries that authority. Unstamped execute entry
-code can still use **your** user secrets through `{{secret:...}}` placeholders;
-it cannot use A's mounts. In the execute entry itself, `packageContext` stays
-`null`.
+`kody execute --local` does not resolve hosted app URLs yet, so imported modules
+there read only `packageId`. `kodyId` and other run fields are absent because
+the module has not been entered as its own package runtime. Imported modules
+keep stamped `packageStorage()` and stamp-aligned secret authority: A's export
+may use secrets locked to A (or A's `kody.secretMounts`) without granting those
+secrets to the execute entry. The execute entry cannot select A's id on
+`kody.packageSecretGet` / `Has`; only A's stamped `packageSecrets` binding
+carries that authority. Unstamped execute entry code can still use **your** user
+secrets through `{{secret:...}}` placeholders; it cannot use A's mounts. In the
+execute entry itself, `packageContext` stays `null`.
 
 When you need to edit saved source, prefer the repo-backed workflow in
 [Repo-backed editing sessions](./repo-sessions.md). Open by package identity
