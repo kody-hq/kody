@@ -1536,6 +1536,29 @@ jobs:
           echo "Execute smoke check failed after ${attempts} attempts: ${smoke_url}" >&2
           exit 1
 
+      - name: 🌍 Multi-region healthcheck (production)
+        if: >-
+          needs.sha-guard.outputs.deploy_main == 'true' ||
+          steps.resources.outputs.origin_deploy_mode == 'fresh'
+        shell: bash
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          EXPECTED_COMMIT_SHA: ${{ needs.sha-guard.outputs.deploy_sha }}
+        run: |
+          set -euo pipefail
+          # The healthcheck above runs from this US runner only. Globalping
+          # probes in Europe and the US catch a colo that cannot load the new
+          # Worker version (Cloudflare error 1105, 2026-11-20). Older deploy
+          # SHAs lack the script and skip.
+          if [ ! -f tools/ci/regional-health-check.ts ]; then exit 0; fi
+          if [ -z "${DEPLOY_URL:-}" ]; then
+            echo "::warning::Missing deploy URL output; skipping multi-region healthcheck."
+            exit 0
+          fi
+          REGIONAL_HEALTH_URL="${DEPLOY_URL%/}/health" \
+            REGIONAL_HEALTH_WINDOW_SECONDS=150 \
+            node tools/ci/regional-health-check.ts
+
       - name: 🧭 Reindex capability vectors (Vectorize)
         shell: bash
         env:
