@@ -25,12 +25,7 @@ import {
 	useQueryClient,
 } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
-import {
-	useEffectEvent,
-	useRef,
-	useState,
-	type FormEvent,
-} from 'react'
+import { useEffectEvent, useRef, useState, type FormEvent } from 'react'
 import { useResourceLifetime } from '../lib/primitives.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
