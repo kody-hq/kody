@@ -4,10 +4,22 @@
  * Published-bundle retention must treat soft-deleted entity_sources as still
  * present so restore-window artifacts are not pruned before hard purge.
  */
+import { Effect, Option, Schema } from 'effect'
+import {
+	D1,
+	type Bound,
+	type DatabaseError,
+	makeD1,
+	retryTransientD1,
+	sql,
+} from '#worker/effect/d1.ts'
+import { startPassBudget } from '#worker/effect/budget.ts'
+import { outbound, type OutboundCallError } from '#worker/effect/outbound.ts'
+import { runD1Promise, runSlicePromise } from '#worker/effect/slice.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import { purgeProfiles } from '#worker/profiles/store.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { accountRetentionDispositions } from '#app/account-retention-dispositions.ts'
-import { runD1WithRetry } from '#worker/d1-retry.ts'
 import {
 	localReadEventRetentionDays,
 	pruneLocalReadEvents,
@@ -222,92 +234,165 @@ function placeholders(values: ReadonlyArray<unknown>) {
 	return values.map(() => '?').join(', ')
 }
 
-async function selectIds(input: {
-	db: D1Database
-	sql: string
-	bindings: ReadonlyArray<string | number>
-	column?: string
-}): Promise<Array<IdValue>> {
-	const column = input.column ?? 'id'
-	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(input.sql)
-			.bind(...input.bindings)
-			.all<Record<string, unknown>>(),
+type D1Service = D1['Service']
+
+const today = (now: Date | undefined) => (now ? now : new Date())
+
+/** Selects one batch of ids to prune, in the policy's age order. */
+const selectIds = Effect.fn('Retention.selectIds')(function* (
+	db: D1Service,
+	operation: string,
+	statement: { sql: string; bindings: ReadonlyArray<Bound>; column?: string },
+) {
+	const column = statement.column ?? 'id'
+	const rows = yield* retryTransientD1(
+		db.all(
+			operation,
+			Schema.Struct({ [column]: Schema.Union([Schema.String, Schema.Number]) }),
+			sql(statement.sql, ...statement.bindings),
+		),
 	)
-	return (results ?? []).map((row) => row[column] as IdValue)
-}
+	return rows.map((row) => row[column] as IdValue)
+})
+
+/** Deletes ids in chunks of `retentionDeleteIdsMaxParameters`. */
+const deleteByIds = Effect.fn('Retention.deleteByIds')(function* (
+	db: D1Service,
+	table: string,
+	idColumn: string,
+	ids: ReadonlyArray<IdValue>,
+) {
+	let deleted = 0
+	for (let index = 0; index < ids.length; index += retentionDeleteIdsMaxParameters) {
+		const chunk = ids.slice(index, index + retentionDeleteIdsMaxParameters)
+		const result = yield* retryTransientD1(
+			db.run(
+				`retention.delete.${table}`,
+				sql(
+					`DELETE FROM ${table}
+				WHERE ${idColumn} IN (${placeholders(chunk)})`,
+					...chunk,
+				),
+			),
+		)
+		deleted += result.changes
+	}
+	return deleted
+})
 
 /**
  * Runs a batched select-then-delete and reports both counts. `selected` (not
  * `deleted`) is what callers should feed into hasMore decisions: a full batch
  * that deletes fewer rows (racing writers) must not mark a table drained.
  */
-async function selectAndDeleteByIds(input: {
-	db: D1Database
-	sql: string
-	bindings: ReadonlyArray<string | number>
-	column?: string
-	table: string
-	idColumn: string
-}): Promise<{ selected: number; deleted: number }> {
-	const ids = await selectIds(input)
-	const deleted = await deleteByIds({
-		db: input.db,
-		table: input.table,
-		idColumn: input.idColumn,
-		ids,
+const selectAndDeleteByIds = Effect.fn('Retention.selectAndDeleteByIds')(
+	function* (
+		db: D1Service,
+		input: {
+			sql: string
+			bindings: ReadonlyArray<Bound>
+			column?: string
+			table: string
+			idColumn: string
+		},
+	) {
+		const ids = yield* selectIds(db, `retention.select.${input.table}`, input)
+		const deleted = yield* deleteByIds(db, input.table, input.idColumn, ids)
+		return { selected: ids.length, deleted }
+	},
+)
+
+type BatchOptions = { readonly now?: Date; readonly batchSize?: number }
+
+export const pruneMemorySuppressionsForRetentionEffect = Effect.fn(
+	'Retention.pruneMemorySuppressions',
+)(function* (db: D1Service, options: BatchOptions) {
+	const now = today(options.now)
+	return yield* selectAndDeleteByIds(db, {
+		column: 'rowid',
+		bindings: [
+			now.toISOString(),
+			cutoffIso(now, memorySuppressionRetentionDays),
+			options.batchSize ?? retentionDefaultBatchSize,
+		],
+		sql: `SELECT rowid
+			FROM mcp_memory_conversation_suppressions
+			WHERE expires_at <= ?
+				AND last_seen_at < ?
+			ORDER BY last_seen_at ASC, rowid ASC
+			LIMIT ?`,
+		table: 'mcp_memory_conversation_suppressions',
+		idColumn: 'rowid',
 	})
-	return { selected: ids.length, deleted }
-}
+})
 
-async function deleteByIds(input: {
-	db: D1Database
-	table: string
-	idColumn: string
-	ids: ReadonlyArray<IdValue>
-}) {
-	if (input.ids.length === 0) return 0
+export const prunePlatformFeedbackForRetentionEffect = Effect.fn(
+	'Retention.prunePlatformFeedback',
+)(function* (db: D1Service, options: BatchOptions) {
+	const cutoff = cutoffIso(today(options.now), platformFeedbackRetentionDays)
+	const ids = yield* selectIds(db, 'retention.select.platform_feedback', {
+		bindings: [cutoff, options.batchSize ?? retentionDefaultBatchSize],
+		sql: `SELECT id
+			FROM platform_feedback
+			WHERE status IN ('resolved', 'dismissed')
+				AND updated_at < ?
+			ORDER BY updated_at ASC, id ASC
+			LIMIT ?`,
+	})
 	let deleted = 0
-	for (
-		let index = 0;
-		index < input.ids.length;
-		index += retentionDeleteIdsMaxParameters
-	) {
-		const ids = input.ids.slice(index, index + retentionDeleteIdsMaxParameters)
-		const result = await runD1WithRetry(() =>
-			input.db
-				.prepare(
-					`DELETE FROM ${input.table}
-				WHERE ${input.idColumn} IN (${placeholders(ids)})`,
-				)
-				.bind(...ids)
-				.run(),
+	const chunkSize = retentionDeleteIdsMaxParameters - 1
+	for (let index = 0; index < ids.length; index += chunkSize) {
+		const chunk = ids.slice(index, index + chunkSize)
+		const result = yield* retryTransientD1(
+			db.run(
+				'retention.delete.platform_feedback',
+				sql(
+					`DELETE FROM platform_feedback
+					WHERE id IN (${placeholders(chunk)})
+						AND status IN ('resolved', 'dismissed')
+						AND updated_at < ?`,
+					...chunk,
+					cutoff,
+				),
+			),
 		)
-		deleted += result.meta.changes ?? 0
+		deleted += result.changes
 	}
-	return deleted
-}
+	return { selected: ids.length, deleted }
+})
 
-async function deletePublishedBundleArtifactRowIfStillStale(input: {
-	env: Pick<Env, 'APP_DB'> & RepoSessionIndexEnv
-	id: string
-	kvKey: string
-	cutoff: string
-	userId: OwnerId
-	sourceId: string
-}) {
-	if (
-		await hasActiveRepoSessionForSource(input.env, {
-			userId: input.userId,
-			sourceId: input.sourceId,
-		})
-	) {
-		return 0
-	}
-	const result = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`DELETE FROM published_bundle_artifacts
+const StaleArtifactRow = Schema.Struct({
+	id: Schema.String,
+	kv_key: Schema.String,
+	source_id: Schema.String,
+	user_id: Schema.String,
+	published_commit: Schema.String,
+})
+const AnyRow = Schema.Record(Schema.String, Schema.Unknown)
+
+type ArtifactEnv = Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'> & RepoSessionIndexEnv
+
+/** Deletes the row only if it is still stale and no repo session holds its source. */
+const deletePublishedBundleArtifactRowIfStillStale = Effect.fn(
+	'Retention.deletePublishedBundleArtifactRow',
+)(function* (
+	env: ArtifactEnv,
+	db: D1Service,
+	row: typeof StaleArtifactRow.Type,
+	cutoff: string,
+) {
+	const active = yield* outbound('repo_sessions.hasActiveForSource', () =>
+		hasActiveRepoSessionForSource(env, {
+			userId: row.user_id as OwnerId,
+			sourceId: row.source_id,
+		}),
+	)
+	if (active) return 0
+	const result = yield* retryTransientD1(
+		db.run(
+			'retention.delete.published_bundle_artifact',
+			sql(
+				`DELETE FROM published_bundle_artifacts
 			WHERE id = ?
 				AND kv_key = ?
 				AND created_at < ?
@@ -328,91 +413,27 @@ async function deletePublishedBundleArtifactRowIfStillStale(input: {
 						AND listing.pinned_commit = published_bundle_artifacts.published_commit
 						AND listing.status = 'active'
 				)`,
-		)
-			.bind(input.id, input.kvKey, input.cutoff)
-			.run(),
+				row.id,
+				row.kv_key,
+				cutoff,
+			),
+		),
 	)
-	return result.meta.changes ?? 0
-}
+	return result.changes
+})
 
-export async function pruneMemorySuppressionsForRetention(input: {
-	db: D1Database
-	now?: Date
-	batchSize?: number
-}) {
-	const now = input.now ?? new Date()
-	const cutoff = cutoffIso(now, memorySuppressionRetentionDays)
-	return selectAndDeleteByIds({
-		db: input.db,
-		column: 'rowid',
-		bindings: [
-			now.toISOString(),
-			cutoff,
-			input.batchSize ?? retentionDefaultBatchSize,
-		],
-		sql: `SELECT rowid
-			FROM mcp_memory_conversation_suppressions
-			WHERE expires_at <= ?
-				AND last_seen_at < ?
-			ORDER BY last_seen_at ASC, rowid ASC
-			LIMIT ?`,
-		table: 'mcp_memory_conversation_suppressions',
-		idColumn: 'rowid',
-	})
-}
-
-export async function prunePlatformFeedbackForRetention(input: {
-	db: D1Database
-	now?: Date
-	batchSize?: number
-}) {
-	const cutoff = cutoffIso(
-		input.now ?? new Date(),
-		platformFeedbackRetentionDays,
-	)
-	const ids = await selectIds({
-		db: input.db,
-		bindings: [cutoff, input.batchSize ?? retentionDefaultBatchSize],
-		sql: `SELECT id
-			FROM platform_feedback
-			WHERE status IN ('resolved', 'dismissed')
-				AND updated_at < ?
-			ORDER BY updated_at ASC, id ASC
-			LIMIT ?`,
-	})
-	let deleted = 0
-	const chunkSize = retentionDeleteIdsMaxParameters - 1
-	for (let index = 0; index < ids.length; index += chunkSize) {
-		const chunk = ids.slice(index, index + chunkSize)
-		const result = await runD1WithRetry(() =>
-			input.db
-				.prepare(
-					`DELETE FROM platform_feedback
-					WHERE id IN (${placeholders(chunk)})
-						AND status IN ('resolved', 'dismissed')
-						AND updated_at < ?`,
-				)
-				.bind(...chunk, cutoff)
-				.run(),
-		)
-		deleted += result.meta.changes ?? 0
-	}
-	return { selected: ids.length, deleted }
-}
-
-export async function prunePublishedBundleArtifactsForRetention(input: {
-	env: Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'> & RepoSessionIndexEnv
-	now?: Date
-	batchSize?: number
-}) {
-	const cutoff = cutoffIso(
-		input.now ?? new Date(),
-		publishedBundleArtifactRetentionDays,
-	)
-	const batchSize = input.batchSize ?? publishedBundleArtifactRetentionBatchSize
-	const { results } = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`SELECT artifact.id, artifact.kv_key, artifact.source_id, artifact.user_id, artifact.published_commit
+export const prunePublishedBundleArtifactsForRetentionEffect = Effect.fn(
+	'Retention.prunePublishedBundleArtifacts',
+)(function* (env: ArtifactEnv, db: D1Service, options: BatchOptions) {
+	const cutoff = cutoffIso(today(options.now), publishedBundleArtifactRetentionDays)
+	const batchSize = options.batchSize ?? publishedBundleArtifactRetentionBatchSize
+	const kv = env.BUNDLE_ARTIFACTS_KV
+	const rows = yield* retryTransientD1(
+		db.all(
+			'retention.select.published_bundle_artifacts',
+			StaleArtifactRow,
+			sql(
+				`SELECT artifact.id, artifact.kv_key, artifact.source_id, artifact.user_id, artifact.published_commit
 		FROM published_bundle_artifacts AS artifact
 		WHERE artifact.created_at < ?
 			AND NOT EXISTS (
@@ -433,100 +454,107 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 					AND listing.status = 'active'
 			)
 		ORDER BY artifact.created_at ASC, artifact.id ASC LIMIT ?`,
-		)
-			.bind(cutoff, batchSize)
-			.all<{
-				id: string
-				kv_key: string
-				source_id: string
-				user_id: OwnerId
-				published_commit: string
-			}>(),
+				cutoff,
+				batchSize,
+			),
+		),
 	)
-	const rows = results ?? []
 	let deletedRows = 0
 	let deletedKvKeys = 0
 	let deletedSnapshotKvKeys = 0
 	let kvDeleteErrors = 0
+	const kvFailed = (message: string, details: Record<string, unknown>) =>
+		Effect.logWarning(message, details).pipe(
+			Effect.andThen(Effect.sync(() => (kvDeleteErrors += 1))),
+		)
 	const prunedSnapshotPairs = new Map<
 		string,
 		{ sourceId: string; publishedCommit: string }
 	>()
 	for (const row of rows) {
-		const rowDeleted = await deletePublishedBundleArtifactRowIfStillStale({
-			env: input.env,
-			id: row.id,
-			kvKey: row.kv_key,
+		const rowDeleted = yield* deletePublishedBundleArtifactRowIfStillStale(
+			env,
+			db,
+			row,
 			cutoff,
-			userId: row.user_id,
-			sourceId: row.source_id,
-		})
+		)
 		if (rowDeleted === 0) continue
 		deletedRows += rowDeleted
 		prunedSnapshotPairs.set(`${row.source_id}:${row.published_commit}`, {
 			sourceId: row.source_id,
 			publishedCommit: row.published_commit,
 		})
-		try {
-			await input.env.BUNDLE_ARTIFACTS_KV.delete(row.kv_key)
-			deletedKvKeys += 1
-		} catch (error) {
-			kvDeleteErrors += 1
-			console.warn('retention-published-bundle-kv-delete-failed', {
-				id: row.id,
-				kvKey: row.kv_key,
-				error,
-			})
-		}
+		yield* outbound('kv.delete', () => kv.delete(row.kv_key)).pipe(
+			Effect.matchEffect({
+				onSuccess: () => Effect.sync(() => (deletedKvKeys += 1)),
+				onFailure: (error) =>
+					kvFailed('retention-published-bundle-kv-delete-failed', {
+						id: row.id,
+						kvKey: row.kv_key,
+						error: error.cause,
+					}),
+			}),
+		)
 	}
 	// A pruned row already satisfied the safety conditions (commit neither
-	// published nor serving for any entity_sources row, not pinned by an active community listing, no
-	// active repo session), so the source snapshot KV keys for that commit are
-	// stale too.
+	// published nor serving for any entity_sources row, not pinned by an active
+	// community listing, no active repo session), so the source snapshot KV
+	// keys for that commit are stale too.
 	for (const pair of prunedSnapshotPairs.values()) {
-		try {
-			// A newer artifact of this commit may remain and still reads its
-			// linked modules, so they go only with the commit's last artifact.
-			const remaining = await runD1WithRetry(() =>
-				input.env.APP_DB.prepare(
+		// A newer artifact of this commit may remain and still reads its
+		// linked modules, so they go only with the commit's last artifact.
+		yield* retryTransientD1(
+			db.first(
+				'retention.select.remaining_commit_artifact',
+				AnyRow,
+				sql(
 					`SELECT 1 FROM published_bundle_artifacts
 					WHERE source_id = ? AND published_commit = ? LIMIT 1`,
-				)
-					.bind(pair.sourceId, pair.publishedCommit)
-					.first(),
-			)
-			if (!remaining) {
-				deletedSnapshotKvKeys += await deleteLinkedArtifactGroups({
-					kv: input.env.BUNDLE_ARTIFACTS_KV,
-					prefix: linkedArtifactCommitKvPrefix(pair),
-				})
-			}
-		} catch (error) {
-			kvDeleteErrors += 1
-			console.warn('retention-linked-artifact-kv-delete-failed', {
-				sourceId: pair.sourceId,
-				publishedCommit: pair.publishedCommit,
-				error,
-			})
-		}
+					pair.sourceId,
+					pair.publishedCommit,
+				),
+			),
+		).pipe(
+			Effect.flatMap((remaining) =>
+				Option.isSome(remaining)
+					? Effect.void
+					: outbound('kv.deleteLinkedArtifactGroups', () =>
+							deleteLinkedArtifactGroups({
+								kv,
+								prefix: linkedArtifactCommitKvPrefix(pair),
+							}),
+						).pipe(
+							Effect.map((deleted) => {
+								deletedSnapshotKvKeys += deleted
+							}),
+						),
+			),
+			Effect.catch((error) =>
+				kvFailed('retention-linked-artifact-kv-delete-failed', {
+					sourceId: pair.sourceId,
+					publishedCommit: pair.publishedCommit,
+					error: error.cause,
+				}),
+			),
+		)
 		for (const kvKey of [
 			buildPublishedSourceSnapshotKvKey(pair),
 			buildPublishedSourceManifestSnapshotKvKey(pair),
 			buildPublishedCredentialNeedsKvKey(pair),
 			buildPublishedCredentialStampKvKey(pair),
 		]) {
-			try {
-				await input.env.BUNDLE_ARTIFACTS_KV.delete(kvKey)
-				deletedSnapshotKvKeys += 1
-			} catch (error) {
-				kvDeleteErrors += 1
-				console.warn('retention-source-snapshot-kv-delete-failed', {
-					sourceId: pair.sourceId,
-					publishedCommit: pair.publishedCommit,
-					kvKey,
-					error,
-				})
-			}
+			yield* outbound('kv.delete', () => kv.delete(kvKey)).pipe(
+				Effect.matchEffect({
+					onSuccess: () => Effect.sync(() => (deletedSnapshotKvKeys += 1)),
+					onFailure: (error) =>
+						kvFailed('retention-source-snapshot-kv-delete-failed', {
+							sourceId: pair.sourceId,
+							publishedCommit: pair.publishedCommit,
+							kvKey,
+							error: error.cause,
+						}),
+				}),
+			)
 		}
 	}
 	return {
@@ -536,63 +564,61 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 		kvDeleteErrors,
 		hasMore: rows.length >= batchSize,
 	}
-}
+})
 
-export async function pruneUsageRollupsForRetention(input: {
-	db: D1Database
-	now?: Date
-	batchSize?: number
-}) {
-	const oldestKeptMonth = cutoffMonth(
-		input.now ?? new Date(),
-		usageRollupRetentionMonths,
-	)
-	return selectAndDeleteByIds({
-		db: input.db,
-		column: 'rowid',
-		bindings: [oldestKeptMonth, input.batchSize ?? retentionDefaultBatchSize],
-		sql: `SELECT rowid
-			FROM usage_rollups
-			WHERE month < ?
-			ORDER BY month ASC, rowid ASC
+const rowidPolicy = (
+	name: string,
+	table: string,
+	orderColumn: string,
+	cutoff: (now: Date) => string,
+) =>
+	Effect.fn(name)(function* (db: D1Service, options: BatchOptions) {
+		return yield* selectAndDeleteByIds(db, {
+			column: 'rowid',
+			bindings: [
+				cutoff(today(options.now)),
+				options.batchSize ?? retentionDefaultBatchSize,
+			],
+			sql: `SELECT rowid
+			FROM ${table}
+			WHERE ${orderColumn} < ?
+			ORDER BY ${orderColumn} ASC, rowid ASC
 			LIMIT ?`,
-		table: 'usage_rollups',
-		idColumn: 'rowid',
+			table,
+			idColumn: 'rowid',
+		})
 	})
-}
 
-export async function pruneFeatureFlagExposuresForRetention(input: {
-	db: D1Database
-	now?: Date
-	batchSize?: number
-}) {
-	const cutoffDay = cutoffIso(
-		input.now ?? new Date(),
-		featureFlagExposureRetentionDays,
-	).slice(0, 'YYYY-MM-DD'.length)
-	return selectAndDeleteByIds({
-		db: input.db,
-		column: 'rowid',
-		bindings: [cutoffDay, input.batchSize ?? retentionDefaultBatchSize],
-		sql: `SELECT rowid
-			FROM feature_flag_exposure_rollups
-			WHERE day < ?
-			ORDER BY day ASC, rowid ASC
-			LIMIT ?`,
-		table: 'feature_flag_exposure_rollups',
-		idColumn: 'rowid',
-	})
-}
+export const pruneUsageRollupsForRetentionEffect = rowidPolicy(
+	'Retention.pruneUsageRollups',
+	'usage_rollups',
+	'month',
+	(now) => cutoffMonth(now, usageRollupRetentionMonths),
+)
 
-export async function pruneAuditEventsForRetention(input: {
-	db: D1Database
-	now?: Date
-	batchSize?: number
-}) {
-	const cutoff = cutoffIso(input.now ?? new Date(), auditEventRetentionDays)
-	return selectAndDeleteByIds({
-		db: input.db,
-		bindings: [cutoff, input.batchSize ?? retentionDefaultBatchSize],
+export const pruneFeatureFlagExposuresForRetentionEffect = rowidPolicy(
+	'Retention.pruneFeatureFlagExposures',
+	'feature_flag_exposure_rollups',
+	'day',
+	(now) =>
+		cutoffIso(now, featureFlagExposureRetentionDays).slice(0, 'YYYY-MM-DD'.length),
+)
+
+export const pruneAgentPackageConversationUsesForRetentionEffect = rowidPolicy(
+	'Retention.pruneAgentPackageConversationUses',
+	'agent_package_conversation_uses',
+	'last_used_at',
+	(now) => cutoffIso(now, agentPackageConversationUseRetentionDays),
+)
+
+export const pruneAuditEventsForRetentionEffect = Effect.fn(
+	'Retention.pruneAuditEvents',
+)(function* (db: D1Service, options: BatchOptions) {
+	return yield* selectAndDeleteByIds(db, {
+		bindings: [
+			cutoffIso(today(options.now), auditEventRetentionDays),
+			options.batchSize ?? retentionDefaultBatchSize,
+		],
 		sql: `SELECT id
 			FROM audit_events
 			WHERE timestamp < ?
@@ -601,21 +627,17 @@ export async function pruneAuditEventsForRetention(input: {
 		table: 'audit_events',
 		idColumn: 'id',
 	})
-}
+})
 
-export async function pruneStripeWebhookEventsForRetention(input: {
-	db: D1Database
-	now?: Date
-	batchSize?: number
-}) {
-	const cutoff = cutoffIso(
-		input.now ?? new Date(),
-		stripeWebhookEventRetentionDays,
-	)
-	return selectAndDeleteByIds({
-		db: input.db,
+export const pruneStripeWebhookEventsForRetentionEffect = Effect.fn(
+	'Retention.pruneStripeWebhookEvents',
+)(function* (db: D1Service, options: BatchOptions) {
+	return yield* selectAndDeleteByIds(db, {
 		column: 'event_id',
-		bindings: [cutoff, input.batchSize ?? retentionDefaultBatchSize],
+		bindings: [
+			cutoffIso(today(options.now), stripeWebhookEventRetentionDays),
+			options.batchSize ?? retentionDefaultBatchSize,
+		],
 		sql: `SELECT event_id
 			FROM stripe_webhook_events
 			WHERE processed_at < ?
@@ -624,42 +646,16 @@ export async function pruneStripeWebhookEventsForRetention(input: {
 		table: 'stripe_webhook_events',
 		idColumn: 'event_id',
 	})
+})
+
+type RetentionTask = {
+	readonly table: string
+	/** One batch; succeeds with whether the table may have more to prune. */
+	readonly run: Effect.Effect<boolean, DatabaseError | OutboundCallError>
 }
 
-export async function pruneAgentPackageConversationUsesForRetention(input: {
-	db: D1Database
-	now?: Date
-	batchSize?: number
-}) {
-	const cutoff = cutoffIso(
-		input.now ?? new Date(),
-		agentPackageConversationUseRetentionDays,
-	)
-	return selectAndDeleteByIds({
-		db: input.db,
-		column: 'rowid',
-		bindings: [cutoff, input.batchSize ?? retentionDefaultBatchSize],
-		sql: `SELECT rowid
-			FROM agent_package_conversation_uses
-			WHERE last_used_at < ?
-			ORDER BY last_used_at ASC, rowid ASC
-			LIMIT ?`,
-		table: 'agent_package_conversation_uses',
-		idColumn: 'rowid',
-	})
-}
-
-export async function pruneRetention(input: {
-	env: Pick<Env, 'APP_DB' | 'AUDIT_DB' | 'BUNDLE_ARTIFACTS_KV'>
-	now?: Date
-	timeBudgetMs?: number
-}): Promise<RetentionPruneResult> {
-	const now = input.now ?? new Date()
-	const timeBudgetMs = input.timeBudgetMs ?? retentionRunTimeBudgetMs
-	const startedAtMs = Date.now()
-	const db = input.env.APP_DB
-	const auditDb = input.env.AUDIT_DB
-	const result: RetentionPruneResult = {
+function emptyRetentionResult(): RetentionPruneResult {
+	return {
 		memorySuppressions: 0,
 		platformFeedback: 0,
 		publishedBundleArtifacts: {
@@ -679,149 +675,192 @@ export async function pruneRetention(input: {
 		batchesPerTable: {},
 		timeBudgetExhausted: false,
 	}
-	const countTask = (
+}
+
+/**
+ * Round-robin passes: every pending table gets one batch before any table
+ * gets a second one, so a hot table cannot starve the others. The first pass
+ * always completes so each table makes progress every run; later passes stop
+ * once the time budget is exhausted.
+ */
+export const pruneRetentionEffect = Effect.fn('Retention.prune')(function* (input: {
+	readonly now?: Date
+	readonly timeBudgetMs?: number
+}) {
+	const env = yield* WorkerEnv
+	const db = yield* D1
+	const auditDb = makeD1(() => env.AUDIT_DB)
+	const now = today(input.now)
+	const budget = yield* startPassBudget(
+		input.timeBudgetMs ?? retentionRunTimeBudgetMs,
+	)
+	const result = emptyRetentionResult()
+	type Counted = Effect.Effect<
+		{ selected: number; deleted: number },
+		DatabaseError | OutboundCallError
+	>
+	const counted = (
 		table: string,
-		prune: () => Promise<{ selected: number; deleted: number }>,
+		prune: Counted,
 		assign: (deleted: number) => void,
-	) => ({
+	): RetentionTask => ({
 		table,
-		done: false,
-		run: async () => {
-			const batch = await prune()
+		run: Effect.map(prune, (batch) => {
 			assign(batch.deleted)
 			// hasMore keys off the selected count so a full batch that deleted
 			// fewer rows (racing writers) does not mark the table drained early.
 			return batch.selected >= retentionDefaultBatchSize
-		},
+		}),
 	})
-	const tasks: Array<{
-		table: string
-		done: boolean
-		run: () => Promise<boolean>
-	}> = [
-		countTask(
+	const deletedOnly = (operation: string, prune: () => Promise<number>): Counted =>
+		Effect.map(outbound(operation, prune), (deleted) => ({
+			selected: deleted,
+			deleted,
+		}))
+	const tasks: ReadonlyArray<RetentionTask> = [
+		counted(
 			'mcp_memory_conversation_suppressions',
-			() => pruneMemorySuppressionsForRetention({ db, now }),
-			(count) => {
-				result.memorySuppressions += count
-			},
+			pruneMemorySuppressionsForRetentionEffect(db, { now }),
+			(count) => (result.memorySuppressions += count),
 		),
-		countTask(
+		counted(
 			'platform_feedback',
-			() => prunePlatformFeedbackForRetention({ db, now }),
-			(count) => {
-				result.platformFeedback += count
-			},
+			prunePlatformFeedbackForRetentionEffect(db, { now }),
+			(count) => (result.platformFeedback += count),
 		),
 		{
 			table: 'published_bundle_artifacts',
-			done: false,
-			run: async () => {
-				const batch = await prunePublishedBundleArtifactsForRetention({
-					env: input.env,
-					now,
-				})
-				result.publishedBundleArtifacts.deletedRows += batch.deletedRows
-				result.publishedBundleArtifacts.deletedKvKeys += batch.deletedKvKeys
-				result.publishedBundleArtifacts.deletedSnapshotKvKeys +=
-					batch.deletedSnapshotKvKeys
-				result.publishedBundleArtifacts.kvDeleteErrors += batch.kvDeleteErrors
-				return batch.hasMore
-			},
+			run: Effect.map(
+				prunePublishedBundleArtifactsForRetentionEffect(env, db, { now }),
+				(batch) => {
+					const totals = result.publishedBundleArtifacts
+					totals.deletedRows += batch.deletedRows
+					totals.deletedKvKeys += batch.deletedKvKeys
+					totals.deletedSnapshotKvKeys += batch.deletedSnapshotKvKeys
+					totals.kvDeleteErrors += batch.kvDeleteErrors
+					return batch.hasMore
+				},
+			),
 		},
-		countTask(
+		counted(
 			'usage_rollups',
-			() => pruneUsageRollupsForRetention({ db, now }),
-			(count) => {
-				result.usageRollups += count
-			},
+			pruneUsageRollupsForRetentionEffect(db, { now }),
+			(count) => (result.usageRollups += count),
 		),
-		countTask(
+		counted(
 			'feature_flag_exposure_rollups',
-			() => pruneFeatureFlagExposuresForRetention({ db, now }),
-			(count) => {
-				result.featureFlagExposureRollups += count
-			},
+			pruneFeatureFlagExposuresForRetentionEffect(db, { now }),
+			(count) => (result.featureFlagExposureRollups += count),
 		),
-		countTask(
+		counted(
 			'credential_local_read_events',
-			async () => {
-				const deleted = await pruneLocalReadEvents({
-					db,
+			deletedOnly('credentials.pruneLocalReadEvents', () =>
+				pruneLocalReadEvents({
+					db: env.APP_DB,
 					now,
 					batchSize: retentionDefaultBatchSize,
-				})
-				return { selected: deleted, deleted }
-			},
-			(count) => {
-				result.credentialLocalReadEvents += count
-			},
+				}),
+			),
+			(count) => (result.credentialLocalReadEvents += count),
 		),
-		countTask(
+		counted(
 			'credential_raw_signing_events',
-			async () => {
-				const deleted = await pruneRawSigningEvents({
-					db,
+			deletedOnly('credentials.pruneRawSigningEvents', () =>
+				pruneRawSigningEvents({
+					db: env.APP_DB,
 					now,
 					batchSize: retentionDefaultBatchSize,
-				})
-				return { selected: deleted, deleted }
-			},
-			(count) => {
-				result.credentialRawSigningEvents += count
-			},
+				}),
+			),
+			(count) => (result.credentialRawSigningEvents += count),
 		),
-		countTask(
+		counted(
 			'audit_events',
-			() => pruneAuditEventsForRetention({ db: auditDb, now }),
-			(count) => {
-				result.auditEvents += count
-			},
+			pruneAuditEventsForRetentionEffect(auditDb, { now }),
+			(count) => (result.auditEvents += count),
 		),
-		countTask(
+		counted(
 			'stripe_webhook_events',
-			() => pruneStripeWebhookEventsForRetention({ db, now }),
-			(count) => {
-				result.stripeWebhookEvents += count
-			},
+			pruneStripeWebhookEventsForRetentionEffect(db, { now }),
+			(count) => (result.stripeWebhookEvents += count),
 		),
-		countTask(
+		counted(
 			'agent_package_conversation_uses',
-			() => pruneAgentPackageConversationUsesForRetention({ db, now }),
-			(count) => {
-				result.agentPackageConversationUses += count
-			},
+			pruneAgentPackageConversationUsesForRetentionEffect(db, { now }),
+			(count) => (result.agentPackageConversationUses += count),
 		),
 		{
 			table: 'profiles',
-			done: false,
-			run: async () => {
-				const purged = await purgeProfiles(db, { now })
-				result.profiles += purged.profiles
-				return false
-			},
+			run: Effect.map(
+				outbound('profiles.purge', () => purgeProfiles(env.APP_DB, { now })),
+				(purged) => {
+					result.profiles += purged.profiles
+					return false
+				},
+			),
 		},
 	]
-	// Round-robin passes: every pending table gets one batch before any table
-	// gets a second one, so a hot table cannot starve the others. The first
-	// pass always completes so each table makes progress every run; later
-	// passes stop once the time budget is exhausted.
+	const pending = new Set(tasks)
 	let pass = 0
-	while (tasks.some((task) => !task.done)) {
-		if (pass > 0 && Date.now() - startedAtMs >= timeBudgetMs) {
+	while (pending.size > 0) {
+		if (pass > 0 && (yield* budget.reached)) {
 			result.timeBudgetExhausted = true
 			break
 		}
 		for (const task of tasks) {
-			if (task.done) continue
-			if (pass > 0 && Date.now() - startedAtMs >= timeBudgetMs) break
-			const hasMore = await task.run()
+			if (!pending.has(task)) continue
+			if (pass > 0 && (yield* budget.reached)) break
+			const hasMore = yield* task.run.pipe(
+				Effect.withSpan('Retention.batch', { attributes: { table: task.table } }),
+			)
 			result.batchesPerTable[task.table] =
 				(result.batchesPerTable[task.table] ?? 0) + 1
-			if (!hasMore) task.done = true
+			if (!hasMore) pending.delete(task)
 		}
 		pass += 1
 	}
-	console.info('retention-prune', JSON.stringify(result))
+	yield* Effect.logInfo('retention-prune', JSON.stringify(result))
 	return result
+})
+
+export function pruneMemorySuppressionsForRetention(input: { db: D1Database } & BatchOptions) {
+	return runD1Promise(input.db, (db) => pruneMemorySuppressionsForRetentionEffect(db, input))
+}
+export function prunePlatformFeedbackForRetention(input: { db: D1Database } & BatchOptions) {
+	return runD1Promise(input.db, (db) => prunePlatformFeedbackForRetentionEffect(db, input))
+}
+export function prunePublishedBundleArtifactsForRetention(
+	input: { env: ArtifactEnv } & BatchOptions,
+) {
+	return runD1Promise(input.env.APP_DB, (db) =>
+		prunePublishedBundleArtifactsForRetentionEffect(input.env, db, input),
+	)
+}
+export function pruneUsageRollupsForRetention(input: { db: D1Database } & BatchOptions) {
+	return runD1Promise(input.db, (db) => pruneUsageRollupsForRetentionEffect(db, input))
+}
+export function pruneFeatureFlagExposuresForRetention(input: { db: D1Database } & BatchOptions) {
+	return runD1Promise(input.db, (db) => pruneFeatureFlagExposuresForRetentionEffect(db, input))
+}
+export function pruneAuditEventsForRetention(input: { db: D1Database } & BatchOptions) {
+	return runD1Promise(input.db, (db) => pruneAuditEventsForRetentionEffect(db, input))
+}
+export function pruneStripeWebhookEventsForRetention(input: { db: D1Database } & BatchOptions) {
+	return runD1Promise(input.db, (db) => pruneStripeWebhookEventsForRetentionEffect(db, input))
+}
+export function pruneAgentPackageConversationUsesForRetention(
+	input: { db: D1Database } & BatchOptions,
+) {
+	return runD1Promise(input.db, (db) =>
+		pruneAgentPackageConversationUsesForRetentionEffect(db, input),
+	)
+}
+
+export function pruneRetention(input: {
+	env: Pick<Env, 'APP_DB' | 'AUDIT_DB' | 'BUNDLE_ARTIFACTS_KV'>
+	now?: Date
+	timeBudgetMs?: number
+}): Promise<RetentionPruneResult> {
+	const { env, ...rest } = input
+	return runSlicePromise(env as Env, pruneRetentionEffect(rest))
 }

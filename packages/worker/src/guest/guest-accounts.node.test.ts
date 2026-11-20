@@ -30,7 +30,14 @@ import {
 } from './guest-result-block.ts'
 
 const deleteUserAccount = vi.hoisted(() => vi.fn(async () => {}))
-vi.mock('#app/account-deletion.ts', () => ({ deleteUserAccount }))
+vi.mock('#app/account-deletion.ts', async (importOriginal) => {
+	const { promiseDouble } = await import('#worker/test-support/effect-bridge.ts')
+	return {
+		...(await importOriginal<object>()),
+		deleteUserAccount,
+		deleteUserAccountEffect: promiseDouble(deleteUserAccount),
+	}
+})
 const scheduleUserDeletedEvent = vi.hoisted(() => vi.fn())
 vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
 	scheduleUserDeletedEvent,

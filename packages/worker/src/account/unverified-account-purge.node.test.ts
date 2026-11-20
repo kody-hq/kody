@@ -10,7 +10,8 @@ import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deleti
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import * as AuditLog from '#worker/audit-log.ts'
 import * as AccountDeletion from '#app/account-deletion.ts'
-import * as DeletionState from '#worker/account/deletion-state.ts'
+import * as DeletionFence from '#worker/account/deletion-fence.ts'
+import { promiseDouble } from '#worker/test-support/effect-bridge.ts'
 import {
 	AccountDeletionBillingError,
 	AccountDeletionCleanupError,
@@ -235,11 +236,31 @@ const failedAudit = (user: SeededUser, reason: string | undefined) =>
 		reason,
 	})
 
+/** Spies account deletion as the Promise API the purge used to call. */
+function spyOnDeleteUserAccount() {
+	const double = vi.fn(AccountDeletion.deleteUserAccount)
+	vi.spyOn(AccountDeletion, 'deleteUserAccountEffect').mockImplementation(
+		promiseDouble(double) as never,
+	)
+	return double
+}
+
+function spyOnAbortAccountDeleting() {
+	const double = vi.fn(
+		(input: Parameters<typeof DeletionFence.abortAccountDeleting>[0]) =>
+			DeletionFence.deletionFenceEdges.abortAccountDeleting(input),
+	)
+	vi.spyOn(DeletionFence, 'abortAccountDeleting').mockImplementation(
+		promiseDouble(double) as never,
+	)
+	return double
+}
+
 const purgedStableIds = (spy: { mock: { calls: Array<Array<unknown>> } }) =>
 	spy.mock.calls.map((call) => (call[0] as { mcpUserId: string }).mcpUserId)
 
 test('purge deletes only aged unverified person accounts through full account deletion and writes an audit row', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const h = createHarness()
 	const eligible = await h.seed('stale-unverified', 8)
 	await h.seed('verified-old', 30, { emailVerifiedAt: daysAgo(29) })
@@ -277,7 +298,7 @@ test('purge deletes only aged unverified person accounts through full account de
 })
 
 test('soft-deleted unverified accounts are left to the soft-delete purge and never claimed or failed', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const h = createHarness()
 	const softDeleted = await h.seed('soft-deleted-unverified', 60, {
 		deletedAt: daysAgo(40),
@@ -322,7 +343,7 @@ test('soft-deleted unverified accounts are left to the soft-delete purge and nev
 })
 
 test('purge walks oldest-first keyset pages and stops at the bounded batch size', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const h = createHarness()
 	const oldest = await h.seed('oldest', 11)
 	const second = await h.seed('second', 10)
@@ -352,7 +373,7 @@ test('purge walks oldest-first keyset pages and stops at the bounded batch size'
 })
 
 test('a failed deletion is audited with a bounded reason, reported per account, and does not stop the rest of the batch', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
 	const failing = await h.seed('failing', 12)
@@ -404,7 +425,7 @@ test('a failed deletion is audited with a bounded reason, reported per account, 
 })
 
 test('failure details redact email addresses before they reach outcomes, audit rows, or logs', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
 	const leaky = await h.seed('leaky', 9, {
@@ -441,7 +462,7 @@ test('failure details redact email addresses before they reach outcomes, audit r
 })
 
 test('a Stripe cancellation failure is a pre-cleanup failure: fence released, account retained, retried next run', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
 	const billing = await h.seed('billing-failure', 12)
@@ -467,7 +488,7 @@ test('a Stripe cancellation failure is a pre-cleanup failure: fence released, ac
 })
 
 test('a failed failure-audit write is logged and does not stop the rest of the batch', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const logAuditEvent = vi.spyOn(AuditLog, 'logAuditEvent')
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
@@ -488,8 +509,8 @@ test('a failed failure-audit write is logged and does not stop the rest of the b
 })
 
 test('a failed fence release is logged and does not stop the rest of the batch', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
-	const abortAccountDeleting = vi.spyOn(DeletionState, 'abortAccountDeleting')
+	const deleteUserAccount = spyOnDeleteUserAccount()
+	const abortAccountDeleting = spyOnAbortAccountDeleting()
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
 	const stuck = await h.seed('stuck-fence', 12)
@@ -540,7 +561,7 @@ async function expectFailureKeepsFence(
 }
 
 test('a pre-existing fence is left in place when a restamped deletion fails', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
 	const fenced = await h.seed('restamp-fail', 12, { deletingAt: daysAgo(1) })
@@ -559,7 +580,7 @@ test('a pre-existing fence is left in place when a restamped deletion fails', as
 })
 
 test('a cleanup error keeps a claim-created fence so the damaged account retries', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
 	const damaged = await h.seed('cleanup-fail', 8)
@@ -596,7 +617,7 @@ test('a cleanup error keeps a claim-created fence so the damaged account retries
 })
 
 test('an audit failure after a successful delete does not stop the batch or release a fence', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const logAuditEvent = vi.spyOn(AuditLog, 'logAuditEvent')
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
@@ -620,7 +641,7 @@ test('an audit failure after a successful delete does not stop the batch or rele
 })
 
 test('a claim that loses the race to verification keeps the account and writes no audit', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const h = createHarness()
 	const raced = await h.seed('verified-during-select', 8)
 	const env = h.envFor(
@@ -649,7 +670,7 @@ test('a claim that loses the race to verification keeps the account and writes n
 })
 
 test('never-attempted accounts are purged before stale fences; in-backoff fences are skipped', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const h = createHarness()
 	const staleFence = await h.seed('stale-fence', 30, { deletingAt: daysAgo(1) })
 	const fresh = await h.seed('fresh-unverified', 8)
@@ -672,7 +693,7 @@ test('never-attempted accounts are purged before stale fences; in-backoff fences
 })
 
 test('a zero time budget deletes nothing', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const h = createHarness()
 	await h.seed('would-purge', 8)
 
@@ -690,7 +711,7 @@ test('a zero time budget deletes nothing', async () => {
 })
 
 test('listUnverifiedAccountPurgeCandidates previews the claim page without claiming, deleting, or auditing', async () => {
-	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const deleteUserAccount = spyOnDeleteUserAccount()
 	const h = createHarness()
 	const staleFence = await h.seed('preview-stale-fence', 30, {
 		deletingAt: daysAgo(1),

@@ -4,6 +4,16 @@
  * Soft-delete and restore must read and update tombstoned rows.
  */
 
+import { Clock, Effect, Exit, Option, Schema } from 'effect'
+import {
+	abortOrgDeleting as abortOrgDeletingEffect,
+	markOrgDeleting as markOrgDeletingEffect,
+} from '#worker/account/deletion-fence.ts'
+import { AuditLog } from '#worker/effect/audit.ts'
+import { D1, sql } from '#worker/effect/d1.ts'
+import { outbound } from '#worker/effect/outbound.ts'
+import { runSlicePromise } from '#worker/effect/slice.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import {
 	isReleasedAccountEmail,
 	isReleasedOrgSlug,
@@ -16,9 +26,7 @@ import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import {
 	AccountDeletionWritersActiveError,
-	abortOrgDeleting,
 	clearUserMeterDeletionTombstone,
-	markOrgDeleting,
 	accountDeletionWritersActive,
 } from '#worker/account/deletion-state.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
@@ -267,170 +275,232 @@ async function restoreOrgOwnedAppRows(input: {
 	return total
 }
 
-export async function softDeleteOrg(input: {
-	env: Env
-	orgId: OwnerId
-	actorUserId?: string | null
-	actorUsername?: string | null
-	now?: Date
-}): Promise<SoftDeleteOrgResult> {
-	const appDb = input.env.APP_DB
-	const nowIso = (input.now ?? new Date()).toISOString()
-	const already = await appDb
-		.prepare(`SELECT deleted_at FROM orgs WHERE id = ?`)
-		.bind(input.orgId)
-		.first<{ deleted_at: string | null }>()
-	if (!already) throw new Error('org_not_found_or_already_deleted')
+const DeletedAtRow = Schema.Struct({ deleted_at: Schema.NullOr(Schema.String) })
+const MemberRow = Schema.Struct({ user_id: Schema.String })
+
+export class OrgNotFoundError extends Schema.TaggedError<OrgNotFoundError>()(
+	'OrgNotFoundError',
+	{ orgId: Schema.String },
+) {}
+
+export class PersonalOrgDeleteRequiresAccountDeletion extends Schema.TaggedError<PersonalOrgDeleteRequiresAccountDeletion>()(
+	'PersonalOrgDeleteRequiresAccountDeletion',
+	{ orgId: Schema.String },
+) {}
+
+/** Writes still hold OwnerId leases on the org, so the fence was refused. */
+export class OrgWritersActive extends Schema.TaggedError<OrgWritersActive>()(
+	'OrgWritersActive',
+	{
+		leaseCount: Schema.Number,
+		blockingLeases: Schema.Array(
+			Schema.Struct({ holder: Schema.String, acquiredAt: Schema.String }),
+		),
+	},
+) {}
+
+/**
+ * Fence a live org before the tombstone so a concurrent packageSave cannot
+ * insert after its table was swept. The fence is kept on success (deleted_at
+ * takes over) and released only when this call created it and writers were
+ * still active; a failed release is logged, the lease-busy error wins, and
+ * leftover heal clears meter tombstones once D1 is live again.
+ */
+const fenceLiveOrg = Effect.fn('SoftDeleteOrg.fenceLiveOrg')(function* (
+	orgId: OwnerId,
+	now: Date,
+) {
+	const marked = yield* Effect.acquireRelease(
+		markOrgDeletingEffect({ orgId, now }),
+		(marked, exit) =>
+			Exit.isFailure(exit) && marked.leaseCount > 0 && marked.created
+				? abortOrgDeletingEffect({
+						orgId,
+						now,
+						expectedDeletingAt: marked.deletingAt,
+					}).pipe(
+						Effect.catch((error) =>
+							Effect.logWarning('org soft-delete fence release failed', {
+								error,
+							}),
+						),
+					)
+				: Effect.logDebug('org soft-delete fence kept'),
+	)
+	if (marked.leaseCount > 0) {
+		return yield* new OrgWritersActive({
+			leaseCount: marked.leaseCount,
+			blockingLeases: [...marked.blockingLeases],
+		})
+	}
+	return marked
+})
+
+/**
+ * Stamp the org tombstone, or resume the generation that is already stamped.
+ * Memberships share the org's batch so a later failing step can never leave
+ * live members (or Owners) on a tombstoned org.
+ */
+const claimOrgGeneration = Effect.fn('SoftDeleteOrg.claimGeneration')(function* (
+	orgId: OwnerId,
+	nowIso: string,
+) {
+	const db = yield* D1
+	const readDeletedAt = db.first(
+		'soft_delete_org.read_deleted_at',
+		DeletedAtRow,
+		sql(`SELECT deleted_at FROM orgs WHERE id = ?`, orgId),
+	)
+	const existing = yield* readDeletedAt
+	if (Option.isNone(existing)) return yield* new OrgNotFoundError({ orgId })
+	if (existing.value.deleted_at) {
+		return { deletedAt: existing.value.deleted_at, resumed: true }
+	}
+	const [orgUpdate] = yield* db.batch('soft_delete_org.stamp', [
+		sql(
+			`UPDATE orgs
+			 SET deleted_at = ?, updated_at = ?
+			 WHERE id = ? AND deleted_at IS NULL`,
+			nowIso,
+			nowIso,
+			orgId,
+		),
+		sql(
+			`UPDATE org_memberships
+			 SET deleted_at = ?
+			 WHERE org_id = ? AND deleted_at IS NULL
+			   AND EXISTS (
+			     SELECT 1 FROM orgs WHERE id = ? AND deleted_at = ?
+			   )`,
+			nowIso,
+			orgId,
+			orgId,
+			nowIso,
+		),
+	])
+	if ((orgUpdate?.changes ?? 0) > 0) return { deletedAt: nowIso, resumed: false }
+	const again = Option.getOrUndefined(yield* readDeletedAt)?.deleted_at
+	if (!again) return yield* new OrgNotFoundError({ orgId })
+	return { deletedAt: again, resumed: true }
+})
+
+/** Spec §10.1 / §10.3: revoke every OAuth grant that reaches the org. */
+const revokeOrgOAuthGrants = Effect.fn('SoftDeleteOrg.revokeOAuthGrants')(
+	function* (orgId: OwnerId, deletedAt: string) {
+		const env = yield* WorkerEnv
+		const db = yield* D1
+		const helpers = (yield* outbound('oauth.resolveHelpers', () =>
+			resolveOAuthHelpers(env),
+		)) as OAuthGrantHelpers | undefined
+		if (!helpers) return
+		const members = yield* db.all(
+			'soft_delete_org.members',
+			MemberRow,
+			sql(
+				`SELECT user_id FROM org_memberships
+				 WHERE org_id = ? AND (deleted_at IS NULL OR deleted_at = ?)`,
+				orgId,
+				deletedAt,
+			),
+		)
+		const revoke = (memberUserId: string) =>
+			outbound('oauth.revokeGrantsForOrg', () =>
+				revokeOAuthGrantsForOrg({ helpers, memberUserId, orgId }),
+			)
+		for (const member of members) yield* revoke(member.user_id)
+		// Personal org: owner id equals org id; also revoke grants listed under
+		// that user id when memberships were never expanded.
+		if (!members.some((row) => row.user_id === orgId)) yield* revoke(orgId)
+	},
+)
+
+export const softDeleteOrgEffect = Effect.fn('SoftDeleteOrg')(function* (input: {
+	readonly orgId: OwnerId
+	readonly actorUserId?: string | null
+	readonly actorUsername?: string | null
+	readonly now?: Date
+}) {
+	const env = yield* WorkerEnv
+	const db = yield* D1
+	const audit = yield* AuditLog
+	const { orgId } = input
+	yield* Effect.annotateCurrentSpan('kody.org_id', orgId)
+	const now = new Date(input.now?.getTime() ?? (yield* Clock.currentTimeMillis))
+	const already = yield* db.first(
+		'soft_delete_org.read_deleted_at',
+		DeletedAtRow,
+		sql(`SELECT deleted_at FROM orgs WHERE id = ?`, orgId),
+	)
+	if (Option.isNone(already)) return yield* new OrgNotFoundError({ orgId })
 
 	// Refuse a new soft-delete while a live person still owns this as their
 	// personal org. Account deletion stamps the person first, so
 	// isPersonalOrg is false when softDeleteUserAccount calls us. Resume of an
-	// already-tombstoned org skips this check.
-	if (!already.deleted_at && (await isPersonalOrg(appDb, input.orgId))) {
-		throw new PersonalOrgDeleteRequiresAccountDeletionError()
-	}
-
-	// Fence live orgs before the tombstone so a concurrent packageSave cannot
-	// insert after its table was swept. A generation that is already stamped
-	// is resumed without a new fence: deleted_at already blocks OwnerId writes.
-	if (!already.deleted_at) {
-		const marked = await markOrgDeleting({
-			db: appDb,
-			orgId: input.orgId,
-			now: new Date(nowIso),
-			env: input.env,
-		})
-		if (marked.leaseCount > 0) {
-			try {
-				if (marked.created) {
-					await abortOrgDeleting({
-						db: appDb,
-						orgId: input.orgId,
-						now: new Date(nowIso),
-						env: input.env,
-						expectedDeletingAt: marked.deletingAt,
-					})
-				}
-			} finally {
-				// Prefer the lease-busy signal even when abort's UserMeter RPC fails;
-				// leftover heal clears meter tombstones once D1 is live again.
-				throw accountDeletionWritersActive(marked)
-			}
+	// already-tombstoned org skips the check and the fence: deleted_at already
+	// blocks OwnerId writes.
+	if (!already.value.deleted_at) {
+		if (yield* outbound('orgs.isPersonalOrg', () => isPersonalOrg(env.APP_DB, orgId))) {
+			return yield* new PersonalOrgDeleteRequiresAccountDeletion({ orgId })
 		}
+		yield* Effect.scoped(fenceLiveOrg(orgId, now))
 	}
 
-	const { deletedAt, resumed } = await claimSoftDeleteGeneration({
-		db: appDb,
-		selectSql: `SELECT deleted_at FROM orgs WHERE id = ?`,
-		id: input.orgId,
-		nowIso,
-		missingError: 'org_not_found_or_already_deleted',
-		// Memberships share the org's batch so a later failing step can never
-		// leave live members (or Owners) on a tombstoned org.
-		stamp: async (stampAt) => {
-			const [orgUpdate] = await appDb.batch([
-				appDb
-					.prepare(
-						`UPDATE orgs
-						 SET deleted_at = ?, updated_at = ?
-						 WHERE id = ? AND deleted_at IS NULL`,
-					)
-					.bind(stampAt, stampAt, input.orgId),
-				appDb
-					.prepare(
-						`UPDATE org_memberships
-						 SET deleted_at = ?
-						 WHERE org_id = ? AND deleted_at IS NULL
-						   AND EXISTS (
-						     SELECT 1 FROM orgs WHERE id = ? AND deleted_at = ?
-						   )`,
-					)
-					.bind(stampAt, input.orgId, input.orgId, stampAt),
-			])
-			return orgUpdate?.meta.changes ?? 0
-		},
-	})
+	const { deletedAt, resumed } = yield* claimOrgGeneration(orgId, now.toISOString())
 
-	// Spec §10.1 / §10.3: revoke credentials bound to the org. Team-bound tokens
-	// store the person on user_id and the org on org_id (same COALESCE match as
-	// member offboarding). Soft-delete also tombstones api_tokens; restore never
-	// clears those tombstones. After deleted_at is set, leave write fences in
-	// place even if a later step fails — fail closed for OwnerId writes.
-	await appDb
-		.prepare(
+	// Revoke credentials bound to the org. Team-bound tokens store the person
+	// on user_id and the org on org_id (same COALESCE match as member
+	// offboarding). Restore never clears api_tokens tombstones. After
+	// deleted_at is set, write fences stay even if a later step fails.
+	yield* db.run(
+		'soft_delete_org.revoke_api_tokens',
+		sql(
 			`UPDATE api_tokens
 			 SET revoked_at = ?, updated_at = ?, deleted_at = ?
 			 WHERE COALESCE(org_id, user_id) = ?
 			   AND deleted_at IS NULL`,
-		)
-		.bind(deletedAt, deletedAt, deletedAt, input.orgId)
-		.run()
-	await appDb
-		.prepare(
+			deletedAt,
+			deletedAt,
+			deletedAt,
+			orgId,
+		),
+	)
+	yield* db.run(
+		'soft_delete_org.delete_bootstrap_codes',
+		sql(
 			`DELETE FROM cli_credential_bootstrap_codes
 			 WHERE COALESCE(org_id, user_id) = ?`,
-		)
-		.bind(input.orgId)
-		.run()
-
-	const oauthHelpers = (await resolveOAuthHelpers(input.env)) as
-		| OAuthGrantHelpers
-		| undefined
-	if (oauthHelpers) {
-		const members = await appDb
-			.prepare(
-				`SELECT user_id FROM org_memberships
-				 WHERE org_id = ? AND (deleted_at IS NULL OR deleted_at = ?)`,
-			)
-			.bind(input.orgId, deletedAt)
-			.all<{ user_id: string }>()
-		for (const member of members.results ?? []) {
-			await revokeOAuthGrantsForOrg({
-				helpers: oauthHelpers,
-				memberUserId: member.user_id,
-				orgId: input.orgId,
-			})
-		}
-		// Personal org: owner id equals org id; also revoke grants listed under
-		// that user id when memberships were never expanded.
-		if (!(members.results ?? []).some((row) => row.user_id === input.orgId)) {
-			await revokeOAuthGrantsForOrg({
-				helpers: oauthHelpers,
-				memberUserId: input.orgId,
-				orgId: input.orgId,
-			})
-		}
-	}
+			orgId,
+		),
+	)
+	yield* revokeOrgOAuthGrants(orgId, deletedAt)
 
 	// Before the org's apps are tombstoned: upstream revoke needs the live app.
-	await wipePinnedConnectionsForOrg({
-		env: input.env,
-		orgId: input.orgId,
-		audit: optionalOrgAuditWriter(input.env, {
-			userId: input.actorUserId ?? null,
-			username: input.actorUsername ?? null,
+	yield* outbound('pinned_connections.wipeForOrg', () =>
+		wipePinnedConnectionsForOrg({
+			env,
+			orgId,
+			audit: optionalOrgAuditWriter(env, {
+				userId: input.actorUserId ?? null,
+				username: input.actorUsername ?? null,
+			}),
 		}),
-	})
+	)
+	const resourceRowsSoftDeleted = yield* outbound('soft_delete_org.app_rows', () =>
+		softDeleteOrgOwnedAppRows({ appDb: env.APP_DB, orgId, deletedAt }),
+	)
+	const jobsSoftDeleted = yield* outbound('jobs.softDeleteJobsForUser', () =>
+		jobsData(env).softDeleteJobsForUser({ userId: orgId, deletedAt }),
+	)
+	yield* outbound('jobs.syncJobManagerAlarm', () =>
+		syncJobManagerAlarm({ env, userId: orgId }),
+	)
+	invalidatePackageAppOwnerCache({ stableUserId: orgId })
+	const billing = yield* outbound('billing.cancelKodySubscriptionsForSoftDelete', () =>
+		cancelKodySubscriptionsForSoftDelete({ env, ownerId: orgId }),
+	)
 
-	const resourceRowsSoftDeleted = await softDeleteOrgOwnedAppRows({
-		appDb,
-		orgId: input.orgId,
-		deletedAt,
-	})
-	const jobsSoftDeleted = await jobsData(input.env).softDeleteJobsForUser({
-		userId: input.orgId,
-		deletedAt,
-	})
-	await syncJobManagerAlarm({ env: input.env, userId: input.orgId })
-	invalidatePackageAppOwnerCache({ stableUserId: input.orgId })
-	const billing = await cancelKodySubscriptionsForSoftDelete({
-		env: input.env,
-		ownerId: input.orgId,
-	})
-
-	await logOrgAuditEvent({
-		env: input.env,
-		orgId: input.orgId,
+	yield* audit.recordOrg({
+		orgId,
 		action: 'org.deleted',
 		result: 'success',
 		actorUserId: input.actorUserId,
@@ -444,14 +514,57 @@ export async function softDeleteOrg(input: {
 		}),
 		createdAt: deletedAt,
 	})
-
+	yield* Effect.logInfo('org soft-deleted', { resumed, resourceRowsSoftDeleted })
 	return {
-		orgId: input.orgId,
+		orgId,
 		deletedAt,
 		resourceRowsSoftDeleted,
 		jobsSoftDeleted,
 		resumed,
+	} satisfies SoftDeleteOrgResult
+})
+
+type SoftDeleteOrgFailure = Effect.Error<ReturnType<typeof softDeleteOrgEffect>>
+
+/**
+ * The errors org settings, the org-delete capability, admin hard delete, and
+ * account soft-delete have always caught. A new failure tag without a case
+ * here fails to compile.
+ */
+function toSoftDeleteOrgPromiseError(error: SoftDeleteOrgFailure): unknown {
+	switch (error._tag) {
+		case 'OrgNotFoundError':
+			return new Error('org_not_found_or_already_deleted')
+		case 'PersonalOrgDeleteRequiresAccountDeletion':
+			return new PersonalOrgDeleteRequiresAccountDeletionError()
+		case 'OrgWritersActive':
+			return accountDeletionWritersActive(error)
+		case 'DatabaseError':
+			return error.reason === 'query' ? error.cause : error
+		case 'OutboundCallError':
+			return error.reason === 'failed' ? error.cause : error
+		case 'DeletionFenceError':
+		case 'UserMeterUnavailableError':
+			return error
+		default: {
+			const unmapped: never = error
+			return unmapped
+		}
 	}
+}
+
+export function softDeleteOrg(input: {
+	env: Env
+	orgId: OwnerId
+	actorUserId?: string | null
+	actorUsername?: string | null
+	now?: Date
+}): Promise<SoftDeleteOrgResult> {
+	const { env, ...rest } = input
+	return runSlicePromise(
+		env,
+		softDeleteOrgEffect(rest).pipe(Effect.mapError(toSoftDeleteOrgPromiseError)),
+	)
 }
 
 /**

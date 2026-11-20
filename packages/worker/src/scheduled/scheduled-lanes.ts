@@ -1,4 +1,4 @@
-import { pruneExpiredGuestAccounts } from '#worker/guest/guest-account-purge.ts'
+import { runRetentionLane } from '#worker/scheduled/retention-lanes.ts'
 import { runPackageAppHostMigrationReminder } from '#worker/package-codemods/host-migration-reminder.ts'
 import { reconcileSecondAgentStandardGifts } from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -12,9 +12,6 @@ import { checkEmailDeliveryBurstAndNotify } from '#app/email-delivery-alerts.ts'
 import { checkEmailVerificationStallsAndNotify } from '#app/email-verification-stall-alerts.ts'
 import { refreshFleetUsersAffectedAndMaybeAlert } from '#app/fleet-users-affected-alerts.ts'
 import { refreshPackageOwnerErrorSpikesAndMaybeAlert } from '#app/package-owner-error-spike-alerts.ts'
-import { pruneRetention } from '#app/retention.ts'
-import { pruneUnverifiedAccounts } from '#worker/account/unverified-account-purge.ts'
-import { pruneSoftDeleted } from '#worker/orgs/purge.ts'
 import { reconcileKitSubscribers } from '#worker/kit/subscriber-sync.ts'
 import { sendUserEntitlementWarningEmails } from '#worker/entitlements/user-entitlement-warning-emails.ts'
 import { sendUserErrorRateEmails } from '#app/user-error-rate-emails.ts'
@@ -161,22 +158,12 @@ export async function runScheduledLane(input: {
 				now: input.scheduledAt,
 			})
 		case 'retention':
-			return pruneRetention({ env: input.env, now: input.scheduledAt })
-		case 'unverified_account_purge': {
-			const unverified = await pruneUnverifiedAccounts({
-				env: input.env,
-				now: input.scheduledAt,
-			})
-			const guests = await pruneExpiredGuestAccounts({
-				env: input.env,
-				now: input.scheduledAt,
-			})
-			return { ...unverified, guests }
-		}
+		case 'unverified_account_purge':
 		case 'soft_delete_purge':
-			return pruneSoftDeleted({
+			return runRetentionLane({
 				env: input.env,
-				now: input.scheduledAt,
+				lane: input.lane,
+				scheduledAt: input.scheduledAt,
 			})
 		case 'usage_aggregation': {
 			const result = await aggregateUsageRollups(input.env, input.scheduledAt)
