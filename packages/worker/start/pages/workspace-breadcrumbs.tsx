@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Global } from '@emotion/react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import type { FileMetadata } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
@@ -67,7 +68,7 @@ export function WorkspaceBreadcrumbs({
 	const measure = useRef<HTMLSpanElement>(null)
 	const [start, setStart] = useState(1)
 	const key = crumbs.map((crumb) => `${crumb.id}:${crumb.name}`).join('|')
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		const element = host.current
 		const sizing = measure.current
 		if (!element?.parentElement || !sizing) return
