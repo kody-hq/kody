@@ -11,7 +11,7 @@ import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { shouldRunRetentionCron } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
-import { runD1WithRetry } from '#worker/d1-retry.ts'
+import { z } from 'zod'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import {
 	AccountDeletionWritersActiveError,
@@ -23,6 +23,21 @@ import {
 	AccountDeletionInventoryError,
 	deleteUserAccount,
 } from '#app/account-deletion.ts'
+import { type Clock, systemClock } from '#worker/scheduled/retention/clock.ts'
+import { startPassBudget } from '#worker/scheduled/retention/budget.ts'
+import { runClaimed } from '#worker/scheduled/retention/claim.ts'
+import {
+	d1All,
+	d1Run,
+	type RetentionContext,
+} from '#worker/scheduled/retention/d1.ts'
+import { assertNever } from '#worker/scheduled/retention/failures.ts'
+import {
+	dbIdColumn,
+	ownerIdColumn,
+	timestampColumn,
+} from '#worker/scheduled/retention/rows.ts'
+import { traced } from '#worker/scheduled/retention/telemetry.ts'
 
 export { shouldRunRetentionCron as shouldRunUnverifiedAccountPurgeCron }
 
@@ -75,17 +90,18 @@ const unverifiedPersonEligibilitySql = [
 		)`,
 ] as const
 
-type UnverifiedAccountRow = {
-	id: number
-	stable_user_id: OwnerId
-	personal_org_id: string | null
-	email: string
-	created_at: string
-}
+const unverifiedAccountRow = z.object({
+	id: dbIdColumn,
+	stable_user_id: ownerIdColumn,
+	personal_org_id: z.string().nullable(),
+	email: z.string(),
+	created_at: timestampColumn,
+})
 
-type UnverifiedAccountClaim =
-	| { claimed: false }
-	| { claimed: true; created: boolean; deletingAt: string }
+type UnverifiedAccountRow = z.output<typeof unverifiedAccountRow>
+
+/** `created` is true when this pass set the fence (vs. restamping a stale one). */
+type UnverifiedAccountClaim = { created: boolean; deletingAt: string }
 
 export type UnverifiedAccountPurgeOutcomeKind =
 	| 'purged'
@@ -244,233 +260,304 @@ function ageDays(createdAt: string, now: Date) {
 	return Math.floor((now.getTime() - createdMs) / millisecondsPerDay)
 }
 
-async function listUnverifiedAccountsPage(input: {
-	db: D1Database
-	ageCutoff: string
-	retryBackoffCutoff: string
-	batchSize: number
-}) {
+function listUnverifiedAccountsPage(
+	ctx: RetentionContext,
+	input: { ageCutoff: string; retryBackoffCutoff: string; batchSize: number },
+) {
 	const conditions = unverifiedAccountSqlConditions().join('\n			AND ')
-	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`SELECT id, stable_user_id, personal_org_id, email, created_at
-				FROM users
-				WHERE ${conditions}
-				ORDER BY (deleting_at IS NULL) DESC, datetime(created_at) ASC, id ASC
-				LIMIT ?`,
-			)
-			.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
-			.all<UnverifiedAccountRow>(),
-	)
-	return results ?? []
+	return d1All(ctx, {
+		operation: 'unverified_account_purge.list_candidates',
+		sql: `SELECT id, stable_user_id, personal_org_id, email, created_at
+			FROM users
+			WHERE ${conditions}
+			ORDER BY (deleting_at IS NULL) DESC, datetime(created_at) ASC, id ASC
+			LIMIT ?`,
+		bindings: [input.ageCutoff, input.retryBackoffCutoff, input.batchSize],
+		row: unverifiedAccountRow,
+	})
 }
 
-async function claimUnverifiedAccountForPurge(input: {
-	db: D1Database
-	dbUserId: number
-	now: Date
-	retryBackoffCutoff: string
-}): Promise<UnverifiedAccountClaim> {
+/**
+ * Claims by stamping `deleting_at`: a never-fenced row first, else a fence
+ * older than the 6 hour retry backoff. The eligibility predicate is repeated
+ * so a row that was verified or soft-deleted since the scan is not claimed.
+ */
+async function claimUnverifiedAccountForPurge(
+	ctx: RetentionContext,
+	input: { dbUserId: number; now: Date; retryBackoffCutoff: string },
+): Promise<UnverifiedAccountClaim | null> {
 	const deletingAt = utcSqliteTimestamp(input.now)
-	const eligibility = unverifiedPersonEligibilitySql.join('\n					AND ')
-	const createdResult = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
+	const eligibility = unverifiedPersonEligibilitySql.join('\n				AND ')
+	const claim = (fenceFilter: string, bindings: Array<unknown>) =>
+		d1Run(ctx, {
+			operation: 'unverified_account_purge.claim',
+			sql: `UPDATE users
 				SET deleting_at = ?, updated_at = ?
 				WHERE id = ?
 					AND ${eligibility}
-					AND deleting_at IS NULL`,
-			)
-			.bind(deletingAt, deletingAt, input.dbUserId)
-			.run(),
-	)
-	if ((createdResult.meta.changes ?? 0) === 1) {
-		await invalidatePackageAppOwnerCacheForDbUserId(input.db, input.dbUserId)
-		return { claimed: true, created: true, deletingAt }
+					AND ${fenceFilter}`,
+			bindings: [deletingAt, deletingAt, input.dbUserId, ...bindings],
+		})
+	let created = true
+	if ((await claim('deleting_at IS NULL', [])) !== 1) {
+		created = false
+		const restamped = await claim('datetime(deleting_at) < datetime(?)', [
+			input.retryBackoffCutoff,
+		])
+		if (restamped !== 1) return null
 	}
-	const restampedResult = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
-				SET deleting_at = ?, updated_at = ?
-				WHERE id = ?
-					AND ${eligibility}
-					AND datetime(deleting_at) < datetime(?)`,
-			)
-			.bind(deletingAt, deletingAt, input.dbUserId, input.retryBackoffCutoff)
-			.run(),
-	)
-	if ((restampedResult.meta.changes ?? 0) === 1) {
-		await invalidatePackageAppOwnerCacheForDbUserId(input.db, input.dbUserId)
-		return { claimed: true, created: false, deletingAt }
-	}
-	return { claimed: false }
+	await invalidatePackageAppOwnerCacheForDbUserId(ctx.db, input.dbUserId)
+	return { created, deletingAt }
 }
 
 /**
  * Read-only preview of the next purge page: the accounts one run would try
  * to claim right now, in claim order. Performs no claims and no deletes.
  */
-export async function listUnverifiedAccountPurgeCandidates(input: {
+export function listUnverifiedAccountPurgeCandidates(input: {
 	env: Env
 	now?: Date
 	batchSize?: number
+	clock?: Clock
+	signal?: AbortSignal
 }): Promise<{
 	scanned: number
 	candidates: Array<UnverifiedAccountPurgeCandidate>
 }> {
-	const now = input.now ?? new Date()
-	const page = await listUnverifiedAccountsPage({
-		db: input.env.APP_DB,
-		...purgeCutoffs(now),
-		batchSize: input.batchSize ?? unverifiedAccountPurgeBatchSize,
-	})
-	return {
-		scanned: page.length,
-		candidates: page.map((account) => ({
-			stableUserId: account.stable_user_id,
-			ageDays: ageDays(account.created_at, now),
-		})),
+	const clock = input.clock ?? systemClock
+	return traced(
+		'retention.unverified_account_purge.list_candidates',
+		{},
+		async () => {
+			const now = input.now ?? clock.now()
+			const page = await listUnverifiedAccountsPage(
+				{ db: input.env.APP_DB, clock, signal: input.signal },
+				{
+					...purgeCutoffs(now),
+					batchSize: input.batchSize ?? unverifiedAccountPurgeBatchSize,
+				},
+			)
+			return {
+				scanned: page.length,
+				candidates: page.map((account) => ({
+					stableUserId: account.stable_user_id,
+					ageDays: ageDays(account.created_at, now),
+				})),
+			}
+		},
+		clock,
+	)
+}
+
+/** Best-effort audit write: a failing sink is logged, never fatal. */
+async function writePurgeAudit(input: {
+	env: Env
+	account: UnverifiedAccountRow
+	action: 'unverified_account_purged' | 'unverified_account_purge_failed'
+	reason: string
+}) {
+	try {
+		await logAuditEvent({
+			db: auditDatabaseFromEnv(input.env),
+			category: 'account',
+			action: input.action,
+			result:
+				input.action === 'unverified_account_purged' ? 'success' : 'failure',
+			email: input.account.email,
+			reason: input.reason,
+		})
+	} catch (error) {
+		console.warn('unverified_account_purge_audit_failed', {
+			userId: input.account.stable_user_id,
+			error,
+		})
 	}
 }
 
-export async function pruneUnverifiedAccounts(input: {
+async function recordPurgeFailure(input: {
+	env: Env
+	account: UnverifiedAccountRow
+	ageDays: number
+	error: unknown
+}): Promise<UnverifiedAccountPurgeOutcome> {
+	const warnings = deletionFailureWarnings(input.error)
+	const reason = unverifiedAccountPurgeFailureReason(input.error, warnings)
+	console.warn('unverified_account_purge_failed', {
+		userId: input.account.stable_user_id,
+		warnings,
+		error: reason,
+	})
+	// Workers Logs sampling drops most of the warn above; the audit row and
+	// Sentry event are the best-effort durable record of why the purge failed
+	// (each is skipped, not fatal, when its sink is down).
+	await writePurgeAudit({
+		env: input.env,
+		account: input.account,
+		action: 'unverified_account_purge_failed',
+		reason,
+	})
+	reportPurgeFailureToSentry({
+		error: input.error,
+		userId: input.account.stable_user_id,
+		warnings,
+	})
+	return {
+		stableUserId: input.account.stable_user_id,
+		ageDays: input.ageDays,
+		outcome: 'failed',
+		error: reason,
+		warnings: [...warnings],
+	}
+}
+
+function purgeOneAccount(input: {
+	env: Env
+	ctx: RetentionContext
+	account: UnverifiedAccountRow
+	now: Date
+	retryBackoffCutoff: string
+}): Promise<UnverifiedAccountPurgeOutcome> {
+	const { account, env } = input
+	const accountAgeDays = ageDays(account.created_at, input.now)
+	return traced(
+		'retention.unverified_account_purge.account',
+		{ 'retention.age_days': accountAgeDays },
+		async (span) => {
+			const outcome = await runClaimed({
+				acquire: () =>
+					claimUnverifiedAccountForPurge(input.ctx, {
+						dbUserId: account.id,
+						now: input.now,
+						retryBackoffCutoff: input.retryBackoffCutoff,
+					}),
+				body: () =>
+					deleteUserAccount({
+						env,
+						dbUserId: account.id,
+						mcpUserId: personalOrgIdFromUserRow({
+							personal_org_id: account.personal_org_id,
+							stable_user_id: account.stable_user_id,
+						}),
+						personUserId: account.stable_user_id,
+					}),
+				// Only a fence this pass created, for a failure before any data was
+				// removed, is released (retry next tick). Every other failure keeps
+				// the fence so the 6 hour backoff paces the retry.
+				onFailure: (claim, error) =>
+					claim.created && isPreCleanupDeletionFailure(error)
+						? 'release'
+						: 'keep',
+				release: (claim) =>
+					abortAccountDeleting({
+						db: env.APP_DB,
+						dbUserId: account.id,
+						env,
+						expectedDeletingAt: claim.deletingAt,
+					}),
+			})
+			span.setAttribute('retention.outcome', outcome.status)
+			switch (outcome.status) {
+				case 'not_claimed':
+					return {
+						stableUserId: account.stable_user_id,
+						ageDays: accountAgeDays,
+						outcome: 'skipped_claim',
+					}
+				case 'completed':
+					await writePurgeAudit({
+						env,
+						account,
+						action: 'unverified_account_purged',
+						reason: `unverified_for_${accountAgeDays}_days`,
+					})
+					return {
+						stableUserId: account.stable_user_id,
+						ageDays: accountAgeDays,
+						outcome: 'purged',
+					}
+				case 'failed':
+					span.setAttribute('retention.claim', outcome.disposition)
+					if (outcome.disposition === 'release_failed') {
+						// The fence stays; the retry backoff restamps it later.
+						console.warn('unverified_account_purge_release_failed', {
+							userId: account.stable_user_id,
+							error: outcome.releaseError,
+						})
+					}
+					return recordPurgeFailure({
+						env,
+						account,
+						ageDays: accountAgeDays,
+						error: outcome.error,
+					})
+				default:
+					return assertNever(outcome)
+			}
+		},
+		input.ctx.clock,
+	)
+}
+
+export function pruneUnverifiedAccounts(input: {
 	env: Env
 	now?: Date
 	timeBudgetMs?: number
 	batchSize?: number
+	clock?: Clock
+	signal?: AbortSignal
 }): Promise<UnverifiedAccountPurgeResult> {
-	const now = input.now ?? new Date()
-	const startedAtMs = Date.now()
-	const timeBudgetMs =
-		input.timeBudgetMs ?? unverifiedAccountPurgeRunTimeBudgetMs
-	const batchSize = input.batchSize ?? unverifiedAccountPurgeBatchSize
-	const { ageCutoff, retryBackoffCutoff } = purgeCutoffs(now)
-	const result: UnverifiedAccountPurgeResult = {
-		scanned: 0,
-		purged: 0,
-		failed: 0,
-		timeBudgetExhausted: false,
-		outcomes: [],
-	}
-	const page = await listUnverifiedAccountsPage({
-		db: input.env.APP_DB,
-		ageCutoff,
-		retryBackoffCutoff,
-		batchSize,
-	})
-	result.scanned = page.length
-	for (const account of page) {
-		if (Date.now() - startedAtMs >= timeBudgetMs) {
-			result.timeBudgetExhausted = true
-			break
-		}
-		const accountAgeDays = ageDays(account.created_at, now)
-		const claim = await claimUnverifiedAccountForPurge({
-			db: input.env.APP_DB,
-			dbUserId: account.id,
-			now,
-			retryBackoffCutoff,
-		})
-		if (!claim.claimed) {
-			result.outcomes.push({
-				stableUserId: account.stable_user_id,
-				ageDays: accountAgeDays,
-				outcome: 'skipped_claim',
-			})
-			continue
-		}
-		try {
-			await deleteUserAccount({
-				env: input.env,
-				dbUserId: account.id,
-				mcpUserId: personalOrgIdFromUserRow({
-					personal_org_id: account.personal_org_id,
-					stable_user_id: account.stable_user_id,
-				}),
-				personUserId: account.stable_user_id,
-			})
-			try {
-				await logAuditEvent({
-					db: auditDatabaseFromEnv(input.env),
-					category: 'account',
-					action: 'unverified_account_purged',
-					result: 'success',
-					email: account.email,
-					reason: `unverified_for_${accountAgeDays}_days`,
-				})
-			} catch (error) {
-				console.warn('unverified_account_purge_audit_failed', {
-					userId: account.stable_user_id,
-					error,
-				})
+	const clock = input.clock ?? systemClock
+	return traced(
+		'retention.unverified_account_purge',
+		{},
+		async (span) => {
+			const now = input.now ?? clock.now()
+			const budget = startPassBudget(
+				clock,
+				input.timeBudgetMs ?? unverifiedAccountPurgeRunTimeBudgetMs,
+			)
+			const batchSize = input.batchSize ?? unverifiedAccountPurgeBatchSize
+			const { ageCutoff, retryBackoffCutoff } = purgeCutoffs(now)
+			const ctx = { db: input.env.APP_DB, clock, signal: input.signal }
+			const result: UnverifiedAccountPurgeResult = {
+				scanned: 0,
+				purged: 0,
+				failed: 0,
+				timeBudgetExhausted: false,
+				outcomes: [],
 			}
-			result.purged += 1
-			result.outcomes.push({
-				stableUserId: account.stable_user_id,
-				ageDays: accountAgeDays,
-				outcome: 'purged',
+			const page = await listUnverifiedAccountsPage(ctx, {
+				ageCutoff,
+				retryBackoffCutoff,
+				batchSize,
 			})
-		} catch (error) {
-			if (claim.created && isPreCleanupDeletionFailure(error)) {
-				// A failed release leaves the fence in place; the retry backoff
-				// restamps it later, so it must not abort the rest of the batch.
-				try {
-					await abortAccountDeleting({
-						db: input.env.APP_DB,
-						dbUserId: account.id,
-						env: input.env,
-						expectedDeletingAt: claim.deletingAt,
-					})
-				} catch (releaseError) {
-					console.warn('unverified_account_purge_release_failed', {
-						userId: account.stable_user_id,
-						error: releaseError,
-					})
+			result.scanned = page.length
+			for (const account of page) {
+				if (budget.reached()) {
+					result.timeBudgetExhausted = true
+					break
 				}
-			}
-			result.failed += 1
-			const warnings = deletionFailureWarnings(error)
-			const reason = unverifiedAccountPurgeFailureReason(error, warnings)
-			result.outcomes.push({
-				stableUserId: account.stable_user_id,
-				ageDays: accountAgeDays,
-				outcome: 'failed',
-				error: reason,
-				warnings: [...warnings],
-			})
-			console.warn('unverified_account_purge_failed', {
-				userId: account.stable_user_id,
-				warnings,
-				error: reason,
-			})
-			// Workers Logs sampling drops most of the warn above; the audit row
-			// and Sentry event are the best-effort durable record of why the
-			// purge failed (each is skipped, not fatal, when its sink is down).
-			try {
-				await logAuditEvent({
-					db: auditDatabaseFromEnv(input.env),
-					category: 'account',
-					action: 'unverified_account_purge_failed',
-					result: 'failure',
-					email: account.email,
-					reason,
+				const outcome = await purgeOneAccount({
+					env: input.env,
+					ctx,
+					account,
+					now,
+					retryBackoffCutoff,
 				})
-			} catch (auditError) {
-				console.warn('unverified_account_purge_audit_failed', {
-					userId: account.stable_user_id,
-					error: auditError,
-				})
+				if (outcome.outcome === 'purged') result.purged += 1
+				if (outcome.outcome === 'failed') result.failed += 1
+				result.outcomes.push(outcome)
 			}
-			reportPurgeFailureToSentry({
-				error,
-				userId: account.stable_user_id,
-				warnings,
-			})
-		}
-	}
-	console.info('unverified-account-purge', JSON.stringify(result))
-	return result
+			span.setAttribute('retention.scanned', result.scanned)
+			span.setAttribute('retention.purged', result.purged)
+			span.setAttribute('retention.failed', result.failed)
+			span.setAttribute(
+				'retention.budget_exhausted',
+				result.timeBudgetExhausted,
+			)
+			console.info('unverified-account-purge', JSON.stringify(result))
+			return result
+		},
+		clock,
+	)
 }
