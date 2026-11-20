@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useHydrated } from '../components/use-hydrated.ts'
 import {
 	columnFilteringFeature,
 	globalFilteringFeature,
@@ -72,7 +73,7 @@ export function useRecordTableModel(
 	rows: Array<RecordTableRow>,
 	options?: RecordTableOptions,
 ) {
-	const [visibility, setVisibility] = useState<ColumnVisibilityState>(() =>
+	const [defaultVisibility] = useState<ColumnVisibilityState>(() =>
 		Object.fromEntries(
 			(options?.defaultHidden ?? []).map((key) => [key, false]),
 		),
@@ -80,26 +81,21 @@ export function useRecordTableModel(
 	const storageKey = options?.visibilityKey
 		? `record-table:${options.visibilityKey}:columns`
 		: null
-	useEffect(() => {
-		if (!storageKey) return
-		try {
-			const saved: unknown = JSON.parse(
-				localStorage.getItem(storageKey) ?? 'null',
-			)
-			if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
-				// Synchronize the optional browser preference after hydration.
-				setVisibility(
-					Object.fromEntries(
-						Object.entries(saved).filter(
-							([, value]) => typeof value === 'boolean',
-						),
-					),
-				)
-			}
-		} catch {
-			/* Storage can be unavailable. The table remains usable. */
-		}
-	}, [storageKey])
+	const hydrated = useHydrated()
+	const saved = useMemo(
+		() => (hydrated && storageKey ? readSavedVisibility(storageKey) : null),
+		[hydrated, storageKey],
+	)
+	const [chosen, setChosen] = useState<{
+		key: string | null
+		value: ColumnVisibilityState
+	} | null>(null)
+	const visibility =
+		(chosen?.key === storageKey ? chosen.value : null) ??
+		saved ??
+		defaultVisibility
+	const setVisibility = (value: ColumnVisibilityState) =>
+		setChosen({ key: storageKey, value })
 	const enabled = Boolean(options)
 	const defs = useMemo<
 		Array<ColumnDef<typeof recordTableFeatures, RecordTableRow>>
@@ -202,4 +198,19 @@ export function useRecordTableModel(
 			})
 	}, [options, lastPage])
 	return model
+}
+
+function readSavedVisibility(storageKey: string): ColumnVisibilityState | null {
+	try {
+		const saved: unknown = JSON.parse(
+			localStorage.getItem(storageKey) ?? 'null',
+		)
+		if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return null
+		return Object.fromEntries(
+			Object.entries(saved).filter(([, value]) => typeof value === 'boolean'),
+		)
+	} catch {
+		/* Storage can be unavailable. The table remains usable. */
+		return null
+	}
 }
