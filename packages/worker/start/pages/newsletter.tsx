@@ -29,7 +29,7 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { useActor } from '@xstate/react'
-import { useCallback, useEffect, type FormEvent } from 'react'
+import { useCallback, type FormEvent } from 'react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { sendUiEvent } from '#client/ui-actor.ts'
 import { Button } from '../components/button.tsx'
@@ -123,14 +123,19 @@ export function NewsletterRoute(props: { data: NewsletterPageData }) {
  */
 function useNativeSubmitGate() {
 	const [snapshot, , actor] = useActor(submissionGateState)
-	useEffect(() => {
-		function pageshow(event: PageTransitionEvent) {
-			if (event.persisted) sendUiEvent(actor, { type: 'SETTLED' })
-		}
-		window.addEventListener('pageshow', pageshow)
-		return () => window.removeEventListener('pageshow', pageshow)
-	}, [actor])
+	const formRef = useCallback(
+		(node: HTMLFormElement | null) => {
+			if (!node) return
+			function pageshow(event: PageTransitionEvent) {
+				if (event.persisted) sendUiEvent(actor, { type: 'SETTLED' })
+			}
+			window.addEventListener('pageshow', pageshow)
+			return () => window.removeEventListener('pageshow', pageshow)
+		},
+		[actor],
+	)
 	return {
+		formRef,
 		pending: snapshot.matches('running'),
 		onSubmit(event: FormEvent<HTMLFormElement>) {
 			if (!sendUiEvent(actor, { type: 'SUBMIT' })) event.preventDefault()
@@ -142,7 +147,7 @@ function SignupForm(props: {
 	error: NewsletterPageError | null
 	turnstileSiteKey: string | null
 }) {
-	const { pending, onSubmit } = useNativeSubmitGate()
+	const { pending, onSubmit, formRef } = useNativeSubmitGate()
 	const { turnstileSiteKey } = props
 	const renderTurnstile = useCallback(
 		(node: HTMLDivElement | null) => {
@@ -168,6 +173,7 @@ function SignupForm(props: {
 			aria-busy={pending}
 			// The post is a normal form submission; the button shows progress
 			// until the page navigates.
+			ref={formRef}
 			onSubmit={(event) => {
 				// The widget lives in a shadow root, which a native form post
 				// does not include, so its token is copied into the form.
@@ -259,7 +265,7 @@ function SignupForm(props: {
 
 /** Page behind the emailed link: confirming takes a deliberate button press. */
 export function NewsletterConfirmRoute(props: { token: string }) {
-	const { pending, onSubmit } = useNativeSubmitGate()
+	const { pending, onSubmit, formRef } = useNativeSubmitGate()
 	return (
 		<section css={pageCss}>
 			<header css={pageHeaderCss}>
@@ -276,6 +282,7 @@ export function NewsletterConfirmRoute(props: { token: string }) {
 					css={cardCss}
 					data-testid="newsletter-confirm-form"
 					aria-busy={pending}
+					ref={formRef}
 					onSubmit={onSubmit}
 				>
 					<input type="hidden" name="token" value={props.token} />
