@@ -12,13 +12,14 @@ import {
 	type PlacementApprovalPart,
 } from '#universal/credential-placement-approval.ts'
 import { routes } from '#universal/routes.ts'
-import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
+import {
+	buildConnectSecretsUrl,
+	classifyBulkApprovalHosts,
+} from '#mcp/secrets/host-approval.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 
-const connectSecretsPath = '/connect/secrets'
-
 /**
- * `/connect/secrets?name=…&placement=body[&hosts=…][&org=…][&credential=…]`. Hosts already
+ * `/connect/secrets?org=…&name=…&placement=body[&hosts=…][&credential=…]`. Hosts already
  * allowed are shown as allowed; any others are approved in the same click.
  */
 export function buildCredentialPlacementApprovalUrl(input: {
@@ -40,7 +41,10 @@ export function buildCredentialPlacementApprovalUrl(input: {
 			'At least one placement part (query, path, or body) is required.',
 		)
 	}
-	const url = new URL(connectSecretsPath, input.baseUrl)
+	const url = buildConnectSecretsUrl({
+		baseUrl: input.baseUrl,
+		orgSlug: input.orgSlug ?? null,
+	})
 	if (names.length === 1) url.searchParams.set('name', names[0] ?? '')
 	else url.searchParams.set('names', names.join(','))
 	// Keep invalid hosts so the owner's page lists them instead of hiding them.
@@ -51,8 +55,6 @@ export function buildCredentialPlacementApprovalUrl(input: {
 	]
 	if (hosts.length > 0) url.searchParams.set('hosts', hosts.join(','))
 	url.searchParams.set(placementApprovalParam, parts.join(','))
-	const orgSlug = input.orgSlug?.trim()
-	if (orgSlug) url.searchParams.set('org', orgSlug)
 	const credentialId = input.credentialId?.trim()
 	if (credentialId) {
 		if (names.length !== 1) {

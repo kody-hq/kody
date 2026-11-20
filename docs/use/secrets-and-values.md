@@ -260,8 +260,10 @@ If a request fails because a host is not approved for that secret, use the
 approval path the error provides. Host approval lives on the dedicated
 **`/connect/secrets`** page — the same kind of focused page as
 **`/connect/oauth`**. A link looks like
-`/connect/secrets?name=cloudflareToken&hosts=api.cloudflare.com`. When several
-hosts (or several secrets) need approval together, Kody can send one link with
+`/connect/secrets?org=acme&name=cloudflareToken&hosts=api.cloudflare.com`. Every
+generated approval link names the org that owns the secret in `org`, so the page
+looks in that org instead of your personal account. When several hosts (or
+several secrets) need approval together, Kody can send one link with
 comma-separated **`names`** and **`hosts`**. That page lists every valid host
 and approves them in one click. Values that are not hostname-shaped (a truncated
 token such as `api.ope`, a path such as `api.openai.com/v1`, empty or

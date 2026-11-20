@@ -276,6 +276,7 @@ async function approveSecretHost(
 	const approvalUrl = new URL(
 		buildSecretHostApprovalUrl({
 			baseUrl: input.origin,
+			orgSlug: null,
 			name: input.name,
 			scope: input.packageId ? 'package' : 'user',
 			requestedHost: input.host,

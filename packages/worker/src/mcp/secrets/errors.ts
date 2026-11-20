@@ -126,8 +126,15 @@ export class SecretHostNotApprovedError extends Error {
 	readonly secretName: string
 	readonly host: string
 	readonly scope: SecretScope
+	/** Slug of the org that owns the secret, so its approval link opens there. */
+	readonly orgSlug: string | null
 
-	constructor(input: { secretName: string; host: string; scope: SecretScope }) {
+	constructor(input: {
+		secretName: string
+		host: string
+		scope: SecretScope
+		orgSlug: string | null
+	}) {
 		super(
 			`Secret "${input.secretName}" is not allowed for host "${input.host}".`,
 		)
@@ -135,6 +142,7 @@ export class SecretHostNotApprovedError extends Error {
 		this.secretName = input.secretName
 		this.host = input.host
 		this.scope = input.scope
+		this.orgSlug = input.orgSlug
 	}
 }
 
