@@ -6,6 +6,11 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import {
+	captureSentryExceptions,
+	onFakeClock,
+	withD1Failures,
+} from '#worker/test-support/transient-d1.ts'
 import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deletion.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import * as AuditLog from '#worker/audit-log.ts'
@@ -228,9 +233,13 @@ const purgedAudit = (user: SeededUser) =>
 		email_hash: emailHash(user.email),
 	})
 
-const failedAudit = (user: SeededUser, reason: string | undefined) =>
+const failedAudit = (
+	user: SeededUser,
+	reason: string | undefined,
+	action = 'unverified_account_purge_failed',
+) =>
 	expect.objectContaining({
-		action: 'unverified_account_purge_failed',
+		action,
 		result: 'failure',
 		email_hash: emailHash(user.email),
 		reason,
@@ -748,4 +757,158 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 		scanned: 1,
 		candidates: [{ stableUserId: fresh.stableUserId, ageDays: 9 }],
 	})
+})
+
+const userRowsDelete = (query: string) =>
+	query.includes('DELETE FROM users WHERE id = ?')
+const unverifiedClaim = (query: string) =>
+	query.includes('AND deleting_at IS NULL') && query.includes('UPDATE users')
+
+test('a transient D1 error in account deletion is retried after 100 ms and the account is purged', async () => {
+	const h = createHarness()
+	const user = await h.seed('transient-once', 9)
+	const failing = withD1Failures(h.db, userRowsDelete, [
+		'D1_ERROR: Network connection lost.',
+	])
+
+	const { result, elapsedMs } = await onFakeClock(now, () =>
+		pruneUnverifiedAccounts({ env: h.envFor(failing.db), now }),
+	)
+
+	expect(result).toEqual(
+		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(user, 9)]),
+	)
+	expect(failing.attempts.count).toBe(2)
+	expect(elapsedMs).toBe(100)
+	expect(h.usernames()).toEqual([])
+})
+
+test('a permanent D1 error is not retried and fails only that account', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const h = createHarness()
+	const user = await h.seed('permanent-failure', 9)
+	const failing = withD1Failures(h.db, userRowsDelete, [
+		'D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT',
+	])
+
+	const { result, elapsedMs } = await onFakeClock(now, () =>
+		pruneUnverifiedAccounts({ env: h.envFor(failing.db), now }),
+	)
+
+	expect(result.outcomes).toEqual([
+		expect.objectContaining({
+			stableUserId: user.stableUserId,
+			outcome: 'failed',
+		}),
+	])
+	expect(failing.attempts.count).toBe(1)
+	expect(elapsedMs).toBe(0)
+	expect(h.auditRows()).toEqual([
+		expect.objectContaining({ action: 'unverified_account_purge_failed' }),
+	])
+})
+
+test('an account that would cross its 1 s transient backoff budget fails as retry_budget_exhausted, keeps its claim, and the batch continues', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const captureException = captureSentryExceptions()
+	const h = createHarness()
+	const exhausted = await h.seed('budget-exhausted', 12)
+	const next = await h.seed('purged-after-budget', 11)
+	const transient = 'D1_ERROR: storage operation exceeded timeout'
+	// 700 ms on the claim, then 100 + 200 ms on the delete batch; the 400 ms
+	// retry would reach 1,400 ms.
+	const claims = withD1Failures(h.db, unverifiedClaim, [
+		transient,
+		transient,
+		transient,
+	])
+	const deletes = withD1Failures(claims.db, userRowsDelete, [
+		transient,
+		transient,
+		transient,
+	])
+
+	const { result, elapsedMs } = await onFakeClock(now, () =>
+		pruneUnverifiedAccounts({ env: h.envFor(deletes.db), now }),
+	)
+
+	const reason =
+		'TransientRetryBudgetExhausted: D1 account_deletion.delete_user_rows stopped retrying after 1000 ms of transient backoff for this item.'
+	expect(result).toEqual(
+		runResult({ scanned: 2, purged: 1, failed: 1 }, [
+			failed(exhausted, 12, reason),
+			purged(next, 11),
+		]),
+	)
+	expect(deletes.attempts.count).toBe(4)
+	expect(elapsedMs).toBe(1_000)
+	expect(h.usernames()).toEqual(['budget-exhausted'])
+	expect(h.deletingAt('budget-exhausted')).not.toBeNull()
+	expect(h.auditRows()).toEqual([
+		failedAudit(exhausted, reason, 'purge.retry_budget_exhausted'),
+		purgedAudit(next),
+	])
+	expect(captureException).toHaveBeenCalledTimes(1)
+	expect(captureException.mock.calls[0]?.[0]).toMatchObject({
+		name: 'TransientRetryBudgetExhausted',
+	})
+})
+
+test('the transient backoff budget is per account, not per pass', async () => {
+	const h = createHarness()
+	const first = await h.seed('first-transient', 12)
+	const second = await h.seed('second-transient', 11)
+	const transient = 'D1_ERROR: internal error; reference = abc123'
+	// 700 ms per account: within each account's budget, past one shared one.
+	const failing = withD1Failures(h.db, userRowsDelete, [
+		transient,
+		transient,
+		transient,
+		undefined,
+		transient,
+		transient,
+		transient,
+	])
+
+	const { result, elapsedMs } = await onFakeClock(now, () =>
+		pruneUnverifiedAccounts({ env: h.envFor(failing.db), now }),
+	)
+
+	expect(result).toEqual(
+		runResult({ scanned: 2, purged: 2, failed: 0 }, [
+			purged(first, 12),
+			purged(second, 11),
+		]),
+	)
+	expect(failing.attempts.count).toBe(8)
+	expect(elapsedMs).toBe(1_400)
+	expect(h.usernames()).toEqual([])
+})
+
+test('transient backoff counts toward the pass time budget', async () => {
+	const h = createHarness()
+	const slow = await h.seed('slow-transient', 12)
+	await h.seed('left-for-next-pass', 11)
+	const failing = withD1Failures(h.db, userRowsDelete, [
+		'Durable Object reset because its code was updated.',
+		'Durable Object reset because its code was updated.',
+	])
+
+	const { result, elapsedMs } = await onFakeClock(now, () =>
+		pruneUnverifiedAccounts({
+			env: h.envFor(failing.db),
+			now,
+			timeBudgetMs: 300,
+		}),
+	)
+
+	expect(result).toEqual({
+		scanned: 2,
+		purged: 1,
+		failed: 0,
+		timeBudgetExhausted: true,
+		outcomes: [purged(slow, 12)],
+	})
+	expect(elapsedMs).toBe(300)
+	expect(h.usernames()).toEqual(['left-for-next-pass'])
 })

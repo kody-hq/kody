@@ -30,7 +30,13 @@ import {
 import { AuditLog } from '#worker/effect/audit.ts'
 import { startPassBudget } from '#worker/effect/budget.ts'
 import { scopedClaim } from '#worker/effect/claim.ts'
-import { D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
+import {
+	D1,
+	retryTransientD1,
+	sql,
+	TransientRetryBudgetExhausted,
+	withTransientRetryBudget,
+} from '#worker/effect/d1.ts'
 import { ErrorReporter } from '#worker/effect/error-reporter.ts'
 import { outbound } from '#worker/effect/outbound.ts'
 import { runSlicePromise } from '#worker/effect/slice.ts'
@@ -273,39 +279,35 @@ const claimUnverifiedAccount = Effect.fn('UnverifiedAccountPurge.claim')(
 		const invalidate = outbound('package_app_owner.invalidate', () =>
 			invalidatePackageAppOwnerCacheForDbUserId(env.APP_DB, input.dbUserId),
 		)
-		const created = yield* retryTransientD1(
-			db.run(
-				'unverified_account_purge.claim',
-				sql(
-					`UPDATE users
+		const created = yield* db.run(
+			'unverified_account_purge.claim',
+			sql(
+				`UPDATE users
 					SET deleting_at = ?, updated_at = ?
 					WHERE id = ?
 						AND ${eligibility}
 						AND deleting_at IS NULL`,
-					deletingAt,
-					deletingAt,
-					input.dbUserId,
-				),
+				deletingAt,
+				deletingAt,
+				input.dbUserId,
 			),
 		)
 		if (created.changes === 1) {
 			yield* invalidate
 			return Option.some<UnverifiedAccountClaim>({ created: true, deletingAt })
 		}
-		const restamped = yield* retryTransientD1(
-			db.run(
-				'unverified_account_purge.restamp',
-				sql(
-					`UPDATE users
+		const restamped = yield* db.run(
+			'unverified_account_purge.restamp',
+			sql(
+				`UPDATE users
 					SET deleting_at = ?, updated_at = ?
 					WHERE id = ?
 						AND ${eligibility}
 						AND datetime(deleting_at) < datetime(?)`,
-					deletingAt,
-					deletingAt,
-					input.dbUserId,
-					input.retryBackoffCutoff,
-				),
+				deletingAt,
+				deletingAt,
+				input.dbUserId,
+				input.retryBackoffCutoff,
 			),
 		)
 		if (restamped.changes === 1) {
@@ -385,7 +387,10 @@ const recordFailure = Effect.fn('UnverifiedAccountPurge.recordFailure')(
 		yield* audit
 			.record({
 				category: 'account',
-				action: 'unverified_account_purge_failed',
+				action:
+					failure instanceof TransientRetryBudgetExhausted
+						? 'purge.retry_budget_exhausted'
+						: 'unverified_account_purge_failed',
 				result: 'failure',
 				email: account.email,
 				reason,
@@ -429,29 +434,37 @@ const processAccount = Effect.fn('UnverifiedAccountPurge.processAccount')(
 		const accountAgeDays = ageDays(account.created_at, now)
 		const stableUserId = account.stable_user_id as OwnerId
 		const deleted = yield* Effect.scoped(
-			Effect.gen(function* () {
-				const claim = yield* scopedClaim(
-					claimUnverifiedAccount({
+			withTransientRetryBudget(
+				Effect.gen(function* () {
+					const claim = yield* scopedClaim(
+						claimUnverifiedAccount({
+							dbUserId: account.id,
+							now,
+							retryBackoffCutoff,
+						}),
+						settleClaim(account.id, account.stable_user_id),
+					)
+					if (Option.isNone(claim)) return false
+					yield* deleteUserAccountEffect({
 						dbUserId: account.id,
-						now,
-						retryBackoffCutoff,
-					}),
-					settleClaim(account.id, account.stable_user_id),
-				)
-				if (Option.isNone(claim)) return false
-				yield* deleteUserAccountEffect({
-					dbUserId: account.id,
-					mcpUserId: personalOrgIdFromUserRow(account),
-					personUserId: account.stable_user_id,
-				})
-				return true
-			}),
+						mcpUserId: personalOrgIdFromUserRow(account),
+						personUserId: account.stable_user_id,
+					})
+					return true
+				}),
+			),
 		).pipe(
 			Effect.map((purged) => ({ _tag: 'Done' as const, purged })),
 			Effect.catchCause((cause) =>
 				Effect.succeed({
 					_tag: 'Failed' as const,
-					failure: Cause.squash(Cause.map(cause, toPromiseError)),
+					failure: Cause.squash(
+						Cause.map(cause, (error) =>
+							error._tag === 'TransientRetryBudgetExhausted'
+								? error
+								: toPromiseError(error),
+						),
+					),
 				}),
 			),
 		)
