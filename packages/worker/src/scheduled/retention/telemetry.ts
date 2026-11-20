@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/cloudflare'
 import { type Clock, systemClock } from './clock.ts'
-import { RetentionError, toRetentionFailure } from './failures.ts'
+import { toRetentionFailure } from './failures.ts'
 
 export type SpanAttributes = Record<string, string | number | boolean | null>
 
@@ -63,12 +63,7 @@ export async function traced<T>(
 						span: name,
 						outcome: 'error',
 						failureKind: failure.kind,
-						errorName:
-							error instanceof RetentionError
-								? error.failure.kind
-								: error instanceof Error
-									? error.name
-									: typeof error,
+						errorName: error instanceof Error ? error.name : typeof error,
 						durationMs: clock.nowMs() - startedAtMs,
 						...attrs,
 					}),
