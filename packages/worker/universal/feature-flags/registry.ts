@@ -54,7 +54,7 @@ export type FeatureFlagExposureRecording =
 	| 'repo-push-owners'
 
 /** Calendar date in `YYYY-MM-DD` form. */
-export type FeatureFlagReviewDate = `${number}-${number}-${number}`
+type FeatureFlagReviewDate = `${number}-${number}-${number}`
 
 /**
  * How the flag ends. `removeWhen` names the issue or metric that retires the
@@ -62,7 +62,7 @@ export type FeatureFlagReviewDate = `${number}-${number}-${number}`
  * Every flag declares at least one, and `registry.node.test.ts` fails once a
  * `reviewBy` date has passed.
  */
-export type FeatureFlagLifecycle =
+type FeatureFlagLifecycle =
 	| { removeWhen: string; reviewBy?: FeatureFlagReviewDate }
 	| { removeWhen?: string; reviewBy: FeatureFlagReviewDate }
 
