@@ -713,7 +713,7 @@ test('a profile denial names the profile grant the file operation lacks', async 
 			}),
 		).rejects.toMatchObject({
 			code: 'profile_grant',
-			message: `Profile "file-reviewer" was not granted file:write on file "${f.file.id}". The person it acts for can grant it (accessGrant with subject_type "profile").`,
+			message: `Profile "file-reviewer" was not granted file:write on file "${f.file.id}". The person it acts for can grant it with accessGrant (resource_type "file", subject_type "profile", subject_id the profile id).`,
 		})
 	} finally {
 		f.sqlite.close()
