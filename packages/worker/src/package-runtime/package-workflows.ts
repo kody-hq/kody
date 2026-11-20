@@ -2263,10 +2263,13 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				tokenExpiresAt: new Date().toISOString(),
 			})
 		} catch (error) {
-			console.warn('durable publish reconcile mark failed', {
-				sourceId,
-				error: getErrorMessage(error),
-			})
+			console.warn(
+				'durable publish reconcile mark failed; newest HEAD may wait for the daily reconcile backstop',
+				{
+					sourceId,
+					error: getErrorMessage(error),
+				},
+			)
 		}
 	}
 
