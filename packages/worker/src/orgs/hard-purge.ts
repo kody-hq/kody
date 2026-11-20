@@ -12,6 +12,7 @@ import {
 import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { AuditLog } from '#worker/effect/audit.ts'
+import { renewPurgeLease } from '#worker/effect/claim.ts'
 import { type Bound, D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
 import { outbound } from '#worker/effect/outbound.ts'
 import { runSlicePromise } from '#worker/effect/slice.ts'
@@ -201,7 +202,9 @@ export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(
 			return yield* PersonalOrgPurgesWithPersonError.forOrg(orgId)
 		}
 		yield* wipeOrgPinnedConnections(orgId)
+		yield* renewPurgeLease
 		yield* purgeOwnerOutOfBandSurfacesEffect({ ownerId: orgId })
+		yield* renewPurgeLease
 		yield* deleteOrgRows(orgId, 'team')
 		yield* Effect.logInfo('org hard purged')
 	},
@@ -226,6 +229,7 @@ const purgePersonAndPersonalOrg = Effect.fn(
 	const env = yield* WorkerEnv
 	if (Option.isSome(input.personalOrgId)) {
 		yield* wipeOrgPinnedConnections(input.personalOrgId.value)
+		yield* renewPurgeLease
 	}
 	yield* outbound('org_audit.redactActorIdsForDeletedUser', () =>
 		redactOrgAuditActorIdsForDeletedUser({ env, userId: input.stableUserId }),
@@ -373,6 +377,7 @@ export const finishLegacyUserDeletionEffect = Effect.fn(
 			),
 		),
 	)
+	yield* renewPurgeLease
 	const result = yield* purgePersonAndPersonalOrg({
 		dbUserId: input.dbUserId,
 		stableUserId: input.stableUserId,

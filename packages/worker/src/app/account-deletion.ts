@@ -109,6 +109,10 @@ import {
 } from '#worker/discord/guild-role.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { AuditLog } from '#worker/effect/audit.ts'
+import {
+	type PurgeLeaseLostError,
+	renewPurgeLease,
+} from '#worker/effect/claim.ts'
 import { type Bound, D1, type DatabaseError, sql } from '#worker/effect/d1.ts'
 import { outbound, type OutboundCallError } from '#worker/effect/outbound.ts'
 import { runSlicePromise, type SliceServices } from '#worker/effect/slice.ts'
@@ -264,6 +268,7 @@ export type DeleteUserAccountError =
 	| UserMeterFailure
 	| DatabaseError
 	| OutboundCallError
+	| PurgeLeaseLostError
 
 type UserSourceSnapshot = {
 	sourceId: string
@@ -1850,6 +1855,7 @@ export const deleteUserAccountEffect = Effect.fn(
 		dbUserId: input.dbUserId,
 		warnings,
 	})
+	yield* renewPurgeLease
 
 	// Billing is a precondition of deletion, checked before anything
 	// destructive.
@@ -1866,6 +1872,7 @@ export const deleteUserAccountEffect = Effect.fn(
 			),
 		)
 		result.stripeRefunds = billing.refunds
+		yield* renewPurgeLease
 	}
 
 	const email = yield* purgeOutOfBandStores({
@@ -1874,6 +1881,7 @@ export const deleteUserAccountEffect = Effect.fn(
 		result,
 		warnings,
 	})
+	yield* renewPurgeLease
 	yield* removeDiscordGuildRoles(input.dbUserId, warnings)
 	yield* revokeOAuthAccess({
 		dbUserId: input.dbUserId,
@@ -1882,12 +1890,14 @@ export const deleteUserAccountEffect = Effect.fn(
 		result,
 		warnings,
 	})
+	yield* renewPurgeLease
 	yield* purgeMailboxAndJobs({
 		ownerId: input.mcpUserId,
 		emailCleanupComplete: email.emailCleanupComplete,
 		result,
 		warnings,
 	})
+	yield* renewPurgeLease
 
 	if (inventory.stripeCustomerId) {
 		yield* deleteStripeCustomer(
@@ -1895,6 +1905,7 @@ export const deleteUserAccountEffect = Effect.fn(
 			input.mcpUserId,
 			warnings,
 		)
+		yield* renewPurgeLease
 	}
 
 	const d1Cleanup = yield* deleteUserScopedRowsAndUser({
