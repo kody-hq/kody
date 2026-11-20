@@ -1,7 +1,14 @@
 /** @jsxImportSource @emotion/react */
 import { ContextMenuSurface } from '../components/context-menu-surface.tsx'
 import { createPortal } from 'react-dom'
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+	useCallback,
+	useContext,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from 'react'
 import { FileAnchorContext } from './file-anchor-context.ts'
 import { FileAnchorMarker } from './file-anchor-markers.tsx'
 import { colors, typography } from '#universal/styles/tokens.ts'
@@ -69,8 +76,8 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 		}
 	}, [src, fullscreen])
 
-	useEffect(() => {
-		const element = viewport.current
+	const viewportRef = useCallback((element: HTMLDivElement | null) => {
+		viewport.current = element
 		if (!element) return
 		const observer = new ResizeObserver(([entry]) => {
 			if (entry)
@@ -80,8 +87,11 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 				})
 		})
 		observer.observe(element)
-		return () => observer.disconnect()
-	}, [fullscreen])
+		return () => {
+			viewport.current = null
+			observer.disconnect()
+		}
+	}, [])
 
 	function zoom(value: number, clientX?: number, clientY?: number) {
 		const element = viewport.current
@@ -300,7 +310,7 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 					</p>
 				)}
 				<div
-					ref={viewport}
+					ref={viewportRef}
 					role="region"
 					aria-label="Image viewer"
 					tabIndex={-1}
