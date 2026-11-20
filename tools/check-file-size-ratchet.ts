@@ -28,8 +28,7 @@ export const fileSizeRatchetGroups: ReadonlyArray<FileSizeRatchetGroup> = [
 		// grandfather AGENTS.md via the snapshot allowlist.
 		// 23: production-deploy rule for agents (#4242).
 		// 24: blog category and series authoring rules.
-		// 26: variant check on security fixes.
-		maxLines: 26,
+		maxLines: 24,
 	},
 	{
 		id: 'client-routes',
