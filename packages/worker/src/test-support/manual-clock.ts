@@ -44,3 +44,29 @@ export function createManualClock(start: Date | string): ManualClock {
 		pendingTimers: () => timers.length,
 	}
 }
+
+/**
+ * Settles `promise` while stepping `clock`, yielding to the event loop
+ * between steps so in-memory D1 work finishes before time moves. No real
+ * time passes; only timers on `clock` fire.
+ */
+export async function runOnClock<T>(
+	clock: ManualClock,
+	promise: Promise<T>,
+	stepMs = 100,
+): Promise<T> {
+	let settled = false
+	promise.then(
+		() => {
+			settled = true
+		},
+		() => {
+			settled = true
+		},
+	)
+	for (let step = 0; step < 1_000 && !settled; step++) {
+		await new Promise((resolve) => setImmediate(resolve))
+		if (!settled) await clock.advance(stepMs)
+	}
+	return promise
+}

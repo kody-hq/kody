@@ -4,7 +4,9 @@ import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 /**
  * Every way a retention-tick lane can fail as a whole. Per-candidate failures
  * (one account that could not be purged) are results, not lane failures; they
- * are recorded on the lane result and audited.
+ * are recorded on the lane result and audited. The one per-item variant,
+ * `transient_retry_budget_exhausted`, is listed here so every mapping below
+ * handles it if it ever escapes an item.
  */
 export type RetentionFailure =
 	| {
@@ -18,6 +20,23 @@ export type RetentionFailure =
 	| { kind: 'timed_out'; operation: string; timeoutMs: number }
 	| { kind: 'aborted'; operation: string; cause: unknown }
 	| { kind: 'unexpected'; operation: string; cause: unknown }
+	| {
+			kind: 'transient_retry_budget_exhausted'
+			operation: string
+			budgetMs: number
+			spentMs: number
+			/**
+			 * The last transient D1 error. Not `cause`: outer D1 retry loops match
+			 * the cause chain and would retry the item past its budget.
+			 */
+			lastError: unknown
+	  }
+
+/** One purge item spent its transient D1 retry budget (`item-retry.ts`). */
+export type TransientRetryBudgetExhausted = Extract<
+	RetentionFailure,
+	{ kind: 'transient_retry_budget_exhausted' }
+>
 
 export type RetentionFailureKind = RetentionFailure['kind']
 
@@ -36,6 +55,8 @@ export function describeRetentionFailure(failure: RetentionFailure): string {
 			return `${failure.operation} returned an invalid row: ${failure.issues}`
 		case 'timed_out':
 			return `${failure.operation} timed out after ${failure.timeoutMs}ms`
+		case 'transient_retry_budget_exhausted':
+			return `${failure.operation} stopped retrying: ${failure.spentMs}ms of the ${failure.budgetMs}ms transient D1 retry budget was spent`
 		default:
 			return assertNever(failure)
 	}
@@ -81,6 +102,7 @@ export function reportableCause(failure: RetentionFailure): unknown {
 			return failure.cause
 		case 'row_validation_failed':
 		case 'timed_out':
+		case 'transient_retry_budget_exhausted':
 			return new RetentionError(failure)
 		default:
 			return assertNever(failure)

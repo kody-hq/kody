@@ -22,6 +22,16 @@ import {
 } from './unverified-account-purge.ts'
 import { listSoftDeletePurgeCandidates } from '#worker/orgs/purge.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import * as Sentry from '@sentry/cloudflare'
+import {
+	transientD1Error,
+	withD1Faults,
+} from '#worker/test-support/d1-faults.ts'
+import {
+	createManualClock,
+	runOnClock,
+} from '#worker/test-support/manual-clock.ts'
+import type { RetentionError } from '#worker/scheduled/retention/failures.ts'
 
 const now = new Date('2026-09-02T12:00:00.000Z')
 const millisecondsPerDay = 24 * 60 * 60 * 1000
@@ -253,7 +263,8 @@ test('purge deletes only aged unverified person accounts through full account de
 	)
 	expect(deleteUserAccount).toHaveBeenCalledTimes(1)
 	expect(deleteUserAccount).toHaveBeenCalledWith({
-		env: expect.objectContaining({ APP_DB: h.db }),
+		// APP_DB is the item's transient-retry wrapper over h.db.
+		env: expect.objectContaining({ AUDIT_DB: h.env.AUDIT_DB }),
 		dbUserId: eligible.id,
 		mcpUserId: eligible.stableUserId,
 		personUserId: eligible.stableUserId,
@@ -718,4 +729,57 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 		scanned: 1,
 		candidates: [{ stableUserId: fresh.stableUserId, ageDays: 9 }],
 	})
+})
+
+test('an account that spends its retry budget keeps its fence, is audited and reported as such, and the batch continues', async () => {
+	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const captureException = vi.spyOn(Sentry, 'captureException')
+	consoleWarn.mockImplementation(() => {})
+	const h = createHarness()
+	const stuck = await h.seed('budget-stuck', 12)
+	const next = await h.seed('budget-next', 10)
+	const env = h.envFor(
+		withD1Faults(h.db, (sql) =>
+			sql === 'SELECT 1 AS probe' ? transientD1Error() : null,
+		),
+	)
+	// Exhausted before any data was removed: still a kept fence, not a release.
+	deleteUserAccount.mockImplementationOnce(async (input) => {
+		const probe = () => input.env.APP_DB.prepare('SELECT 1 AS probe').first()
+		await probe().catch(() => {})
+		try {
+			await probe()
+		} catch {
+			throw new AccountDeletionInventoryError(['inventory read failed'])
+		}
+		throw new Error('unreachable')
+	})
+	const clock = createManualClock(now)
+	const result = await runOnClock(
+		clock,
+		pruneUnverifiedAccounts({ env, now, clock }),
+	)
+	const reason =
+		'd1.first stopped retrying: 1000ms of the 1000ms transient D1 retry budget was spent'
+	expect(result).toEqual(
+		runResult({ scanned: 2, purged: 1, failed: 1 }, [
+			failed(stuck, 12, reason, ['inventory read failed']),
+			purged(next, 10),
+		]),
+	)
+	expect(h.deletingAt('budget-stuck')).not.toBeNull()
+	expect(h.auditRows()).toEqual([
+		expect.objectContaining({
+			action: 'purge.retry_budget_exhausted',
+			result: 'failure',
+			email_hash: emailHash(stuck.email),
+			reason,
+		}),
+		purgedAudit(next),
+	])
+	expect(captureException).toHaveBeenCalledTimes(1)
+	expect(
+		(captureException.mock.calls[0]![0] as RetentionError).failure.kind,
+	).toBe('transient_retry_budget_exhausted')
+	captureException.mockRestore()
 })

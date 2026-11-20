@@ -31,7 +31,15 @@ import {
 	d1Run,
 	type RetentionContext,
 } from '#worker/scheduled/retention/d1.ts'
-import { assertNever } from '#worker/scheduled/retention/failures.ts'
+import {
+	assertNever,
+	describeRetentionFailure,
+	type TransientRetryBudgetExhausted,
+} from '#worker/scheduled/retention/failures.ts'
+import {
+	reportRetryBudgetExhausted,
+	startItemRetry,
+} from '#worker/scheduled/retention/item-retry.ts'
 import {
 	dbIdColumn,
 	ownerIdColumn,
@@ -353,7 +361,10 @@ export function listUnverifiedAccountPurgeCandidates(input: {
 async function writePurgeAudit(input: {
 	env: Env
 	account: UnverifiedAccountRow
-	action: 'unverified_account_purged' | 'unverified_account_purge_failed'
+	action:
+		| 'unverified_account_purged'
+		| 'unverified_account_purge_failed'
+		| 'purge.retry_budget_exhausted'
 	reason: string
 }) {
 	try {
@@ -379,9 +390,13 @@ async function recordPurgeFailure(input: {
 	account: UnverifiedAccountRow
 	ageDays: number
 	error: unknown
+	retryBudgetExhausted: TransientRetryBudgetExhausted | null
 }): Promise<UnverifiedAccountPurgeOutcome> {
+	const { retryBudgetExhausted } = input
 	const warnings = deletionFailureWarnings(input.error)
-	const reason = unverifiedAccountPurgeFailureReason(input.error, warnings)
+	const reason = retryBudgetExhausted
+		? describeRetentionFailure(retryBudgetExhausted)
+		: unverifiedAccountPurgeFailureReason(input.error, warnings)
 	console.warn('unverified_account_purge_failed', {
 		userId: input.account.stable_user_id,
 		warnings,
@@ -393,14 +408,24 @@ async function recordPurgeFailure(input: {
 	await writePurgeAudit({
 		env: input.env,
 		account: input.account,
-		action: 'unverified_account_purge_failed',
+		action: retryBudgetExhausted
+			? 'purge.retry_budget_exhausted'
+			: 'unverified_account_purge_failed',
 		reason,
 	})
-	reportPurgeFailureToSentry({
-		error: input.error,
-		userId: input.account.stable_user_id,
-		warnings,
-	})
+	if (retryBudgetExhausted) {
+		reportRetryBudgetExhausted({
+			lane: 'unverified_account_purge',
+			ownerId: input.account.stable_user_id,
+			failure: retryBudgetExhausted,
+		})
+	} else {
+		reportPurgeFailureToSentry({
+			error: input.error,
+			userId: input.account.stable_user_id,
+			warnings,
+		})
+	}
 	return {
 		stableUserId: input.account.stable_user_id,
 		ageDays: input.ageDays,
@@ -417,15 +442,21 @@ function purgeOneAccount(input: {
 	now: Date
 	retryBackoffCutoff: string
 }): Promise<UnverifiedAccountPurgeOutcome> {
-	const { account, env } = input
+	const { account } = input
 	const accountAgeDays = ageDays(account.created_at, input.now)
+	const itemRetry = startItemRetry({
+		clock: input.ctx.clock,
+		signal: input.ctx.signal,
+	})
+	const ctx = { ...input.ctx, db: itemRetry.wrap(input.ctx.db) }
+	const env = { ...input.env, APP_DB: ctx.db }
 	return traced(
 		'retention.unverified_account_purge.account',
 		{ 'retention.age_days': accountAgeDays },
 		async (span) => {
 			const outcome = await runClaimed({
 				acquire: () =>
-					claimUnverifiedAccountForPurge(input.ctx, {
+					claimUnverifiedAccountForPurge(ctx, {
 						dbUserId: account.id,
 						now: input.now,
 						retryBackoffCutoff: input.retryBackoffCutoff,
@@ -441,10 +472,13 @@ function purgeOneAccount(input: {
 						personUserId: account.stable_user_id,
 					}),
 				// Only a fence this pass created, for a failure before any data was
-				// removed, is released (retry next tick). Every other failure keeps
-				// the fence so the 6 hour backoff paces the retry.
+				// removed, is released (retry next tick). Every other failure,
+				// including a spent retry budget, keeps the fence so the 6 hour
+				// backoff paces the retry.
 				onFailure: (claim, error) =>
-					claim.created && isPreCleanupDeletionFailure(error)
+					!itemRetry.exhausted() &&
+					claim.created &&
+					isPreCleanupDeletionFailure(error)
 						? 'release'
 						: 'keep',
 				release: (claim) =>
@@ -454,6 +488,11 @@ function purgeOneAccount(input: {
 						env,
 						expectedDeletingAt: claim.deletingAt,
 					}),
+			}).catch((error: unknown) => {
+				// A claim that spent the retry budget fails this account, not the pass.
+				const retryBudgetExhausted = itemRetry.exhausted()
+				if (!retryBudgetExhausted) throw error
+				return { status: 'claim_failed' as const, error, retryBudgetExhausted }
 			})
 			span.setAttribute('retention.outcome', outcome.status)
 			switch (outcome.status) {
@@ -463,9 +502,17 @@ function purgeOneAccount(input: {
 						ageDays: accountAgeDays,
 						outcome: 'skipped_claim',
 					}
+				case 'claim_failed':
+					return recordPurgeFailure({
+						env: input.env,
+						account,
+						ageDays: accountAgeDays,
+						error: outcome.error,
+						retryBudgetExhausted: outcome.retryBudgetExhausted,
+					})
 				case 'completed':
 					await writePurgeAudit({
-						env,
+						env: input.env,
 						account,
 						action: 'unverified_account_purged',
 						reason: `unverified_for_${accountAgeDays}_days`,
@@ -477,6 +524,7 @@ function purgeOneAccount(input: {
 					}
 				case 'failed':
 					span.setAttribute('retention.claim', outcome.disposition)
+					span.setAttribute('retention.retry_backoff_ms', itemRetry.spentMs())
 					if (outcome.disposition === 'release_failed') {
 						// The fence stays; the retry backoff restamps it later.
 						console.warn('unverified_account_purge_release_failed', {
@@ -485,10 +533,11 @@ function purgeOneAccount(input: {
 						})
 					}
 					return recordPurgeFailure({
-						env,
+						env: input.env,
 						account,
 						ageDays: accountAgeDays,
 						error: outcome.error,
+						retryBudgetExhausted: itemRetry.exhausted(),
 					})
 				default:
 					return assertNever(outcome)

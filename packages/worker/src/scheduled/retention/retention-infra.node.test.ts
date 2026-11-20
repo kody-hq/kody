@@ -17,6 +17,9 @@ import { retry, type RetryPolicy } from './retry.ts'
 import { withTimeout } from './timeout.ts'
 import { z } from 'zod'
 import { scheduledOutcomeForRetentionFailure } from './tick.ts'
+import { startItemRetry } from './item-retry.ts'
+import { isRetryableD1LockError } from '#worker/d1-retry.ts'
+import { transientD1Error } from '#worker/test-support/d1-faults.ts'
 
 const lockError = () => new Error('D1_ERROR: database is locked')
 
@@ -382,4 +385,105 @@ test('scheduled outcome mapping: lock contention retries, everything else fails 
 	expect(
 		reportableCause({ kind: 'timed_out', operation: 'kv', timeoutMs: 5 }),
 	).toBeInstanceOf(RetentionError)
+})
+
+test('item retry backs off 100, 200, 400 ms on a transient D1 error, then succeeds', async () => {
+	const clock = createManualClock('2026-01-01T00:00:00Z')
+	const attemptsAt: Array<number> = []
+	const item = startItemRetry({ clock })
+	const db = item.wrap(
+		fakeDb({
+			run: async () => {
+				attemptsAt.push(clock.nowMs())
+				if (attemptsAt.length < 4) throw transientD1Error()
+				return { meta: { changes: 1 } }
+			},
+		}),
+	)
+	const run = db.prepare('DELETE').bind(1).run()
+	await clock.advance(1_000)
+	expect(await run).toEqual({ meta: { changes: 1 } })
+	const start = new Date('2026-01-01T00:00:00Z').getTime()
+	expect(attemptsAt.map((at) => at - start)).toEqual([0, 100, 300, 700])
+	expect(item.spentMs()).toBe(700)
+	expect(item.exhausted()).toBeNull()
+})
+
+test('item retry does not retry permanent errors, including D1 errors outside the transient list', async () => {
+	for (const message of [
+		'D1_ERROR: no such table: users',
+		'D1_ERROR: database is locked',
+	]) {
+		const clock = createManualClock('2026-01-01T00:00:00Z')
+		const item = startItemRetry({ clock })
+		const error = new Error(message)
+		let calls = 0
+		const db = item.wrap(
+			fakeDb({
+				run: async () => {
+					calls += 1
+					throw error
+				},
+			}),
+		)
+		await expect(db.prepare('DELETE').run()).rejects.toBe(error)
+		expect(calls).toBe(1)
+		expect(item.spentMs()).toBe(0)
+	}
+})
+
+test('item retry budget caps backoff across statements, then fails fast with a typed failure', async () => {
+	consoleError.mockImplementation(() => {})
+	const clock = createManualClock('2026-01-01T00:00:00Z')
+	const lost = transientD1Error()
+	let calls = 0
+	const item = startItemRetry({ clock })
+	const db = item.wrap(
+		fakeDb({
+			run: async () => {
+				calls += 1
+				throw lost
+			},
+		}),
+	)
+	// Three retries (700 ms); d1Run's own lock retry does not stack on top.
+	const first = d1Run(
+		{ db, clock },
+		{ operation: 'delete_a', sql: 'DELETE' },
+	).catch((e: unknown) => e)
+	await clock.advance(1_000)
+	expect(((await first) as RetentionError).failure).toMatchObject({
+		kind: 'd1_lock_contention',
+		operation: 'delete_a',
+	})
+	expect(calls).toBe(4)
+	// 100 + 200 ms fit the 1,000 ms budget; the 400 ms retry would not.
+	const second = db
+		.prepare('DELETE')
+		.run()
+		.catch((e: unknown) => e)
+	await clock.advance(1_000)
+	const exhausted = (await second) as RetentionError
+	expect(exhausted.failure).toEqual({
+		kind: 'transient_retry_budget_exhausted',
+		operation: 'd1.run',
+		budgetMs: 1_000,
+		spentMs: 1_000,
+		lastError: lost,
+	})
+	expect(calls).toBe(7)
+	expect(item.exhausted()).toBe(exhausted.failure)
+	expect(isRetryableD1LockError(exhausted)).toBe(false)
+	await expect(db.prepare('DELETE').run()).rejects.toBeInstanceOf(
+		RetentionError,
+	)
+	expect(calls).toBe(7)
+	expect(reportableCause(exhausted.failure)).toBeInstanceOf(RetentionError)
+	expect(
+		scheduledOutcomeForRetentionFailure({
+			lane: 'soft_delete_purge',
+			scheduledAt: new Date('2026-01-01T00:00:00Z'),
+			failure: exhausted.failure,
+		}),
+	).toBe('failed')
 })

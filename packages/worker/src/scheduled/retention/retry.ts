@@ -10,19 +10,29 @@ export type RetryPolicy = {
 
 export type RetryResult<T> =
 	| { ok: true; value: T; attempts: number }
-	| { ok: false; error: unknown; attempts: number; retryable: boolean }
+	| {
+			ok: false
+			error: unknown
+			attempts: number
+			retryable: boolean
+			/** Set when `reserveBackoff` refused the next backoff. */
+			budgetExhausted?: true
+	  }
 
 /**
  * The one retry loop for the retention tick. Exponential backoff
  * (`baseDelayMs * 2^(attempt-1)`) on the injected clock, stops early when the
  * signal aborts, and returns a typed result instead of throwing so callers
- * map exhaustion into their own failure variant.
+ * map exhaustion into their own failure variant. `reserveBackoff` lets a
+ * caller cap the total delay across several retry loops: returning false
+ * stops before sleeping.
  */
 export async function retry<T>(input: {
 	policy: RetryPolicy
 	clock: Clock
 	signal?: AbortSignal
 	random?: () => number
+	reserveBackoff?: (delayMs: number) => boolean
 	attempt: (attempt: number) => Promise<T>
 }): Promise<RetryResult<T>> {
 	const { policy } = input
@@ -48,6 +58,15 @@ export async function retry<T>(input: {
 				policy.jitter(error) === 'half'
 					? backoffMs / 2 + random() * (backoffMs / 2)
 					: backoffMs
+			if (input.reserveBackoff && !input.reserveBackoff(delayMs)) {
+				return {
+					ok: false,
+					error,
+					attempts: attempt,
+					retryable,
+					budgetExhausted: true,
+				}
+			}
 			try {
 				await sleep(input.clock, delayMs, input.signal)
 			} catch {
