@@ -6,7 +6,6 @@ export type RetentionTier = 'daily' | 'weekly'
 
 export interface BackupEnvironment {
 	BACKUP_BUCKET: R2Bucket
-	BACKUP_WORKFLOW: Workflow
 	RESTORE_WORKFLOW: Workflow
 	SEAL_WORKFLOW: Workflow
 	PACED_DRILL_WORKFLOW: Workflow
@@ -29,8 +28,6 @@ export interface BackupEnvironment {
 	BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64: string
 	TRUSTED_RESTORE_BASELINE_ID: string
 	TRUSTED_RESTORE_BASELINE_SHA256: string
-	BACKUP_MAX_AGE_HOURS?: string
-	BACKUP_MAX_SOURCE_BYTES?: string
 	ACCESS_TEAM_DOMAIN: string
 	ACCESS_APP_AUD: string
 	ACCESS_ALLOWED_EMAIL: string
@@ -51,14 +48,6 @@ export interface ScheduledBackupPayload {
 	manifestKey: string
 	retentionTier: RetentionTier
 }
-
-export type LegacyScheduledBackupPayload = Omit<ScheduledBackupPayload, 'kind'>
-
-export type ScheduledBackupWorkflowPayload =
-	| ScheduledBackupPayload
-	| LegacyScheduledBackupPayload
-
-export type BackupPayload = ScheduledBackupPayload
 
 export interface ExportReady {
 	kind: Extract<BackupExportPhase, 'complete'>
@@ -104,26 +93,14 @@ export interface StoredBackup {
 export interface LogRecord {
 	event:
 		| 'backup-disabled'
-		| 'backup-catch-up-enqueued'
-		| 'backup-enqueued'
-		| 'backup-overlap'
-		| 'backup-restarted'
-		| 'backup-export-result-expired-recover'
-		| 'backup-export-signed-url-fallback'
-		| 'backup-success'
 		| 'backup-failure'
-		| 'backup-sql-stats'
 		| 'backup-unrestorable-statements'
 		| 'backup-stats-legacy-missing'
-		| 'freshness-success'
-		| 'freshness-stale'
-		| 'freshness-unrestorable'
 		| 'source-size-success'
 		| 'source-size-failure'
 		| 'full-backup-sealed'
 		| 'full-backup-already-sealed'
 		| 'full-backup-seal-skipped'
-		| 'full-backup-rest-d1-omitted'
 		| 'full-backup-seal-failure'
 		| 'full-backup-seal-scan-stopped'
 		| 'restore-drill-started'
@@ -138,7 +115,6 @@ export interface LogRecord {
 		| 'production-restore-d1-import-complete'
 		| 'production-restore-complete'
 		| 'production-restore-failure'
-		| 'ui-run-backup'
 		| 'ui-seal-day'
 		| 'ui-run-drill'
 		| 'ui-restore-prepare'

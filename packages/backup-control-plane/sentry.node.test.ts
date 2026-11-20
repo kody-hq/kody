@@ -21,40 +21,8 @@ vi.mock('@sentry/cloudflare', () => ({
 	captureMessage: sentryMocks.captureMessage,
 }))
 
-const {
-	buildControlPlaneSentryOptions,
-	captureFullSealBlocked,
-	captureRestExportFailure,
-} = await import('./sentry.ts')
-
-test('a REST export failure groups by source and error code, not by day', () => {
-	captureRestExportFailure({
-		databaseName: 'kody',
-		day: '2026-11-17',
-		code: 'backup-unrestorable-statements',
-	})
-	captureRestExportFailure({
-		databaseName: 'kody',
-		day: '2026-11-18',
-		code: 'backup-unrestorable-statements',
-	})
-	const fingerprints = sentryMocks.scope.setFingerprint.mock.calls.map(
-		(call) => call[0],
-	)
-	assert.deepEqual(fingerprints, [
-		['dr', 'rest-d1-export-failed', 'kody:backup-unrestorable-statements'],
-		['dr', 'rest-d1-export-failed', 'kody:backup-unrestorable-statements'],
-	])
-	assert.deepEqual(sentryMocks.captureMessage.mock.calls[0], [
-		'REST D1 export failed for kody: backup-unrestorable-statements',
-		'error',
-	])
-	assert.ok(
-		sentryMocks.scope.setTag.mock.calls.some(
-			(call) => call[0] === 'dr.day' && call[1] === '2026-11-18',
-		),
-	)
-})
+const { buildControlPlaneSentryOptions, captureFullSealBlocked } =
+	await import('./sentry.ts')
 
 test('a blocked full seal is one issue per reason', () => {
 	captureFullSealBlocked({ day: '2026-11-17', reason: 'd1-manifest-missing' })

@@ -5,22 +5,12 @@ import {
 	assertSameOriginMutation,
 	verifyAccessJwt,
 } from './access-auth.ts'
-import {
-	BackupError,
-	backupPayload,
-	restExportSourceDatabases,
-	errorCode,
-	isBackupEnabled,
-	safeLog,
-	utcDay,
-	workflowInstanceId,
-} from './backup-policy.ts'
+import { BackupError, errorCode, safeLog } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import {
 	htmlResponse,
 	renderDashboard,
 	renderPacedDrillStatusPage,
-	renderEnqueueResult,
 	renderMessagePage,
 	renderRestoreAlreadyStartedPage,
 	renderRestorePreparePage,
@@ -48,7 +38,7 @@ import {
 	sealStatusResponseStatus,
 } from './seal-day-run.ts'
 import { handleDrOpsMaintenanceRequest } from './dr-ops-maintenance.ts'
-import { enqueueBackup, enqueueWorkflow } from './workflow-trigger.ts'
+import { enqueueWorkflow } from './workflow-trigger.ts'
 
 async function readForm(request: Request): Promise<URLSearchParams> {
 	const contentType = request.headers.get('content-type') ?? ''
@@ -202,37 +192,6 @@ async function handleAuthenticated(
 	const form = await readForm(request)
 
 	switch (path) {
-		case '/actions/run-backup': {
-			if (!isBackupEnabled(env)) {
-				throw new BackupError(
-					'backup-disabled',
-					'backups are disabled by enable gate',
-				)
-			}
-			const scheduledAt = new Date()
-			const sources = restExportSourceDatabases(env)
-			const results: Array<string> = []
-			for (const source of sources) {
-				const payload = backupPayload(env, scheduledAt, source)
-				const result = await enqueueBackup(
-					env.BACKUP_WORKFLOW,
-					source.id,
-					payload,
-				)
-				safeLog({
-					event: 'ui-run-backup',
-					status: 'success',
-					day: payload.day,
-					instanceId: workflowInstanceId(source.id, payload.day),
-					databaseId: source.id,
-					databaseName: source.name,
-				})
-				results.push(`${source.name}: ${result}`)
-			}
-			return htmlResponse(
-				renderEnqueueResult(utcDay(scheduledAt), results.join('; ')),
-			)
-		}
 		case '/actions/seal-day': {
 			const day = requireDay(form.get('day'))
 			const instanceId = sealDayWorkflowInstanceId(day)

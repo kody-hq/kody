@@ -17,14 +17,9 @@
 		},
 	},
 	"triggers": {
-		"crons": ["15 2 * * *", "45 * * * *"],
+		"crons": ["45 * * * *"],
 	},
 	"workflows": [
-		{
-			"binding": "BACKUP_WORKFLOW",
-			"name": "kody-production-d1-backup",
-			"class_name": "ProductionD1BackupWorkflow",
-		},
 		{
 			"binding": "RESTORE_WORKFLOW",
 			"name": "kody-production-dr-restore",
@@ -48,21 +43,18 @@
 		},
 	],
 	"vars": {
-		// Both must be exactly "true" for any schedule to run. The blocking
-		// export benchmark passed 2026-07-23: a clean production export
-		// completed in ~6s and produced a ~101 MB SQL object.
+		// Both must be exactly "true" for the seal schedule to run.
 		"ENABLE_PRODUCTION_D1_BACKUPS": "true",
 		"BACKUP_BENCHMARK_APPROVED": "true",
 		// Production Kody Cloudflare account and D1 database.
 		"SOURCE_ACCOUNT_ID": "a99ee2e72728dd52902ef288b7b1447d",
 		"SOURCE_DATABASE_ID": "8c1014d1-6b41-4695-a0a2-159071f0f919",
 		"SOURCE_DATABASE_NAME": "kody",
-		// REST D1 source list. `kody-jobs` UUID is the production D1 named
-		// `kody-jobs` (JOBS_DB); deploy resolves it by name in
+		// D1 databases restore can target (graduated restore, legacy REST-era
+		// days). `kody-jobs` UUID is the production D1 named `kody-jobs`
+		// (JOBS_DB); deploy resolves it by name in
 		// tools/ci/jobs-worker-resources.ts (`jobs_d1_database_id`).
-		// restExport:false retires the locking REST export (#4306); the paced
-		// lane is the D1 backup. Rollback: drop restExport and redeploy.
-		"SOURCE_DATABASES": "[{\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\",\"name\":\"kody\",\"restExport\":false},{\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\",\"name\":\"kody-jobs\",\"restExport\":false}]",
+		"SOURCE_DATABASES": "[{\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\",\"name\":\"kody\"},{\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\",\"name\":\"kody-jobs\"}]",
 		// Paced D1 sources (same ids as the worker's DR_D1_PACED_SOURCES). Their
 		// sealed paced nights are the full seal's D1 source of truth.
 		"D1_PACED_SOURCES": "[{\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\",\"name\":\"kody\"},{\"id\":\"c48f9d10-e4fc-4749-9188-82d68025284e\",\"name\":\"kody-audit\"},{\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\",\"name\":\"kody-jobs\"}]",
@@ -77,9 +69,6 @@
 		// docs/contributing/disaster-recovery.md).
 		"TRUSTED_RESTORE_BASELINE_ID": "kody-migration-set-2026-07",
 		"TRUSTED_RESTORE_BASELINE_SHA256": "63d10bfc5a672b33a610287ebd3ee5036ee5e719ee8271c1a32f4a44a524a2d7",
-		"BACKUP_MAX_AGE_HOURS": "26",
-		// D1 GET file_size must remain strictly below this single-object ceiling.
-		"BACKUP_MAX_SOURCE_BYTES": "4500000000",
 		"ACCESS_TEAM_DOMAIN": "kentcdodds.cloudflareaccess.com",
 		"ACCESS_APP_AUD": "769c70e393e2652f5878af99333322184a35cc3aef53376344f8753805e42a76",
 		"ACCESS_ALLOWED_EMAIL": "me@kentcdodds.com",

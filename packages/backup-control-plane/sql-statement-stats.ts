@@ -8,14 +8,14 @@ import { d1ImportMaxStatementBytes } from '@kody-internal/shared/backup-restore-
 
 import { BackupError, safeLog } from './backup-policy.ts'
 
-export type SqlRestorability =
+type SqlRestorability =
 	| { kind: 'restorable'; stats: BackupSqlStats }
 	| { kind: 'unrestorable'; stats: BackupSqlStats }
 	| { kind: 'legacy-unknown' }
 	| { kind: 'missing' }
 	| { kind: 'corrupt' }
 
-export async function readSqlRestorability(
+async function readSqlRestorability(
 	bucket: R2Bucket,
 	day: string,
 	objectKey: string,
