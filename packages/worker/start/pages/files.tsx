@@ -43,14 +43,17 @@ import {
 	lazy,
 	Suspense,
 	useCallback,
-	useEffect,
 	useEffectEvent,
-	useLayoutEffect,
 	useRef,
 	useState,
 	type ReactNode,
 	type RefObject,
 } from 'react'
+import {
+	useExternalInstanceSync,
+	useLayoutMeasure,
+	useResourceLifetime,
+} from '../lib/primitives.ts'
 import { isNotFound, useBlocker, useRouter } from '@tanstack/react-router'
 import { loadWorkspaceRepoFiles } from '#start/server/package-files'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -276,7 +279,7 @@ export function FilesPage({
 		initialData: data.storage,
 		enabled: false,
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		queryClient.setQueryData(['file-storage-usage', data.orgSlug], data.storage)
 	}, [queryClient, data.orgSlug, data.storage])
 	const { includedBytes, usedBytes, external } = storageUsage.data
@@ -449,7 +452,7 @@ export function FilesPage({
 		!(selected?.file.collaboration && !data.collaborationEnabled) &&
 		(creating ? canCreateIn(parentId) : selected?.access.write)
 	const latestDraft = useRef(draft)
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		latestDraft.current = draft
 	}, [draft])
 	useBlocker({
@@ -565,10 +568,11 @@ export function FilesPage({
 	const saveLatest = useEffectEvent(() => {
 		void save()
 	})
-	useEffect(() => {
-		if (!autoSave || !dirty || busy || message) return
+	useResourceLifetime(() => {
+		if (!autoSave || !dirty || busy || message) return () => {}
 		const timer = window.setTimeout(saveLatest, 900)
 		return () => window.clearTimeout(timer)
+		// oxlint-disable-next-line react/exhaustive-deps -- each edit restarts the autosave delay
 	}, [autoSave, dirty, draft, name, busy, message, base])
 
 	const renameToPendingTitle = useEffectEvent((title: string) => {
@@ -576,7 +580,7 @@ export function FilesPage({
 		setPendingTitle(null)
 		void manage(selected.file, 'rename', { name: title })
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (!pendingTitle || busy) return
 		renameToPendingTitle(pendingTitle)
 	}, [pendingTitle, busy])
@@ -686,7 +690,7 @@ export function FilesPage({
 		zone?.setAttribute('data-upload-over', '')
 		activeDropZone.current = zone
 	}
-	useEffect(
+	useResourceLifetime(
 		() => () => activeDropZone.current?.removeAttribute('data-upload-over'),
 		[],
 	)
@@ -742,8 +746,9 @@ export function FilesPage({
 		})
 		uploads.consumeEmbeds(completed.map((job) => job.id))
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		embedCompletedUploads()
+		// oxlint-disable-next-line react/exhaustive-deps -- new uploads or page state can complete an embed
 	}, [
 		uploads.jobs,
 		data.files,
@@ -3159,7 +3164,7 @@ function WorkspaceHome({
 	)
 
 	const flat = !!search
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (view !== 'columns' || flat) {
 			const active =
 				view === 'gallery'
