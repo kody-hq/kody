@@ -11,6 +11,7 @@ import {
 } from '#app/account-deletion.ts'
 import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
+import { notifyPurgeWebhookEffect } from '#worker/orgs/purge-webhook.ts'
 import { AuditLog } from '#worker/effect/audit.ts'
 import { type Bound, D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
 import { outbound } from '#worker/effect/outbound.ts'
@@ -188,10 +189,13 @@ const deleteOrgRows = Effect.fn('HardPurge.deleteOrgRows')(function* (
 /**
  * Hard-delete a team org: refuse personal orgs (they purge with their
  * person), wipe pinned connections, delete the owner's out-of-band surfaces,
- * then the owner-scoped D1 rows.
+ * notify `PURGE_WEBHOOK_URL` when asked, then the owner-scoped D1 rows.
  */
 export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(
-	function* (orgId: OwnerId) {
+	function* (
+		orgId: OwnerId,
+		options?: { readonly notifyPurgeWebhook?: boolean },
+	) {
 		yield* Effect.annotateCurrentSpan('kody.org_id', orgId)
 		const relation = yield* personalOrgHardPurgeRelation(orgId)
 		if (relation === 'live_person') {
@@ -202,6 +206,9 @@ export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(
 		}
 		yield* wipeOrgPinnedConnections(orgId)
 		yield* purgeOwnerOutOfBandSurfacesEffect({ ownerId: orgId })
+		if (options?.notifyPurgeWebhook) {
+			yield* notifyPurgeWebhookEffect([{ kind: 'org', id: orgId }])
+		}
 		yield* deleteOrgRows(orgId, 'team')
 		yield* Effect.logInfo('org hard purged')
 	},
@@ -212,6 +219,8 @@ export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(
  * reads the Stripe customer from the personal org row, so that row must still
  * exist while it cancels subscriptions and deletes the customer. Pinned
  * connections are wiped first, while the owner's OAuth apps still exist.
+ * With `notifyPurgeWebhook`, both halves are POSTed before either half's D1
+ * rows are deleted, so a failed POST keeps the pair whole.
  */
 const purgePersonAndPersonalOrg = Effect.fn(
 	'HardPurge.purgePersonAndPersonalOrg',
@@ -222,6 +231,7 @@ const purgePersonAndPersonalOrg = Effect.fn(
 	readonly personUserId: string
 	readonly personalOrgId: Option.Option<OwnerId>
 	readonly purgeSoftDeleted?: boolean
+	readonly notifyPurgeWebhook?: boolean
 }) {
 	const env = yield* WorkerEnv
 	if (Option.isSome(input.personalOrgId)) {
@@ -235,6 +245,15 @@ const purgePersonAndPersonalOrg = Effect.fn(
 		mcpUserId: input.storageOwnerId,
 		personUserId: input.personUserId,
 		purgeSoftDeleted: input.purgeSoftDeleted,
+		beforeRowDeletes: input.notifyPurgeWebhook
+			? notifyPurgeWebhookEffect([
+					{ kind: 'user', id: input.stableUserId },
+					...Option.toArray(input.personalOrgId).map((id) => ({
+						kind: 'org' as const,
+						id,
+					})),
+				])
+			: undefined,
 	})
 	if (Option.isSome(input.personalOrgId)) {
 		yield* deleteOrgRows(input.personalOrgId.value, 'personal')
@@ -262,6 +281,7 @@ export const hardPurgeSoftDeletedUserEffect = Effect.fn(
 )(function* (input: {
 	readonly dbUserId: number
 	readonly stableUserId: OwnerId
+	readonly notifyPurgeWebhook?: boolean
 }) {
 	const db = yield* D1
 	const audit = yield* AuditLog
@@ -290,6 +310,7 @@ export const hardPurgeSoftDeletedUserEffect = Effect.fn(
 		personUserId,
 		personalOrgId: yield* softDeletedOrgId(storageOwnerId),
 		purgeSoftDeleted: true,
+		notifyPurgeWebhook: input.notifyPurgeWebhook,
 	})
 	yield* audit.recordOrg({
 		orgId: storageOwnerId,
@@ -323,6 +344,7 @@ export const finishLegacyUserDeletionEffect = Effect.fn(
 )(function* (input: {
 	readonly dbUserId: number
 	readonly stableUserId: OwnerId
+	readonly notifyPurgeWebhook?: boolean
 }) {
 	const db = yield* D1
 	const audit = yield* AuditLog
@@ -379,6 +401,7 @@ export const finishLegacyUserDeletionEffect = Effect.fn(
 		storageOwnerId,
 		personUserId,
 		personalOrgId: yield* softDeletedOrgId(storageOwnerId),
+		notifyPurgeWebhook: input.notifyPurgeWebhook,
 	})
 	if ((result.deletedRowCounts.users ?? 0) === 0) {
 		const stillThere = yield* retryTransientD1(

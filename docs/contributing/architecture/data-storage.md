@@ -218,7 +218,12 @@ Stripe customer from the personal org row, cancels subscriptions, and deletes
 the customer), then deletes the personal org graph. Production sets
 `SOFT_DELETE_PURGE_ENABLED` to `true`, so the hourly purge lane hard-deletes
 soft-deleted rows past the 30-day restore window. Preview and test keep it
-`false`, where the lane only lists those candidates. Legacy account deletions
+`false`, where the lane only lists those candidates. When `PURGE_WEBHOOK_URL` is
+set, the lane POSTs `{ kind, id, purgedAt }` there for each org and person (and
+the person's personal org) after billing cleanup and before any D1 delete; a
+non-2xx, network error, or timeout (`PurgeWebhookFailed`) keeps every row of the
+item (both halves of a person and personal org) and its claim, writes
+`purge.webhook_failed`, and reports to Sentry. Legacy account deletions
 (`deleting_at` set, `deleted_at` null) are finished by the same lane regardless
 of that flag; see [authentication](./authentication.md). Fleet scans
 (published-commit ref repair and package codemods) skip packages whose owner is

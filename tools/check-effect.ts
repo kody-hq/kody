@@ -16,6 +16,7 @@ const effectRoots = [
 	'packages/worker/src/account/deletion-fence.ts',
 	'packages/worker/src/orgs/hard-purge.ts',
 	'packages/worker/src/orgs/purge.ts',
+	'packages/worker/src/orgs/purge-webhook.ts',
 	'packages/worker/src/account/unverified-account-purge.ts',
 	'packages/worker/src/guest/guest-account-purge.ts',
 	'packages/worker/src/app/retention.ts',
