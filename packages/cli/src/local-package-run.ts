@@ -126,7 +126,6 @@ export async function runLocalPackageModule(
 		...(input.org ? { org: input.org } : {}),
 	}
 	let credentials = input.credentials
-	let pinnedCredentials: CredentialCallMapInput | undefined
 	if (credentials) {
 		const session = await openCapabilityProxySession(client)
 		if (!sessionSupportsCredentialCallMap(session.features)) {
@@ -135,7 +134,6 @@ export async function runLocalPackageModule(
 		input.onStatus?.('Checking --credential picks against CapabilityProxy…')
 		const checked = await checkCredentialCallMap({ ...client, credentials })
 		credentials = checked.credentials ?? credentials
-		pinnedCredentials = checked.credentials
 		for (const warning of checked.warnings) input.onStatus?.(warning)
 	}
 
@@ -268,7 +266,7 @@ export async function runLocalPackageModule(
 					response,
 					signal,
 					client,
-					...(pinnedCredentials ? { pinnedCredentials } : {}),
+					...(credentials ? { pinnedCredentials: credentials } : {}),
 					...(mockFetchGateway ? { mockFetchGateway } : {}),
 				})
 			},

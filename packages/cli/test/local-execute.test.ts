@@ -1021,6 +1021,56 @@ export default async function main() {
 )
 
 test(
+	'local streaming fetch keeps selected credentials when preflight returns no pinned map',
+	{ timeout: 180_000 },
+	async () => {
+		const code = `import { kody } from 'kody:runtime'
+export default async function main() {
+	const response = await kody.gatewayFetchStream({
+		request: { url: 'https://api.example.com/upload', method: 'POST', body: 'test' },
+	})
+	return await response.text()
+}`
+		const dir = mkdtempSync(join(tmpdir(), 'kody-stream-credential-'))
+		const file = join(dir, 'entry.ts')
+		writeFileSync(file, code)
+		for (const mode of ['adhoc', 'package'] as const) {
+			reset()
+			const credentials = { demoToken: 'selected-label' }
+			const result =
+				mode === 'adhoc'
+					? await runLocalExecute({
+							code,
+							token: goodToken,
+							apiUrl,
+							credentials,
+						})
+					: await runLocalPackageModule({
+							modulePath: file,
+							token: goodToken,
+							apiUrl,
+							target: 'prod',
+							credentials,
+							packageContext: buildLocalPackageContext({
+								kodyId: 'test',
+								hostedUrl: 'http://127.0.0.1:0',
+							}),
+						})
+			assert.equal(result.isError, false, JSON.stringify(result))
+			const hop = proxyRequests.find(
+				(entry) => entry.url === '/v1/capability-proxy/gateway-fetch',
+			)
+			assert.ok(hop, mode)
+			assert.equal(
+				(hop.body as { gatewayCredentials: string }).gatewayCredentials,
+				JSON.stringify(credentials),
+				mode,
+			)
+		}
+	},
+)
+
+test(
 	'execute --local --file passes credential picks from a package checkout',
 	{ timeout: 180_000 },
 	async () => {

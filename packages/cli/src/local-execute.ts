@@ -274,7 +274,6 @@ export async function runLocalExecute(
 	// Skip the session preflight on the hot path (package-graph authenticates).
 	// `--credential` still opens a session for feature detection + call-map check.
 	let credentials = input.credentials
-	let pinnedCredentials: CredentialCallMapInput | undefined
 	if (credentials) {
 		const preflight = await untilAborted(
 			(async () => {
@@ -291,7 +290,6 @@ export async function runLocalExecute(
 		)
 		if (preflight === setupCancelled) return cancelledDuringSetup()
 		credentials = preflight.credentials ?? credentials
-		pinnedCredentials = preflight.credentials
 		for (const warning of preflight.warnings) {
 			input.onStatus?.(warning)
 		}
@@ -518,7 +516,7 @@ export async function runLocalExecute(
 					response,
 					signal,
 					client,
-					...(pinnedCredentials ? { pinnedCredentials } : {}),
+					...(credentials ? { pinnedCredentials: credentials } : {}),
 					...(mockFetchGateway ? { mockFetchGateway } : {}),
 				})
 			},
