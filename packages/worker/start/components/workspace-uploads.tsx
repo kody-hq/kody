@@ -463,11 +463,11 @@ function createUploadQueue(onUploaded: () => void) {
 		update: (change: (items: UploadJob[]) => UploadJob[]) => set(change(jobs)),
 		patch,
 		abort: (id: string) => active.get(id)?.abort(),
-		resume: () => {
+		resume() {
 			stopped = false
 			set(jobs)
 		},
-		stop: () => {
+		stop() {
 			stopped = true
 			for (const controller of active.values()) controller.abort()
 			set(jobs)
