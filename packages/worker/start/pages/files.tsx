@@ -1270,12 +1270,14 @@ export function FilesPage({
 							color: colors.textMuted,
 						}}
 					>
-						{!embedded && usedBytes !== null && (
+						{!embedded && (
 							<>
-								<span role="status">
-									{formatStorage(usedBytes)} of {formatStorage(includedBytes)}{' '}
-									MiB included storage used
-								</span>
+								{usedBytes !== null && (
+									<span role="status">
+										{formatStorage(usedBytes)} of {formatStorage(includedBytes)}{' '}
+										MiB included storage used
+									</span>
+								)}
 								{external && <span>· New revisions use your bucket</span>}
 								{storageFull && (
 									<span role="status">Included storage is full.</span>
@@ -3635,6 +3637,11 @@ function WorkspaceDocumentPanel({
 		],
 		queryFn: () =>
 			readFilePreview({ data: { orgSlug: data.orgSlug, fileId: metadata.id } }),
+		placeholderData: (previous, previousQuery) =>
+			previousQuery?.queryKey[1] === data.orgSlug &&
+			previousQuery.queryKey[2] === metadata.id
+				? previous
+				: undefined,
 		retry: false,
 	})
 	if (query.isPending) return <LoadingIndicator label="Loading file" />
