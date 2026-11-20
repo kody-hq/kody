@@ -455,6 +455,8 @@ export function CommandDialog({
 		return () => {
 			dialog.current = null
 			clearTimeout(debounceTimer.current)
+			// Ref cleanup runs before removal, so leave modal mode first.
+			node.close()
 			if (previous instanceof HTMLElement && previous.isConnected)
 				previous.focus()
 		}
