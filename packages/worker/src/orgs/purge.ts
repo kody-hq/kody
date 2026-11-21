@@ -484,6 +484,8 @@ export async function pruneSoftDeleted(input: {
 				}),
 				createdAt: nowIso,
 			}).catch((auditError: unknown) => {
+				// This failure then has no audit row, only this log and the
+				// purge_failed log above; the candidate is still retried.
 				console.warn(
 					JSON.stringify({
 						message: 'soft_delete_purge_failure_audit_failed',

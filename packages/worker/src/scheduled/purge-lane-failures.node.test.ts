@@ -13,8 +13,9 @@ vi.mock('#app/account-deletion.ts', async (importOriginal) => ({
 	...(await importOriginal<object>()),
 	deleteUserAccount: (input: unknown) => deleteUserAccount(input),
 }))
+const scheduleUserDeletedEvent = vi.fn()
 vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
-	scheduleUserDeletedEvent: () => {},
+	scheduleUserDeletedEvent: (input: unknown) => scheduleUserDeletedEvent(input),
 }))
 
 let auditGate: Promise<void> | null = null
@@ -47,6 +48,7 @@ const { pruneSoftDeleted } = await import('#worker/orgs/purge.ts')
 beforeEach(() => {
 	deleteUserAccount.mockReset()
 	finishLegacyUserDeletion.mockReset()
+	scheduleUserDeletedEvent.mockReset()
 	auditGate = null
 	auditEntered = 0
 	auditSettled = 0
@@ -180,8 +182,26 @@ test('guest purge retries a guest whose account deletion failed after the deleti
 	const first = await pruneExpiredGuestAccounts({ env, now: guestNow })
 	expect(first.failed).toBe(1)
 	const later = new Date(guestNow.getTime() + 24 * 60 * 60 * 1000)
+	finishLegacyUserDeletion.mockImplementation(
+		async (input: { dbUserId: number }) => {
+			await db
+				.prepare(`DELETE FROM users WHERE id = ?`)
+				.bind(input.dbUserId)
+				.run()
+			return { alreadyGone: false }
+		},
+	)
 	const second = await pruneExpiredGuestAccounts({ env, now: later })
-	expect(second.scanned).toBe(1)
+	expect(second).toEqual({ scanned: 1, purged: 1, failed: 0 })
+	expect(finishLegacyUserDeletion).toHaveBeenCalledTimes(1)
+	expect(deleteUserAccount).toHaveBeenCalledTimes(1)
+	expect(scheduleUserDeletedEvent).toHaveBeenCalledTimes(1)
+	const remaining = await db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM guest_accounts WHERE person_id = 'guest2'`,
+		)
+		.first<{ n: number }>()
+	expect(remaining?.n).toBe(0)
 })
 
 test('guest purge does not orphan the guest_accounts row when its delete fails after account deletion', async () => {
@@ -220,6 +240,8 @@ test('guest purge does not orphan the guest_accounts row when its delete fails a
 		)
 		.first<{ n: number }>()
 	expect(remaining?.n).toBe(0)
+	expect(scheduleUserDeletedEvent).toHaveBeenCalledTimes(1)
+	expect(auditSettled).toBe(1)
 })
 
 test('soft-delete purge keeps processing candidates when the failure audit write fails', async () => {

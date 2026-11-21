@@ -6,6 +6,7 @@ import { deleteUserAccount } from '#app/account-deletion.ts'
 import { scheduleUserDeletedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { softDeletePurgeRetryBackoffMs } from '#worker/orgs/purge.ts'
+import { finishLegacyUserDeletion } from '#worker/orgs/hard-purge.ts'
 
 export const guestPurgeBatchSize = 10
 
@@ -19,8 +20,9 @@ export type GuestPurgeResult = {
  * Delete guests whose seven-day read-only hold is over, through the normal
  * account-deletion path. Runs on the hourly unverified-account purge lane.
  * A guest whose deletion failed after it set the `deleting_at` fence is
- * retried once the fence is older than the purge retry backoff; the retry
- * restamps the fence first so concurrent passes leave it alone.
+ * retried once the fence is older than the purge retry backoff. The retry
+ * restamps the fence first so concurrent passes leave it alone, then finishes
+ * through `finishLegacyUserDeletion` so the personal org is purged too.
  */
 export async function pruneExpiredGuestAccounts(input: {
 	env: Env
@@ -73,13 +75,19 @@ export async function pruneExpiredGuestAccounts(input: {
 					.bind(now, now, row.id, row.deleting_at)
 					.run()
 				if ((claimed.meta.changes ?? 0) !== 1) continue
+				await finishLegacyUserDeletion({
+					env: input.env,
+					dbUserId: row.id,
+					stableUserId: row.stable_user_id,
+				})
+			} else {
+				await deleteUserAccount({
+					env: input.env,
+					dbUserId: row.id,
+					mcpUserId: personalOrgIdFromUserRow(row),
+					personUserId: row.stable_user_id,
+				})
 			}
-			await deleteUserAccount({
-				env: input.env,
-				dbUserId: row.id,
-				mcpUserId: personalOrgIdFromUserRow(row),
-				personUserId: row.stable_user_id,
-			})
 			// The account is gone, so the deletion event and audit go out even
 			// if the guest_accounts delete fails; the sweep below removes it.
 			scheduleUserDeletedEvent({
@@ -125,6 +133,8 @@ export async function pruneExpiredGuestAccounts(input: {
 			.bind(now)
 			.run(),
 	).catch((error: unknown) => {
+		// Orphaned guest rows stay until a later sweep succeeds; they block
+		// nothing because their account is already gone.
 		console.warn('guest_account_orphan_sweep_failed', { error })
 	})
 	return result
