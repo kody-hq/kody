@@ -221,7 +221,9 @@ async function git(
 }
 
 /**
- * Refuses tracked or untracked working-tree changes in `dir`.
+ * Refuses tracked or untracked working-tree changes in `dir`: the publish
+ * pushes and builds committed bytes only, so uncommitted edits would silently
+ * be left out.
  */
 async function assertCleanWorkingTree(dir: string) {
 	const status = (await git(dir, ['status', '--porcelain'])).toString('utf8')
