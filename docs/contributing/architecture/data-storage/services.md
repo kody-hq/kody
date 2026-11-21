@@ -7,9 +7,10 @@
 Relational app data lives in D1.
 
 TEXT `user_id` (and `owner_user_id`) columns hold an `OwnerId`: the org that
-owns the row. Every owner is a personal org whose id is the person's
-`stable_user_id`, so the column names stay as they are. Columns that record who
-acted hold a `PersonId`. Both types come from
+owns the row, either a team org or a personal org. Legacy personal orgs reuse
+the person's `stable_user_id` as their id; newer personal orgs get a distinct id
+recorded on `users.personal_org_id`. The column names stay as they are. Columns
+that record who acted hold a `PersonId`. Both types come from
 `@kody-internal/shared/owner-person-ids.ts`; see
 [decision 0060](../../decisions/0060-owner-and-person-ids.md).
 
