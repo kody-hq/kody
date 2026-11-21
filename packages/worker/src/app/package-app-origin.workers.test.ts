@@ -1217,11 +1217,11 @@ test('a package-app request reads its handle once, whether or not the handle exi
 	const handleReads: Array<string> = []
 	// Capture prepare once: request instrumentation rewraps the binding's
 	// methods, and calling back through it would recurse.
-	const prepare = realDb.prepare.bind(realDb)
+	const realPrepare = realDb.prepare.bind(realDb)
 	mutableEnv.APP_DB = {
-		prepare: (query: string) => {
+		prepare(query: string) {
 			if (/FROM handles h/.test(query)) handleReads.push(query)
-			return prepare(query)
+			return realPrepare(query)
 		},
 		batch: realDb.batch.bind(realDb),
 		exec: realDb.exec.bind(realDb),
