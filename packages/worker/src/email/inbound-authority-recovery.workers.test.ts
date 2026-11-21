@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers'
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test } from 'vitest'
 import { silenceExpectedConsoleWarns } from '#worker/test-support/console-spies.ts'
 import { userMeterRpc } from '#worker/entitlements/user-meter-client.ts'
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
@@ -19,7 +19,10 @@ import {
 	uniqueUserId,
 } from './mailbox-test-helpers.ts'
 import { reconcileUserStaleInboundDeliveries } from './inbound-delivery-reconciliation-authority.ts'
-import { sweepStaleInboundDeliveries } from './reconcile-inbound-deliveries.ts'
+import {
+	sweepStaleInboundDeliveries as sweepPromise,
+	sweepStaleInboundDeliveriesViaEffect,
+} from './reconcile-inbound-deliveries.ts'
 import { RetryableInboundStorageError } from './service.ts'
 import { createForwardableEmailMessage } from './test-fixtures.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -345,43 +348,54 @@ test('Mailbox storage lease takeover fences stale finalization and cleanup', asy
 	expect(await env.EMAIL_BLOBS.get(delivery.rawMimeKey)).not.toBeNull()
 }, 30_000)
 
-test('scheduled due-owner sweep recovers a committed Mailbox graph without shared D1 graph access', async () => {
-	await ensureEmailTestSchema(env.APP_DB)
-	await ensureUsageRollupsTestSchema(env.APP_DB)
-	const account = await seedAccount('scheduled-recovery')
-	const oldNow = new Date('2026-07-30T00:00:00.000Z')
-	const sweepNow = new Date('2026-08-03T00:00:00.000Z')
-	const { authority, delivery, claimed } = await claimPendingDelivery({
-		userId: account.userId,
-		recipient: account.address,
-		rawMime: 'partially committed raw MIME',
-		now: oldNow,
-	})
-	await env.EMAIL_BLOBS.put(delivery.rawMimeKey, 'partially committed raw MIME')
-	await expect(
-		authority.commitInboundMessageGraph({
-			delivery: claimed,
-			...graphFor(account.userId, delivery, oldNow, { rawSize: 28 }),
-		}),
-	).resolves.toMatchObject({ status: 'committed' })
-	await replaceInboundDueOwnerHint({
-		db: env.APP_DB,
-		userId: account.userId,
-		dueAt: oldNow.toISOString(),
-		reason: 'test-partial-commit',
-		now: sweepNow,
-	})
-	const captured = captureD1Sql(env.APP_DB)
-	await expect(
-		sweepStaleInboundDeliveries({
-			env: { ...env, APP_DB: captured.db, APP_BASE_URL: appBaseUrl },
+describe.each([
+	{ path: 'promise', sweepStaleInboundDeliveries: sweepPromise },
+	{
+		path: 'effect',
+		sweepStaleInboundDeliveries: sweepStaleInboundDeliveriesViaEffect,
+	},
+])('$path path', ({ sweepStaleInboundDeliveries }) => {
+	test('scheduled due-owner sweep recovers a committed Mailbox graph without shared D1 graph access', async () => {
+		await ensureEmailTestSchema(env.APP_DB)
+		await ensureUsageRollupsTestSchema(env.APP_DB)
+		const account = await seedAccount('scheduled-recovery')
+		const oldNow = new Date('2026-07-30T00:00:00.000Z')
+		const sweepNow = new Date('2026-08-03T00:00:00.000Z')
+		const { authority, delivery, claimed } = await claimPendingDelivery({
+			userId: account.userId,
+			recipient: account.address,
+			rawMime: 'partially committed raw MIME',
+			now: oldNow,
+		})
+		await env.EMAIL_BLOBS.put(
+			delivery.rawMimeKey,
+			'partially committed raw MIME',
+		)
+		await expect(
+			authority.commitInboundMessageGraph({
+				delivery: claimed,
+				...graphFor(account.userId, delivery, oldNow, { rawSize: 28 }),
+			}),
+		).resolves.toMatchObject({ status: 'committed' })
+		await replaceInboundDueOwnerHint({
+			db: env.APP_DB,
+			userId: account.userId,
+			dueAt: oldNow.toISOString(),
+			reason: 'test-partial-commit',
 			now: sweepNow,
-		}),
-	).resolves.toMatchObject({ recovered: 1, cleaned: 0, errors: 0 })
-	await expect(authority.get(delivery.deliveryId)).resolves.toMatchObject({
-		state: 'received',
-	})
-	expect(captured.sql.join('\n')).not.toMatch(
-		/\bemail_(?:threads|messages|attachments|delivery_events)\b/,
-	)
-}, 30_000)
+		})
+		const captured = captureD1Sql(env.APP_DB)
+		await expect(
+			sweepStaleInboundDeliveries({
+				env: { ...env, APP_DB: captured.db, APP_BASE_URL: appBaseUrl },
+				now: sweepNow,
+			}),
+		).resolves.toMatchObject({ recovered: 1, cleaned: 0, errors: 0 })
+		await expect(authority.get(delivery.deliveryId)).resolves.toMatchObject({
+			state: 'received',
+		})
+		expect(captured.sql.join('\n')).not.toMatch(
+			/\bemail_(?:threads|messages|attachments|delivery_events)\b/,
+		)
+	}, 30_000)
+})

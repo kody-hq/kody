@@ -56,6 +56,12 @@ import {
 	releaseScheduledLaneLease,
 	scheduledLaneLeaseMs,
 } from './scheduled-lane-lease.ts'
+import {
+	effectTrialWideLanesEnabled,
+	isWideLane,
+	runScheduledLaneWithFailureIsolationViaEffect,
+	runWideLane,
+} from './wide-lanes.ts'
 
 export {
 	isScheduledLaneName,
@@ -82,6 +88,9 @@ export async function runScheduledLane(input: {
 	lane: ScheduledLaneName
 	scheduledAt: Date
 }): Promise<unknown> {
+	if (effectTrialWideLanesEnabled(input.env) && isWideLane(input.lane)) {
+		return runWideLane({ ...input, lane: input.lane })
+	}
 	const baseUrl = input.env.APP_BASE_URL ?? 'https://kody.local'
 	if (isJobsWorkerLocalLane(input.lane)) {
 		throw new Error(
@@ -390,6 +399,12 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 	env: Env
 	message: ScheduledLaneMessage
 }): Promise<'completed' | 'd1_lock_contention' | 'failed'> {
+	if (effectTrialWideLanesEnabled(input.env)) {
+		return runScheduledLaneWithFailureIsolationViaEffect({
+			...input,
+			runPromiseLane: runScheduledLane,
+		})
+	}
 	const scheduledAt = new Date(input.message.scheduledTime)
 	const lane = input.message.lane
 	const leaseMs = scheduledLaneLeaseMs[lane]

@@ -1,3 +1,5 @@
+import { Effect as EffectModule } from 'effect'
+import { type D1 as D1Service, sql as d1Sql } from '#worker/effect/d1.ts'
 /**
  * Record of mail sent from reserved system senders (`kody@` transactional
  * mail through `sendGatedTransactionalEmail`, and operator correspondence
@@ -462,3 +464,26 @@ export async function readLatestSystemEmailSend(input: {
 		return null
 	}
 }
+
+export const pruneSystemEmailSendsEffect = EffectModule.fn(
+	'SystemEmailSends.prune',
+)(function* (d1: D1Service['Service'], input: { now: Date; limit?: number }) {
+	const cutoff = new Date(
+		input.now.getTime() - systemEmailSendRetentionDays * 24 * 60 * 60 * 1000,
+	).toISOString()
+	const result = yield* d1.run(
+		'SystemEmailSends.prune',
+		d1Sql(
+			`DELETE FROM system_email_sends
+				WHERE rowid IN (
+					SELECT rowid FROM system_email_sends
+					WHERE sent_at < ?
+					ORDER BY sent_at ASC
+					LIMIT ?
+				)`,
+			cutoff,
+			input.limit ?? 1000,
+		),
+	)
+	return result.changes
+})

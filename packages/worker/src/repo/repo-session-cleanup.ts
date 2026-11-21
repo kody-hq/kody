@@ -1,7 +1,14 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
+import { Clock, Effect, Schema } from 'effect'
+import { retryDurableObjectReset } from '#worker/effect/durable-object.ts'
+import { decodeOutbound, outbound } from '#worker/effect/outbound.ts'
+import { runSlicePromise } from '#worker/effect/slice.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import {
 	deferRepoSessionDueOwner,
+	deferRepoSessionDueOwnerEffect,
 	listDueRepoSessionOwners,
+	listDueRepoSessionOwnersEffect,
 	repoSessionDueOwnerBatchSize,
 } from './repo-session-due-owners.ts'
 import { repoSessionIndexRpc } from './repo-session-index-client.ts'
@@ -61,3 +68,84 @@ export async function cleanupRepoSessionBranches(input: {
 		errors,
 	}
 }
+
+const CleanupResponse = Schema.Struct({
+	checked: Schema.Number,
+	deleted: Schema.Number,
+	errors: Schema.Number,
+})
+
+/**
+ * `cleanupRepoSessionBranches` as an Effect. Each owner's index RPC runs
+ * under the outbound deadline, so one wedged index defers that owner instead
+ * of holding the whole lane.
+ */
+export const cleanupRepoSessionBranchesEffect = Effect.fn(
+	'RepoSessionCleanup.run',
+)(function* (input: { now?: Date; batchSize?: number }) {
+	const env = yield* WorkerEnv
+	const now = input.now ?? new Date(yield* Clock.currentTimeMillis)
+	const owners = yield* listDueRepoSessionOwnersEffect({
+		now,
+		limit: input.batchSize ?? repoSessionDueOwnerBatchSize,
+	})
+	const totals: RepoSessionBranchCleanupResult = {
+		checked: 0,
+		deleted: 0,
+		errors: 0,
+	}
+	for (const owner of owners) {
+		yield* retryDurableObjectReset(
+			outbound('repo_session_index.run_due_cleanup', () =>
+				repoSessionIndexRpc({ env, userId: owner.userId }).runDueCleanup({
+					ownerId: owner.userId,
+					now: now.toISOString(),
+				}),
+			),
+		).pipe(
+			Effect.flatMap(
+				decodeOutbound('repo_session_index.run_due_cleanup', CleanupResponse),
+			),
+			Effect.matchEffect({
+				onSuccess: (result) =>
+					Effect.sync(() => {
+						totals.checked += result.checked
+						totals.deleted += result.deleted
+						totals.errors += result.errors
+					}),
+				onFailure: (error) => {
+					totals.errors += 1
+					return deferRepoSessionDueOwnerEffect({
+						userId: owner.userId,
+						error: error.reason === 'failed' ? error.cause : error,
+						now,
+					}).pipe(
+						Effect.catch((deferError) =>
+							Effect.sync(() =>
+								console.warn(
+									JSON.stringify({
+										message: 'repo session due-owner defer failed',
+										error: deferError.message,
+									}),
+								),
+							),
+						),
+					)
+				},
+			}),
+		)
+	}
+	return totals
+})
+
+/** Promise edge for tests and callers outside the slice. */
+export const cleanupRepoSessionBranchesViaEffect = (
+	input: Parameters<typeof cleanupRepoSessionBranches>[0],
+) =>
+	runSlicePromise(
+		input.env,
+		cleanupRepoSessionBranchesEffect({
+			now: input.now,
+			batchSize: input.batchSize,
+		}),
+	)

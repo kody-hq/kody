@@ -1,5 +1,10 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	type OwnerId,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { Clock, Effect, Schema } from 'effect'
+import { D1, sql } from '#worker/effect/d1.ts'
 
 export const repoSessionDueOwnerBatchSize = 25
 export const repoSessionDueOwnerFailureDelayMs = 5 * 60 * 1000
@@ -130,3 +135,83 @@ export async function deferRepoSessionDueOwner(input: {
 		}),
 	)
 }
+
+const ensureRepoSessionDueOwnersSchemaEffect = Effect.fn(
+	'RepoSessionDueOwners.ensureSchema',
+)(function* () {
+	const d1 = yield* D1
+	yield* d1.batch('repo_session_due_owners.ensure_schema', [
+		sql(
+			`CREATE TABLE IF NOT EXISTS repo_session_due_owners (
+				user_id TEXT PRIMARY KEY NOT NULL,
+				due_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)`,
+		),
+		sql(
+			`CREATE INDEX IF NOT EXISTS idx_repo_session_due_owners_due_at
+			ON repo_session_due_owners(due_at, user_id)`,
+		),
+	])
+})
+
+const DueOwnerRow = Schema.Struct({
+	user_id: Schema.String,
+	due_at: Schema.String,
+})
+
+const nowOrClock = (now: Date | undefined) =>
+	now
+		? Effect.succeed(now)
+		: Effect.map(Clock.currentTimeMillis, (millis) => new Date(millis))
+
+export const listDueRepoSessionOwnersEffect = Effect.fn(
+	'RepoSessionDueOwners.listDue',
+)(function* (input: { now?: Date; limit?: number }) {
+	const d1 = yield* D1
+	const now = yield* nowOrClock(input.now)
+	yield* ensureRepoSessionDueOwnersSchemaEffect()
+	const rows = yield* d1.all(
+		'repo_session_due_owners.list_due',
+		DueOwnerRow,
+		sql(
+			`SELECT user_id, due_at
+			FROM repo_session_due_owners
+			WHERE due_at <= ?
+			ORDER BY due_at ASC, user_id ASC
+			LIMIT ?`,
+			now.toISOString(),
+			input.limit ?? repoSessionDueOwnerBatchSize,
+		),
+	)
+	return rows.map((row): RepoSessionDueOwner => ({
+		userId: ownerIdFromStored(row.user_id),
+		dueAt: row.due_at,
+	}))
+})
+
+export const deferRepoSessionDueOwnerEffect = Effect.fn(
+	'RepoSessionDueOwners.defer',
+)(function* (input: { userId: string; error: unknown; now?: Date }) {
+	const d1 = yield* D1
+	const now = yield* nowOrClock(input.now)
+	yield* ensureRepoSessionDueOwnersSchemaEffect()
+	yield* d1.run(
+		'repo_session_due_owners.defer',
+		sql(
+			`UPDATE repo_session_due_owners
+			SET due_at = ?, updated_at = ?
+			WHERE user_id = ?`,
+			new Date(now.getTime() + repoSessionDueOwnerFailureDelayMs).toISOString(),
+			now.toISOString(),
+			input.userId,
+		),
+	)
+	console.warn(
+		JSON.stringify({
+			message: 'repo session due-owner deferred',
+			userId: input.userId,
+			error: getErrorMessage(input.error),
+		}),
+	)
+})

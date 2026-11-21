@@ -1,3 +1,10 @@
+import { Effect, Option, Schema } from 'effect'
+import {
+	type D1,
+	type DatabaseError,
+	fromD1Promise,
+	sql,
+} from '#worker/effect/d1.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 
 type SystemEmailAuthorityRow = {
@@ -85,3 +92,68 @@ export async function commitSystemEmailAuthorityBatch(input: {
 	])
 	return results.slice(0, input.statements.length)
 }
+
+/** The dedicated system-email authority marker or provider gate refused. */
+export class SystemEmailAuthorityError extends Schema.TaggedError<SystemEmailAuthorityError>()(
+	'SystemEmailAuthorityError',
+	{ message: Schema.String },
+) {}
+
+const AuthorityRow = Schema.Struct({
+	authority: Schema.String,
+	graph_mismatch_count: Schema.Number,
+	provider_link_count: Schema.Number,
+})
+const UnsupportedRow = Schema.Struct({ unsupported: Schema.Number })
+
+export const assertSystemEmailGraphAuthorityEffect = Effect.fn(
+	'SystemEmailAuthority.assert',
+)(function* (
+	d1: D1['Service'],
+): Effect.fn.Return<void, DatabaseError | SystemEmailAuthorityError> {
+	const marker = yield* d1.first(
+		'system_email_graph_authority.read',
+		AuthorityRow,
+		sql(
+			`SELECT authority, graph_mismatch_count, provider_link_count
+			FROM system_email_graph_authority
+			WHERE singleton = 1
+			LIMIT 1`,
+		),
+	)
+	if (
+		Option.isNone(marker) ||
+		marker.value.authority !== 'dedicated' ||
+		marker.value.graph_mismatch_count !== 0 ||
+		marker.value.provider_link_count !== 0
+	) {
+		return yield* new SystemEmailAuthorityError({
+			message: 'System email dedicated authority marker is missing or invalid.',
+		})
+	}
+	const providerLinks = yield* d1.first(
+		'system_email_graph_authority.provider_links',
+		UnsupportedRow,
+		sql(`SELECT ${unsupportedSystemProviderLinksSql} AS unsupported`),
+	)
+	if (
+		Option.match(providerLinks, {
+			onNone: () => 1,
+			onSome: (row) => row.unsupported,
+		}) !== 0
+	) {
+		return yield* new SystemEmailAuthorityError({
+			message:
+				'System email dedicated authority refuses unsupported provider links.',
+		})
+	}
+})
+
+/** `commitSystemEmailAuthorityBatch` with a typed D1 failure and deadline. */
+export const commitSystemEmailAuthorityBatchEffect = (input: {
+	db: D1Database
+	statements: ReadonlyArray<D1PreparedStatement>
+}) =>
+	fromD1Promise('system_email.authority_batch', () =>
+		commitSystemEmailAuthorityBatch(input),
+	).pipe(Effect.map((results) => results.map((r) => r.meta?.changes ?? 0)))

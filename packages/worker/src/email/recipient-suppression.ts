@@ -1,3 +1,5 @@
+import { Effect as EffectModule } from 'effect'
+import { type D1 as D1Service, sql as d1Sql } from '#worker/effect/d1.ts'
 /**
  * Per-recipient hard-bounce suppression for system mail (`kody@` and the
  * other reserved senders), stored in `email_recipient_suppressions`.
@@ -316,3 +318,29 @@ export async function pruneRecipientSuppressionTracking(input: {
 		.run()
 	return Number(result.meta.changes ?? 0)
 }
+
+export const pruneRecipientSuppressionTrackingEffect = EffectModule.fn(
+	'RecipientSuppression.prune',
+)(function* (d1: D1Service['Service'], input: { now: Date; limit?: number }) {
+	const cutoff = new Date(
+		input.now.getTime() -
+			recipientSuppressionTrackingRetentionDays * 24 * 60 * 60 * 1000,
+	).toISOString()
+	const result = yield* d1.run(
+		'RecipientSuppression.prune',
+		d1Sql(
+			`DELETE FROM email_recipient_suppressions
+				WHERE recipient IN (
+					SELECT recipient FROM email_recipient_suppressions
+					WHERE suppressed_at IS NULL
+						AND verification_suppressed_at IS NULL
+						AND last_hard_bounce_at < ?
+					ORDER BY last_hard_bounce_at ASC
+					LIMIT ?
+				)`,
+			cutoff,
+			input.limit ?? 500,
+		),
+	)
+	return result.changes
+})

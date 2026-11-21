@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { beforeAll, expect, test, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { withEffectTrialWideLanes } from '#worker/test-support/effect-trial.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	applyD1Migrations,
@@ -87,25 +88,48 @@ vi.mock('./jobs/reconcile-artifacts-pushes.ts', () => ({
 	reconcileArtifactsPushes: mocks.reconcileArtifactsPushes,
 }))
 
-vi.mock('./repo/repo-session-cleanup.ts', () => ({
-	cleanupRepoSessionBranches: mocks.cleanupRepoSessionBranches,
-}))
+vi.mock('./repo/repo-session-cleanup.ts', async () => {
+	const { promiseDouble } =
+		await import('#worker/test-support/effect-bridge.ts')
+	return {
+		cleanupRepoSessionBranches: mocks.cleanupRepoSessionBranches,
+		cleanupRepoSessionBranchesEffect: promiseDouble(
+			mocks.cleanupRepoSessionBranches,
+		),
+	}
+})
 
-vi.mock('#worker/email/system-email.ts', async (importOriginal) => ({
-	...(await importOriginal<typeof SystemEmail>()),
-	pruneSystemEmailRetention: mocks.pruneSystemEmailRetention,
-}))
+vi.mock('#worker/email/system-email.ts', async (importOriginal) => {
+	const { promiseEffect } =
+		await import('#worker/test-support/effect-bridge.ts')
+	return {
+		...(await importOriginal<typeof SystemEmail>()),
+		pruneSystemEmailRetention: mocks.pruneSystemEmailRetention,
+		pruneSystemEmailRetentionEffect: promiseEffect<[object], object>(
+			mocks.pruneSystemEmailRetention,
+		),
+	}
+})
 
-vi.mock('#worker/email/reconcile-inbound-deliveries.ts', () => ({
-	sweepStaleInboundDeliveries: mocks.sweepStaleInboundDeliveries,
-}))
+vi.mock('#worker/email/reconcile-inbound-deliveries.ts', async () => {
+	const { promiseDouble } =
+		await import('#worker/test-support/effect-bridge.ts')
+	return {
+		sweepStaleInboundDeliveries: mocks.sweepStaleInboundDeliveries,
+		sweepStaleInboundDeliveriesEffect: promiseDouble(
+			mocks.sweepStaleInboundDeliveries,
+		),
+	}
+})
 
 vi.mock('#app/retention.ts', async () => {
-	const { Effect } = await import('effect')
+	const { promiseEffect } =
+		await import('#worker/test-support/effect-bridge.ts')
 	return {
 		pruneRetention: mocks.pruneRetention,
-		pruneRetentionEffect: (input: { now: Date }) =>
-			Effect.promise(() => mocks.pruneRetention(input)),
+		pruneRetentionEffect: promiseEffect<[{ now: Date }], object>(
+			mocks.pruneRetention,
+		),
 	}
 })
 
@@ -143,8 +167,8 @@ vi.mock('#worker/entitlements/d1-storage-reconciliation.ts', () => ({
 	reconcileD1StorageBytes: mocks.reconcileD1StorageBytes,
 }))
 
-const { runScheduledLane, runScheduledLaneWithFailureIsolation } =
-	await import('./scheduled/scheduled-lanes.ts')
+const scheduledLanes = await import('./scheduled/scheduled-lanes.ts')
+const { runScheduledLaneWithFailureIsolation } = scheduledLanes
 
 const cron = '*/5 * * * *'
 
@@ -186,272 +210,310 @@ async function kvHas(key: string | undefined) {
 
 const padded = (index: number) => index.toString().padStart(3, '0')
 
-test('platform lanes execute with their expected inputs and jobs-owned lanes are rejected', async () => {
-	const scheduledTime = Date.parse('2026-07-05T10:05:30.000Z')
-	const scheduledAt = new Date(scheduledTime)
-	for (const lane of [
-		'reconcile_artifacts_pushes',
-		'repo_session_cleanup',
-		'reconcile_inbound_deliveries',
-		'system_email_retention',
-		'storage_bucket_estimate_backfill',
-		'd1_storage_reconciliation',
-		'second_agent_gift_reconciliation',
-		'retention',
-		'usage_aggregation',
-		'auth_denial_alert',
-	] as const) {
-		await runScheduledLane({ env, lane, scheduledAt })
-	}
-	// community_listing_behind_backfill runs live (mocking it breaks OAuth
-	// Durable Object RPC in this file) against the migrated, empty
-	// community_listings table. Behavior is covered in node tests.
-	await expect(
-		runScheduledLane({
-			env,
-			lane: 'community_listing_behind_backfill',
-			scheduledAt,
-		}),
-	).resolves.toEqual({ scanned: 0, synced: 0, failed: 0 })
-
-	for (const laneMock of [
-		mocks.reconcileArtifactsPushes,
-		mocks.sweepStaleInboundDeliveries,
-		mocks.refreshAdminInsightsRunLogSnapshot,
-		mocks.checkAuthDenialBurstAndNotify,
-		mocks.checkWebhookAuthRegressionsAndAlert,
-		mocks.backfillStorageBucketEstimates,
-		mocks.pruneRetention,
-	]) {
-		expect(laneMock).toHaveBeenCalledWith(
-			expect.objectContaining({ now: scheduledAt }),
-		)
-	}
-	expect(mocks.cleanupRepoSessionBranches).toHaveBeenCalledTimes(1)
-	expect(mocks.pruneSystemEmailRetention).toHaveBeenCalledWith(
-		expect.objectContaining({ blobs: env.EMAIL_BLOBS }),
-	)
-	expect(mocks.aggregateUsageRollups).toHaveBeenCalledWith(env, scheduledAt)
-	expect(mocks.runCreditDebits).toHaveBeenCalledWith({
-		env,
-		now: scheduledAt,
+describe.each([
+	{ path: 'promise', env },
+	{ path: 'effect', env: withEffectTrialWideLanes(env) },
+])('$path path', ({ path, env: laneEnv }) => {
+	beforeEach(() => {
+		vi.clearAllMocks()
 	})
-	expect(
-		mocks.reconcileSecondAgentStandardGifts,
-	).toHaveBeenCalledExactlyOnceWith({ env, now: scheduledAt })
-	expect(mocks.reconcileD1StorageBytes).toHaveBeenCalledTimes(1)
-	const reconciliationInput = mocks.reconcileD1StorageBytes.mock.calls[0]?.[0]
-	expect(reconciliationInput?.db).toBe(env.APP_DB)
-	expect(reconciliationInput?.env).toEqual(
-		expect.objectContaining({ APP_DB: env.APP_DB }),
-	)
-	expect(reconciliationInput?.now).toEqual(scheduledAt)
-
-	await expect(
-		runScheduledLane({
-			env,
-			lane: 'job_schedule_watchdog',
-			scheduledAt: new Date(),
-		}),
-	).rejects.toThrow(/owned by the jobs worker/)
-})
-
-test('scheduled OAuth purge advances and revokes every grant token before the grant', async () => {
-	const scheduledTime = Date.parse('2026-07-05T10:05:00.000Z')
-	const userId = ownerIdFromStored('oauth-purge-user')
-	const clientId = 'oauth-purge-client'
-	const healthyGrantIds = Array.from(
-		{ length: 51 },
-		(_, index) => `${padded(index)}-healthy`,
-	)
-	const orphanGrantId = 'zzz-orphan'
-	const orphanGrantKey = `grant:${userId}:${orphanGrantId}`
-	const orphanTokenKeys = Array.from(
-		{ length: 51 },
-		(_, index) => `token:${userId}:${orphanGrantId}:${padded(index)}`,
-	)
-	const lastHealthyGrantId = healthyGrantIds.at(-1)
-
-	await resetOAuthPurgeCoordinator()
-	await env.OAUTH_KV.put(`client:${clientId}`, JSON.stringify({ clientId }))
-	await Promise.all([
-		...healthyGrantIds.flatMap((grantId) => [
-			env.OAUTH_KV.put(
-				`grant:${userId}:${grantId}`,
-				JSON.stringify({ id: grantId, userId, clientId }),
-			),
-			env.OAUTH_KV.put(
-				`token:${userId}:${grantId}:healthy-token`,
-				JSON.stringify({ userId, grantId }),
-			),
-		]),
-		env.OAUTH_KV.put(
-			orphanGrantKey,
-			JSON.stringify({ id: orphanGrantId, userId, clientId: 'missing-client' }),
-		),
-		...orphanTokenKeys.map((key) =>
-			env.OAUTH_KV.put(key, JSON.stringify({ userId, grantId: orphanGrantId })),
-		),
-	])
-
-	const runPurgeTick = (minutes: number) =>
-		runScheduledLane({
-			env,
-			lane: 'oauth_purge_expired',
-			scheduledAt: new Date(scheduledTime + minutes * 60_000),
+	const runCoordinator = (
+		coordinator: Awaited<ReturnType<typeof resetOAuthPurgeCoordinator>>,
+		input: { scheduledAt: number },
+	) =>
+		path === 'effect' ? coordinator.runEffect(input) : coordinator.run(input)
+	const runScheduledLane = (
+		input: Parameters<typeof scheduledLanes.runScheduledLane>[0],
+	) =>
+		scheduledLanes.runScheduledLane({
+			...input,
+			env: input.env === env ? laneEnv : input.env,
 		})
-
-	await runPurgeTick(0)
-	expect(await kvHas(orphanGrantKey)).toBe(true)
-	expect(await kvHas(orphanTokenKeys[0])).toBe(true)
-
-	await runPurgeTick(5)
-	expect(await kvHas(orphanGrantKey)).toBe(true)
-
-	await runPurgeTick(10)
-	expect(await kvHas(orphanGrantKey)).toBe(true)
-	expect(await kvHas(orphanTokenKeys[0])).toBe(false)
-	expect(await kvHas(orphanTokenKeys.at(-1))).toBe(true)
-
-	await runPurgeTick(15)
-	expect(await kvHas(orphanGrantKey)).toBe(true)
-
-	await runPurgeTick(20)
-	expect(await kvHas(orphanGrantKey)).toBe(false)
-	await expect(
-		Promise.all(orphanTokenKeys.map((key) => env.OAUTH_KV.get(key))),
-	).resolves.toEqual(orphanTokenKeys.map(() => null))
-	expect(await kvHas(`grant:${userId}:${lastHealthyGrantId}`)).toBe(true)
-	expect(
-		await kvHas(`token:${userId}:${lastHealthyGrantId}:healthy-token`),
-	).toBe(true)
-})
-
-test('OAuth purge resets only invalid persisted cursors and serializes overlapping invocations', async () => {
-	const invalidCursor = '%%%'
-	const recovering = await resetOAuthPurgeCoordinator({
-		version: 1,
-		nextPhase: 'grants',
-		grantCursor: invalidCursor,
-	})
-	await env.OAUTH_KV.put(
-		'client:cursor-recovery-client',
-		JSON.stringify({ clientId: 'cursor-recovery-client' }),
-	)
-	await env.OAUTH_KV.put(
-		'grant:cursor-recovery-user:grant',
-		JSON.stringify({ clientId: 'cursor-recovery-client' }),
-	)
-
-	const result = await recovering.run({
-		scheduledAt: Date.parse('2026-07-05T11:00:00.000Z'),
-	})
-	expect(result.phase).toBe('grants')
-	expect(result.checked).toBeGreaterThan(0)
-	const recovered = await readPurgeContinuation(recovering)
-	expect(recovered?.grantCursor).not.toBe(invalidCursor)
-	expect(recovered?.nextPhase).toBe('tokens')
-
-	const overlapping = await resetOAuthPurgeCoordinator()
-	await env.OAUTH_KV.put(
-		'client:overlap-client',
-		JSON.stringify({ clientId: 'overlap-client' }),
-	)
-	await Promise.all(
-		Array.from({ length: 51 }, (_, index) =>
-			env.OAUTH_KV.put(
-				`grant:overlap-user:${padded(index)}`,
-				JSON.stringify({ clientId: 'overlap-client' }),
-			),
-		),
-	)
-	const scheduledAt = Date.parse('2026-07-05T11:05:00.000Z')
-	const [first, second] = await Promise.all([
-		overlapping.run({ scheduledAt }),
-		overlapping.run({ scheduledAt }),
-	])
-	expect([first.phase, second.phase]).toEqual(['grants', 'tokens'])
-	const continuation = await readPurgeContinuation(overlapping)
-	expect(continuation?.nextPhase).toBe('grants')
-	expect(continuation?.grantCursor).toBeTruthy()
-})
-
-test('lane failure isolation reports ordinary errors to Sentry and treats D1 lock contention as retryable', async () => {
-	const consoleErrorSpy = vi
-		.spyOn(console, 'error')
-		.mockImplementation(() => {})
-	const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-	const withScope = vi.spyOn(Sentry, 'withScope')
-	const captureException = vi
-		.spyOn(Sentry, 'captureException')
-		.mockImplementation(() => '')
-	mocks.reconcileArtifactsPushes.mockRejectedValueOnce(
-		new Error('reconcile exploded'),
-	)
-	const failedTime = Date.parse('2026-07-05T10:10:00.000Z')
-
-	try {
-		await expect(
-			runScheduledLaneWithFailureIsolation({
-				env,
-				message: createMessage('reconcile_artifacts_pushes', failedTime),
-			}),
-		).resolves.toBe('failed')
-
-		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			'scheduled_lane_failed lane=reconcile_artifacts_pushes',
-			expect.objectContaining({ message: 'reconcile exploded' }),
-		)
-		expect(withScope).toHaveBeenCalled()
-		expect(captureException).toHaveBeenCalledWith(
-			expect.objectContaining({ message: 'reconcile exploded' }),
-		)
-		const scopeCallback = withScope.mock.calls[0]?.[0] as
-			| ((scope: {
-					setTag: (key: string, value: string) => void
-					setContext: (key: string, value: Record<string, unknown>) => void
-			  }) => void)
-			| undefined
-		expect(scopeCallback).toBeTypeOf('function')
-		const setTag = vi.fn()
-		const setContext = vi.fn()
-		scopeCallback?.({ setTag, setContext })
-		expect(setTag).toHaveBeenCalledWith(
-			'scheduled.lane',
+	const runScheduledLaneWithFailureIsolation = (
+		input: Parameters<
+			typeof scheduledLanes.runScheduledLaneWithFailureIsolation
+		>[0],
+	) =>
+		scheduledLanes.runScheduledLaneWithFailureIsolation({
+			...input,
+			env: input.env === env ? laneEnv : input.env,
+		})
+	test('platform lanes execute with their expected inputs and jobs-owned lanes are rejected', async () => {
+		const scheduledTime = Date.parse('2026-07-05T10:05:30.000Z')
+		const scheduledAt = new Date(scheduledTime)
+		for (const lane of [
 			'reconcile_artifacts_pushes',
-		)
-		expect(setContext).toHaveBeenCalledWith(
-			'scheduled',
-			expect.objectContaining({
-				lane: 'reconcile_artifacts_pushes',
-				scheduledTime: new Date(failedTime).toISOString(),
-				cron,
-			}),
-		)
-
-		captureException.mockClear()
-		mocks.reconcileArtifactsPushes.mockRejectedValueOnce(
-			new Error('D1_ERROR: NOSENTRY database is locked: SQLITE_BUSY'),
-		)
-		const lockTime = Date.parse('2026-07-05T10:20:00.000Z')
+			'repo_session_cleanup',
+			'reconcile_inbound_deliveries',
+			'system_email_retention',
+			'storage_bucket_estimate_backfill',
+			'd1_storage_reconciliation',
+			'second_agent_gift_reconciliation',
+			'retention',
+			'usage_aggregation',
+			'auth_denial_alert',
+		] as const) {
+			await runScheduledLane({ env, lane, scheduledAt })
+		}
+		// community_listing_behind_backfill runs live (mocking it breaks OAuth
+		// Durable Object RPC in this file) against the migrated, empty
+		// community_listings table. Behavior is covered in node tests.
 		await expect(
-			runScheduledLaneWithFailureIsolation({
+			runScheduledLane({
 				env,
-				message: createMessage('reconcile_artifacts_pushes', lockTime),
+				lane: 'community_listing_behind_backfill',
+				scheduledAt,
 			}),
-		).resolves.toBe('d1_lock_contention')
+		).resolves.toEqual({ scanned: 0, synced: 0, failed: 0 })
 
-		expect(consoleWarnSpy).toHaveBeenCalledWith(
-			'scheduled_lane_d1_lock_contention lane=reconcile_artifacts_pushes',
-			expect.objectContaining({
-				message: 'D1_ERROR: NOSENTRY database is locked: SQLITE_BUSY',
-			}),
+		for (const laneMock of [
+			mocks.reconcileArtifactsPushes,
+			mocks.sweepStaleInboundDeliveries,
+			mocks.refreshAdminInsightsRunLogSnapshot,
+			mocks.checkAuthDenialBurstAndNotify,
+			mocks.checkWebhookAuthRegressionsAndAlert,
+			mocks.backfillStorageBucketEstimates,
+			mocks.pruneRetention,
+		]) {
+			expect(laneMock).toHaveBeenCalledWith(
+				expect.objectContaining({ now: scheduledAt }),
+			)
+		}
+		expect(mocks.cleanupRepoSessionBranches).toHaveBeenCalledTimes(1)
+		expect(mocks.pruneSystemEmailRetention).toHaveBeenCalledWith(
+			expect.objectContaining({ blobs: env.EMAIL_BLOBS }),
 		)
-		expect(captureException).not.toHaveBeenCalled()
-	} finally {
-		consoleErrorSpy.mockRestore()
-		consoleWarnSpy.mockRestore()
-		withScope.mockRestore()
-		captureException.mockRestore()
-	}
+		expect(mocks.aggregateUsageRollups).toHaveBeenCalledWith(env, scheduledAt)
+		expect(mocks.runCreditDebits).toHaveBeenCalledWith({
+			env,
+			now: scheduledAt,
+		})
+		expect(
+			mocks.reconcileSecondAgentStandardGifts,
+		).toHaveBeenCalledExactlyOnceWith({ env, now: scheduledAt })
+		expect(mocks.reconcileD1StorageBytes).toHaveBeenCalledTimes(1)
+		const reconciliationInput = mocks.reconcileD1StorageBytes.mock.calls[0]?.[0]
+		expect(reconciliationInput?.db).toBe(env.APP_DB)
+		expect(reconciliationInput?.env).toEqual(
+			expect.objectContaining({ APP_DB: env.APP_DB }),
+		)
+		expect(reconciliationInput?.now).toEqual(scheduledAt)
+
+		await expect(
+			runScheduledLane({
+				env,
+				lane: 'job_schedule_watchdog',
+				scheduledAt: new Date(),
+			}),
+		).rejects.toThrow(/owned by the jobs worker/)
+	})
+
+	test('scheduled OAuth purge advances and revokes every grant token before the grant', async () => {
+		const scheduledTime = Date.parse('2026-07-05T10:05:00.000Z')
+		const userId = ownerIdFromStored('oauth-purge-user')
+		const clientId = 'oauth-purge-client'
+		const healthyGrantIds = Array.from(
+			{ length: 51 },
+			(_, index) => `${padded(index)}-healthy`,
+		)
+		const orphanGrantId = 'zzz-orphan'
+		const orphanGrantKey = `grant:${userId}:${orphanGrantId}`
+		const orphanTokenKeys = Array.from(
+			{ length: 51 },
+			(_, index) => `token:${userId}:${orphanGrantId}:${padded(index)}`,
+		)
+		const lastHealthyGrantId = healthyGrantIds.at(-1)
+
+		await resetOAuthPurgeCoordinator()
+		await env.OAUTH_KV.put(`client:${clientId}`, JSON.stringify({ clientId }))
+		await Promise.all([
+			...healthyGrantIds.flatMap((grantId) => [
+				env.OAUTH_KV.put(
+					`grant:${userId}:${grantId}`,
+					JSON.stringify({ id: grantId, userId, clientId }),
+				),
+				env.OAUTH_KV.put(
+					`token:${userId}:${grantId}:healthy-token`,
+					JSON.stringify({ userId, grantId }),
+				),
+			]),
+			env.OAUTH_KV.put(
+				orphanGrantKey,
+				JSON.stringify({
+					id: orphanGrantId,
+					userId,
+					clientId: 'missing-client',
+				}),
+			),
+			...orphanTokenKeys.map((key) =>
+				env.OAUTH_KV.put(
+					key,
+					JSON.stringify({ userId, grantId: orphanGrantId }),
+				),
+			),
+		])
+
+		const runPurgeTick = (minutes: number) =>
+			runScheduledLane({
+				env,
+				lane: 'oauth_purge_expired',
+				scheduledAt: new Date(scheduledTime + minutes * 60_000),
+			})
+
+		await runPurgeTick(0)
+		expect(await kvHas(orphanGrantKey)).toBe(true)
+		expect(await kvHas(orphanTokenKeys[0])).toBe(true)
+
+		await runPurgeTick(5)
+		expect(await kvHas(orphanGrantKey)).toBe(true)
+
+		await runPurgeTick(10)
+		expect(await kvHas(orphanGrantKey)).toBe(true)
+		expect(await kvHas(orphanTokenKeys[0])).toBe(false)
+		expect(await kvHas(orphanTokenKeys.at(-1))).toBe(true)
+
+		await runPurgeTick(15)
+		expect(await kvHas(orphanGrantKey)).toBe(true)
+
+		await runPurgeTick(20)
+		expect(await kvHas(orphanGrantKey)).toBe(false)
+		await expect(
+			Promise.all(orphanTokenKeys.map((key) => env.OAUTH_KV.get(key))),
+		).resolves.toEqual(orphanTokenKeys.map(() => null))
+		expect(await kvHas(`grant:${userId}:${lastHealthyGrantId}`)).toBe(true)
+		expect(
+			await kvHas(`token:${userId}:${lastHealthyGrantId}:healthy-token`),
+		).toBe(true)
+	})
+
+	test('OAuth purge resets only invalid persisted cursors and serializes overlapping invocations', async () => {
+		const invalidCursor = '%%%'
+		const recovering = await resetOAuthPurgeCoordinator({
+			version: 1,
+			nextPhase: 'grants',
+			grantCursor: invalidCursor,
+		})
+		await env.OAUTH_KV.put(
+			'client:cursor-recovery-client',
+			JSON.stringify({ clientId: 'cursor-recovery-client' }),
+		)
+		await env.OAUTH_KV.put(
+			'grant:cursor-recovery-user:grant',
+			JSON.stringify({ clientId: 'cursor-recovery-client' }),
+		)
+
+		const result = await runCoordinator(recovering, {
+			scheduledAt: Date.parse('2026-07-05T11:00:00.000Z'),
+		})
+		expect(result.phase).toBe('grants')
+		expect(result.checked).toBeGreaterThan(0)
+		const recovered = await readPurgeContinuation(recovering)
+		expect(recovered?.grantCursor).not.toBe(invalidCursor)
+		expect(recovered?.nextPhase).toBe('tokens')
+
+		const overlapping = await resetOAuthPurgeCoordinator()
+		await env.OAUTH_KV.put(
+			'client:overlap-client',
+			JSON.stringify({ clientId: 'overlap-client' }),
+		)
+		await Promise.all(
+			Array.from({ length: 51 }, (_, index) =>
+				env.OAUTH_KV.put(
+					`grant:overlap-user:${padded(index)}`,
+					JSON.stringify({ clientId: 'overlap-client' }),
+				),
+			),
+		)
+		const scheduledAt = Date.parse('2026-07-05T11:05:00.000Z')
+		const [first, second] = await Promise.all([
+			runCoordinator(overlapping, { scheduledAt }),
+			runCoordinator(overlapping, { scheduledAt }),
+		])
+		expect([first.phase, second.phase]).toEqual(['grants', 'tokens'])
+		const continuation = await readPurgeContinuation(overlapping)
+		expect(continuation?.nextPhase).toBe('grants')
+		expect(continuation?.grantCursor).toBeTruthy()
+	})
+
+	test('lane failure isolation reports ordinary errors to Sentry and treats D1 lock contention as retryable', async () => {
+		const consoleErrorSpy = vi
+			.spyOn(console, 'error')
+			.mockImplementation(() => {})
+		const consoleWarnSpy = vi
+			.spyOn(console, 'warn')
+			.mockImplementation(() => {})
+		const withScope = vi.spyOn(Sentry, 'withScope')
+		const captureException = vi
+			.spyOn(Sentry, 'captureException')
+			.mockImplementation(() => '')
+		mocks.reconcileArtifactsPushes.mockRejectedValueOnce(
+			new Error('reconcile exploded'),
+		)
+		const failedTime = Date.parse('2026-07-05T10:10:00.000Z')
+
+		try {
+			await expect(
+				runScheduledLaneWithFailureIsolation({
+					env,
+					message: createMessage('reconcile_artifacts_pushes', failedTime),
+				}),
+			).resolves.toBe('failed')
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				'scheduled_lane_failed lane=reconcile_artifacts_pushes',
+				expect.objectContaining({ message: 'reconcile exploded' }),
+			)
+			expect(withScope).toHaveBeenCalled()
+			expect(captureException).toHaveBeenCalledWith(
+				expect.objectContaining({ message: 'reconcile exploded' }),
+			)
+			const scopeCallback = withScope.mock.calls[0]?.[0] as
+				| ((scope: {
+						setTag: (key: string, value: string) => void
+						setContext: (key: string, value: Record<string, unknown>) => void
+				  }) => void)
+				| undefined
+			expect(scopeCallback).toBeTypeOf('function')
+			const setTag = vi.fn()
+			const setContext = vi.fn()
+			scopeCallback?.({ setTag, setContext })
+			expect(setTag).toHaveBeenCalledWith(
+				'scheduled.lane',
+				'reconcile_artifacts_pushes',
+			)
+			expect(setContext).toHaveBeenCalledWith(
+				'scheduled',
+				expect.objectContaining({
+					lane: 'reconcile_artifacts_pushes',
+					scheduledTime: new Date(failedTime).toISOString(),
+					cron,
+				}),
+			)
+
+			captureException.mockClear()
+			mocks.reconcileArtifactsPushes.mockRejectedValueOnce(
+				new Error('D1_ERROR: NOSENTRY database is locked: SQLITE_BUSY'),
+			)
+			const lockTime = Date.parse('2026-07-05T10:20:00.000Z')
+			await expect(
+				runScheduledLaneWithFailureIsolation({
+					env,
+					message: createMessage('reconcile_artifacts_pushes', lockTime),
+				}),
+			).resolves.toBe('d1_lock_contention')
+
+			expect(consoleWarnSpy).toHaveBeenCalledWith(
+				'scheduled_lane_d1_lock_contention lane=reconcile_artifacts_pushes',
+				expect.objectContaining({
+					message: 'D1_ERROR: NOSENTRY database is locked: SQLITE_BUSY',
+				}),
+			)
+			expect(captureException).not.toHaveBeenCalled()
+		} finally {
+			consoleErrorSpy.mockRestore()
+			consoleWarnSpy.mockRestore()
+			withScope.mockRestore()
+			captureException.mockRestore()
+		}
+	})
 })

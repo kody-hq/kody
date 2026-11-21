@@ -1,14 +1,19 @@
 import { DatabaseSync } from 'node:sqlite'
-import { expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { consoleError } from '#worker/test-support/console-spies.ts'
+import {
+	consoleError,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import {
 	deliverOrgAuditOutboxPayload,
-	drainOrgAuditOutbox,
+	drainOrgAuditOutbox as drainPromise,
+	drainOrgAuditOutboxViaEffect,
 	enqueueOrgAuditOutbox,
-	tryDeliverOrgAuditOutboxPlan,
+	tryDeliverOrgAuditOutboxPlan as tryDeliverPromise,
+	tryDeliverOrgAuditOutboxPlanViaEffect,
 } from './org-audit-outbox.ts'
 import { redactOrgAuditActorIdsForDeletedUser } from './org-audit.ts'
 
@@ -32,174 +37,260 @@ function createAppDb() {
 	return createD1FromSqlite(sqlite)
 }
 
-test('drain delivers outbox rows to AUDIT_DB and clears the queue', async () => {
-	const appDb = createAppDb()
-	const auditDb = createAuditTestDb()
-	const writer = {
-		appDb,
-		db: auditDb,
-		actorUserId: 'actor-1',
-		actorUsername: null,
-		credentialKind: null,
-		credentialId: null,
-	}
-	const plan = await enqueueOrgAuditOutbox(writer, {
-		orgId: 'org-1',
-		action: 'member.added',
-		targetUserId: 'user-2',
-		details: { role: 'member' },
+const paths = [
+	{
+		path: 'promise',
+		drainOrgAuditOutbox: drainPromise,
+		tryDeliverOrgAuditOutboxPlan: tryDeliverPromise,
+	},
+	{
+		path: 'effect',
+		drainOrgAuditOutbox: drainOrgAuditOutboxViaEffect,
+		tryDeliverOrgAuditOutboxPlan: tryDeliverOrgAuditOutboxPlanViaEffect,
+	},
+] as const
+
+describe.each(paths)(
+	'$path path',
+	({ drainOrgAuditOutbox, tryDeliverOrgAuditOutboxPlan }) => {
+		test('drain delivers outbox rows to AUDIT_DB and clears the queue', async () => {
+			const appDb = createAppDb()
+			const auditDb = createAuditTestDb()
+			const writer = {
+				appDb,
+				db: auditDb,
+				actorUserId: 'actor-1',
+				actorUsername: null,
+				credentialKind: null,
+				credentialId: null,
+			}
+			const plan = await enqueueOrgAuditOutbox(writer, {
+				orgId: 'org-1',
+				action: 'member.added',
+				targetUserId: 'user-2',
+				details: { role: 'member' },
+			})
+			const pending = await appDb
+				.prepare(`SELECT COUNT(*) AS count FROM org_audit_outbox`)
+				.first<{ count: number }>()
+			expect(pending?.count).toBe(1)
+
+			const result = await drainOrgAuditOutbox({
+				env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
+			})
+			expect(result).toMatchObject({ status: 'ok', delivered: 1, remaining: 0 })
+
+			const auditRow = await auditDb
+				.prepare(`SELECT id, action FROM org_audit_events WHERE id = ?`)
+				.bind(plan.outboxId)
+				.first<{ id: string; action: string }>()
+			expect(auditRow).toEqual({ id: plan.outboxId, action: 'member.added' })
+		})
+
+		test('delivery clears outbox when AUDIT_DB row already exists', async () => {
+			const appDb = createAppDb()
+			const auditDb = createAuditTestDb()
+			const writer = {
+				appDb,
+				db: auditDb,
+				actorUserId: 'actor-1',
+				actorUsername: null,
+				credentialKind: null,
+				credentialId: null,
+			}
+			const plan = await enqueueOrgAuditOutbox(writer, {
+				orgId: 'org-1',
+				action: 'team.created',
+				resourceType: 'team',
+				resourceId: 'team-1',
+			})
+			await deliverOrgAuditOutboxPayload(auditDb, plan.payload)
+			const redeliver = await tryDeliverOrgAuditOutboxPlan(writer, plan)
+			expect(redeliver).toBe(true)
+			const pending = await appDb
+				.prepare(`SELECT COUNT(*) AS count FROM org_audit_outbox`)
+				.first<{ count: number }>()
+			expect(pending?.count).toBe(0)
+		})
+
+		test('drain advances past invalid rows to deliver later events', async () => {
+			consoleError.mockImplementation(() => {})
+			const appDb = createAppDb()
+			const auditDb = createAuditTestDb()
+			const writer = {
+				appDb,
+				db: auditDb,
+				actorUserId: 'actor-1',
+				actorUsername: null,
+				credentialKind: null,
+				credentialId: null,
+			}
+			await appDb
+				.prepare(
+					`INSERT INTO org_audit_outbox (id, org_id, payload_json, created_at)
+				 VALUES (?, ?, ?, ?)`,
+				)
+				.bind('bad-1', 'org-1', '{not-json', '2026-01-01T00:00:00.000Z')
+				.run()
+			const plan = await enqueueOrgAuditOutbox(writer, {
+				orgId: 'org-1',
+				action: 'member.added',
+				targetUserId: 'user-2',
+			})
+			await appDb
+				.prepare(`UPDATE org_audit_outbox SET created_at = ? WHERE id = ?`)
+				.bind('2026-01-01T00:00:01.000Z', plan.outboxId)
+				.run()
+
+			const result = await drainOrgAuditOutbox({
+				env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
+				limit: 1,
+			})
+			expect(result).toMatchObject({ status: 'ok', delivered: 1, errors: 1 })
+			const auditRow = await auditDb
+				.prepare(`SELECT id FROM org_audit_events WHERE id = ?`)
+				.bind(plan.outboxId)
+				.first<{ id: string }>()
+			expect(auditRow?.id).toBe(plan.outboxId)
+			const remainingBad = await appDb
+				.prepare(`SELECT id FROM org_audit_outbox WHERE id = ?`)
+				.bind('bad-1')
+				.first<{ id: string }>()
+			expect(remainingBad?.id).toBe('bad-1')
+		})
+
+		test('user purge redacts pending outbox actor ids', async () => {
+			const appDb = createAppDb()
+			const auditDb = createAuditTestDb()
+			const userId = 'user-to-purge'
+			const writer = {
+				appDb,
+				db: auditDb,
+				actorUserId: userId,
+				actorUsername: 'purge-me',
+				credentialKind: null,
+				credentialId: null,
+			}
+			await enqueueOrgAuditOutbox(writer, {
+				orgId: 'org-1',
+				action: 'member.added',
+				targetUserId: 'other',
+			})
+			await redactOrgAuditActorIdsForDeletedUser({
+				env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
+				userId,
+			})
+			const row = await appDb
+				.prepare(`SELECT payload_json FROM org_audit_outbox LIMIT 1`)
+				.first<{ payload_json: string }>()
+			expect(JSON.parse(row?.payload_json ?? '{}')).toMatchObject({
+				actorUserId: 'deleted-user',
+				actorUsername: 'purge-me',
+			})
+		})
+
+		test('only the delivery that inserts a successful row emits its event', async () => {
+			const appDb = createAppDb()
+			const auditDb = createAuditTestDb()
+			const writer = {
+				appDb,
+				db: auditDb,
+				actorUserId: 'actor-1',
+				actorUsername: null,
+				credentialKind: null,
+				credentialId: null,
+				cause: { packageId: 'package-1', resourceEventDepth: 1 },
+				env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
+			}
+			resourceEvents.dispatch.mockClear()
+			const plan = await enqueueOrgAuditOutbox(writer, {
+				orgId: 'org-1',
+				action: 'job.created',
+				resourceType: 'job',
+				resourceId: 'job-1',
+			})
+			expect(await tryDeliverOrgAuditOutboxPlan(writer, plan)).toBe(true)
+			await Promise.all(resourceEvents.pending)
+			expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
+			expect(resourceEvents.dispatch.mock.calls[0]![0]).toMatchObject({
+				payload: {
+					action: 'job.created',
+					cause: { packageId: 'package-1', resourceEventDepth: 1 },
+				},
+			})
+
+			// A redelivery finds the row already there and stays quiet.
+			await tryDeliverOrgAuditOutboxPlan(writer, plan)
+			await Promise.all(resourceEvents.pending)
+			expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
+		})
+	},
+)
+
+/** APP_DB whose next outbox-row delete fails once, after the audit insert. */
+function failNextOutboxDelete(appDb: D1Database): D1Database {
+	let fail = true
+	return new Proxy(appDb, {
+		get(target, key, receiver) {
+			if (key !== 'prepare') return Reflect.get(target, key, receiver)
+			return (query: string) => {
+				const statement = target.prepare(query)
+				if (!fail || !query.startsWith('DELETE FROM org_audit_outbox')) {
+					return statement
+				}
+				fail = false
+				return {
+					bind: () => ({
+						run: async () => {
+							throw new Error('D1_ERROR: network connection lost')
+						},
+					}),
+				}
+			}
+		},
 	})
-	const pending = await appDb
-		.prepare(`SELECT COUNT(*) AS count FROM org_audit_outbox`)
-		.first<{ count: number }>()
-	expect(pending?.count).toBe(1)
+}
 
-	const result = await drainOrgAuditOutbox({
-		env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
-	})
-	expect(result).toMatchObject({ status: 'ok', delivered: 1, remaining: 0 })
-
-	const auditRow = await auditDb
-		.prepare(`SELECT id, action FROM org_audit_events WHERE id = ?`)
-		.bind(plan.outboxId)
-		.first<{ id: string; action: string }>()
-	expect(auditRow).toEqual({ id: plan.outboxId, action: 'member.added' })
-})
-
-test('delivery clears outbox when AUDIT_DB row already exists', async () => {
-	const appDb = createAppDb()
-	const auditDb = createAuditTestDb()
-	const writer = {
-		appDb,
-		db: auditDb,
-		actorUserId: 'actor-1',
-		actorUsername: null,
-		credentialKind: null,
-		credentialId: null,
-	}
-	const plan = await enqueueOrgAuditOutbox(writer, {
-		orgId: 'org-1',
-		action: 'team.created',
-		resourceType: 'team',
-		resourceId: 'team-1',
-	})
-	await deliverOrgAuditOutboxPayload(auditDb, plan.payload)
-	const redeliver = await tryDeliverOrgAuditOutboxPlan(writer, plan)
-	expect(redeliver).toBe(true)
-	const pending = await appDb
-		.prepare(`SELECT COUNT(*) AS count FROM org_audit_outbox`)
-		.first<{ count: number }>()
-	expect(pending?.count).toBe(0)
-})
-
-test('drain advances past invalid rows to deliver later events', async () => {
+// Surfaced by the Effect migration (exhaustive error mapping): on the Promise
+// path a failed outbox delete after a successful insert returns false, the
+// retry sees `already_exists`, and the resource change event is never sent.
+// See effect/surfaced-bugs.md.
+async function failedDeleteAfterInsertScenario(
+	tryDeliverOrgAuditOutboxPlan: typeof tryDeliverPromise,
+) {
 	consoleError.mockImplementation(() => {})
+	consoleWarn.mockImplementation(() => {})
 	const appDb = createAppDb()
 	const auditDb = createAuditTestDb()
 	const writer = {
-		appDb,
+		appDb: failNextOutboxDelete(appDb),
 		db: auditDb,
 		actorUserId: 'actor-1',
 		actorUsername: null,
 		credentialKind: null,
 		credentialId: null,
-	}
-	await appDb
-		.prepare(
-			`INSERT INTO org_audit_outbox (id, org_id, payload_json, created_at)
-			 VALUES (?, ?, ?, ?)`,
-		)
-		.bind('bad-1', 'org-1', '{not-json', '2026-01-01T00:00:00.000Z')
-		.run()
-	const plan = await enqueueOrgAuditOutbox(writer, {
-		orgId: 'org-1',
-		action: 'member.added',
-		targetUserId: 'user-2',
-	})
-	await appDb
-		.prepare(`UPDATE org_audit_outbox SET created_at = ? WHERE id = ?`)
-		.bind('2026-01-01T00:00:01.000Z', plan.outboxId)
-		.run()
-
-	const result = await drainOrgAuditOutbox({
-		env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
-		limit: 1,
-	})
-	expect(result).toMatchObject({ status: 'ok', delivered: 1, errors: 1 })
-	const auditRow = await auditDb
-		.prepare(`SELECT id FROM org_audit_events WHERE id = ?`)
-		.bind(plan.outboxId)
-		.first<{ id: string }>()
-	expect(auditRow?.id).toBe(plan.outboxId)
-	const remainingBad = await appDb
-		.prepare(`SELECT id FROM org_audit_outbox WHERE id = ?`)
-		.bind('bad-1')
-		.first<{ id: string }>()
-	expect(remainingBad?.id).toBe('bad-1')
-})
-
-test('user purge redacts pending outbox actor ids', async () => {
-	const appDb = createAppDb()
-	const auditDb = createAuditTestDb()
-	const userId = 'user-to-purge'
-	const writer = {
-		appDb,
-		db: auditDb,
-		actorUserId: userId,
-		actorUsername: 'purge-me',
-		credentialKind: null,
-		credentialId: null,
-	}
-	await enqueueOrgAuditOutbox(writer, {
-		orgId: 'org-1',
-		action: 'member.added',
-		targetUserId: 'other',
-	})
-	await redactOrgAuditActorIdsForDeletedUser({
-		env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
-		userId,
-	})
-	const row = await appDb
-		.prepare(`SELECT payload_json FROM org_audit_outbox LIMIT 1`)
-		.first<{ payload_json: string }>()
-	expect(JSON.parse(row?.payload_json ?? '{}')).toMatchObject({
-		actorUserId: 'deleted-user',
-		actorUsername: 'purge-me',
-	})
-})
-
-test('only the delivery that inserts a successful row emits its event', async () => {
-	const appDb = createAppDb()
-	const auditDb = createAuditTestDb()
-	const writer = {
-		appDb,
-		db: auditDb,
-		actorUserId: 'actor-1',
-		actorUsername: null,
-		credentialKind: null,
-		credentialId: null,
-		cause: { packageId: 'package-1', resourceEventDepth: 1 },
 		env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
 	}
 	resourceEvents.dispatch.mockClear()
+	resourceEvents.pending.length = 0
 	const plan = await enqueueOrgAuditOutbox(writer, {
 		orgId: 'org-1',
 		action: 'job.created',
 		resourceType: 'job',
 		resourceId: 'job-1',
 	})
+	expect(await tryDeliverOrgAuditOutboxPlan(writer, plan)).toBe(false)
 	expect(await tryDeliverOrgAuditOutboxPlan(writer, plan)).toBe(true)
 	await Promise.all(resourceEvents.pending)
 	expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
-	expect(resourceEvents.dispatch.mock.calls[0]![0]).toMatchObject({
-		payload: {
-			action: 'job.created',
-			cause: { packageId: 'package-1', resourceEventDepth: 1 },
-		},
-	})
+}
 
-	// A redelivery finds the row already there and stays quiet.
-	await tryDeliverOrgAuditOutboxPlan(writer, plan)
-	await Promise.all(resourceEvents.pending)
-	expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
-})
+test.fails('promise path (still has the bug): a failed outbox delete after insert still emits the resource change event once', () =>
+	expect(
+		failedDeleteAfterInsertScenario(tryDeliverPromise),
+	).resolves.toBeUndefined())
+
+test('effect path: a failed outbox delete after insert still emits the resource change event once', () =>
+	expect(
+		failedDeleteAfterInsertScenario(tryDeliverOrgAuditOutboxPlanViaEffect),
+	).resolves.toBeUndefined())

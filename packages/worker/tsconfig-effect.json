@@ -36,6 +36,17 @@
 		"./src/app/retention.ts",
 		"./src/scheduled/retention-lanes.ts",
 		"./src/orgs/soft-delete.ts",
+		"./src/scheduled/scheduled-lane-lease.ts",
+		"./src/scheduled/wide-lanes.ts",
+		"./src/repo/repo-session-cleanup.ts",
+		"./src/repo/repo-session-due-owners.ts",
+		"./src/email/reconcile-inbound-deliveries.ts",
+		"./src/email/system-email.ts",
+		"./src/email/system-email-authority.ts",
+		"./src/email/system-email-sends.ts",
+		"./src/email/recipient-suppression.ts",
+		"./src/orgs/org-audit-outbox.ts",
+		"./src/oauth-purge.ts",
 		"./src/test-support/effect-bridge.ts",
 		"./src/test-support/stripe-effect.ts"
 	]

@@ -21,3 +21,10 @@ export function promiseDouble<I extends object, A>(
 			})
 		})
 }
+
+/** Adapts a Promise test double into an Effect that never fails. */
+export function promiseEffect<I extends Array<unknown>, A>(
+	double: (...input: I) => Promise<A>,
+) {
+	return (...input: I) => Effect.promise(() => double(...input))
+}

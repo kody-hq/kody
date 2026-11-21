@@ -1,4 +1,13 @@
 import { DurableObject } from 'cloudflare:workers'
+import { Effect, Option, Schema } from 'effect'
+import { retryDurableObjectReset } from '#worker/effect/durable-object.ts'
+import { observabilityLayer } from '#worker/effect/observability.ts'
+import {
+	decodeOutbound,
+	outbound,
+	type OutboundCallError,
+} from '#worker/effect/outbound.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 
 const oauthPurgeBatchSize = 50
 export const oauthPurgeContinuationStorageKey = 'continuation'
@@ -330,6 +339,262 @@ async function continueOAuthPurge(
 	return result
 }
 
+const PendingGrantRevocationSchema = Schema.Struct({
+	grantKey: Schema.String,
+	tokenPrefix: Schema.String,
+	tokenCursor: Schema.optionalKey(Schema.UndefinedOr(Schema.String)),
+})
+const PendingGrantPageSchema = Schema.Struct({
+	complete: Schema.Boolean,
+	nextCursor: Schema.optionalKey(Schema.Unknown),
+	revocations: Schema.Array(PendingGrantRevocationSchema),
+})
+const PurgePhaseSchema = Schema.Literals(['grants', 'tokens'])
+const StoredContinuation = Schema.Struct({
+	version: Schema.Literal(1),
+	nextPhase: PurgePhaseSchema,
+	grantCursor: Schema.optionalKey(Schema.Unknown),
+	tokenCursor: Schema.optionalKey(Schema.Unknown),
+	pendingGrantPage: Schema.optionalKey(Schema.Unknown),
+})
+const GrantRecordSchema = Schema.Struct({
+	clientId: Schema.String,
+	expiresAt: Schema.optionalKey(Schema.Unknown),
+})
+const TokenRecordSchema = Schema.Struct({
+	grantId: Schema.String,
+	userId: Schema.String,
+})
+const OAuthPurgeResultSchema = Schema.Struct({
+	phase: PurgePhaseSchema,
+	checked: Schema.Number,
+	grantsPurged: Schema.Number,
+	tokensPurged: Schema.Number,
+	phaseComplete: Schema.Boolean,
+})
+
+const optionalString = (value: unknown) =>
+	typeof value === 'string' ? value : undefined
+
+/** The stored continuation; anything that does not decode restarts. */
+function decodeContinuation(value: unknown): PurgeContinuation {
+	return Option.match(Schema.decodeUnknownOption(StoredContinuation)(value), {
+		onNone: (): PurgeContinuation => ({ version: 1, nextPhase: 'grants' }),
+		onSome: (stored) => ({
+			version: 1,
+			nextPhase: stored.nextPhase,
+			grantCursor: optionalString(stored.grantCursor),
+			tokenCursor: optionalString(stored.tokenCursor),
+			pendingGrantPage: Option.match(
+				Schema.decodeUnknownOption(PendingGrantPageSchema)(
+					stored.pendingGrantPage,
+				),
+				{
+					onNone: () => undefined,
+					onSome: (page) => ({
+						complete: page.complete,
+						nextCursor: optionalString(page.nextCursor),
+						revocations: page.revocations.map((revocation) => ({
+							...revocation,
+						})),
+					}),
+				},
+			),
+		}),
+	})
+}
+
+const decodeOption =
+	<A>(schema: Schema.Decoder<A>) =>
+	(value: unknown) =>
+		Schema.decodeUnknownOption(schema)(value)
+
+const kvList = (
+	kv: KVNamespace,
+	options: { prefix: string; cursor?: string },
+) =>
+	outbound('oauth_kv.list', () =>
+		kv.list({ ...options, limit: oauthPurgeBatchSize }),
+	).pipe(
+		Effect.catch((error) =>
+			options.cursor &&
+			error.reason === 'failed' &&
+			isInvalidOAuthPurgeCursorError(error.cause)
+				? outbound('oauth_kv.list', () =>
+						kv.list({ prefix: options.prefix, limit: oauthPurgeBatchSize }),
+					)
+				: Effect.fail(error),
+		),
+	)
+
+const kvGetJson = (kv: KVNamespace, key: string) =>
+	outbound('oauth_kv.get', () => kv.get(key, { type: 'json' }))
+
+const kvDelete = (kv: KVNamespace, key: string) =>
+	outbound('oauth_kv.delete', () => kv.delete(key))
+
+const loadGrantPageEffect = Effect.fn('OAuthPurge.loadGrantPage')(function* (
+	kv: KVNamespace,
+	continuation: PurgeContinuation,
+	now: number,
+) {
+	const page = yield* kvList(kv, {
+		prefix: 'grant:',
+		cursor: continuation.grantCursor,
+	})
+	const clients = new Map<string, boolean>()
+	const revocations = new Array<PendingGrantRevocation>()
+	for (const key of page.keys) {
+		const grant = decodeOption(GrantRecordSchema)(
+			yield* kvGetJson(kv, key.name),
+		)
+		if (Option.isNone(grant)) continue
+		const { clientId, expiresAt } = grant.value
+		let shouldPurge = typeof expiresAt === 'number' && now >= expiresAt
+		if (!shouldPurge && !isClientMetadataUrl(clientId)) {
+			let clientExists = clients.get(clientId)
+			if (clientExists === undefined) {
+				clientExists = (yield* kvGetJson(kv, `client:${clientId}`)) !== null
+				clients.set(clientId, clientExists)
+			}
+			shouldPurge = !clientExists
+		}
+		if (shouldPurge) {
+			const revocation = grantRevocationForKey(key.name)
+			if (revocation) revocations.push(revocation)
+		}
+	}
+	continuation.pendingGrantPage = {
+		complete: page.list_complete,
+		nextCursor: page.list_complete ? undefined : page.cursor,
+		revocations,
+	}
+	return page.keys.length
+})
+
+const purgeGrantPhaseEffect = Effect.fn('OAuthPurge.grantPhase')(function* (
+	kv: KVNamespace,
+	continuation: PurgeContinuation,
+	now: number,
+) {
+	const checked = continuation.pendingGrantPage
+		? 0
+		: yield* loadGrantPageEffect(kv, continuation, now)
+	const pending = continuation.pendingGrantPage?.revocations[0]
+	let grantsPurged = 0
+	let tokensPurged = 0
+	if (pending) {
+		const tokenPage = yield* kvList(kv, {
+			prefix: pending.tokenPrefix,
+			cursor: pending.tokenCursor,
+		})
+		yield* Effect.forEach(tokenPage.keys, (key) => kvDelete(kv, key.name), {
+			concurrency: 'unbounded',
+			discard: true,
+		})
+		tokensPurged = tokenPage.keys.length
+		if (tokenPage.list_complete) {
+			yield* kvDelete(kv, pending.grantKey)
+			continuation.pendingGrantPage?.revocations.shift()
+			grantsPurged = 1
+		} else {
+			pending.tokenCursor = tokenPage.cursor
+		}
+	}
+	finishGrantPage(continuation)
+	const phaseComplete =
+		continuation.pendingGrantPage === undefined &&
+		continuation.grantCursor === undefined
+	continuation.nextPhase = 'tokens'
+	return {
+		phase: 'grants',
+		checked,
+		grantsPurged,
+		tokensPurged,
+		phaseComplete,
+	} satisfies OAuthPurgeResult
+})
+
+const purgeTokenPhaseEffect = Effect.fn('OAuthPurge.tokenPhase')(function* (
+	kv: KVNamespace,
+	continuation: PurgeContinuation,
+) {
+	const page = yield* kvList(kv, {
+		prefix: 'token:',
+		cursor: continuation.tokenCursor,
+	})
+	const grants = new Map<string, boolean>()
+	let tokensPurged = 0
+	for (const key of page.keys) {
+		const token = decodeOption(TokenRecordSchema)(
+			yield* kvGetJson(kv, key.name),
+		)
+		if (Option.isNone(token)) continue
+		const grantKey = `grant:${token.value.userId}:${token.value.grantId}`
+		let grantExists = grants.get(grantKey)
+		if (grantExists === undefined) {
+			grantExists =
+				(yield* outbound('oauth_kv.get', () => kv.get(grantKey))) !== null
+			grants.set(grantKey, grantExists)
+		}
+		if (!grantExists) {
+			yield* kvDelete(kv, key.name)
+			tokensPurged++
+		}
+	}
+	continuation.tokenCursor = page.list_complete ? undefined : page.cursor
+	continuation.nextPhase = 'grants'
+	return {
+		phase: 'tokens',
+		checked: page.keys.length,
+		grantsPurged: 0,
+		tokensPurged,
+		phaseComplete: page.list_complete,
+	} satisfies OAuthPurgeResult
+})
+
+/** `continueOAuthPurge` as an Effect: every KV and storage call is bounded. */
+export const continueOAuthPurgeEffect = Effect.fn('OAuthPurge.continue')(
+	function* (
+		kv: KVNamespace,
+		storage: DurableObjectStorage,
+		now: number,
+	): Effect.fn.Return<OAuthPurgeResult, OutboundCallError> {
+		const continuation = decodeContinuation(
+			yield* outbound('oauth_purge.storage.get', () =>
+				storage.get(oauthPurgeContinuationStorageKey),
+			),
+		)
+		const result =
+			continuation.nextPhase === 'grants'
+				? yield* purgeGrantPhaseEffect(kv, continuation, now)
+				: yield* purgeTokenPhaseEffect(kv, continuation)
+		yield* outbound('oauth_purge.storage.put', () =>
+			storage.put(oauthPurgeContinuationStorageKey, continuation),
+		)
+		return result
+	},
+)
+
+/** The `oauth_purge_expired` lane: one coordinator RPC, bounded and decoded. */
+export const runOAuthPurgeLaneEffect = Effect.fn('OAuthPurge.lane')(
+	function* (input: { scheduledAt: Date }) {
+		const env = yield* WorkerEnv
+		const stub = env.OAUTH_PURGE_COORDINATOR.get(
+			env.OAUTH_PURGE_COORDINATOR.idFromName('global'),
+		)
+		const result = yield* retryDurableObjectReset(
+			outbound('oauth_purge_coordinator.run_effect', () =>
+				stub.runEffect({ scheduledAt: input.scheduledAt.getTime() }),
+			),
+		)
+		return yield* decodeOutbound(
+			'oauth_purge_coordinator.run_effect',
+			OAuthPurgeResultSchema,
+		)(result)
+	},
+)
+
 /**
  * A single global instance serializes purge invocations and stores continuation
  * in strongly consistent Durable Object storage. KV remains only the provider's
@@ -342,6 +607,24 @@ export class OAuthPurgeCoordinator extends DurableObject<Env> {
 				this.env.OAUTH_KV,
 				this.ctx.storage,
 				Math.floor(input.scheduledAt / 1000),
+			),
+		)
+	}
+
+	/** The Effect trial path, selected by `EFFECT_TRIAL_WIDE_LANES`. */
+	runEffect(input: { scheduledAt: number }): Promise<OAuthPurgeResult> {
+		return this.ctx.blockConcurrencyWhile(() =>
+			Effect.runPromise(
+				continueOAuthPurgeEffect(
+					this.env.OAUTH_KV,
+					this.ctx.storage,
+					Math.floor(input.scheduledAt / 1000),
+				).pipe(
+					Effect.mapError((error) =>
+						error.reason === 'failed' ? error.cause : error,
+					),
+					Effect.provide(observabilityLayer),
+				),
 			),
 		)
 	}

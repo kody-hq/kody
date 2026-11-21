@@ -95,36 +95,45 @@ export class D1 extends Context.Service<
 	)
 }
 
+/**
+ * A D1 call the service cannot express (a batch built from prepared
+ * statements another module owns), with the same typed failure and deadline.
+ */
+export const fromD1Promise = <A>(
+	operation: string,
+	evaluate: () => Promise<A>,
+): Effect.Effect<A, DatabaseError> =>
+	Effect.tryPromise({
+		try: evaluate,
+		catch: (cause) =>
+			new DatabaseError({
+				operation,
+				reason: 'query',
+				message: getErrorMessage(cause),
+				cause,
+			}),
+	}).pipe(
+		Effect.timeoutOrElse({
+			duration: d1QueryTimeout,
+			orElse: () =>
+				Effect.fail(
+					new DatabaseError({
+						operation,
+						reason: 'timeout',
+						message: `D1 ${operation} timed out.`,
+						cause: null,
+					}),
+				),
+		}),
+	)
+
 export function makeD1(database: () => D1Database): D1['Service'] {
 	const prepare = (statement: Statement) =>
 		database()
 			.prepare(statement.sql)
 			.bind(...statement.params)
 
-	const query = <A>(operation: string, evaluate: () => Promise<A>) =>
-		Effect.tryPromise({
-			try: evaluate,
-			catch: (cause) =>
-				new DatabaseError({
-					operation,
-					reason: 'query',
-					message: getErrorMessage(cause),
-					cause,
-				}),
-		}).pipe(
-			Effect.timeoutOrElse({
-				duration: d1QueryTimeout,
-				orElse: () =>
-					Effect.fail(
-						new DatabaseError({
-							operation,
-							reason: 'timeout',
-							message: `D1 ${operation} timed out.`,
-							cause: null,
-						}),
-					),
-			}),
-		)
+	const query = fromD1Promise
 
 	const decode = <A>(operation: string, schema: RowSchema<A>, row: unknown) =>
 		Schema.decodeUnknownEffect(schema)(row).pipe(

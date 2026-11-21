@@ -11,7 +11,7 @@ export class OutboundCallError extends Schema.TaggedError<OutboundCallError>()(
 	'OutboundCallError',
 	{
 		operation: Schema.String,
-		reason: Schema.Literals(['failed', 'timeout']),
+		reason: Schema.Literals(['failed', 'timeout', 'response_schema']),
 		message: Schema.String,
 		cause: Schema.Defect(),
 	},
@@ -55,3 +55,23 @@ export const outbound = <A>(
 		Effect.withSpan(operation, { attributes: { 'kody.outbound': true } }),
 	)
 }
+
+/**
+ * Decodes what an outbound call returned. A response that does not match
+ * fails as an `OutboundCallError` with reason `response_schema`, not later
+ * as an `undefined` deep in the caller.
+ */
+export const decodeOutbound =
+	<A>(operation: string, schema: Schema.Decoder<A>) =>
+	(response: unknown): Effect.Effect<A, OutboundCallError> =>
+		Schema.decodeUnknownEffect(schema)(response).pipe(
+			Effect.mapError(
+				(cause) =>
+					new OutboundCallError({
+						operation,
+						reason: 'response_schema',
+						message: `${operation} returned an unexpected response: ${cause.message}`,
+						cause,
+					}),
+			),
+		)

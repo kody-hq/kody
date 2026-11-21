@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers'
 import { runInDurableObject } from 'cloudflare:test'
-import { expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import {
 	hintInboundDueOwner,
 	listDueInboundOwners,
@@ -13,7 +13,10 @@ import {
 	stubFor,
 	uniqueUserId,
 } from './mailbox-test-helpers.ts'
-import { sweepStaleInboundDeliveries } from './reconcile-inbound-deliveries.ts'
+import {
+	sweepStaleInboundDeliveries as sweepPromise,
+	sweepStaleInboundDeliveriesViaEffect,
+} from './reconcile-inbound-deliveries.ts'
 import { ensureEmailTestSchema } from './test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
@@ -181,81 +184,89 @@ test('hint upsert keeps the earliest due time and its reason', async () => {
 	)
 })
 
-test('sweep time budget defers later owners to the next pass', async () => {
-	await ensureEmailTestSchema(env.APP_DB)
-	const [earlierUserId, laterUserId] = (await seedUsers([
-		'budget-earlier',
-		'budget-later',
-	])) as [string, string]
-	await hint(earlierUserId, '2026-08-03T10:00:00.000Z', 'scheduled-refresh')
-	await hint(laterUserId, '2026-08-03T11:00:00.000Z', 'mailbox-due-work')
-	await Promise.all([
-		rpcFor(ownerIdFromStored(earlierUserId)).getInboundDueWorkHint({
-			ownerId: ownerIdFromStored(earlierUserId),
-		}),
-		rpcFor(ownerIdFromStored(laterUserId)).getInboundDueWorkHint({
-			ownerId: ownerIdFromStored(laterUserId),
-		}),
-	])
-	const clockValues = [0, 0, 10_001, 10_001]
+describe.each([
+	{ path: 'promise', sweepStaleInboundDeliveries: sweepPromise },
+	{
+		path: 'effect',
+		sweepStaleInboundDeliveries: sweepStaleInboundDeliveriesViaEffect,
+	},
+])('$path path', ({ sweepStaleInboundDeliveries }) => {
+	test('sweep time budget defers later owners to the next pass', async () => {
+		await ensureEmailTestSchema(env.APP_DB)
+		const [earlierUserId, laterUserId] = (await seedUsers([
+			'budget-earlier',
+			'budget-later',
+		])) as [string, string]
+		await hint(earlierUserId, '2026-08-03T10:00:00.000Z', 'scheduled-refresh')
+		await hint(laterUserId, '2026-08-03T11:00:00.000Z', 'mailbox-due-work')
+		await Promise.all([
+			rpcFor(ownerIdFromStored(earlierUserId)).getInboundDueWorkHint({
+				ownerId: ownerIdFromStored(earlierUserId),
+			}),
+			rpcFor(ownerIdFromStored(laterUserId)).getInboundDueWorkHint({
+				ownerId: ownerIdFromStored(laterUserId),
+			}),
+		])
+		const clockValues = [0, 0, 10_001, 10_001]
 
-	await expect(
-		sweepStaleInboundDeliveries({
-			env: sweepEnv,
-			now,
-			clock: () => clockValues.shift() ?? 10_001,
-		}),
-	).resolves.toMatchObject({
-		usersProcessed: 1,
-		errors: 0,
-		budgetExhausted: true,
-	})
-	expect(await readDueOwners([earlierUserId, laterUserId])).toMatchObject([
-		{ user_id: laterUserId, reason: 'mailbox-due-work' },
-	])
-})
-
-test('sweep clears a healthy Mailbox hint and retains pending due work', async () => {
-	await ensureEmailTestSchema(env.APP_DB)
-	const dueAt = now.toISOString()
-	const [healthyUserId, pendingUserId] = (await seedUsers([
-		'healthy',
-		'pending',
-	])) as [string, string]
-	for (const userId of [healthyUserId, pendingUserId]) {
-		await hint(userId, dueAt, 'scheduled-refresh')
-		await rpcFor(ownerIdFromStored(userId)).getInboundDueWorkHint({
-			ownerId: ownerIdFromStored(userId),
+		await expect(
+			sweepStaleInboundDeliveries({
+				env: sweepEnv,
+				now,
+				clock: () => clockValues.shift() ?? 10_001,
+			}),
+		).resolves.toMatchObject({
+			usersProcessed: 1,
+			errors: 0,
+			budgetExhausted: true,
 		})
-	}
+		expect(await readDueOwners([earlierUserId, laterUserId])).toMatchObject([
+			{ user_id: laterUserId, reason: 'mailbox-due-work' },
+		])
+	})
 
-	await runInDurableObject(
-		stubFor(ownerIdFromStored(pendingUserId)),
-		async (instance: Mailbox, state) => {
-			await instance.getInboundDueWorkHint({
-				ownerId: ownerIdFromStored(pendingUserId),
+	test('sweep clears a healthy Mailbox hint and retains pending due work', async () => {
+		await ensureEmailTestSchema(env.APP_DB)
+		const dueAt = now.toISOString()
+		const [healthyUserId, pendingUserId] = (await seedUsers([
+			'healthy',
+			'pending',
+		])) as [string, string]
+		for (const userId of [healthyUserId, pendingUserId]) {
+			await hint(userId, dueAt, 'scheduled-refresh')
+			await rpcFor(ownerIdFromStored(userId)).getInboundDueWorkHint({
+				ownerId: ownerIdFromStored(userId),
 			})
-			state.storage.sql.exec(
-				`INSERT INTO email_delivery_events (
-					id, event_type, provider, needs_effect_reconcile, state,
-					created_at, updated_at
-				) VALUES (?, 'receive_started', 'cloudflare-email-routing', 0,
-					'pending', ?, ?)`,
-				`pending-${crypto.randomUUID()}`,
-				dueAt,
-				dueAt,
-			)
-		},
-	)
+		}
 
-	await expect(
-		sweepStaleInboundDeliveries({ env: sweepEnv, now }),
-	).resolves.toMatchObject({ usersProcessed: 2, errors: 0 })
-	expect(await readDueOwners([healthyUserId, pendingUserId])).toEqual([
-		{
-			user_id: pendingUserId,
-			due_at: new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString(),
-			reason: 'scheduled-refresh',
-		},
-	])
+		await runInDurableObject(
+			stubFor(ownerIdFromStored(pendingUserId)),
+			async (instance: Mailbox, state) => {
+				await instance.getInboundDueWorkHint({
+					ownerId: ownerIdFromStored(pendingUserId),
+				})
+				state.storage.sql.exec(
+					`INSERT INTO email_delivery_events (
+						id, event_type, provider, needs_effect_reconcile, state,
+						created_at, updated_at
+					) VALUES (?, 'receive_started', 'cloudflare-email-routing', 0,
+						'pending', ?, ?)`,
+					`pending-${crypto.randomUUID()}`,
+					dueAt,
+					dueAt,
+				)
+			},
+		)
+
+		await expect(
+			sweepStaleInboundDeliveries({ env: sweepEnv, now }),
+		).resolves.toMatchObject({ usersProcessed: 2, errors: 0 })
+		expect(await readDueOwners([healthyUserId, pendingUserId])).toEqual([
+			{
+				user_id: pendingUserId,
+				due_at: new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString(),
+				reason: 'scheduled-refresh',
+			},
+		])
+	})
 })

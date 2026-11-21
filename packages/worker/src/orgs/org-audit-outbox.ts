@@ -1,4 +1,14 @@
+import { Clock, Effect, Option, Schema } from 'effect'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import {
+	D1,
+	type DatabaseError,
+	makeD1,
+	retryTransientD1,
+	sql,
+} from '#worker/effect/d1.ts'
+import { runD1Promise, runSlicePromise } from '#worker/effect/slice.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import { isResourceChangeAuditAction } from '#worker/resource-events/projection.ts'
 
 /**
@@ -405,3 +415,287 @@ export async function drainOrgAuditOutbox(input: {
 		errors,
 	}
 }
+
+const NullableText = Schema.optionalKey(Schema.NullOr(Schema.String))
+
+const OrgAuditOutboxPayloadSchema = Schema.Struct({
+	id: Schema.String,
+	orgId: Schema.String,
+	action: Schema.String,
+	result: Schema.Literals(['success', 'failure', 'denied']),
+	actorUserId: NullableText,
+	actorUsername: NullableText,
+	credentialKind: NullableText,
+	credentialId: NullableText,
+	resourceType: NullableText,
+	resourceId: NullableText,
+	targetUserId: NullableText,
+	detailsJson: NullableText,
+	ipHash: NullableText,
+	createdAt: Schema.String,
+	cause: Schema.optionalKey(
+		Schema.NullOr(
+			Schema.Struct({
+				packageId: Schema.NullOr(Schema.String),
+				resourceEventDepth: Schema.Number,
+			}),
+		),
+	),
+})
+
+const decodeOutboxPayloadJson = Schema.decodeUnknownOption(
+	Schema.fromJsonString(OrgAuditOutboxPayloadSchema),
+)
+
+/** The stored payload JSON, or `None` when it is malformed. */
+function decodeOrgAuditOutboxPayload(
+	raw: string,
+): Option.Option<OrgAuditOutboxPayload> {
+	return Option.map(decodeOutboxPayloadJson(raw), (payload) => ({
+		...payload,
+		actorUserId: payload.actorUserId ?? null,
+		actorUsername: payload.actorUsername ?? null,
+		credentialKind: payload.credentialKind ?? null,
+		credentialId: payload.credentialId ?? null,
+		resourceType: payload.resourceType ?? null,
+		resourceId: payload.resourceId ?? null,
+		targetUserId: payload.targetUserId ?? null,
+		detailsJson: payload.detailsJson ?? null,
+		ipHash: payload.ipHash ?? null,
+	}))
+}
+
+/** INSERT OR IGNORE changed nothing and no row with the id exists. */
+export class OrgAuditDeliveryError extends Schema.TaggedError<OrgAuditDeliveryError>()(
+	'OrgAuditDeliveryError',
+	{ auditId: Schema.String, message: Schema.String },
+) {}
+
+const ExistsRow = Schema.Struct({ ok: Schema.Number })
+const OutboxPayloadRow = Schema.Struct({ payload_json: Schema.String })
+const OutboxDrainRow = Schema.Struct({
+	id: Schema.String,
+	payload_json: Schema.String,
+	created_at: Schema.String,
+})
+const CountRow = Schema.Struct({ count: Schema.Number })
+
+export const deliverOrgAuditOutboxPayloadEffect = Effect.fn(
+	'OrgAuditOutbox.deliver',
+)(function* (
+	auditDb: D1['Service'],
+	payload: OrgAuditOutboxPayload,
+): Effect.fn.Return<
+	OrgAuditOutboxDeliveryResult,
+	DatabaseError | OrgAuditDeliveryError
+> {
+	const insert = yield* retryTransientD1(
+		auditDb.run(
+			'org_audit_events.insert',
+			sql(
+				`INSERT OR IGNORE INTO org_audit_events (
+					id, org_id, actor_user_id, actor_username, credential_kind,
+					credential_id, action, resource_type, resource_id, target_user_id,
+					result, details_json, ip_hash, created_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				payload.id,
+				payload.orgId,
+				payload.actorUserId,
+				payload.actorUsername,
+				payload.credentialKind,
+				payload.credentialId,
+				payload.action,
+				payload.resourceType,
+				payload.resourceId,
+				payload.targetUserId,
+				payload.result,
+				payload.detailsJson,
+				payload.ipHash,
+				payload.createdAt,
+			),
+		),
+	)
+	if (insert.changes > 0) return 'inserted'
+	const existing = yield* retryTransientD1(
+		auditDb.first(
+			'org_audit_events.exists',
+			ExistsRow,
+			sql(`SELECT 1 AS ok FROM org_audit_events WHERE id = ?`, payload.id),
+		),
+	)
+	if (Option.isSome(existing)) return 'already_exists'
+	return yield* new OrgAuditDeliveryError({
+		auditId: payload.id,
+		message: `org_audit_outbox_delivery_failed:${payload.id}`,
+	})
+})
+
+/**
+ * `tryDeliverOrgAuditOutboxPlan` as an Effect. The resource change event is
+ * scheduled right after the insert, before the outbox row is deleted, so a
+ * failed delete cannot leave the event unsent: the retry finds the audit row
+ * already there and stays quiet. A failed delivery is logged and returns
+ * false so the drain retries it.
+ */
+export const tryDeliverOrgAuditOutboxPlanEffect = Effect.fn(
+	'OrgAuditOutbox.tryDeliver',
+)(function* (
+	input: {
+		appDb: D1['Service']
+		auditDb: D1['Service']
+		env: Env | undefined
+	},
+	plan: OrgAuditOutboxPlan,
+) {
+	return yield* Effect.gen(function* () {
+		const live = yield* input.appDb.first(
+			'org_audit_outbox.read_live',
+			OutboxPayloadRow,
+			sql(
+				`SELECT payload_json FROM org_audit_outbox WHERE id = ?`,
+				plan.outboxId,
+			),
+		)
+		if (Option.isNone(live)) return true
+		const payload = Option.getOrElse(
+			decodeOrgAuditOutboxPayload(live.value.payload_json),
+			() => plan.payload,
+		)
+		const delivery = yield* deliverOrgAuditOutboxPayloadEffect(
+			input.auditDb,
+			payload,
+		)
+		if (delivery === 'inserted') {
+			yield* Effect.promise(() =>
+				scheduleResourceChangeEvent(input.env, payload),
+			)
+		}
+		yield* retryTransientD1(
+			input.appDb.run(
+				'org_audit_outbox.delete',
+				sql(`DELETE FROM org_audit_outbox WHERE id = ?`, plan.outboxId),
+			),
+		)
+		return true
+	}).pipe(
+		Effect.catch((error) =>
+			Effect.as(
+				Effect.logWarning('org_audit_outbox_delivery_failed', {
+					outboxId: plan.outboxId,
+					tag: error._tag,
+					error: error.message,
+				}),
+				false,
+			),
+		),
+	)
+})
+
+/** Promise edge for tests and callers holding a writer. */
+export const tryDeliverOrgAuditOutboxPlanViaEffect = (
+	writer: OrgAuditWriter,
+	plan: OrgAuditOutboxPlan,
+) =>
+	runD1Promise(writer.appDb, (appDb) =>
+		tryDeliverOrgAuditOutboxPlanEffect(
+			{ appDb, auditDb: makeD1(() => writer.db), env: writer.env },
+			plan,
+		),
+	)
+
+/** `drainOrgAuditOutbox` as an Effect: pass time and budget from `Clock`. */
+export const drainOrgAuditOutboxEffect = Effect.fn('OrgAuditOutbox.drain')(
+	function* (input: { now?: Date; clock?: () => number; limit?: number }) {
+		const env = yield* WorkerEnv
+		const appDb = yield* D1
+		if (!env.AUDIT_DB) {
+			return {
+				status: 'skipped' as const,
+				reason: 'audit_db_unconfigured',
+				delivered: 0,
+				remaining: 0,
+				errors: 0,
+			}
+		}
+		const auditDb = makeD1(() => env.AUDIT_DB)
+		const clock = input.clock
+		const readClock = clock ? Effect.sync(clock) : Clock.currentTimeMillis
+		const deadline = (yield* readClock) + drainTimeBudgetMs
+		const batchLimit = input.limit ?? drainBatchSize
+		let delivered = 0
+		let errors = 0
+		let cursor: { createdAt: string; id: string } | null = null
+
+		while ((yield* readClock) < deadline) {
+			const rows: ReadonlyArray<typeof OutboxDrainRow.Type> = yield* appDb.all(
+				'org_audit_outbox.page',
+				OutboxDrainRow,
+				cursor
+					? sql(
+							`SELECT id, payload_json, created_at
+							 FROM org_audit_outbox
+							 WHERE (created_at > ? OR (created_at = ? AND id > ?))
+							 ORDER BY created_at ASC, id ASC
+							 LIMIT ?`,
+							cursor.createdAt,
+							cursor.createdAt,
+							cursor.id,
+							batchLimit,
+						)
+					: sql(
+							`SELECT id, payload_json, created_at
+							 FROM org_audit_outbox
+							 ORDER BY created_at ASC, id ASC
+							 LIMIT ?`,
+							batchLimit,
+						),
+			)
+			if (rows.length === 0) break
+			for (const row of rows) {
+				if ((yield* readClock) >= deadline) break
+				cursor = { createdAt: row.created_at, id: row.id }
+				const payload = decodeOrgAuditOutboxPayload(row.payload_json)
+				if (Option.isNone(payload)) {
+					errors += 1
+					console.error('org_audit_outbox_invalid_payload', { id: row.id })
+					continue
+				}
+				const ok = yield* tryDeliverOrgAuditOutboxPlanEffect(
+					{ appDb, auditDb, env },
+					{ outboxId: row.id, payload: payload.value },
+				)
+				if (ok) delivered += 1
+				else errors += 1
+			}
+			if (rows.length < batchLimit) break
+		}
+
+		const remaining = yield* appDb.first(
+			'org_audit_outbox.count',
+			CountRow,
+			sql(`SELECT COUNT(*) AS count FROM org_audit_outbox`),
+		)
+		return {
+			status: 'ok' as const,
+			delivered,
+			remaining: Option.match(remaining, {
+				onNone: () => 0,
+				onSome: (row) => row.count,
+			}),
+			errors,
+		}
+	},
+)
+
+/** Promise edge for tests and callers outside the slice. */
+export const drainOrgAuditOutboxViaEffect = (
+	input: Parameters<typeof drainOrgAuditOutbox>[0],
+) =>
+	runSlicePromise(
+		input.env as Env,
+		drainOrgAuditOutboxEffect({
+			now: input.now,
+			clock: input.clock,
+			limit: input.limit,
+		}),
+	)
