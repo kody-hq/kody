@@ -263,6 +263,9 @@ export class LegacyUserDeletionNotPendingError extends Error {
  * Idempotent: a missing users row means a prior attempt deleted the person. A
  * personal org left behind by a failed graph purge stays tombstoned for the
  * org lane.
+ *
+ * Permanent: guest purge also uses this to retry a fenced guest deletion, so
+ * it stays after the legacy backlog is gone.
  */
 export async function finishLegacyUserDeletion(input: {
 	env: Env

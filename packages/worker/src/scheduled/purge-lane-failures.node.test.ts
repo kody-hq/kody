@@ -204,6 +204,42 @@ test('guest purge retries a guest whose account deletion failed after the deleti
 	expect(remaining?.n).toBe(0)
 })
 
+test('guest purge still sends the deletion event when a retry removes the guest and then fails', async () => {
+	const { db } = createAppDb()
+	await seedGuest(db, 'guest4', '2026-09-01T00:00:00.000Z')
+	deleteUserAccount.mockImplementationOnce(async () => {
+		await db
+			.prepare(
+				`UPDATE users SET deleting_at = ? WHERE stable_user_id = 'guest4'`,
+			)
+			.bind(guestNow.toISOString())
+			.run()
+		throw new Error('account_deletion_cleanup_incomplete')
+	})
+	const env = { APP_DB: db, AUDIT_DB: createAuditDb() } as unknown as Env
+	await pruneExpiredGuestAccounts({ env, now: guestNow })
+	finishLegacyUserDeletion.mockImplementation(
+		async (input: { dbUserId: number }) => {
+			await db
+				.prepare(`DELETE FROM users WHERE id = ?`)
+				.bind(input.dbUserId)
+				.run()
+			throw new Error('personal_org_purge_failed')
+		},
+	)
+	const later = new Date(guestNow.getTime() + 24 * 60 * 60 * 1000)
+	const second = await pruneExpiredGuestAccounts({ env, now: later })
+	expect(second).toEqual({ scanned: 1, purged: 1, failed: 0 })
+	expect(scheduleUserDeletedEvent).toHaveBeenCalledTimes(1)
+	expect(auditSettled).toBe(1)
+	const remaining = await db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM guest_accounts WHERE person_id = 'guest4'`,
+		)
+		.first<{ n: number }>()
+	expect(remaining?.n).toBe(0)
+})
+
 test('guest purge does not orphan the guest_accounts row when its delete fails after account deletion', async () => {
 	const { db } = createAppDb()
 	await seedGuest(db, 'guest3', '2026-09-01T00:00:00.000Z')

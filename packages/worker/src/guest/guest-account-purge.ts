@@ -5,6 +5,7 @@ import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import { deleteUserAccount } from '#app/account-deletion.ts'
 import { scheduleUserDeletedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { softDeletePurgeRetryBackoffMs } from '#worker/orgs/purge.ts'
 import { finishLegacyUserDeletion } from '#worker/orgs/hard-purge.ts'
 
@@ -23,6 +24,8 @@ export type GuestPurgeResult = {
  * retried once the fence is older than the purge retry backoff. The retry
  * restamps the fence first so concurrent passes leave it alone, then finishes
  * through `finishLegacyUserDeletion` so the personal org is purged too.
+ * Permanent: current guest deletions still leave this fence, so this retry
+ * stays after the legacy deletion backlog is gone.
  */
 export async function pruneExpiredGuestAccounts(input: {
 	env: Env
@@ -75,18 +78,34 @@ export async function pruneExpiredGuestAccounts(input: {
 					.bind(now, now, row.id, row.deleting_at)
 					.run()
 				if ((claimed.meta.changes ?? 0) !== 1) continue
-				await finishLegacyUserDeletion({
-					env: input.env,
-					dbUserId: row.id,
-					stableUserId: row.stable_user_id,
-				})
-			} else {
-				await deleteUserAccount({
-					env: input.env,
-					dbUserId: row.id,
-					mcpUserId: personalOrgIdFromUserRow(row),
-					personUserId: row.stable_user_id,
-				})
+			}
+			try {
+				if (row.deleting_at) {
+					await finishLegacyUserDeletion({
+						env: input.env,
+						dbUserId: row.id,
+						stableUserId: ownerIdFromStored(row.stable_user_id),
+					})
+				} else {
+					await deleteUserAccount({
+						env: input.env,
+						dbUserId: row.id,
+						mcpUserId: personalOrgIdFromUserRow(row),
+						personUserId: row.stable_user_id,
+					})
+				}
+			} catch (error) {
+				// Once the users row is gone this guest cannot be selected again,
+				// so a later step failing (a tombstoned personal org is left for
+				// the org lane) must not skip the event, audit, and guest row.
+				const stillThere = await runD1WithRetry(() =>
+					db
+						.prepare(`SELECT 1 AS present FROM users WHERE id = ?`)
+						.bind(row.id)
+						.first<{ present: number }>(),
+				)
+				if (stillThere) throw error
+				console.warn('guest_account_purge_cleanup_incomplete', { error })
 			}
 			// The account is gone, so the deletion event and audit go out even
 			// if the guest_accounts delete fails; the sweep below removes it.
