@@ -19,6 +19,7 @@ import {
 	readGuestClaimCode,
 } from './guest-accounts.ts'
 import { guestErrorPayload } from './guest-errors.ts'
+import * as AuditLog from '#worker/audit-log.ts'
 import {
 	assertGuestCapabilityAllowed,
 	guestBlockedReason,
@@ -275,6 +276,30 @@ test('the purge deletes guests only after the seven-day hold, through account de
 		},
 		createdAt: start.toISOString(),
 	})
+})
+
+test('the guest purge waits for its audit write before the pass returns', async () => {
+	const { pruneExpiredGuestAccounts } = await import('./guest-account-purge.ts')
+	const { db } = createDb()
+	await createGuest(db)
+	let auditWritten = false
+	const logAuditEvent = vi
+		.spyOn(AuditLog, 'logAuditEvent')
+		.mockImplementation(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 20))
+			auditWritten = true
+			return { persisted: true, failedSinks: [] }
+		})
+	const result = await pruneExpiredGuestAccounts({
+		env: { APP_DB: db } as unknown as Env,
+		now: new Date(start.getTime() + guestFullAccessMs + guestHoldMs),
+	})
+	expect(result.purged).toBe(1)
+	expect(logAuditEvent).toHaveBeenCalledWith(
+		expect.objectContaining({ action: 'guest_account_purged' }),
+	)
+	expect(auditWritten).toBe(true)
+	logAuditEvent.mockRestore()
 })
 
 test('claim codes are stored only as a lookup hash plus a person-bound sealed copy', async () => {

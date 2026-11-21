@@ -4,6 +4,7 @@
  * Soft-delete and restore must read and update tombstoned rows.
  */
 
+import { traced } from '#worker/scheduled/retention/telemetry.ts'
 import {
 	isReleasedAccountEmail,
 	isReleasedOrgSlug,
@@ -267,7 +268,7 @@ async function restoreOrgOwnedAppRows(input: {
 	return total
 }
 
-export async function softDeleteOrg(input: {
+async function softDeleteOrgImpl(input: {
 	env: Env
 	orgId: OwnerId
 	actorUserId?: string | null
@@ -1125,4 +1126,12 @@ export async function restoreResourceRow(input: {
 		.bind(input.orgId, input.resourceId, org.deleted_at)
 		.run()
 	return { restored: (result.meta.changes ?? 0) > 0 }
+}
+
+export function softDeleteOrg(
+	input: Parameters<typeof softDeleteOrgImpl>[0],
+): ReturnType<typeof softDeleteOrgImpl> {
+	return traced('retention.helper.softDeleteOrg', {}, () =>
+		softDeleteOrgImpl(input),
+	)
 }

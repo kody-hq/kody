@@ -52,10 +52,14 @@ export function instrumentWorkflowWithSentry<TClass>(
 
 export async function startSpan<TResult>(
 	_options: unknown,
-	callback: (span: { setStatus(_status: unknown): void }) => Promise<TResult>,
+	callback: (span: {
+		setStatus(_status: unknown): void
+		setAttribute(_key: string, _value: unknown): void
+	}) => Promise<TResult>,
 ) {
 	return callback({
 		setStatus() {},
+		setAttribute() {},
 	})
 }
 
