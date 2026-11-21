@@ -2,7 +2,7 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { Clock, Effect, Schema } from 'effect'
 import { retryDurableObjectReset } from '#worker/effect/durable-object.ts'
 import { decodeOutbound, outbound } from '#worker/effect/outbound.ts'
-import { runSlicePromise } from '#worker/effect/slice.ts'
+import { runSlicePromiseLazy as runSlicePromise } from '#worker/effect/slice-edge.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import {
 	deferRepoSessionDueOwner,

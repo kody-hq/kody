@@ -22,7 +22,7 @@ import { mailboxRpc } from './mailbox-client.ts'
 import { Clock, Effect, Option, Schema } from 'effect'
 import { D1, fromD1Promise, sql } from '#worker/effect/d1.ts'
 import { decodeOutbound, outbound } from '#worker/effect/outbound.ts'
-import { runSlicePromise } from '#worker/effect/slice.ts'
+import { runSlicePromiseLazy as runSlicePromise } from '#worker/effect/slice-edge.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 
 const reconciliationUserBatchSize = 25

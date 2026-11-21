@@ -3,7 +3,7 @@ import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { Clock, Effect, Option } from 'effect'
 import { D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
 import { scopedClaim } from '#worker/effect/claim.ts'
-import { runD1Promise } from '#worker/effect/slice.ts'
+import { runD1PromiseLazy as runD1Promise } from '#worker/effect/slice-edge.ts'
 
 /**
  * Lanes that must not overlap. A tick whose predecessor still holds the lease

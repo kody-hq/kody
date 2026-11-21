@@ -7,7 +7,10 @@ import {
 	retryTransientD1,
 	sql,
 } from '#worker/effect/d1.ts'
-import { runD1Promise, runSlicePromise } from '#worker/effect/slice.ts'
+import {
+	runD1PromiseLazy as runD1Promise,
+	runSlicePromiseLazy as runSlicePromise,
+} from '#worker/effect/slice-edge.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import { isResourceChangeAuditAction } from '#worker/resource-events/projection.ts'
 
