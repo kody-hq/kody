@@ -91,3 +91,53 @@ See
 
 See
 [Vectorize metadata contracts](./data-storage/contracts.md#vectorize-metadata-contracts).
+
+### D1 JSON shadow schemas
+
+See
+[Frozen storage contracts](./data-storage/contracts.md#d1-json-shadow-schemas).
+
+### Direct Artifacts git publishes
+
+See
+[Repo-backed source and Artifacts](./data-storage/source.md#direct-artifacts-git-publishes).
+
+### Durable Object id contracts
+
+See
+[Frozen storage contracts](./data-storage/contracts.md#durable-object-id-contracts).
+
+### Growth and retention policies
+
+See
+[Frozen storage contracts](./data-storage/contracts.md#growth-and-retention-policies).
+
+### KV key contracts
+
+See [Frozen storage contracts](./data-storage/contracts.md#kv-key-contracts).
+
+### R2 key contracts
+
+See [Frozen storage contracts](./data-storage/contracts.md#r2-key-contracts).
+
+### `entity_sources` and package import contracts
+
+See
+[Frozen storage contracts](./data-storage/contracts.md#entity_sources-and-package-import-contracts).
+
+### Reconcile cron
+
+See [Repo-backed source and Artifacts](./data-storage/source.md#reconcile-cron).
+
+### What stays in D1
+
+See [Storage services](./data-storage/services.md#what-stays-in-d1).
+
+### Package and repo state model
+
+See [Storage services](./data-storage/services.md#package-and-repo-state-model).
+
+### Inbound durability boundary (USER Mailbox authority)
+
+See
+[Storage services](./data-storage/services.md#inbound-durability-boundary-user-mailbox-authority).
