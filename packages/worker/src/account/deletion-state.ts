@@ -18,7 +18,6 @@ import {
 	type UserMeterEnv,
 	type UserMeterRpc,
 } from '#worker/entitlements/user-meter-client.ts'
-import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	accountWriteLeaseHeartbeatMs,
@@ -27,6 +26,28 @@ import {
 } from './write-lease-timing.ts'
 import { runWithTransientDurableObjectResetRetry } from '#worker/durable-object-reset-retry.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { type DeletionFence, deletionFenceEdges } from './deletion-fence.ts'
+
+type Edges = typeof deletionFenceEdges
+
+// Read through the object at call time: deletion-fence.ts sits in an import
+// cycle with this module, so the edges are not defined yet at evaluation.
+const markAccountDeleting = (
+	input: Parameters<Edges['markAccountDeleting']>[0],
+) => deletionFenceEdges.markAccountDeleting(input)
+const abortAccountDeleting = (
+	input: Parameters<Edges['abortAccountDeleting']>[0],
+) => deletionFenceEdges.abortAccountDeleting(input)
+const clearUserMeterDeletionTombstone = (
+	input: Parameters<Edges['clearUserMeterDeletionTombstone']>[0],
+) => deletionFenceEdges.clearUserMeterDeletionTombstone(input)
+const abortAccountDeletingByStableUserId = (
+	input: Parameters<Edges['abortAccountDeletingByStableUserId']>[0],
+) => deletionFenceEdges.abortAccountDeletingByStableUserId(input)
+const markOrgDeleting = (input: Parameters<Edges['markOrgDeleting']>[0]) =>
+	deletionFenceEdges.markOrgDeleting(input)
+const abortOrgDeleting = (input: Parameters<Edges['abortOrgDeleting']>[0]) =>
+	deletionFenceEdges.abortOrgDeleting(input)
 
 export class AccountDeletionInProgressError extends Error {
 	constructor() {
@@ -257,310 +278,17 @@ async function findMatchingRepairAudit(input: {
 		.first<{ id: string }>()
 }
 
-export type MarkAccountDeletingResult = {
-	leaseCount: number
-	blockingLeases: Array<BlockingAccountWriteLease>
-	/** True when this invocation wrote `users.deleting_at`. */
-	created: boolean
-	deletingAt: string
-}
+export type MarkAccountDeletingResult = DeletionFence
 
-export async function markAccountDeleting(input: {
-	db: D1Database
-	dbUserId: number
-	now?: Date
-	env: UserMeterEnv
-}): Promise<MarkAccountDeletingResult> {
-	// D1 deleting_at is set first: it is the permanent point gate and must be
-	// written before any UserMeter call so the gate is never missed even if
-	// the DO call subsequently fails. Only roll back a tombstone this
-	// invocation created (`WHERE deleting_at IS NULL`) so a concurrent or
-	// retrying delete cannot wipe another attempt's fence.
-	const now = utcSqliteTimestamp(input.now ?? new Date())
-	const createResult = await input.db
-		.prepare(
-			`UPDATE users
-			SET deleting_at = ?, updated_at = ?
-			WHERE id = ? AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
-		)
-		.bind(now, now, input.dbUserId)
-		.run()
-	const created = (createResult.meta.changes ?? 0) === 1
-	const userRow = await input.db
-		.prepare(
-			`SELECT stable_user_id, deleting_at
-			FROM users
-			WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.dbUserId)
-		.first<{ stable_user_id: OwnerId; deleting_at: string | null }>()
-	const stableUserId = userRow?.stable_user_id
-	const deletingAt = userRow?.deleting_at
-	if (!stableUserId || !deletingAt) {
-		throw new Error('Account could not be marked for deletion.')
-	}
-	// Invalidate before the UserMeter RPC so same-isolate package-app serve
-	// cannot keep using the pre-fence cached row for the duration of that call.
-	invalidatePackageAppOwnerCache({ stableUserId })
-	try {
-		const env = requireUserMeterEnv(input.env)
-		const marked = await runUserMeterRpc({
-			env,
-			stableUserId,
-			operation: async (meter) => await meter.markDeleting({ deletingAt }),
-		})
-		return {
-			leaseCount: marked.leaseCount,
-			blockingLeases: marked.blockingLeases ?? [],
-			created,
-			deletingAt,
-		}
-	} catch (error) {
-		if (created) {
-			await input.db
-				.prepare(
-					`UPDATE users
-					SET deleting_at = NULL, updated_at = ?
-					WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(now, input.dbUserId, now)
-				.run()
-			invalidatePackageAppOwnerCache({ stableUserId })
-		}
-		throw error
-	}
-}
+export type MarkOrgDeletingResult = DeletionFence
 
-/**
- * Undo {@link markAccountDeleting} when deletion aborts before cleanup.
- * Clears D1 `users.deleting_at` first (permanent gate), then the UserMeter
- * tombstone. Pass `expectedDeletingAt` so a concurrent/retry fence is left
- * alone. A later write may still fail closed if the DO clear is delayed.
- */
-export async function abortAccountDeleting(input: {
-	db: D1Database
-	dbUserId: number
-	now?: Date
-	env: UserMeterEnv
-	/**
-	 * When set, clear D1 and UserMeter only if they still hold this exact
-	 * fence. Omit for an operator abort of whatever leftover tombstone exists.
-	 */
-	expectedDeletingAt?: string
-}) {
-	const userRow = await input.db
-		.prepare(
-			`SELECT stable_user_id
-			FROM users
-			WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.dbUserId)
-		.first<{ stable_user_id: OwnerId }>()
-	const now = utcSqliteTimestamp(input.now ?? new Date())
-	const result = input.expectedDeletingAt
-		? await input.db
-				.prepare(
-					`UPDATE users
-					SET deleting_at = NULL, updated_at = ?
-					WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(now, input.dbUserId, input.expectedDeletingAt)
-				.run()
-		: await input.db
-				.prepare(
-					`UPDATE users
-					SET deleting_at = NULL, updated_at = ?
-					WHERE id = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(now, input.dbUserId)
-				.run()
-	if (!input.expectedDeletingAt && (result.meta.changes ?? 0) !== 1) {
-		throw new Error('Account deletion fence could not be cleared.')
-	}
-	const stableUserId = userRow?.stable_user_id
-	if (!stableUserId) {
-		throw new Error('Account deletion fence could not be cleared.')
-	}
-	const env = requireUserMeterEnv(input.env)
-	await runUserMeterRpc({
-		env,
-		stableUserId,
-		operation: async (meter) =>
-			await meter.clearDeleting(
-				input.expectedDeletingAt
-					? { expectedDeletingAt: input.expectedDeletingAt }
-					: undefined,
-			),
-	})
-	invalidatePackageAppOwnerCache({ stableUserId })
-}
-
-/**
- * Drop a UserMeter deletion tombstone without touching D1 `users.deleting_at`.
- *
- * Completed account deletion deletes the D1 user row but `UserMeter.purge()`
- * restores the tombstone so in-flight cleanup stays fenced. This clear runs
- * after the user row is gone so the purged object holds no state.
- */
-export async function clearUserMeterDeletionTombstone(input: {
-	env: UserMeterEnv
-	stableUserId: OwnerId
-}): Promise<{ cleared: boolean }> {
-	if (!userMeterNamespace(input.env)) {
-		return { cleared: false }
-	}
-	return await runUserMeterRpc({
-		env: input.env,
-		stableUserId: input.stableUserId,
-		operation: async (meter) => await meter.clearDeleting(),
-	})
-}
-
-/**
- * Operator entry for {@link abortAccountDeleting}. Resolves `users.id` from
- * `stable_user_id` so admin tools never take the numeric D1 join key.
- */
-export async function abortAccountDeletingByStableUserId(input: {
-	db: D1Database
-	stableUserId: OwnerId
-	now?: Date
-	env: UserMeterEnv
-}) {
-	const userRow = await input.db
-		.prepare(
-			`SELECT id
-			FROM users
-			WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.stableUserId)
-		.first<{ id: number }>()
-	if (!userRow) {
-		throw new Error('User not found.')
-	}
-	await abortAccountDeleting({
-		db: input.db,
-		dbUserId: userRow.id,
-		now: input.now,
-		env: input.env,
-	})
-}
-
-export type MarkOrgDeletingResult = {
-	leaseCount: number
-	blockingLeases: Array<BlockingAccountWriteLease>
-	/** True when this invocation wrote `orgs.deleting_at`. */
-	created: boolean
-	deletingAt: string
-}
-
-/**
- * Fence OwnerId writes under an org before soft-delete sweeps resources.
- * Sets `orgs.deleting_at`, then the org-id UserMeter tombstone.
- * {@link assertAccountWritableDb} treats a deleting/deleted org as
- * non-writable even when a live personal-user row shares the same id, so
- * leftover-tombstone heal cannot clear this fence while the org is fenced.
- */
-export async function markOrgDeleting(input: {
-	db: D1Database
-	orgId: OwnerId
-	now?: Date
-	env: UserMeterEnv
-}): Promise<MarkOrgDeletingResult> {
-	const now = utcSqliteTimestamp(input.now ?? new Date())
-	const createResult = await input.db
-		.prepare(
-			`UPDATE orgs
-			SET deleting_at = ?, updated_at = ?
-			WHERE id = ? AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
-		)
-		.bind(now, now, input.orgId)
-		.run()
-	const created = (createResult.meta.changes ?? 0) === 1
-	const orgRow = await input.db
-		.prepare(
-			`SELECT deleting_at
-			FROM orgs
-			WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.orgId)
-		.first<{ deleting_at: string | null }>()
-	const deletingAt = orgRow?.deleting_at
-	if (!deletingAt) {
-		throw new Error('Organization could not be marked for deletion.')
-	}
-
-	invalidatePackageAppOwnerCache({ stableUserId: input.orgId })
-	try {
-		const env = requireUserMeterEnv(input.env)
-		const marked = await runUserMeterRpc({
-			env,
-			stableUserId: input.orgId,
-			operation: async (meter) => await meter.markDeleting({ deletingAt }),
-		})
-		return {
-			leaseCount: marked.leaseCount,
-			blockingLeases: marked.blockingLeases ?? [],
-			created,
-			deletingAt,
-		}
-	} catch (error) {
-		if (created) {
-			await input.db
-				.prepare(
-					`UPDATE orgs
-					SET deleting_at = NULL, updated_at = ?
-					WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(now, input.orgId, deletingAt)
-				.run()
-			invalidatePackageAppOwnerCache({ stableUserId: input.orgId })
-		}
-		throw error
-	}
-}
-
-/**
- * Undo {@link markOrgDeleting} when org soft-delete aborts before cleanup.
- */
-export async function abortOrgDeleting(input: {
-	db: D1Database
-	orgId: OwnerId
-	now?: Date
-	env: UserMeterEnv
-	expectedDeletingAt?: string
-}) {
-	const now = utcSqliteTimestamp(input.now ?? new Date())
-	if (input.expectedDeletingAt) {
-		await input.db
-			.prepare(
-				`UPDATE orgs
-				SET deleting_at = NULL, updated_at = ?
-				WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(now, input.orgId, input.expectedDeletingAt)
-			.run()
-	} else {
-		await input.db
-			.prepare(
-				`UPDATE orgs
-				SET deleting_at = NULL, updated_at = ?
-				WHERE id = ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(now, input.orgId)
-			.run()
-	}
-	const env = requireUserMeterEnv(input.env)
-	await runUserMeterRpc({
-		env,
-		stableUserId: input.orgId,
-		operation: async (meter) =>
-			await meter.clearDeleting(
-				input.expectedDeletingAt
-					? { expectedDeletingAt: input.expectedDeletingAt }
-					: undefined,
-			),
-	})
-	invalidatePackageAppOwnerCache({ stableUserId: input.orgId })
+export {
+	markAccountDeleting,
+	abortAccountDeleting,
+	clearUserMeterDeletionTombstone,
+	abortAccountDeletingByStableUserId,
+	markOrgDeleting,
+	abortOrgDeleting,
 }
 
 /**

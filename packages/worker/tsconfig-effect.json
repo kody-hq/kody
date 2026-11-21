@@ -1,0 +1,42 @@
+{
+	"extends": "./tsconfig-worker-test.json",
+	"compilerOptions": {
+		"incremental": false,
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"diagnosticSeverity": {
+					"floatingEffect": "error",
+					"missingEffectContext": "error",
+					"missingEffectError": "error",
+					"missingReturnYieldStar": "error",
+					"missingStarInYieldEffectGen": "error",
+					"leakingRequirements": "error",
+					"returnEffectInGen": "error",
+					"unnecessaryEffectGen": "error",
+					"unnecessaryPipe": "error",
+					"genericEffectServices": "error",
+					"scopeInLayerEffect": "error",
+					"strictBooleanExpressions": "off"
+				}
+			}
+		]
+	},
+	"include": [
+		"./env.d.ts",
+		"./worker-configuration.d.ts",
+		"./src/**/*.d.ts",
+		"./src/effect/**/*.ts",
+		"./src/app/account-deletion.ts",
+		"./src/account/deletion-fence.ts",
+		"./src/orgs/hard-purge.ts",
+		"./src/orgs/purge.ts",
+		"./src/account/unverified-account-purge.ts",
+		"./src/guest/guest-account-purge.ts",
+		"./src/app/retention.ts",
+		"./src/scheduled/retention-lanes.ts",
+		"./src/orgs/soft-delete.ts",
+		"./src/test-support/effect-bridge.ts",
+		"./src/test-support/stripe-effect.ts"
+	]
+}

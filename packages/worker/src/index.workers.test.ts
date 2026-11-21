@@ -100,9 +100,14 @@ vi.mock('#worker/email/reconcile-inbound-deliveries.ts', () => ({
 	sweepStaleInboundDeliveries: mocks.sweepStaleInboundDeliveries,
 }))
 
-vi.mock('#app/retention.ts', () => ({
-	pruneRetention: mocks.pruneRetention,
-}))
+vi.mock('#app/retention.ts', async () => {
+	const { Effect } = await import('effect')
+	return {
+		pruneRetention: mocks.pruneRetention,
+		pruneRetentionEffect: (input: { now: Date }) =>
+			Effect.promise(() => mocks.pruneRetention(input)),
+	}
+})
 
 vi.mock('#app/auth-denial-alerts.ts', () => ({
 	checkAuthDenialBurstAndNotify: mocks.checkAuthDenialBurstAndNotify,

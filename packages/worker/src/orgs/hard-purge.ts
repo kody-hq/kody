@@ -1,22 +1,26 @@
 // soft-delete-read-filter: opt-out
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { Effect, Option, Schema } from 'effect'
 import {
 	buildUserScopedDeleteOrUpdateSql,
 	buildUserScopedTargetMatch,
 } from '#worker/account/data-targets.ts'
 import {
-	deleteUserAccount,
-	purgeOwnerOutOfBandSurfaces,
+	deleteUserAccountEffect,
+	purgeOwnerOutOfBandSurfacesEffect,
 } from '#app/account-deletion.ts'
-import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
+import { AuditLog } from '#worker/effect/audit.ts'
+import { type Bound, D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
+import { outbound } from '#worker/effect/outbound.ts'
+import { runSlicePromise } from '#worker/effect/slice.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import {
 	type HardPurgeOrgMode,
 	hardPurgeOrgDataTargets,
 } from './data-targets.ts'
 import {
-	logOrgAuditEvent,
 	optionalOrgAuditWriter,
 	redactOrgAuditActorIdsForDeletedUser,
 } from './org-audit.ts'
@@ -36,114 +40,172 @@ type PersonalOrgHardPurgeRelation =
 	| 'live_person'
 	| 'none'
 
-export class PersonalOrgHardPurgeBlockedForLiveUserError extends Error {
-	constructor(orgId: OwnerId) {
-		super(`personal_org_hard_purge_blocked_live_user:${orgId}`)
-		this.name = 'PersonalOrgHardPurgeBlockedForLiveUserError'
+export class PersonalOrgHardPurgeBlockedForLiveUserError extends Schema.TaggedError<PersonalOrgHardPurgeBlockedForLiveUserError>()(
+	'PersonalOrgHardPurgeBlockedForLiveUserError',
+	{ message: Schema.String },
+) {
+	static forOrg(orgId: OwnerId) {
+		return new PersonalOrgHardPurgeBlockedForLiveUserError({
+			message: `personal_org_hard_purge_blocked_live_user:${orgId}`,
+		})
 	}
 }
 
-export class PersonalOrgPurgesWithPersonError extends Error {
-	constructor(orgId: OwnerId) {
-		super(`personal_org_purges_with_person:${orgId}`)
-		this.name = 'PersonalOrgPurgesWithPersonError'
+export class PersonalOrgPurgesWithPersonError extends Schema.TaggedError<PersonalOrgPurgesWithPersonError>()(
+	'PersonalOrgPurgesWithPersonError',
+	{ message: Schema.String },
+) {
+	static forOrg(orgId: OwnerId) {
+		return new PersonalOrgPurgesWithPersonError({
+			message: `personal_org_purges_with_person:${orgId}`,
+		})
 	}
 }
 
-async function personalOrgHardPurgeRelation(
-	db: D1Database,
+export class LegacyUserDeletionNotPendingError extends Schema.TaggedError<LegacyUserDeletionNotPendingError>()(
+	'LegacyUserDeletionNotPendingError',
+	{ message: Schema.String },
+) {
+	static forUser(stableUserId: OwnerId, reason: string) {
+		return new LegacyUserDeletionNotPendingError({
+			message: `legacy_user_deletion_not_pending:${reason}:${stableUserId}`,
+		})
+	}
+}
+
+/** A hard purge ran but a row it must remove is still there (or was already gone). */
+export class HardPurgeRowError extends Schema.TaggedError<HardPurgeRowError>()(
+	'HardPurgeRowError',
+	{ message: Schema.String },
+) {}
+
+const RelationRow = Schema.Struct({
+	deleted_at: Schema.NullOr(Schema.String),
+	deleting_at: Schema.NullOr(Schema.String),
+})
+const IdRow = Schema.Struct({ id: Schema.String })
+const PersonalOrgRow = Schema.Struct({
+	personal_org_id: Schema.NullOr(Schema.String),
+	stable_user_id: Schema.String,
+})
+const LegacyUserRow = Schema.Struct({
+	personal_org_id: Schema.NullOr(Schema.String),
+	stable_user_id: Schema.String,
+	deleted_at: Schema.NullOr(Schema.String),
+	deleting_at: Schema.NullOr(Schema.String),
+})
+const PresentRow = Schema.Struct({ present: Schema.Number })
+
+const personalOrgHardPurgeRelation = Effect.fn('HardPurge.personalOrgRelation')(
+	function* (orgId: OwnerId) {
+		const db = yield* D1
+		const row = yield* retryTransientD1(
+			db.first(
+				'hard_purge.personal_org_relation',
+				RelationRow,
+				sql(
+					`SELECT deleted_at, deleting_at FROM users
+					 WHERE (
+					 	(personal_org_id IS NOT NULL AND TRIM(personal_org_id) != '' AND personal_org_id = ?)
+					 	OR ((personal_org_id IS NULL OR TRIM(personal_org_id) = '') AND stable_user_id = ?)
+					 )
+					 LIMIT 1`,
+					orgId,
+					orgId,
+				),
+			),
+		)
+		const relation: PersonalOrgHardPurgeRelation = Option.match(row, {
+			onNone: () => 'none',
+			onSome: (person) =>
+				person.deleted_at || person.deleting_at
+					? 'soft_deleted_person'
+					: 'live_person',
+		})
+		return relation
+	},
+)
+
+/**
+ * Orgs soft-deleted before soft delete wiped pinned connections still have
+ * them. Wipe and revoke them while the app and its client secret exist; the
+ * inventory deletes any the wipe cannot see (tombstoned rows).
+ */
+const wipeOrgPinnedConnections = Effect.fn(
+	'HardPurge.wipeOrgPinnedConnections',
+)(function* (orgId: OwnerId) {
+	const env = yield* WorkerEnv
+	yield* outbound('pinned_connections.wipeForOrg', () =>
+		wipePinnedConnectionsForOrg({
+			env,
+			orgId,
+			audit: optionalOrgAuditWriter(env, null),
+		}),
+	)
+})
+
+const deleteOrgRows = Effect.fn('HardPurge.deleteOrgRows')(function* (
 	orgId: OwnerId,
-): Promise<PersonalOrgHardPurgeRelation> {
-	const row = await runD1WithRetry(() =>
-		db
-			.prepare(
-				`SELECT deleted_at, deleting_at FROM users
-				 WHERE (
-				 	(personal_org_id IS NOT NULL AND TRIM(personal_org_id) != '' AND personal_org_id = ?)
-				 	OR ((personal_org_id IS NULL OR TRIM(personal_org_id) = '') AND stable_user_id = ?)
-				 )
-				 LIMIT 1`,
-			)
-			.bind(orgId, orgId)
-			.first<{ deleted_at: string | null; deleting_at: string | null }>(),
-	)
-	if (!row) return 'none'
-	return row.deleted_at || row.deleting_at
-		? 'soft_deleted_person'
-		: 'live_person'
-}
-
-export async function hardPurgeOrg(input: {
-	env: Env
-	orgId: OwnerId
-}): Promise<void> {
-	const relation = await personalOrgHardPurgeRelation(
-		input.env.APP_DB,
-		input.orgId,
-	)
-	if (relation === 'live_person') {
-		throw new PersonalOrgHardPurgeBlockedForLiveUserError(input.orgId)
-	}
-	if (relation === 'soft_deleted_person') {
-		throw new PersonalOrgPurgesWithPersonError(input.orgId)
-	}
-	await wipeOrgPinnedConnections(input.env, input.orgId)
-	// Team org: collect the same out-of-band keys account deletion collects
-	// for this owner id, delete those objects, then delete D1 rows (including
-	// owner-scoped inventory without deleted_at).
-	await purgeOwnerOutOfBandSurfaces({
-		env: input.env,
-		ownerId: input.orgId,
-	})
-	await deleteOrgRows({ env: input.env, orgId: input.orgId, mode: 'team' })
-}
-
-async function wipeOrgPinnedConnections(env: Env, orgId: OwnerId) {
-	// Orgs soft-deleted before soft delete wiped pinned connections still have
-	// them. Wipe and revoke them while the app and its client secret exist;
-	// the inventory deletes any the wipe cannot see (tombstoned rows).
-	await wipePinnedConnectionsForOrg({
-		env,
-		orgId,
-		audit: optionalOrgAuditWriter(env, null),
-	})
-}
-
-async function deleteOrgRows(input: {
-	env: Env
-	orgId: OwnerId
-	mode: HardPurgeOrgMode
-}) {
-	const db = input.env.APP_DB
-	for (const target of hardPurgeOrgDataTargets(input.mode)) {
+	mode: HardPurgeOrgMode,
+) {
+	const db = yield* D1
+	const audit = yield* AuditLog
+	for (const target of hardPurgeOrgDataTargets(mode)) {
 		const match = buildUserScopedTargetMatch({
 			target,
-			mcpUserId: input.orgId,
+			mcpUserId: orgId,
 			dbUserId: -1,
 		})
-		const { sql, params } = buildUserScopedDeleteOrUpdateSql(match)
-		await runD1WithRetry(() =>
-			db
-				.prepare(sql)
-				.bind(...params)
-				.run(),
+		const statement = buildUserScopedDeleteOrUpdateSql(match)
+		yield* retryTransientD1(
+			db.run(
+				`hard_purge.delete.${match.table}`,
+				sql(statement.sql, ...(statement.params as Array<Bound>)),
+			),
 		)
 	}
-	const orgDelete = await runD1WithRetry(() =>
-		db.prepare(`DELETE FROM orgs WHERE id = ?`).bind(input.orgId).run(),
+	const { changes } = yield* retryTransientD1(
+		db.run(
+			'hard_purge.delete_org',
+			sql(`DELETE FROM orgs WHERE id = ?`, orgId),
+		),
 	)
-	if ((orgDelete.meta.changes ?? 0) === 0) {
-		throw new Error(`org_purge_missing_row:${input.orgId}`)
+	if (changes === 0) {
+		return yield* new HardPurgeRowError({
+			message: `org_purge_missing_row:${orgId}`,
+		})
 	}
-	await logOrgAuditEvent({
-		env: input.env,
-		orgId: input.orgId,
+	yield* audit.recordOrg({
+		orgId,
 		action: 'org.purged',
 		result: 'success',
 		resourceType: 'org',
-		resourceId: input.orgId,
+		resourceId: orgId,
 	})
-}
+	yield* Effect.logDebug('org rows purged', { mode })
+})
+
+/**
+ * Hard-delete a team org: refuse personal orgs (they purge with their
+ * person), wipe pinned connections, delete the owner's out-of-band surfaces,
+ * then the owner-scoped D1 rows.
+ */
+export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(
+	function* (orgId: OwnerId) {
+		yield* Effect.annotateCurrentSpan('kody.org_id', orgId)
+		const relation = yield* personalOrgHardPurgeRelation(orgId)
+		if (relation === 'live_person') {
+			return yield* PersonalOrgHardPurgeBlockedForLiveUserError.forOrg(orgId)
+		}
+		if (relation === 'soft_deleted_person') {
+			return yield* PersonalOrgPurgesWithPersonError.forOrg(orgId)
+		}
+		yield* wipeOrgPinnedConnections(orgId)
+		yield* purgeOwnerOutOfBandSurfacesEffect({ ownerId: orgId })
+		yield* deleteOrgRows(orgId, 'team')
+		yield* Effect.logInfo('org hard purged')
+	},
+)
 
 /**
  * Hard-delete a person account and then its personal org. Account deletion
@@ -151,80 +213,85 @@ async function deleteOrgRows(input: {
  * exist while it cancels subscriptions and deletes the customer. Pinned
  * connections are wiped first, while the owner's OAuth apps still exist.
  */
-async function purgePersonAndPersonalOrg(input: {
-	env: Env
-	dbUserId: number
-	stableUserId: OwnerId
-	storageOwnerId: OwnerId
-	personUserId: string
-	personalOrgId: OwnerId | null
-	purgeSoftDeleted?: boolean
+const purgePersonAndPersonalOrg = Effect.fn(
+	'HardPurge.purgePersonAndPersonalOrg',
+)(function* (input: {
+	readonly dbUserId: number
+	readonly stableUserId: OwnerId
+	readonly storageOwnerId: OwnerId
+	readonly personUserId: string
+	readonly personalOrgId: Option.Option<OwnerId>
+	readonly purgeSoftDeleted?: boolean
 }) {
-	if (input.personalOrgId) {
-		await wipeOrgPinnedConnections(input.env, input.personalOrgId)
+	const env = yield* WorkerEnv
+	if (Option.isSome(input.personalOrgId)) {
+		yield* wipeOrgPinnedConnections(input.personalOrgId.value)
 	}
-	await redactOrgAuditActorIdsForDeletedUser({
-		env: input.env,
-		userId: input.stableUserId,
-	})
-	const result = await deleteUserAccount({
-		env: input.env,
+	yield* outbound('org_audit.redactActorIdsForDeletedUser', () =>
+		redactOrgAuditActorIdsForDeletedUser({ env, userId: input.stableUserId }),
+	)
+	const result = yield* deleteUserAccountEffect({
 		dbUserId: input.dbUserId,
 		mcpUserId: input.storageOwnerId,
 		personUserId: input.personUserId,
 		purgeSoftDeleted: input.purgeSoftDeleted,
 	})
-	if (input.personalOrgId) {
-		await deleteOrgRows({
-			env: input.env,
-			orgId: input.personalOrgId,
-			mode: 'personal',
-		})
+	if (Option.isSome(input.personalOrgId)) {
+		yield* deleteOrgRows(input.personalOrgId.value, 'personal')
 	}
 	return result
-}
+})
 
-async function softDeletedOrgId(
-	db: D1Database,
+const softDeletedOrgId = Effect.fn('HardPurge.softDeletedOrgId')(function* (
 	orgId: OwnerId,
-): Promise<OwnerId | null> {
-	const row = await runD1WithRetry(() =>
-		db
-			.prepare(`SELECT id FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`)
-			.bind(orgId)
-			.first<{ id: string }>(),
+) {
+	const db = yield* D1
+	const row = yield* retryTransientD1(
+		db.first(
+			'hard_purge.soft_deleted_org',
+			IdRow,
+			sql(`SELECT id FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`, orgId),
+		),
 	)
-	return row ? orgId : null
-}
+	return Option.as(row, orgId)
+})
 
-export async function hardPurgeSoftDeletedUser(input: {
-	env: Env
-	dbUserId: number
-	stableUserId: OwnerId
-}): Promise<void> {
-	const personalOrgRow = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`SELECT personal_org_id, stable_user_id FROM users WHERE id = ?`,
-		)
-			.bind(input.dbUserId)
-			.first<{ personal_org_id: string | null; stable_user_id: string }>(),
+/** Hard-delete a soft-deleted person and, in the same pass, their personal org. */
+export const hardPurgeSoftDeletedUserEffect = Effect.fn(
+	'HardPurge.hardPurgeSoftDeletedUser',
+)(function* (input: {
+	readonly dbUserId: number
+	readonly stableUserId: OwnerId
+}) {
+	const db = yield* D1
+	const audit = yield* AuditLog
+	yield* Effect.annotateCurrentSpan('kody.user_id', input.stableUserId)
+	const personalOrgRow = yield* retryTransientD1(
+		db.first(
+			'hard_purge.user_personal_org',
+			PersonalOrgRow,
+			sql(
+				`SELECT personal_org_id, stable_user_id FROM users WHERE id = ?`,
+				input.dbUserId,
+			),
+		),
 	)
-	const storageOwnerId = personalOrgRow
-		? personalOrgIdFromUserRow(personalOrgRow)
-		: input.stableUserId
+	const storageOwnerId = Option.match(personalOrgRow, {
+		onNone: () => input.stableUserId,
+		onSome: personalOrgIdFromUserRow,
+	})
 	const personUserId =
-		personalOrgRow?.stable_user_id?.trim() || input.stableUserId
-	await purgePersonAndPersonalOrg({
-		env: input.env,
+		Option.getOrUndefined(personalOrgRow)?.stable_user_id.trim() ||
+		input.stableUserId
+	yield* purgePersonAndPersonalOrg({
 		dbUserId: input.dbUserId,
 		stableUserId: input.stableUserId,
 		storageOwnerId,
 		personUserId,
-		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
+		personalOrgId: yield* softDeletedOrgId(storageOwnerId),
 		purgeSoftDeleted: true,
 	})
-	await logOrgAuditEvent({
-		env: input.env,
+	yield* audit.recordOrg({
 		orgId: storageOwnerId,
 		action: 'user.purged',
 		result: 'success',
@@ -232,14 +299,8 @@ export async function hardPurgeSoftDeletedUser(input: {
 		resourceId: input.stableUserId,
 		targetUserId: input.stableUserId,
 	})
-}
-
-export class LegacyUserDeletionNotPendingError extends Error {
-	constructor(stableUserId: OwnerId, reason: string) {
-		super(`legacy_user_deletion_not_pending:${reason}:${stableUserId}`)
-		this.name = 'LegacyUserDeletionNotPendingError'
-	}
-}
+	yield* Effect.logInfo('soft-deleted user hard purged')
+})
 
 /**
  * Finish an account deletion that started before soft delete existed.
@@ -250,83 +311,90 @@ export class LegacyUserDeletionNotPendingError extends Error {
  * retried it. The owner asked for deletion and was never offered a restore
  * window, so this resumes the same hard deletion now:
  *
- * 1. Re-run `deleteUserAccount` on the fenced row. It reuses the existing
+ * 1. Re-run account deletion on the fenced row. It reuses the existing
  *    fence, re-collects inventory, and treats storage that is already gone
- *    (404 Artifacts repos, missing KV keys) as done, so a retry is safe.
- * 2. Purge the personal org graph (the Teams backfill created one per person)
- *    after step 1 has read its billing identity.
+ *    as done, so a retry is safe.
+ * 2. Purge the personal org graph after step 1 has read its billing identity.
  *
  * Idempotent: a missing users row means a prior attempt finished.
  */
-export async function finishLegacyUserDeletion(input: {
-	env: Env
-	dbUserId: number
-	stableUserId: OwnerId
-}): Promise<{ alreadyGone: boolean }> {
-	const row = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
-			 FROM users WHERE id = ?`,
-		)
-			.bind(input.dbUserId)
-			.first<{
-				personal_org_id: string | null
-				stable_user_id: string
-				deleted_at: string | null
-				deleting_at: string | null
-			}>(),
+export const finishLegacyUserDeletionEffect = Effect.fn(
+	'HardPurge.finishLegacyUserDeletion',
+)(function* (input: {
+	readonly dbUserId: number
+	readonly stableUserId: OwnerId
+}) {
+	const db = yield* D1
+	const audit = yield* AuditLog
+	yield* Effect.annotateCurrentSpan('kody.user_id', input.stableUserId)
+	const found = yield* retryTransientD1(
+		db.first(
+			'hard_purge.legacy_user',
+			LegacyUserRow,
+			sql(
+				`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
+				 FROM users WHERE id = ?`,
+				input.dbUserId,
+			),
+		),
 	)
-	if (!row) return { alreadyGone: true }
+	if (Option.isNone(found)) return { alreadyGone: true }
+	const row = found.value
 	if (row.stable_user_id !== input.stableUserId) {
-		throw new LegacyUserDeletionNotPendingError(
+		return yield* LegacyUserDeletionNotPendingError.forUser(
 			input.stableUserId,
 			'id_mismatch',
 		)
 	}
 	if (row.deleted_at) {
 		// Soft-deleted rows belong to the regular purge lane and its window.
-		throw new LegacyUserDeletionNotPendingError(
+		return yield* LegacyUserDeletionNotPendingError.forUser(
 			input.stableUserId,
 			'soft_deleted',
 		)
 	}
 	if (!row.deleting_at) {
-		throw new LegacyUserDeletionNotPendingError(input.stableUserId, 'live')
+		return yield* LegacyUserDeletionNotPendingError.forUser(
+			input.stableUserId,
+			'live',
+		)
 	}
 	const storageOwnerId = personalOrgIdFromUserRow(row)
 	const personUserId = row.stable_user_id.trim() || input.stableUserId
 	// Tombstone a still-live personal org first: if this attempt removes the
 	// person and then fails on the org, the org lane can still purge it.
-	const deletingAt = row.deleting_at
-	await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
-		)
-			.bind(deletingAt, storageOwnerId)
-			.run(),
+	yield* retryTransientD1(
+		db.run(
+			'hard_purge.tombstone_personal_org',
+			sql(
+				`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+				row.deleting_at,
+				storageOwnerId,
+			),
+		),
 	)
-	const result = await purgePersonAndPersonalOrg({
-		env: input.env,
+	const result = yield* purgePersonAndPersonalOrg({
 		dbUserId: input.dbUserId,
 		stableUserId: input.stableUserId,
 		storageOwnerId,
 		personUserId,
-		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
+		personalOrgId: yield* softDeletedOrgId(storageOwnerId),
 	})
 	if ((result.deletedRowCounts.users ?? 0) === 0) {
-		const stillThere = await runD1WithRetry(() =>
-			input.env.APP_DB.prepare(`SELECT 1 AS present FROM users WHERE id = ?`)
-				.bind(input.dbUserId)
-				.first<{ present: number }>(),
+		const stillThere = yield* retryTransientD1(
+			db.first(
+				'hard_purge.legacy_user_present',
+				PresentRow,
+				sql(`SELECT 1 AS present FROM users WHERE id = ?`, input.dbUserId),
+			),
 		)
-		if (stillThere) {
-			throw new Error(
-				`legacy_user_deletion_row_not_removed:${input.stableUserId}`,
-			)
+		if (Option.isSome(stillThere)) {
+			return yield* new HardPurgeRowError({
+				message: `legacy_user_deletion_row_not_removed:${input.stableUserId}`,
+			})
 		}
 	}
-	await logOrgAuditEvent({
-		env: input.env,
+	yield* audit.recordOrg({
 		orgId: storageOwnerId,
 		action: 'user.purged',
 		result: 'success',
@@ -335,5 +403,31 @@ export async function finishLegacyUserDeletion(input: {
 		targetUserId: input.stableUserId,
 		detailsJson: JSON.stringify({ lane: 'legacy_deletion_finish' }),
 	})
+	yield* Effect.logInfo('legacy user deletion finished')
 	return { alreadyGone: false }
+})
+
+export function hardPurgeOrg(input: {
+	env: Env
+	orgId: OwnerId
+}): Promise<void> {
+	return runSlicePromise(input.env, hardPurgeOrgEffect(input.orgId))
+}
+
+export function hardPurgeSoftDeletedUser(input: {
+	env: Env
+	dbUserId: number
+	stableUserId: OwnerId
+}): Promise<void> {
+	const { env, ...rest } = input
+	return runSlicePromise(env, hardPurgeSoftDeletedUserEffect(rest))
+}
+
+export function finishLegacyUserDeletion(input: {
+	env: Env
+	dbUserId: number
+	stableUserId: OwnerId
+}): Promise<{ alreadyGone: boolean }> {
+	const { env, ...rest } = input
+	return runSlicePromise(env, finishLegacyUserDeletionEffect(rest))
 }

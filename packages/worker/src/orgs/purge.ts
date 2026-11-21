@@ -15,19 +15,24 @@
  */
 
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { softDeletePurgeCutoffIso } from '#worker/soft-delete/window.ts'
-import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { shouldRunRetentionCron } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
+import { Cause, DateTime, Effect, Option, Schema } from 'effect'
+import { softDeletePurgeCutoffIso } from '#worker/soft-delete/window.ts'
 import {
-	finishLegacyUserDeletion,
-	hardPurgeOrg,
-	hardPurgeSoftDeletedUser,
+	finishLegacyUserDeletionEffect,
+	hardPurgeOrgEffect,
+	hardPurgeSoftDeletedUserEffect,
 } from '#worker/orgs/hard-purge.ts'
-import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
 import {
 	purgeFailureDetails,
 	redactPurgeFailureDetail,
 } from '#worker/orgs/purge-failure-details.ts'
+import { AuditLog } from '#worker/effect/audit.ts'
+import { startPassBudget } from '#worker/effect/budget.ts'
+import { keepClaim, scopedClaim } from '#worker/effect/claim.ts'
+import { D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
+import { runSlicePromise } from '#worker/effect/slice.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 
 export { shouldRunRetentionCron as shouldRunSoftDeletePurgeCron }
 
@@ -89,6 +94,27 @@ export type SoftDeletePurgeResult = {
 	outcomes: Array<SoftDeletePurgeOutcome>
 }
 
+/** A user candidate row came back without its numeric id. */
+export class PurgeCandidateMissingDbIdError extends Schema.TaggedError<PurgeCandidateMissingDbIdError>()(
+	'PurgeCandidateMissingDbIdError',
+	{ message: Schema.String },
+) {}
+
+const OrgCandidateRow = Schema.Struct({
+	id: Schema.String,
+	deleted_at: Schema.String,
+})
+const UserCandidateRow = Schema.Struct({
+	db_user_id: Schema.Number,
+	id: Schema.String,
+	deleted_at: Schema.String,
+})
+const LegacyCandidateRow = Schema.Struct({
+	db_user_id: Schema.Number,
+	id: Schema.String,
+	deleting_at: Schema.String,
+})
+
 function ageDays(deletedAt: string, now: Date) {
 	const deletedMs = Date.parse(deletedAt)
 	if (!Number.isFinite(deletedMs)) return 0
@@ -99,74 +125,90 @@ function cutoffIso(now: Date, millisecondsAgo: number) {
 	return new Date(now.getTime() - millisecondsAgo).toISOString()
 }
 
+/** The pass's reference time: the scheduled time, else `Clock`. */
+const passTime = (now: Date | undefined) =>
+	now ? Effect.succeed(now) : Effect.map(DateTime.now, DateTime.toDateUtc)
+
+type CandidateQuery = {
+	readonly ageCutoff: string
+	readonly retryBackoffCutoff: string
+	readonly batchSize: number
+}
+
 /**
  * Personal orgs of soft-deleted or deletion-fenced people are left out: the
  * person purge removes its personal org after reading its billing identity.
+ * Unclaimed rows come first, then oldest deletions.
  */
-async function listOrgCandidates(input: {
-	db: D1Database
-	ageCutoff: string
-	retryBackoffCutoff: string
-	batchSize: number
-}) {
-	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`SELECT id, deleted_at
-				 FROM orgs
-				 WHERE deleted_at IS NOT NULL
-				   AND datetime(deleted_at) < datetime(?)
-				   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
-				   AND NOT EXISTS (
-				     SELECT 1 FROM users u
-				     WHERE (u.deleted_at IS NOT NULL OR u.deleting_at IS NOT NULL)
-				       AND (
-				         (NULLIF(TRIM(u.personal_org_id), '') = orgs.id)
-				         OR (NULLIF(TRIM(u.personal_org_id), '') IS NULL AND u.stable_user_id = orgs.id)
-				       )
-				   )
-				 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
-				 LIMIT ?`,
-			)
-			.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
-			.all<{ id: OwnerId; deleted_at: string }>(),
-	)
-	return results ?? []
-}
+const listOrgCandidates = Effect.fn('SoftDeletePurge.listOrgCandidates')(
+	function* (query: CandidateQuery) {
+		const db = yield* D1
+		return yield* retryTransientD1(
+			db.all(
+				'soft_delete_purge.org_candidates',
+				OrgCandidateRow,
+				sql(
+					`SELECT id, deleted_at
+					 FROM orgs
+					 WHERE deleted_at IS NOT NULL
+					   AND datetime(deleted_at) < datetime(?)
+					   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+					   AND NOT EXISTS (
+					     SELECT 1 FROM users u
+					     WHERE (u.deleted_at IS NOT NULL OR u.deleting_at IS NOT NULL)
+					       AND (
+					         (NULLIF(TRIM(u.personal_org_id), '') = orgs.id)
+					         OR (NULLIF(TRIM(u.personal_org_id), '') IS NULL AND u.stable_user_id = orgs.id)
+					       )
+					   )
+					 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
+					 LIMIT ?`,
+					query.ageCutoff,
+					query.retryBackoffCutoff,
+					query.batchSize,
+				),
+			),
+		)
+	},
+)
 
-async function listUserCandidates(input: {
-	db: D1Database
-	ageCutoff: string
-	retryBackoffCutoff: string
-	batchSize: number
-}) {
-	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`SELECT id AS db_user_id, stable_user_id AS id, deleted_at
-				 FROM users
-				 WHERE deleted_at IS NOT NULL
-				   AND datetime(deleted_at) < datetime(?)
-				   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
-				 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
-				 LIMIT ?`,
-			)
-			.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
-			.all<{ db_user_id: number; id: OwnerId; deleted_at: string }>(),
-	)
-	return results ?? []
-}
+const listUserCandidates = Effect.fn('SoftDeletePurge.listUserCandidates')(
+	function* (query: CandidateQuery) {
+		const db = yield* D1
+		return yield* retryTransientD1(
+			db.all(
+				'soft_delete_purge.user_candidates',
+				UserCandidateRow,
+				sql(
+					`SELECT id AS db_user_id, stable_user_id AS id, deleted_at
+					 FROM users
+					 WHERE deleted_at IS NOT NULL
+					   AND datetime(deleted_at) < datetime(?)
+					   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+					 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
+					 LIMIT ?`,
+					query.ageCutoff,
+					query.retryBackoffCutoff,
+					query.batchSize,
+				),
+			),
+		)
+	},
+)
 
-async function listLegacyUserCandidates(input: {
-	db: D1Database
-	retryBackoffCutoff: string
-	batchSize: number
-}) {
-	// The backoff on `deleting_at` also keeps this lane off deletions that are
-	// in flight right now (account deletion stamps the fence when it starts).
-	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(
+/**
+ * The backoff on `deleting_at` also keeps this lane off deletions that are in
+ * flight right now (account deletion stamps the fence when it starts).
+ */
+const listLegacyUserCandidates = Effect.fn(
+	'SoftDeletePurge.listLegacyUserCandidates',
+)(function* (query: Omit<CandidateQuery, 'ageCutoff'>) {
+	const db = yield* D1
+	return yield* retryTransientD1(
+		db.all(
+			'soft_delete_purge.legacy_user_candidates',
+			LegacyCandidateRow,
+			sql(
 				`SELECT id AS db_user_id, stable_user_id AS id, deleting_at
 				 FROM users
 				 WHERE deleted_at IS NULL
@@ -174,325 +216,341 @@ async function listLegacyUserCandidates(input: {
 				   AND datetime(deleting_at) < datetime(?)
 				 ORDER BY datetime(deleting_at) ASC, id ASC
 				 LIMIT ?`,
-			)
-			.bind(input.retryBackoffCutoff, input.batchSize)
-			.all<{ db_user_id: number; id: OwnerId; deleting_at: string }>(),
+				query.retryBackoffCutoff,
+				query.batchSize,
+			),
+		),
 	)
-	return results ?? []
-}
+})
 
-export async function listSoftDeletePurgeCandidates(input: {
-	env: Env
-	now?: Date
-	batchSize?: number
-}): Promise<{
-	scanned: number
-	candidates: Array<SoftDeletePurgeCandidate>
-}> {
-	const now = input.now ?? new Date()
-	const ageCutoff = softDeletePurgeCutoffIso(now)
-	const retryBackoffCutoff = cutoffIso(now, softDeletePurgeRetryBackoffMs)
-	const batchSize = input.batchSize ?? softDeletePurgeBatchSize
-	const orgs = await listOrgCandidates({
-		db: input.env.APP_DB,
-		ageCutoff,
-		retryBackoffCutoff,
-		batchSize,
-	})
-	const users = await listUserCandidates({
-		db: input.env.APP_DB,
-		ageCutoff,
-		retryBackoffCutoff,
-		batchSize,
-	})
-	const legacyUsers = await listLegacyUserCandidates({
-		db: input.env.APP_DB,
-		retryBackoffCutoff,
-		batchSize,
-	})
+/**
+ * Orgs, then soft-deleted users, then legacy deletions, each in claim order.
+ * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
+ */
+export const listSoftDeletePurgeCandidatesEffect = Effect.fn(
+	'SoftDeletePurge.listCandidates',
+)(function* (input: { readonly now?: Date; readonly batchSize?: number }) {
+	const now = yield* passTime(input.now)
+	const query = {
+		ageCutoff: softDeletePurgeCutoffIso(now),
+		retryBackoffCutoff: cutoffIso(now, softDeletePurgeRetryBackoffMs),
+		batchSize: input.batchSize ?? softDeletePurgeBatchSize,
+	}
+	const orgs = yield* listOrgCandidates(query)
+	const users = yield* listUserCandidates(query)
+	const legacyUsers = yield* listLegacyUserCandidates(query)
 	const candidates: Array<SoftDeletePurgeCandidate> = [
 		...orgs.map((row) => ({
 			kind: 'org' as const,
-			id: row.id,
+			id: row.id as OwnerId,
 			deletedAt: row.deleted_at,
 			ageDays: ageDays(row.deleted_at, now),
 		})),
 		...users.map((row) => ({
 			kind: 'user' as const,
-			id: row.id,
+			id: row.id as OwnerId,
 			deletedAt: row.deleted_at,
 			ageDays: ageDays(row.deleted_at, now),
 			dbUserId: row.db_user_id,
 		})),
 		...legacyUsers.map((row) => ({
 			kind: 'user' as const,
-			id: row.id,
+			id: row.id as OwnerId,
 			deletedAt: row.deleting_at,
 			ageDays: ageDays(row.deleting_at, now),
 			dbUserId: row.db_user_id,
 			legacy: true as const,
 		})),
 	]
+	yield* Effect.logDebug('soft delete purge candidates listed', {
+		orgs: orgs.length,
+		users: users.length,
+		legacyUsers: legacyUsers.length,
+	})
 	return { scanned: candidates.length, candidates }
+})
+
+type Claim = {
+	readonly nowIso: string
+	readonly retryBackoffCutoff: string
 }
 
-async function claimOrgForPurge(input: {
-	db: D1Database
-	orgId: string
-	nowIso: string
-	retryBackoffCutoff: string
-}): Promise<boolean> {
-	const created = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE orgs
+/**
+ * Claim a soft-deleted row by stamping `deleting_at`: first an unclaimed
+ * row, else one whose earlier claim is older than the 6 hour backoff.
+ */
+const claimTombstone = Effect.fn('SoftDeletePurge.claimTombstone')(function* (
+	table: 'orgs' | 'users',
+	key: 'id' | 'stable_user_id',
+	id: OwnerId,
+	claim: Claim,
+) {
+	const db = yield* D1
+	const created = yield* retryTransientD1(
+		db.run(
+			`soft_delete_purge.claim_${table}`,
+			sql(
+				`UPDATE ${table}
 				 SET deleting_at = ?, updated_at = ?
-				 WHERE id = ?
+				 WHERE ${key} = ?
 				   AND deleted_at IS NOT NULL
 				   AND deleting_at IS NULL`,
-			)
-			.bind(input.nowIso, input.nowIso, input.orgId)
-			.run(),
+				claim.nowIso,
+				claim.nowIso,
+				id,
+			),
+		),
 	)
-	if ((created.meta.changes ?? 0) === 1) return true
-	const restamped = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE orgs
+	if (created.changes === 1) return true
+	const restamped = yield* retryTransientD1(
+		db.run(
+			`soft_delete_purge.restamp_${table}`,
+			sql(
+				`UPDATE ${table}
 				 SET deleting_at = ?, updated_at = ?
-				 WHERE id = ?
+				 WHERE ${key} = ?
 				   AND deleted_at IS NOT NULL
 				   AND datetime(deleting_at) < datetime(?)`,
-			)
-			.bind(input.nowIso, input.nowIso, input.orgId, input.retryBackoffCutoff)
-			.run(),
+				claim.nowIso,
+				claim.nowIso,
+				id,
+				claim.retryBackoffCutoff,
+			),
+		),
 	)
-	return (restamped.meta.changes ?? 0) === 1
-}
-
-async function claimUserForPurge(input: {
-	db: D1Database
-	userId: string
-	nowIso: string
-	retryBackoffCutoff: string
-}): Promise<boolean> {
-	const created = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
-				 SET deleting_at = ?, updated_at = ?
-				 WHERE stable_user_id = ?
-				   AND deleted_at IS NOT NULL
-				   AND deleting_at IS NULL`,
-			)
-			.bind(input.nowIso, input.nowIso, input.userId)
-			.run(),
-	)
-	if ((created.meta.changes ?? 0) === 1) return true
-	const restamped = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
-				 SET deleting_at = ?, updated_at = ?
-				 WHERE stable_user_id = ?
-				   AND deleted_at IS NOT NULL
-				   AND datetime(deleting_at) < datetime(?)`,
-			)
-			.bind(input.nowIso, input.nowIso, input.userId, input.retryBackoffCutoff)
-			.run(),
-	)
-	return (restamped.meta.changes ?? 0) === 1
-}
+	return restamped.changes === 1
+})
 
 /**
  * Claim a legacy deletion by restamping its `deleting_at` fence. Only rows
  * still fenced, still without `deleted_at`, and past the retry backoff are
- * claimed, so concurrent passes and in-flight deletions are left alone. The
- * restamp starts the next backoff window if this attempt fails.
+ * claimed, so concurrent passes and in-flight deletions are left alone.
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
-async function claimLegacyUserForPurge(input: {
-	db: D1Database
-	userId: string
-	nowIso: string
-	retryBackoffCutoff: string
-}): Promise<boolean> {
-	const claimed = await runD1WithRetry(() =>
-		input.db
-			.prepare(
+const claimLegacyUser = Effect.fn('SoftDeletePurge.claimLegacyUser')(function* (
+	userId: OwnerId,
+	claim: Claim,
+) {
+	const db = yield* D1
+	const claimed = yield* retryTransientD1(
+		db.run(
+			'soft_delete_purge.claim_legacy_user',
+			sql(
 				`UPDATE users
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NULL
 				   AND deleting_at IS NOT NULL
 				   AND datetime(deleting_at) < datetime(?)`,
-			)
-			.bind(input.nowIso, input.nowIso, input.userId, input.retryBackoffCutoff)
-			.run(),
+				claim.nowIso,
+				claim.nowIso,
+				userId,
+				claim.retryBackoffCutoff,
+			),
+		),
 	)
-	return (claimed.meta.changes ?? 0) === 1
-}
+	return claimed.changes === 1
+})
 
-export async function pruneSoftDeleted(input: {
-	env: Env
-	now?: Date
-	timeBudgetMs?: number
-	batchSize?: number
-	/**
-	 * When true, list only. When false, hard-delete soft-deleted rows if
-	 * writes are enabled. Legacy deletions run unless this is true.
-	 * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
-	 */
-	dryRun?: boolean
-	enableWrites?: boolean
-}): Promise<SoftDeletePurgeResult> {
-	const now = input.now ?? new Date()
-	const dryRun =
-		input.dryRun === true ||
-		(input.dryRun !== false &&
-			!(input.enableWrites === true || softDeletePurgeWritesEnabled(input.env)))
-	const legacyDryRun = input.dryRun === true
-	const budgetMs = input.timeBudgetMs ?? softDeletePurgeRunTimeBudgetMs
-	const started = Date.now()
-	const preview = await listSoftDeletePurgeCandidates({
-		env: input.env,
-		now,
-		batchSize: input.batchSize,
-	})
-	const outcomes: Array<SoftDeletePurgeOutcome> = []
-	let purged = 0
-	let failed = 0
-	let timeBudgetExhausted = false
+const claimCandidate = (candidate: SoftDeletePurgeCandidate, claim: Claim) =>
+	(candidate.kind === 'org'
+		? claimTombstone('orgs', 'id', candidate.id, claim)
+		: candidate.legacy
+			? claimLegacyUser(candidate.id, claim)
+			: claimTombstone('users', 'stable_user_id', candidate.id, claim)
+	).pipe(
+		Effect.map((claimed) => (claimed ? Option.some(candidate) : Option.none())),
+	)
 
-	const legacyFlag = (candidate: SoftDeletePurgeCandidate) =>
-		candidate.legacy ? { legacy: true as const } : {}
-	const retryBackoffCutoff = cutoffIso(now, softDeletePurgeRetryBackoffMs)
-	const nowIso = now.toISOString()
+const requireDbUserId = (candidate: SoftDeletePurgeCandidate) =>
+	candidate.dbUserId == null
+		? Effect.fail(
+				new PurgeCandidateMissingDbIdError({
+					message: `user_purge_missing_db_id:${candidate.id}`,
+				}),
+			)
+		: Effect.succeed(candidate.dbUserId)
 
-	for (const candidate of preview.candidates) {
-		const candidateDryRun = candidate.legacy ? legacyDryRun : dryRun
-		if (candidateDryRun) {
-			outcomes.push({
-				kind: candidate.kind,
-				id: candidate.id,
-				ageDays: candidate.ageDays,
-				outcome: 'would_purge',
-				...legacyFlag(candidate),
-			})
-			continue
+const purgeCandidate = (candidate: SoftDeletePurgeCandidate) =>
+	candidate.kind === 'org'
+		? hardPurgeOrgEffect(candidate.id)
+		: Effect.flatMap(requireDbUserId(candidate), (dbUserId) =>
+				candidate.legacy
+					? Effect.asVoid(
+							finishLegacyUserDeletionEffect({
+								dbUserId,
+								stableUserId: candidate.id,
+							}),
+						)
+					: hardPurgeSoftDeletedUserEffect({
+							dbUserId,
+							stableUserId: candidate.id,
+						}),
+			)
+
+/**
+ * One candidate: claim (kept on every exit so the backoff owns retries),
+ * purge, and on any failure record a redacted `*.purge_failed` audit event.
+ */
+const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
+	function* (candidate: SoftDeletePurgeCandidate, claim: Claim) {
+		const audit = yield* AuditLog
+		yield* Effect.annotateCurrentSpan({
+			'kody.purge_kind': candidate.kind,
+			'kody.purge_legacy': candidate.legacy === true,
+		})
+		const base = {
+			kind: candidate.kind,
+			id: candidate.id,
+			ageDays: candidate.ageDays,
+			...(candidate.legacy ? { legacy: true as const } : {}),
 		}
-		if (Date.now() - started > budgetMs) {
-			timeBudgetExhausted = true
-			break
+		return yield* Effect.scoped(
+			Effect.gen(function* () {
+				const claimed = yield* scopedClaim(
+					claimCandidate(candidate, claim),
+					keepClaim('soft_delete_purge'),
+				)
+				if (Option.isNone(claimed)) {
+					return {
+						...base,
+						outcome: 'skipped_claim',
+					} satisfies SoftDeletePurgeOutcome
+				}
+				yield* purgeCandidate(candidate)
+				return { ...base, outcome: 'purged' } satisfies SoftDeletePurgeOutcome
+			}),
+		).pipe(
+			Effect.catchCause((cause) =>
+				Effect.gen(function* () {
+					const error = Cause.squash(cause)
+					const message = redactPurgeFailureDetail(
+						error instanceof Error ? error.message : String(error),
+					)
+					const cleanupErrors = purgeFailureDetails(error)
+					const lane = candidate.legacy
+						? 'legacy_deletion_finish'
+						: 'soft_delete'
+					yield* Effect.logWarning(
+						JSON.stringify({
+							message: 'soft_delete_purge_candidate_failed',
+							kind: candidate.kind,
+							lane,
+							error: message,
+							cleanupErrors,
+						}),
+					)
+					yield* audit.recordOrg({
+						orgId: candidate.id,
+						action:
+							candidate.kind === 'org'
+								? 'org.purge_failed'
+								: 'user.purge_failed',
+						result: 'failure',
+						detailsJson: JSON.stringify({
+							error: message,
+							...(candidate.legacy ? { lane } : {}),
+							...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
+						}),
+						createdAt: claim.nowIso,
+					})
+					return {
+						...base,
+						outcome: 'failed',
+						error: message,
+					} satisfies SoftDeletePurgeOutcome
+				}),
+			),
+		)
+	},
+)
+
+export const pruneSoftDeletedEffect = Effect.fn('SoftDeletePurge.prune')(
+	function* (input: {
+		readonly now?: Date
+		readonly timeBudgetMs?: number
+		readonly batchSize?: number
+		/**
+		 * When true, list only. When false, hard-delete soft-deleted rows if
+		 * writes are enabled. Legacy deletions run unless this is true.
+		 * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
+		 */
+		readonly dryRun?: boolean
+		readonly enableWrites?: boolean
+	}) {
+		const env = yield* WorkerEnv
+		const now = yield* passTime(input.now)
+		const dryRun =
+			input.dryRun === true ||
+			(input.dryRun !== false &&
+				!(input.enableWrites === true || softDeletePurgeWritesEnabled(env)))
+		const legacyDryRun = input.dryRun === true
+		const budget = yield* startPassBudget(
+			input.timeBudgetMs ?? softDeletePurgeRunTimeBudgetMs,
+		)
+		const preview = yield* listSoftDeletePurgeCandidatesEffect({
+			now,
+			batchSize: input.batchSize,
+		})
+		const claim: Claim = {
+			nowIso: now.toISOString(),
+			retryBackoffCutoff: cutoffIso(now, softDeletePurgeRetryBackoffMs),
 		}
-		try {
-			const claimed =
-				candidate.kind === 'org'
-					? await claimOrgForPurge({
-							db: input.env.APP_DB,
-							orgId: candidate.id,
-							nowIso,
-							retryBackoffCutoff,
-						})
-					: candidate.legacy
-						? await claimLegacyUserForPurge({
-								db: input.env.APP_DB,
-								userId: candidate.id,
-								nowIso,
-								retryBackoffCutoff,
-							})
-						: await claimUserForPurge({
-								db: input.env.APP_DB,
-								userId: candidate.id,
-								nowIso,
-								retryBackoffCutoff,
-							})
-			if (!claimed) {
+		const outcomes: Array<SoftDeletePurgeOutcome> = []
+		let timeBudgetExhausted = false
+		for (const candidate of preview.candidates) {
+			if (candidate.legacy ? legacyDryRun : dryRun) {
 				outcomes.push({
 					kind: candidate.kind,
 					id: candidate.id,
 					ageDays: candidate.ageDays,
-					outcome: 'skipped_claim',
-					...legacyFlag(candidate),
+					outcome: 'would_purge',
+					...(candidate.legacy ? { legacy: true as const } : {}),
 				})
 				continue
 			}
-			if (candidate.kind === 'org') {
-				await hardPurgeOrg({ env: input.env, orgId: candidate.id })
-			} else if (candidate.legacy) {
-				if (candidate.dbUserId == null) {
-					throw new Error(`user_purge_missing_db_id:${candidate.id}`)
-				}
-				await finishLegacyUserDeletion({
-					env: input.env,
-					dbUserId: candidate.dbUserId,
-					stableUserId: candidate.id,
-				})
-			} else {
-				if (candidate.dbUserId == null) {
-					throw new Error(`user_purge_missing_db_id:${candidate.id}`)
-				}
-				await hardPurgeSoftDeletedUser({
-					env: input.env,
-					dbUserId: candidate.dbUserId,
-					stableUserId: candidate.id,
-				})
+			if (yield* budget.exceeded) {
+				timeBudgetExhausted = true
+				break
 			}
-			purged += 1
-			outcomes.push({
-				kind: candidate.kind,
-				id: candidate.id,
-				ageDays: candidate.ageDays,
-				outcome: 'purged',
-				...legacyFlag(candidate),
-			})
-		} catch (error) {
-			failed += 1
-			const message = redactPurgeFailureDetail(
-				error instanceof Error ? error.message : String(error),
-			)
-			const cleanupErrors = purgeFailureDetails(error)
-			const lane = candidate.legacy ? 'legacy_deletion_finish' : 'soft_delete'
-			console.warn(
-				JSON.stringify({
-					message: 'soft_delete_purge_candidate_failed',
-					kind: candidate.kind,
-					lane,
-					error: message,
-					cleanupErrors,
-				}),
-			)
-			outcomes.push({
-				kind: candidate.kind,
-				id: candidate.id,
-				ageDays: candidate.ageDays,
-				outcome: 'failed',
-				...legacyFlag(candidate),
-				error: message,
-			})
-			await logOrgAuditEvent({
-				env: input.env,
-				orgId: candidate.id,
-				action:
-					candidate.kind === 'org' ? 'org.purge_failed' : 'user.purge_failed',
-				result: 'failure',
-				detailsJson: JSON.stringify({
-					error: message,
-					...(candidate.legacy ? { lane } : {}),
-					...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
-				}),
-				createdAt: nowIso,
-			})
+			outcomes.push(yield* processCandidate(candidate, claim))
 		}
-	}
+		const result: SoftDeletePurgeResult = {
+			dryRun,
+			legacyDryRun,
+			scanned: preview.scanned,
+			purged: outcomes.filter((outcome) => outcome.outcome === 'purged').length,
+			failed: outcomes.filter((outcome) => outcome.outcome === 'failed').length,
+			timeBudgetExhausted,
+			outcomes,
+		}
+		yield* Effect.logDebug('soft delete purge pass finished', {
+			scanned: result.scanned,
+			purged: result.purged,
+			failed: result.failed,
+			timeBudgetExhausted,
+		})
+		return result
+	},
+)
 
-	return {
-		dryRun,
-		legacyDryRun,
-		scanned: preview.scanned,
-		purged,
-		failed,
-		timeBudgetExhausted,
-		outcomes,
-	}
+export function listSoftDeletePurgeCandidates(input: {
+	env: Env
+	now?: Date
+	batchSize?: number
+}): Promise<{ scanned: number; candidates: Array<SoftDeletePurgeCandidate> }> {
+	const { env, ...rest } = input
+	return runSlicePromise(env, listSoftDeletePurgeCandidatesEffect(rest))
+}
+
+export function pruneSoftDeleted(input: {
+	env: Env
+	now?: Date
+	timeBudgetMs?: number
+	batchSize?: number
+	dryRun?: boolean
+	enableWrites?: boolean
+}): Promise<SoftDeletePurgeResult> {
+	const { env, ...rest } = input
+	return runSlicePromise(env, pruneSoftDeletedEffect(rest))
 }

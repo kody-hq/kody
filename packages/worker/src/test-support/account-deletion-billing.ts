@@ -1,6 +1,9 @@
 import { vi } from 'vitest'
 import * as stripeClient from '#worker/billing/stripe-client.ts'
 import { createTestDb } from '#worker/test-support/account-deletion.ts'
+import { bridgeStripeClientSpies } from '#worker/test-support/stripe-effect.ts'
+
+bridgeStripeClientSpies()
 
 export function stripeSubscription(
 	id: string,

@@ -23,15 +23,24 @@ const finishLegacyUserDeletion = vi.fn(
 
 const hardPurgeSoftDeletedUser = vi.fn()
 
-vi.mock('./hard-purge.ts', () => ({
-	hardPurgeOrg: (input: { env: Env; orgId: string }) => hardPurgeOrg(input),
-	hardPurgeSoftDeletedUser: (input: unknown) => hardPurgeSoftDeletedUser(input),
-	finishLegacyUserDeletion: (input: {
-		env: Env
-		dbUserId: number
-		stableUserId: string
-	}) => finishLegacyUserDeletion(input),
-}))
+vi.mock('./hard-purge.ts', async (importOriginal) => {
+	const { promiseDouble } =
+		await import('#worker/test-support/effect-bridge.ts')
+	const purgeOrg = promiseDouble((input: { env: Env; orgId: string }) =>
+		hardPurgeOrg(input),
+	)
+	return {
+		...(await importOriginal<object>()),
+		hardPurgeOrgEffect: (orgId: string) => purgeOrg({ orgId }),
+		hardPurgeSoftDeletedUserEffect: promiseDouble((input: unknown) =>
+			hardPurgeSoftDeletedUser(input),
+		),
+		finishLegacyUserDeletionEffect: promiseDouble(
+			(input: { env: Env; dbUserId: number; stableUserId: string }) =>
+				finishLegacyUserDeletion(input),
+		),
+	}
+})
 
 const {
 	listSoftDeletePurgeCandidates,
@@ -367,7 +376,7 @@ test('failed legacy deletion records the specific cleanup errors without ids', a
 	const { AccountDeletionCleanupError } =
 		await import('#app/account-deletion.ts')
 	finishLegacyUserDeletion.mockImplementationOnce(async () => {
-		throw new AccountDeletionCleanupError(
+		throw AccountDeletionCleanupError.fromWarnings(
 			[
 				'Artifact repo delete failed for u-7f3a9c21e5-pkg-src: Repository not found',
 				'KV delete failed for bundle-artifact:v1:src-8812abc: timeout',
