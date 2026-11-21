@@ -470,6 +470,7 @@ export async function pruneSoftDeleted(input: {
 				...legacyFlag(candidate),
 				error: message,
 			})
+			// A failed audit write must not abort the rest of the batch.
 			await logOrgAuditEvent({
 				env: input.env,
 				orgId: candidate.id,
@@ -482,6 +483,19 @@ export async function pruneSoftDeleted(input: {
 					...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
 				}),
 				createdAt: nowIso,
+			}).catch((auditError: unknown) => {
+				console.warn(
+					JSON.stringify({
+						message: 'soft_delete_purge_failure_audit_failed',
+						kind: candidate.kind,
+						lane,
+						error: redactPurgeFailureDetail(
+							auditError instanceof Error
+								? auditError.message
+								: String(auditError),
+						),
+					}),
+				)
 			})
 		}
 	}

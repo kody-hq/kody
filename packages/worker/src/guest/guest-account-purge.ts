@@ -1,7 +1,11 @@
+// soft-delete-read-filter: opt-out (purge lane: the orphan sweep must see
+// soft-deleted users rows, so it only removes rows whose account is gone)
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import { deleteUserAccount } from '#app/account-deletion.ts'
 import { scheduleUserDeletedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
+import { runD1WithRetry } from '#worker/d1-retry.ts'
+import { softDeletePurgeRetryBackoffMs } from '#worker/orgs/purge.ts'
 
 export const guestPurgeBatchSize = 10
 
@@ -14,35 +18,43 @@ export type GuestPurgeResult = {
 /**
  * Delete guests whose seven-day read-only hold is over, through the normal
  * account-deletion path. Runs on the hourly unverified-account purge lane.
+ * A guest whose deletion failed after it set the `deleting_at` fence is
+ * retried once the fence is older than the purge retry backoff; the retry
+ * restamps the fence first so concurrent passes leave it alone.
  */
 export async function pruneExpiredGuestAccounts(input: {
 	env: Env
 	now?: Date
 	batchSize?: number
 }): Promise<GuestPurgeResult> {
-	const now = (input.now ?? new Date()).toISOString()
+	const nowDate = input.now ?? new Date()
+	const now = nowDate.toISOString()
+	const retryBackoffCutoff = new Date(
+		nowDate.getTime() - softDeletePurgeRetryBackoffMs,
+	).toISOString()
 	const db = input.env.APP_DB
 	const rows = await db
 		.prepare(
 			`SELECT u.id, u.stable_user_id, u.personal_org_id, u.username, u.email,
-			        g.created_at AS guest_created_at
+			        u.deleting_at, g.created_at AS guest_created_at
 			 FROM guest_accounts g
 			 INNER JOIN users u ON u.stable_user_id = g.person_id
 			 WHERE g.claimed_at IS NULL
 			   AND g.delete_at <= ?
 			   AND u.guest_expires_at IS NOT NULL
-			   AND u.deleting_at IS NULL
+			   AND (u.deleting_at IS NULL OR datetime(u.deleting_at) < datetime(?))
 			   AND u.deleted_at IS NULL
 			 ORDER BY g.delete_at
 			 LIMIT ?`,
 		)
-		.bind(now, input.batchSize ?? guestPurgeBatchSize)
+		.bind(now, retryBackoffCutoff, input.batchSize ?? guestPurgeBatchSize)
 		.all<{
 			id: number
 			stable_user_id: string
 			personal_org_id: string | null
 			username: string
 			email: string
+			deleting_at: string | null
 			guest_created_at: string
 		}>()
 	const result: GuestPurgeResult = {
@@ -52,17 +64,24 @@ export async function pruneExpiredGuestAccounts(input: {
 	}
 	for (const row of rows.results ?? []) {
 		try {
+			if (row.deleting_at) {
+				const claimed = await db
+					.prepare(
+						`UPDATE users SET deleting_at = ?, updated_at = ?
+						 WHERE id = ? AND deleted_at IS NULL AND deleting_at = ?`,
+					)
+					.bind(now, now, row.id, row.deleting_at)
+					.run()
+				if ((claimed.meta.changes ?? 0) !== 1) continue
+			}
 			await deleteUserAccount({
 				env: input.env,
 				dbUserId: row.id,
 				mcpUserId: personalOrgIdFromUserRow(row),
 				personUserId: row.stable_user_id,
 			})
-			await db
-				.prepare(`DELETE FROM guest_accounts WHERE person_id = ?`)
-				.bind(row.stable_user_id)
-				.run()
-			result.purged += 1
+			// The account is gone, so the deletion event and audit go out even
+			// if the guest_accounts delete fails; the sweep below removes it.
 			scheduleUserDeletedEvent({
 				env: input.env,
 				user: {
@@ -72,17 +91,41 @@ export async function pruneExpiredGuestAccounts(input: {
 				},
 				createdAt: row.guest_created_at,
 			})
-			void logAuditEvent({
+			await logAuditEvent({
 				db: auditDatabaseFromEnv(input.env),
 				category: 'account',
 				action: 'guest_account_purged',
 				result: 'success',
 				reason: 'guest_hold_ended',
 			})
+			await runD1WithRetry(() =>
+				db
+					.prepare(`DELETE FROM guest_accounts WHERE person_id = ?`)
+					.bind(row.stable_user_id)
+					.run(),
+			)
+			result.purged += 1
 		} catch (error) {
 			result.failed += 1
 			console.error('guest_account_purge_failed', { error })
 		}
 	}
+	// Expired guest rows whose account is already gone (a delete above failed
+	// after its account deletion) cannot be selected again, so remove them.
+	await runD1WithRetry(() =>
+		db
+			.prepare(
+				`DELETE FROM guest_accounts
+				 WHERE claimed_at IS NULL
+				   AND delete_at <= ?
+				   AND NOT EXISTS (
+				     SELECT 1 FROM users u WHERE u.stable_user_id = guest_accounts.person_id
+				   )`,
+			)
+			.bind(now)
+			.run(),
+	).catch((error: unknown) => {
+		console.warn('guest_account_orphan_sweep_failed', { error })
+	})
 	return result
 }
