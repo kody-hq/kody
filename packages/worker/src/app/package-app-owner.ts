@@ -15,6 +15,7 @@ import {
 	invokeContractFreshnessTtlMs,
 } from '#worker/package-invocations/invoke-contract-cache.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
+import { memoizePerRequest } from '#worker/request-context.ts'
 import {
 	parsePersonId,
 	personalOrgId,
@@ -83,7 +84,8 @@ export type PackageAppOrgOwner = {
  * Per-isolate cache for handle → org resolution on the package-app serving
  * path, same 15 s freshness tier as the owner row cache. Every package-app
  * request (HTML and `/_assets`) names its org by handle, so without this each
- * one pays the handle and org reads. Misses are not retained.
+ * one pays the handle and org reads. Misses are not retained across requests,
+ * so a just-created handle serves on its next request.
  */
 const packageAppOrgOwnerCache = new PromiseLruCache<PackageAppOrgOwner | null>({
 	ttlMs: invokeContractFreshnessTtlMs,
@@ -95,26 +97,33 @@ export async function resolvePackageAppOrgOwnerByHandle(input: {
 	handle: string
 }): Promise<PackageAppOrgOwner | null> {
 	const cacheKey = input.handle.trim().toLowerCase()
-	return await packageAppOrgOwnerCache.getOrCreate({
-		cacheKey,
-		create: async () => {
-			const identity = await findPublicOwnerIdentityByHandle({
-				db: input.env.APP_DB,
-				handle: input.handle,
-			})
-			const org = identity
-				? await getOrgById(input.env.APP_DB, identity.ownerId)
-				: null
-			if (!identity || !org) {
-				packageAppOrgOwnerCache.delete(cacheKey)
-				return null
-			}
-			return {
-				userId: identity.ownerId,
-				username: identity.handle,
-				displayName: org.display_name?.trim() || org.slug,
-			}
-		},
+	// One package-app request resolves its handle from several steps (profile
+	// app check, retired slug redirect, serve). The request memo keeps a miss
+	// to one handle and org read per request.
+	return await memoizePerRequest({
+		key: `package-app-org-owner:${cacheKey}`,
+		load: () =>
+			packageAppOrgOwnerCache.getOrCreate({
+				cacheKey,
+				create: async () => {
+					const identity = await findPublicOwnerIdentityByHandle({
+						db: input.env.APP_DB,
+						handle: input.handle,
+					})
+					const org = identity
+						? await getOrgById(input.env.APP_DB, identity.ownerId)
+						: null
+					if (!identity || !org) {
+						packageAppOrgOwnerCache.delete(cacheKey)
+						return null
+					}
+					return {
+						userId: identity.ownerId,
+						username: identity.handle,
+						displayName: org.display_name?.trim() || org.slug,
+					}
+				},
+			}),
 	})
 }
 

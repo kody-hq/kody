@@ -1205,3 +1205,48 @@ test('from the cutover the path address answers every method with a 308 to the a
 		delete mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT
 	}
 })
+
+test('a package-app request reads its handle once, whether or not the handle exists', async () => {
+	configureOrigins({
+		packageAppBaseUrl: packageAppOrigin,
+		runtime: 'production',
+	})
+	await seedOwnerSessionCookie()
+	const mutableEnv = env as unknown as Record<string, unknown>
+	const realDb = env.APP_DB
+	const handleReads: Array<string> = []
+	// Capture prepare once: request instrumentation rewraps the binding's
+	// methods, and calling back through it would recurse.
+	const realPrepare = realDb.prepare.bind(realDb)
+	mutableEnv.APP_DB = {
+		prepare(query: string) {
+			if (/FROM handles h/.test(query)) handleReads.push(query)
+			return realPrepare(query)
+		},
+		batch: realDb.batch.bind(realDb),
+		exec: realDb.exec.bind(realDb),
+		withSession: realDb.withSession.bind(realDb),
+		dump: realDb.dump.bind(realDb),
+	}
+	try {
+		const unknown = await workerFetch(
+			'https://nobody-here.packages.isolated.test/my-app/n',
+		)
+		expect(unknown.status).toBe(403)
+		expect(unknown.headers.get('X-Kody-Handoff')).toBe('required')
+		expect(handleReads).toHaveLength(1)
+
+		// Misses are not kept across requests.
+		await workerFetch('https://nobody-here.packages.isolated.test/my-app/n')
+		expect(handleReads).toHaveLength(2)
+
+		handleReads.length = 0
+		const known = await workerFetch(`${ownerPackageAppOrigin}/demo/report`, {
+			headers: { Accept: 'application/json' },
+		})
+		expect(known.status).toBe(403)
+		expect(handleReads.length).toBeLessThanOrEqual(1)
+	} finally {
+		mutableEnv.APP_DB = realDb
+	}
+})
