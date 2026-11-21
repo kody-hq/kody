@@ -14,7 +14,6 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
 import {
 	accessFixture,
-	accessFixtureOrigin,
 	seedPackageAppAccessFixture,
 } from '#worker/test-support/package-app-access-fixture.ts'
 
