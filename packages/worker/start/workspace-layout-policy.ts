@@ -17,6 +17,26 @@ type LayoutMatch = Parameters<typeof pageNavigationForMatches>[0][number] & {
 	}
 }
 
+function workspaceLayoutPolicy(matches: readonly LayoutMatch[]) {
+	return matches.findLast((match) => match.staticData.workspaceLayout)
+		?.staticData.workspaceLayout
+}
+
+function workspaceHandle(matches: readonly LayoutMatch[]) {
+	const params = matches.at(-1)?.params
+	if (!params || typeof params !== 'object' || !('username' in params))
+		return null
+	return typeof params.username === 'string' ? params.username : null
+}
+
+/** Profile and repository pages evaluate shell flags in their workspace. */
+export function workspaceShellOrgSlug(matches: readonly LayoutMatch[]) {
+	const policy = workspaceLayoutPolicy(matches)
+	return policy === 'profile' || policy === 'resource'
+		? workspaceHandle(matches)
+		: null
+}
+
 /** Presentation only. Each existing loader still authorizes its own resource. */
 export function workspaceLayoutNavigation(
 	matches: readonly LayoutMatch[],
@@ -30,18 +50,12 @@ export function workspaceLayoutNavigation(
 		)
 	)
 		return null
-	const policy = [...matches]
-		.reverse()
-		.find((match) => match.staticData.workspaceLayout)
-		?.staticData.workspaceLayout
+	const policy = workspaceLayoutPolicy(matches)
 	if (!policy) return null
 	const navigation = pageNavigationForMatches(matches)
 	if (policy === 'private') return navigation ?? null
-	const params = matches.at(-1)?.params
-	if (!params || typeof params !== 'object' || !('username' in params))
-		return null
-	const username = params.username
-	if (typeof username !== 'string') return null
+	const username = workspaceHandle(matches)
+	if (!username) return null
 	const org = session.organizations?.find((entry) => entry.slug === username)
 	if (policy === 'profile') {
 		// Workspaces the viewer belongs to (their own profile included) keep
@@ -60,7 +74,7 @@ export function workspaceLayoutNavigation(
 	return {
 		rail: 'workspace' as const,
 		item: 'repositories' as const,
-		orgSlug: username,
+		orgSlug: org?.slug ?? null,
 		workspaceSwitch: { section: 'repositories' as const },
 	}
 }
