@@ -149,6 +149,33 @@ test('collaborators jump to a live caret and merge edits after a disconnect', as
 			.toBe(merged)
 		await collaborator.reload()
 		await expect.poll(() => paragraphText(guestEditor)).toBe(merged)
+
+		await page.getByRole('button', { name: 'Comments', exact: true }).click()
+		await collaborator
+			.getByRole('button', { name: 'Comments', exact: true })
+			.click()
+		await page
+			.getByRole('button', { name: 'Add a comment', exact: true })
+			.click()
+		await page
+			.getByRole('combobox', { name: 'New comment' })
+			.fill('Live discussion')
+		await page
+			.getByRole('button', { name: 'Post comment', exact: true })
+			.click()
+		await collaborator
+			.getByRole('button', { name: /Open discussion by/ })
+			.click()
+		await expect(
+			collaborator.getByText('Live discussion', { exact: true }),
+		).toBeVisible()
+		await collaborator
+			.getByRole('combobox', { name: 'Reply to discussion' })
+			.fill('Live reply')
+		await collaborator
+			.getByRole('button', { name: 'Send reply', exact: true })
+			.click()
+		await expect(page.getByText('Live reply', { exact: true })).toBeVisible()
 	} finally {
 		await context.close()
 	}

@@ -5,6 +5,7 @@ import * as encoding from 'lib0/encoding'
 import {
 	DbClient,
 	collectionOptions,
+	deepEquals,
 	type SyncConfig,
 } from '@tanstack/react-db'
 import {
@@ -38,35 +39,58 @@ export type RoomConnection = {
 	snapshot: RoomSnapshot | null
 }
 function remoteCollection<T extends { id: string }>(db: DbClient, id: string) {
-	let publish: (rows: T[]) => void = () => {},
-		queued: T[] = []
-	const options = collectionOptions<T>({
+	let sync: Parameters<SyncConfig<T, string>['sync']>[0] | undefined
+	const options = collectionOptions<T, string>({
 		id,
 		getKey: (row) => row.id,
 		sync: {
-			sync: ({ begin, write, commit, markReady }) => {
-				publish = (rows) => {
-					begin({ snapshot: true })
-					for (const value of rows) write({ type: 'insert', value })
-					commit()
-					markReady()
-				}
-				publish(queued)
+			rowUpdateMode: 'full',
+			sync: (context) => {
+				sync = context
+				context.markReady()
 				return () => {
-					publish = () => {}
+					sync = undefined
 				}
 			},
-		} satisfies SyncConfig<T>,
+		},
 	})
 	const collection = db.collection(options)
 	collection.startSyncImmediate()
+
+	function apply(
+		rows: T[],
+		removeMissing: boolean,
+		accepts?: (row: T, previous: T) => boolean,
+	) {
+		if (!sync) return
+		const changes: Array<
+			{ type: 'insert' | 'update'; value: T } | { type: 'delete'; key: string }
+		> = []
+		for (const row of rows) {
+			const previous = collection.base.get(row.id)
+			if (!previous) changes.push({ type: 'insert', value: row })
+			else if (
+				(!accepts || accepts(row, previous)) &&
+				!deepEquals(previous, row)
+			)
+				changes.push({ type: 'update', value: row })
+		}
+		if (removeMissing) {
+			const ids = new Set(rows.map((row) => row.id))
+			for (const id of collection.base.keys())
+				if (!ids.has(id)) changes.push({ type: 'delete', key: id })
+		}
+		if (!changes.length) return
+		sync.begin()
+		for (const change of changes) sync.write(change)
+		sync.commit()
+	}
+
 	return {
 		options,
-		collection,
-		replace(rows: T[]) {
-			queued = rows
-			publish(rows)
-		},
+		replace: (rows: T[]) => apply(rows, true),
+		merge: (rows: T[], accepts: (row: T, previous: T) => boolean) =>
+			apply(rows, false, accepts),
 	}
 }
 async function openCache() {
@@ -493,22 +517,15 @@ export class FileRoomClient {
 	}
 
 	private mergeComments(threads: FileThread[], comments: FileComment[]) {
-		this.threads.replace([
-			...new Map(
-				[...this.threads.collection.toArray, ...threads].map((thread) => [
-					thread.id,
-					thread,
-				]),
-			).values(),
-		])
-		this.comments.replace([
-			...new Map(
-				[...this.comments.collection.toArray, ...comments].map((comment) => [
-					comment.id,
-					comment,
-				]),
-			).values(),
-		])
+		// A paginated read can arrive after a newer WebSocket update.
+		this.threads.merge(
+			threads,
+			(row, previous) => row.version >= previous.version,
+		)
+		this.comments.merge(
+			comments,
+			(row, previous) => row.version >= previous.version,
+		)
 	}
 
 	async comment(command: CommentCommand) {
