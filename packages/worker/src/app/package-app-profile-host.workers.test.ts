@@ -243,7 +243,7 @@ test('a profile package owns every path on the owner host except /-/', async () 
 				kodyId: 'demo',
 			})
 		)?.hostedUrl,
-	).toBe(`${profileOrigin}/demo`)
+	).toBe(`https://demo--${ownerUsername}.packages.isolated.test/`)
 	const bareAfter = await workerFetch(`${profileOrigin}/`)
 	expect(bareAfter.status).toBe(302)
 	expect(bareAfter.headers.get('Location')).toBe(`${appOrigin}/`)

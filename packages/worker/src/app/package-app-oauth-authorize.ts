@@ -185,16 +185,12 @@ async function shouldSkipConsent(input: {
 async function renderPackageAppSignInError(input: {
 	env: Env
 	request: Request
-	redirectUri: string
 	orgUsername: string
 	kodyId: string
 	destroySession: boolean
 	setCookie?: string
 }) {
-	const retry = new URL(packageAppOauthPaths.login, input.redirectUri)
-	retry.searchParams.set('org', input.orgUsername)
-	retry.searchParams.set('app', input.kodyId)
-	// Custom hostnames serve the app at `/`, the login default.
+	// Retry where the app is served now, which may not be the redirect host.
 	const app = new URL(
 		resolveHostedPackageAppUrl({
 			packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
@@ -206,9 +202,10 @@ async function renderPackageAppSignInError(input: {
 			kodyId: input.kodyId,
 		}),
 	)
-	if (app.origin === retry.origin) {
-		retry.searchParams.set('return_to', app.pathname)
-	}
+	const retry = new URL(packageAppOauthPaths.login, app)
+	retry.searchParams.set('org', input.orgUsername)
+	retry.searchParams.set('app', input.kodyId)
+	retry.searchParams.set('return_to', app.pathname)
 	const href = escapeHtml(retry.toString())
 	const headers = new Headers({
 		'Cache-Control': 'no-store',
@@ -249,7 +246,6 @@ async function issueCodeAndRedirect(input: {
 		return await renderPackageAppSignInError({
 			env: input.env,
 			request: input.request,
-			redirectUri: input.redirectUri,
 			orgUsername: input.orgUsername,
 			kodyId: input.kodyId,
 			destroySession: true,
@@ -864,7 +860,6 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			return await renderPackageAppSignInError({
 				env,
 				request,
-				redirectUri: validated.redirectUri,
 				orgUsername: validated.client.username,
 				kodyId: validated.client.kodyId,
 				destroySession: true,
@@ -874,7 +869,6 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			return await renderPackageAppSignInError({
 				env,
 				request,
-				redirectUri: validated.redirectUri,
 				orgUsername: validated.client.username,
 				kodyId: validated.client.kodyId,
 				destroySession: false,

@@ -8,6 +8,7 @@ import {
 	handlePackageAppRequest,
 } from '#app/handlers/package-app.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
+import { packageAppHostEntryQueryParam } from '@kody-internal/shared/public-urls.ts'
 import {
 	approvePackageAppRun,
 	listPackageAppRunApprovals,
@@ -50,6 +51,7 @@ const ownerUsername = 'pkg-owner'
 // Hosted package apps are served from the owner's own subdomain of the
 // package-app origin; the bare origin only redirects.
 const ownerPackageAppOrigin = `https://${ownerUsername}.packages.isolated.test`
+const ownerDemoAppOrigin = `https://demo--${ownerUsername}.packages.isolated.test`
 
 /**
  * The generated `Env` types pin production var literals, so origin overrides go
@@ -128,7 +130,7 @@ const teamRunnerEmail = 'acme-runner@example.com'
 const teamReaderEmail = 'acme-reader@example.com'
 const teamGuestEmail = 'acme-guest@example.com'
 const teamOrgId = testStableUserIdFromEmail('acme-apps-org@example.com')
-const teamPackageAppOrigin = `https://${teamOrgSlug}.packages.isolated.test`
+const teamDemoAppOrigin = `https://demo--${teamOrgSlug}.packages.isolated.test`
 
 async function sessionCookieFor(email: string) {
 	setAuthSessionSecret(env.COOKIE_SECRET)
@@ -218,7 +220,7 @@ async function outcome(response: Response) {
 	return { status: response.status, body: await response.text() }
 }
 
-test('hosted package apps move to the owner subdomain behind a single-use handoff', async () => {
+test('hosted package apps move to their own host behind a single-use handoff', async () => {
 	silenceExpectedConsoleWarns(['Package app handoff rejected.'])
 	configureOrigins({
 		packageAppBaseUrl: packageAppOrigin,
@@ -229,9 +231,9 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	const legacyEntryUrl = `${appOrigin}/@${ownerUsername}/packages/demo/report`
 
 	// 1. The app origin never executes package code: /open mints a handoff token
-	// and redirects to the owner's package-app subdomain, where the username
-	// lives in the hostname and the path carries only the package mount. Query
-	// preserved. Bare /packages/{name}/… still hands off for old links.
+	// and redirects to the app's own {leaf}--{handle} host, which serves the app
+	// at its root. Query preserved. Bare /packages/{name}/… still hands off for
+	// old links.
 	const appOriginResponse = await workerFetch(`${entryUrl}?tab=1`, {
 		headers: { Cookie: sessionCookie },
 	})
@@ -239,8 +241,8 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	const handoffLocation = new URL(
 		appOriginResponse.headers.get('Location') ?? '',
 	)
-	expect(handoffLocation.origin).toBe(ownerPackageAppOrigin)
-	expect(handoffLocation.pathname).toBe('/demo/report')
+	expect(handoffLocation.origin).toBe(ownerDemoAppOrigin)
+	expect(handoffLocation.pathname).toBe('/report')
 	expect(handoffLocation.searchParams.get('tab')).toBe('1')
 	const handoffToken = handoffLocation.searchParams.get(
 		packageAppHandoffQueryParam,
@@ -251,7 +253,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	})
 	expect(bareMountHandoff.status).toBe(302)
 	expect(new URL(bareMountHandoff.headers.get('Location') ?? '').pathname).toBe(
-		'/demo/report',
+		'/report',
 	)
 
 	// 2. The owner subdomain exchanges the token for its own host-scoped cookie,
@@ -283,7 +285,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	expect(packageSessionMaxAge).toBeGreaterThan(7 * 24 * 60 * 60 - 30)
 	expect(packageSessionMaxAge).toBeLessThanOrEqual(7 * 24 * 60 * 60)
 	const cleanLocation = new URL(handoffResponse.headers.get('Location') ?? '')
-	expect(cleanLocation.origin).toBe(ownerPackageAppOrigin)
+	expect(cleanLocation.origin).toBe(ownerDemoAppOrigin)
 	expect(cleanLocation.searchParams.has(packageAppHandoffQueryParam)).toBe(
 		false,
 	)
@@ -314,7 +316,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 			name: 'same-origin POST',
 			url: cleanLocation,
 			method: 'POST',
-			origin: ownerPackageAppOrigin,
+			origin: ownerDemoAppOrigin,
 		},
 		{
 			name: 'cross-origin OPTIONS',
@@ -367,7 +369,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	)
 	const sameOriginUpgrade = await workerFetch(
 		new URL('/demo/ws', cleanLocation),
-		withPackageSession({ Upgrade: 'websocket', Origin: ownerPackageAppOrigin }),
+		withPackageSession({ Upgrade: 'websocket', Origin: ownerDemoAppOrigin }),
 	)
 	expect(sameOriginUpgrade.status).toBe(404)
 
@@ -452,7 +454,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	}
 
 	// 7. Legacy path-based URLs on the bare package-app origin redirect to the
-	// owning user's subdomain (dropping any handoff token, keeping the query).
+	// app's own host (dropping any handoff token, keeping the query).
 	const legacyUrl = new URL(
 		`${packageAppOrigin}/@${ownerUsername}/packages/demo/report?tab=1`,
 	)
@@ -460,7 +462,7 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	const legacyResponse = await workerFetch(legacyUrl)
 	expect(legacyResponse.status).toBe(302)
 	expect(legacyResponse.headers.get('Location')).toBe(
-		`${ownerPackageAppOrigin}/demo/report?tab=1`,
+		`${ownerDemoAppOrigin}/report?tab=1`,
 	)
 
 	// 8. The bare package-app origin and a bare user subdomain are plausible
@@ -535,14 +537,15 @@ test('a package app serves at the root of its own {leaf}--{handle} host and sign
 		[packageAppHandoffQueryParam, 'tab'].sort(),
 	)
 
-	// An unmarked entry URL still hands off to the owner's shared subdomain.
+	// An unmarked entry URL hands off to the same app host, never the owner's
+	// shared subdomain.
 	const unmarked = new URL(entryUrl)
 	unmarked.search = ''
 	const unmarkedResponse = await workerFetch(unmarked, {
 		headers: { Cookie: sessionCookie },
 	})
 	expect(new URL(unmarkedResponse.headers.get('Location') ?? '').origin).toBe(
-		ownerPackageAppOrigin,
+		appHostOrigin,
 	)
 
 	// 3. The app host exchanges the token for its own host-only cookie.
@@ -675,8 +678,8 @@ test('team org private apps hand off and open for owners and execute-granted mem
 		const handoffLocation = new URL(
 			appOriginResponse.headers.get('Location') ?? '',
 		)
-		expect(handoffLocation.origin).toBe(teamPackageAppOrigin)
-		expect(handoffLocation.pathname).toBe('/demo')
+		expect(handoffLocation.origin).toBe(teamDemoAppOrigin)
+		expect(handoffLocation.pathname).toBe('/')
 		expect(
 			handoffLocation.searchParams.get(packageAppHandoffQueryParam),
 		).toBeTruthy()
@@ -713,7 +716,7 @@ test('team org private apps hand off and open for owners and execute-granted mem
 	})
 	expect(personalHandoff.status).toBe(302)
 	expect(new URL(personalHandoff.headers.get('Location') ?? '').origin).toBe(
-		`https://${teamOwnerUsername}.packages.isolated.test`,
+		`https://demo--${teamOwnerUsername}.packages.isolated.test`,
 	)
 
 	for (const email of [teamReaderEmail, teamGuestEmail]) {
@@ -765,8 +768,10 @@ test('shared app confirmation gates handoff and blocks a previously established 
 		expect.objectContaining({ packageId: privateApp.id, publisher: orgSlug }),
 	])
 	const handoff = new URL((await navigate()).headers.get('Location') ?? '')
-	expect(handoff.origin).toBe(accessFixtureOrigin)
-	expect(handoff.pathname).toBe(`/${privateApp.slug}/report`)
+	expect(handoff.origin).toBe(
+		`https://${privateApp.slug}--${orgSlug}.packages.isolated.test`,
+	)
+	expect(handoff.pathname).toBe('/report')
 	expect(handoff.searchParams.get(packageAppHandoffQueryParam)).toBeTruthy()
 	const exchange = await workerFetch(handoff)
 	expect(exchange.status).toBe(302)
@@ -784,7 +789,14 @@ test('shared app confirmation gates handoff and blocks a previously established 
 	const blockedExchange = await workerFetch(pendingHandoff, {
 		headers: { Accept: 'text/html' },
 	})
-	expect(blockedExchange.headers.get('Location')).toBe(consent.toString())
+	// The app host asks for consent marked so the retry comes back to it.
+	const blockedConsent = new URL(blockedExchange.headers.get('Location') ?? '')
+	expect(`${blockedConsent.origin}${blockedConsent.pathname}`).toBe(
+		`${consent.origin}${consent.pathname}`,
+	)
+	expect(blockedConsent.searchParams.get('returnTo')).toBe(
+		`${consent.searchParams.get('returnTo')}&${packageAppHostEntryQueryParam}=1`,
+	)
 	expect(blockedExchange.headers.getSetCookie()).toEqual([])
 	expect((await navigate()).headers.get('Location')).toBe(consent.toString())
 	const blockedRequest = await workerFetch(hostedUrl, {
@@ -862,7 +874,7 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	expect(publicEntry.status).toBe(200)
 	expect(publicEntry.headers.get('Location')).toBeNull()
 	const publicBody = await publicEntry.text()
-	const publicAppUrl = `${accessFixtureOrigin}/${publicApp.slug}?tab=1`
+	const publicAppUrl = `https://${publicApp.slug}--${orgSlug}.packages.isolated.test/?tab=1`
 	expect(publicBody).toContain(publicAppUrl)
 	expect(publicBody).toContain('data-testid="package-app-origin-link"')
 	expect(publicBody).not.toContain(packageAppHandoffQueryParam)
@@ -1024,8 +1036,10 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 	)
 	expect(ownerPost.status).toBe(307)
 	const ownerPostLocation = new URL(ownerPost.headers.get('Location') ?? '')
-	expect(ownerPostLocation.origin).toBe(accessFixtureOrigin)
-	expect(ownerPostLocation.pathname).toBe(`/${privateApp.slug}`)
+	expect(ownerPostLocation.origin).toBe(
+		`https://${privateApp.slug}--${orgSlug}.packages.isolated.test`,
+	)
+	expect(ownerPostLocation.pathname).toBe('/')
 	expect(ownerPostLocation.searchParams.get('tab')).toBe('1')
 	expect(ownerPostLocation.searchParams.has(packageAppHandoffQueryParam)).toBe(
 		false,
@@ -1089,7 +1103,7 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 		expect(openSite.status).toBe(200)
 		expect(openSite.headers.get('Location')).toBeNull()
 		await expect(openSite.text()).resolves.toContain(
-			`${accessFixtureOrigin}/open-site`,
+			`https://open-site--${orgSlug}.packages.isolated.test/`,
 		)
 	}
 })

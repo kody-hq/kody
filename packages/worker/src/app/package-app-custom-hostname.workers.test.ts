@@ -421,7 +421,9 @@ test('internet-visible apps skip an org-level custom hostname and go to the subd
 	expect(publicEntry.status).toBe(200)
 	expect(publicEntry.headers.get('Location')).toBeNull()
 	const publicBody = await publicEntry.text()
-	expect(publicBody).toContain(`${accessFixtureOrigin}/${publicApp.slug}`)
+	expect(publicBody).toContain(
+		`https://${publicApp.slug}--${orgSlug}.packages.isolated.test/`,
+	)
 	expect(publicBody).not.toContain(orgHostname)
 	const publicPost = await workerFetch(
 		`${appOrigin}/@${orgSlug}/packages/${publicApp.slug}`,
