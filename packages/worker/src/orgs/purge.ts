@@ -27,10 +27,12 @@ import {
 	purgeFailureDetails,
 	redactPurgeFailureDetail,
 } from '#worker/orgs/purge-failure-details.ts'
+import type { PurgeWebhookFailed } from '#worker/orgs/purge-webhook.ts'
 import { AuditLog } from '#worker/effect/audit.ts'
 import { startPassBudget } from '#worker/effect/budget.ts'
 import { keepClaim, scopedClaim } from '#worker/effect/claim.ts'
 import { D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
+import { ErrorReporter } from '#worker/effect/error-reporter.ts'
 import { runSlicePromise } from '#worker/effect/slice.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 
@@ -373,24 +375,63 @@ const requireDbUserId = (candidate: SoftDeletePurgeCandidate) =>
 
 const purgeCandidate = (candidate: SoftDeletePurgeCandidate) =>
 	candidate.kind === 'org'
-		? hardPurgeOrgEffect(candidate.id)
+		? hardPurgeOrgEffect(candidate.id, { notifyPurgeWebhook: true })
 		: Effect.flatMap(requireDbUserId(candidate), (dbUserId) =>
 				candidate.legacy
 					? Effect.asVoid(
 							finishLegacyUserDeletionEffect({
 								dbUserId,
 								stableUserId: candidate.id,
+								notifyPurgeWebhook: true,
 							}),
 						)
 					: hardPurgeSoftDeletedUserEffect({
 							dbUserId,
 							stableUserId: candidate.id,
+							notifyPurgeWebhook: true,
 						}),
 			)
 
 /**
+ * The webhook refused the item, so none of its rows were deleted. `kind` and
+ * `id` name the half that failed: a person's personal org fails its person.
+ */
+const recordWebhookFailure = Effect.fn('SoftDeletePurge.recordWebhookFailure')(
+	function* (
+		candidate: SoftDeletePurgeCandidate,
+		error: PurgeWebhookFailed,
+		nowIso: string,
+	) {
+		const audit = yield* AuditLog
+		const reporter = yield* ErrorReporter
+		const details = { kind: error.kind, id: error.id, status: error.status }
+		yield* Effect.logWarning(
+			JSON.stringify({
+				message: 'soft_delete_purge_webhook_failed',
+				...details,
+				error: error.message,
+			}),
+		)
+		yield* reporter.capture(error, {
+			tags: { lane: 'soft_delete_purge', purge_kind: error.kind },
+			contexts: { purge_webhook: details },
+		})
+		yield* audit.recordOrg({
+			orgId: candidate.id,
+			action: 'purge.webhook_failed',
+			result: 'failure',
+			resourceType: error.kind,
+			resourceId: error.id,
+			detailsJson: JSON.stringify(details),
+			createdAt: nowIso,
+		})
+	},
+)
+
+/**
  * One candidate: claim (kept on every exit so the backoff owns retries),
- * purge, and on any failure record a redacted `*.purge_failed` audit event.
+ * purge, and on any failure record a redacted `*.purge_failed` audit event
+ * (`purge.webhook_failed` plus Sentry when the purge webhook refused it).
  */
 const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 	function* (candidate: SoftDeletePurgeCandidate, claim: Claim) {
@@ -421,6 +462,13 @@ const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 				return { ...base, outcome: 'purged' } satisfies SoftDeletePurgeOutcome
 			}),
 		).pipe(
+			Effect.catchTag('PurgeWebhookFailed', (error) =>
+				Effect.as(recordWebhookFailure(candidate, error, claim.nowIso), {
+					...base,
+					outcome: 'failed',
+					error: error.message,
+				} satisfies SoftDeletePurgeOutcome),
+			),
 			Effect.catchCause((cause) =>
 				Effect.gen(function* () {
 					const error = Cause.squash(cause)
