@@ -26,10 +26,10 @@ import {
  * soft-deleted person, or one still fenced by a pre-soft-delete account
  * deletion (`deleting_at` set, `deleted_at` null), owns its personal org: the
  * person purge removes it after account deletion has read the org's billing
- * identity. A live matching person (legacy personal-org soft-delete without
- * account deletion) must not lose owner inventory; block until the account is
- * deleted or the org is repaired.
- * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
+ * identity. A live matching person must not lose owner inventory; block until
+ * the account is deleted or the org is repaired. The lookup uses personal_org_id
+ * with a stable_user_id fallback for legacy rows.
+ * Permanent: preserve personal-org billing inventory until person deletion.
  */
 type PersonalOrgHardPurgeRelation =
 	| 'soft_deleted_person'
@@ -248,13 +248,14 @@ export class LegacyUserDeletionNotPendingError extends Error {
  * and deleted D1 rows last. When any step warned it stopped and left
  * `deleting_at` set with `deleted_at` null, meaning "retry later". Nothing
  * retried it. The owner asked for deletion and was never offered a restore
- * window, so this resumes the same hard deletion now:
+ * window. The retry resumes that hard deletion:
  *
- * 1. Re-run `deleteUserAccount` on the fenced row. It reuses the existing
+ * 1. Tombstone the personal org so the org lane can finish a partial purge.
+ * 2. Re-run `deleteUserAccount` on the fenced row. It reuses the existing
  *    fence, re-collects inventory, and treats storage that is already gone
  *    (404 Artifacts repos, missing KV keys) as done, so a retry is safe.
- * 2. Purge the personal org graph (the Teams backfill created one per person)
- *    after step 1 has read its billing identity.
+ * 3. Purge the personal org graph (the Teams backfill created one per person)
+ *    after step 2 has read its billing identity.
  *
  * Idempotent: a missing users row means a prior attempt finished.
  */

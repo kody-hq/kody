@@ -221,8 +221,7 @@ async function git(
 }
 
 /**
- * Refuses unless `dir` is a clean checkout whose HEAD is `commit`, so the
- * bytes built here are exactly the pushed tree the server re-checks.
+ * Refuses tracked or untracked working-tree changes in `dir`.
  */
 async function assertCleanWorkingTree(dir: string) {
 	const status = (await git(dir, ['status', '--porcelain'])).toString('utf8')
@@ -239,7 +238,7 @@ async function gitText(dir: string, args: Array<string>) {
 
 /**
  * `--build local`: push HEAD to its upstream branch on the package's Kody
- * repo (no new commit) so Kody builds exactly what is here. Git talks to a
+ * repo (no new commit) before the CLI builds the confirmed commit. Git talks to a
  * write remote Kody mints for this publish with the CLI's own login, never
  * the checkout's remote URL or a stored git credential, which may have
  * expired since the clone.
