@@ -97,10 +97,11 @@ Docs: [Execution contexts](https://kody.codes/docs/execution-contexts) ·
 Package apps now serve at the root of their own host,
 `{leaf}--{handle}.kody.run`, next to the existing path address. Each app gets
 its own cookies, storage, and same-origin boundary, and sign-in returns to the
-app's host. A profile package named `@{handle}/{handle}` can own your bare
-`{handle}.kody.run` host so existing URLs keep answering. `kody dev` serves the
-same shape locally at `{leaf}--{handle}.localhost`. From 2026-12-17 20:45 UTC
-the old `/{app}/` path address redirects to the app's own host.
+app's host. A profile package named `@{handle}/{handle}` owns every path on your
+bare `{handle}.kody.run` host, with no redirect or rewrite there, so it answers
+old addresses only if it handles them itself. `kody dev` serves the same shape
+locally at `{leaf}--{handle}.localhost`. From 2026-12-17 20:45 UTC the old
+`/{app}/` path address redirects to the app's own host.
 
 ### Why it matters
 
@@ -290,8 +291,10 @@ Docs: [Secrets](https://kody.codes/docs/secrets) ·
   `https://{handle}.kody.run/{app}/`; that address answers with a 308 to the
   app's own host, and browser data saved under the old origin is not readable
   there. **Action:** move links, webhooks, and OAuth redirects to
-  `{leaf}--{handle}.kody.run` before 2026-12-17, or add a profile package
-  `@{handle}/{handle}` to keep old paths answering.
+  `{leaf}--{handle}.kody.run` before 2026-12-17. A profile package
+  `@{handle}/{handle}` is only for specific addresses on the bare host that must
+  keep answering in place (an unsubscribe link or a webhook URL): it owns every
+  path there, so your profile app must handle those paths itself.
   ([docs](https://kody.codes/docs/package-apps),
   [#5349](https://github.com/kody-hq/kody/pull/5349))
 - **Execute:** A saved package that uses a machine's named command or local
