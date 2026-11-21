@@ -99,6 +99,7 @@
     "routes:generate": "node tools/generate-start-route-tree.ts",
     "routes:generate:check": "node tools/check-start-route-tree.ts",
     "typecheck": "node tools/run-nx.ts run-many -t typecheck && npm run typecheck:start",
+    "effect:check": "node tools/check-effect.ts",
     "test": "node tools/run-nx.ts run worker:test",
     "test:node": "node tools/run-nx.ts run worker:test-node",
     "test:workers": "node tools/run-nx.ts run worker:test-workers",
@@ -130,6 +131,8 @@
     "@cloudflare/vite-plugin": "^1.62.5",
     "@cloudflare/vitest-plugin": "^1.4.7",
     "@cloudflare/workers-types": "^5.20261003.1",
+    "@effect/language-service": "^0.87.5",
+    "@effect/vitest": "^4.1.5",
     "@emotion/cache": "^11.14.0",
     "@epic-web/config": "^3.2.1",
     "@kody-internal/shared": "file:packages/shared",
@@ -172,6 +175,9 @@
     "zod": "4.6.6"
   },
   "overrides": {
+    "@effect/vitest": {
+      "vitest": "$vitest"
+    },
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@modelcontextprotocol/server": "2.3.1",

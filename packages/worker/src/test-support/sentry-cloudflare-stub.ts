@@ -59,6 +59,14 @@ export async function startSpan<TResult>(
 	})
 }
 
+export function startInactiveSpan(_options: Record<string, unknown>) {
+	return {
+		setStatus(_status: unknown) {},
+		setAttribute(_key: string, _value: unknown) {},
+		end(_endTime?: number) {},
+	}
+}
+
 export function getActiveSpan() {
 	return undefined
 }

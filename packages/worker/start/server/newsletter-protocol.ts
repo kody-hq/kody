@@ -62,21 +62,17 @@ export async function handleNewsletterSignupPost({
 	if (!isSameOriginPost(request)) return rejectForm(request, 403)
 	const form = await readForm(request)
 	if (!form) return rejectForm(request, 415)
-	const [{ requestNewsletterSignup }, { waitUntil }] = await Promise.all([
-		import('../../src/newsletter/signup.ts'),
+	const [{ handleNewsletterSignup }, { waitUntil }] = await Promise.all([
+		import('../../src/newsletter/edges.ts'),
 		import('cloudflare:workers'),
 	])
-	const result = await requestNewsletterSignup({
+	const redirect = await handleNewsletterSignup({
 		env: getStartRequestEnv(),
 		request,
 		form,
 		waitUntil,
 	})
-	return seeOther(
-		request,
-		'/newsletter',
-		result.ok ? { status: 'sent' } : { error: result.error },
-	)
+	return seeOther(request, '/newsletter', redirect)
 }
 
 /**
@@ -92,18 +88,17 @@ export async function handleNewsletterConfirmPost({
 	if (!isSameOriginPost(request)) return rejectForm(request, 403)
 	const form = await readForm(request)
 	if (!form) return rejectForm(request, 415)
-	const { confirmNewsletterSignup } =
-		await import('../../src/newsletter/signup.ts')
-	const result = await confirmNewsletterSignup({
+	const [{ handleNewsletterConfirm }, { waitUntil }] = await Promise.all([
+		import('../../src/newsletter/edges.ts'),
+		import('cloudflare:workers'),
+	])
+	const redirect = await handleNewsletterConfirm({
 		env: getStartRequestEnv(),
 		request,
-		token: form.token ?? null,
+		token: form.token,
+		waitUntil,
 	})
-	return seeOther(
-		request,
-		'/newsletter',
-		result.ok ? { status: 'confirmed' } : { error: result.error },
-	)
+	return seeOther(request, '/newsletter', redirect)
 }
 
 export function rejectNewsletterMethod() {

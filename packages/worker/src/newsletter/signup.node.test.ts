@@ -14,18 +14,29 @@ vi.mock('#worker/email/system-outbound.ts', () => ({
 	sendNewsletterConfirmationEmail: mocks.sendNewsletterConfirmationEmail,
 }))
 
+const { handleNewsletterConfirm, handleNewsletterSignup } =
+	await import('./edges.ts')
 const {
 	buildNewsletterConfirmEmail,
-	confirmNewsletterSignup,
 	newsletterConfirmTokenExpiryMs,
 	newsletterSignupEmailRateLimit,
 	newsletterSignupIpRateLimit,
-	requestNewsletterSignup,
 } = await import('./signup.ts')
 
 const now = new Date('2026-11-15T12:00:00.000Z')
 
+const background = (promise: Promise<unknown>) => void pending.push(promise)
+const pending: Array<Promise<unknown>> = []
+
+/** The route's redirect, in the shape these tests assert. */
+async function asResult(redirect: ReturnType<typeof handleNewsletterSignup>) {
+	const result = await redirect
+	await Promise.allSettled(pending.splice(0))
+	return 'status' in result ? { ok: true } : { ok: false, error: result.error }
+}
+
 function setup() {
+	vi.useFakeTimers({ toFake: ['Date'] })
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
 	const db = createD1FromSqlite(sqlite)
@@ -52,12 +63,15 @@ function setup() {
 		extra: Record<string, unknown> = {},
 		ip?: string,
 	) {
-		return requestNewsletterSignup({
-			env,
-			request: request(ip),
-			form: { email, turnstileToken: 'turnstile-token', ...extra },
-			now,
-		})
+		vi.setSystemTime(now)
+		return asResult(
+			handleNewsletterSignup({
+				env,
+				request: request(ip),
+				form: { email, turnstileToken: 'turnstile-token', ...extra },
+				waitUntil: background,
+			}),
+		)
 	}
 	function sentToken(call = -1) {
 		const input = mocks.sendNewsletterConfirmationEmail.mock.calls.at(call)![0]
@@ -65,7 +79,15 @@ function setup() {
 		return match![1]!
 	}
 	function confirm(token: string | null, at = now) {
-		return confirmNewsletterSignup({ env, request: request(), token, now: at })
+		vi.setSystemTime(at)
+		return asResult(
+			handleNewsletterConfirm({
+				env,
+				request: request(),
+				token: token ?? undefined,
+				waitUntil: background,
+			}),
+		)
 	}
 	function user(email: string, optIn = 0, updatedAt: string | null = null) {
 		const id = 'a'.repeat(64)
@@ -263,8 +285,10 @@ test('already subscribed addresses and failed sends look like any other sign-up'
 	)
 	expect(await signup('fail@example.com')).toEqual({ ok: true })
 	expect(consoleWarn).toHaveBeenCalledWith(
-		'newsletter-signup-confirm-email-failed',
-		'rejected [email]',
+		expect.stringContaining('newsletter-signup-confirm-email-failed'),
+	)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		expect.stringContaining('rejected [email]'),
 	)
 	expect((await recipients()).users.map((row) => row.email).sort()).toEqual([
 		'again@example.com',
@@ -381,6 +405,10 @@ test('a sign-up verifies its Turnstile token with siteverify before any email', 
 	const body = init!.body as URLSearchParams
 	expect(body.get('secret')).toBe('secret-key')
 	expect(body.get('response')).toBe('turnstile-token')
+	expect(body.get('idempotency_key')).toMatch(
+		/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+	)
+	expect(init!.signal).toBeInstanceOf(AbortSignal)
 	expect(rows()).toHaveLength(1)
 	expect(mocks.sendNewsletterConfirmationEmail).toHaveBeenCalledTimes(1)
 })
@@ -405,8 +433,15 @@ test('a failed or missing Turnstile check creates no sign-up and sends no email'
 	)
 	await expect(signup('reader@example.com')).resolves.toEqual(failed)
 
-	siteverify.mockRejectedValueOnce(new Error('siteverify is down'))
+	// An outage is retried with backoff, then fails closed.
+	const down = new Error('siteverify is down')
+	siteverify.mockClear()
+	siteverify
+		.mockRejectedValueOnce(down)
+		.mockRejectedValueOnce(down)
+		.mockRejectedValueOnce(down)
 	await expect(signup('reader@example.com')).resolves.toEqual(failed)
+	expect(siteverify).toHaveBeenCalledTimes(3)
 
 	siteverify.mockClear()
 	await expect(

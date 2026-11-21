@@ -1,0 +1,32 @@
+{
+	"extends": "./tsconfig-worker-test.json",
+	"compilerOptions": {
+		"incremental": false,
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"diagnosticSeverity": {
+					"floatingEffect": "error",
+					"missingEffectContext": "error",
+					"missingEffectError": "error",
+					"missingReturnYieldStar": "error",
+					"missingStarInYieldEffectGen": "error",
+					"leakingRequirements": "error",
+					"returnEffectInGen": "error",
+					"unnecessaryEffectGen": "error",
+					"unnecessaryPipe": "error",
+					"genericEffectServices": "error",
+					"scopeInLayerEffect": "error",
+					"strictBooleanExpressions": "off"
+				}
+			}
+		]
+	},
+	"include": [
+		"./env.d.ts",
+		"./worker-configuration.d.ts",
+		"./src/**/*.d.ts",
+		"./src/effect/**/*.ts",
+		"./src/newsletter/**/*.ts"
+	]
+}
