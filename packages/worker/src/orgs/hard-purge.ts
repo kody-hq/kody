@@ -28,7 +28,8 @@ import {
  * person purge removes it after account deletion has read the org's billing
  * identity. A live matching person must not lose owner inventory; block until
  * the account is deleted or the org is repaired. The lookup uses personal_org_id
- * with a stable_user_id fallback for legacy rows.
+ * with a stable_user_id fallback for the legacy equal-id shape (#3053); drop
+ * the fallback once no org has that shape.
  * Permanent: preserve personal-org billing inventory until person deletion.
  */
 type PersonalOrgHardPurgeRelation =
