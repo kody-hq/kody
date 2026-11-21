@@ -28,9 +28,11 @@ import {
  * person purge removes it after account deletion has read the org's billing
  * identity. A live matching person must not lose owner inventory; block until
  * the account is deleted or the org is repaired. The lookup uses personal_org_id
- * with a stable_user_id fallback for the legacy equal-id shape (#3053); drop
- * the fallback once no org has that shape.
+ * with a stable_user_id fallback for users whose personal_org_id is missing or
+ * blank (legacy equal-id orgs, #3053).
  * Permanent: preserve personal-org billing inventory until person deletion.
+ * Remove when: no users row has a missing or blank personal_org_id (drop the
+ * stable_user_id fallback only).
  */
 type PersonalOrgHardPurgeRelation =
 	| 'soft_deleted_person'
@@ -258,7 +260,9 @@ export class LegacyUserDeletionNotPendingError extends Error {
  * 3. Purge the personal org graph (the Teams backfill created one per person)
  *    after step 2 has read its billing identity.
  *
- * Idempotent: a missing users row means a prior attempt finished.
+ * Idempotent: a missing users row means a prior attempt deleted the person. A
+ * personal org left behind by a failed graph purge stays tombstoned for the
+ * org lane.
  */
 export async function finishLegacyUserDeletion(input: {
 	env: Env
