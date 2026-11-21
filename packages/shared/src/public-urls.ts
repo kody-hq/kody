@@ -315,6 +315,8 @@ export function resolveHostedPackageAppLocation(input: {
 				appBasePath: '',
 			}
 		}
+		// Names that are not a valid host label keep the owner host path address.
+		// Remove when: no saved package has a name that fails `buildPackageAppRootOrigin`.
 		return {
 			hostedUrl: buildPackageAppSubdomainUrl({
 				packageAppOrigin: input.packageAppBaseUrl,
@@ -332,7 +334,10 @@ export function resolveHostedPackageAppLocation(input: {
 			kodyId: input.kodyId,
 			restPath: input.restPath,
 		}),
-		appBasePath: buildPackageAppPath(input),
+		appBasePath: buildPackageAppPath({
+			username: input.username,
+			kodyId: input.kodyId,
+		}),
 	}
 }
 

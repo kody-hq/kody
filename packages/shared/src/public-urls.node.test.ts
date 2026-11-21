@@ -9,6 +9,7 @@ import {
 	buildPackageAppSubdomainPath,
 	buildPackagePagePath,
 	parsePackageAppHostLabel,
+	resolveHostedPackageAppLocation,
 	resolveHostedPackageAppUrl,
 } from './public-urls.ts'
 
@@ -147,4 +148,19 @@ test('every package app links to its own host, never the shared owner host path 
 			kodyId: 'mailroom',
 		}),
 	).toBe('https://preview.kody.codes/@kentcdodds/packages/mailroom')
+})
+
+test('inline package app mount excludes the request subpath', () => {
+	expect(
+		resolveHostedPackageAppLocation({
+			packageAppBaseUrl: null,
+			appBaseUrl: 'https://preview.kody.codes',
+			username: 'jane',
+			kodyId: 'mailroom',
+			restPath: '/inbox',
+		}),
+	).toEqual({
+		hostedUrl: 'https://preview.kody.codes/@jane/packages/mailroom/inbox',
+		appBasePath: '/@jane/packages/mailroom',
+	})
 })
