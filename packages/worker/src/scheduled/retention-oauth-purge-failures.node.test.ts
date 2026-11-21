@@ -20,49 +20,12 @@ vi.mock('#worker/repo/repo-sessions.ts', async (importOriginal) => ({
 		hasActiveRepoSessionForSource(env, input),
 }))
 
-const deleteUserAccount = vi.fn()
-vi.mock('#app/account-deletion.ts', async (importOriginal) => ({
-	...(await importOriginal<object>()),
-	deleteUserAccount: (input: unknown) => deleteUserAccount(input),
-}))
-vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
-	scheduleUserDeletedEvent: () => {},
-}))
-
-let auditGate: Promise<void> | null = null
-let auditSettled = 0
-vi.mock('#worker/audit-log.ts', async (importOriginal) => {
-	const actual = await importOriginal<object>()
-	return {
-		...actual,
-		logAuditEvent: async (event: { action: string }) => {
-			if (auditGate) await auditGate
-			auditSettled += 1
-			return { persisted: true, failedSinks: [], event: event.action }
-		},
-	}
-})
-
-const finishLegacyUserDeletion = vi.fn()
-vi.mock('#worker/orgs/hard-purge.ts', () => ({
-	hardPurgeOrg: vi.fn(),
-	hardPurgeSoftDeletedUser: vi.fn(),
-	finishLegacyUserDeletion: (input: unknown) => finishLegacyUserDeletion(input),
-}))
-
-const { pruneExpiredGuestAccounts } =
-	await import('#worker/guest/guest-account-purge.ts')
-const { pruneSoftDeleted } = await import('#worker/orgs/purge.ts')
 const { pruneRetention } = await import('#app/retention.ts')
 const { OAuthPurgeCoordinator } = await import('#worker/oauth-purge.ts')
 
 beforeEach(() => {
 	busySources.clear()
 	hasActiveRepoSessionForSource.mockClear()
-	deleteUserAccount.mockReset()
-	finishLegacyUserDeletion.mockReset()
-	auditGate = null
-	auditSettled = 0
 	consoleError.mockImplementation(() => {})
 	consoleWarn.mockImplementation(() => {})
 	consoleInfo.mockImplementation(() => {})
@@ -91,62 +54,6 @@ const failingAuditDb = {
 		throw new Error('AUDIT_DB unavailable')
 	},
 } as unknown as D1Database
-
-async function seedUser(
-	db: D1Database,
-	input: {
-		id: number
-		stableUserId: string
-		deletingAt?: string | null
-		deletedAt?: string | null
-		guestExpiresAt?: string | null
-	},
-) {
-	const ts = '2026-01-01T00:00:00.000Z'
-	await db
-		.prepare(
-			`INSERT INTO users (
-				id, username, email, password_hash, stable_user_id,
-				created_at, updated_at, deleting_at, deleted_at, guest_expires_at
-			) VALUES (?, ?, ?, 'hash', ?, ?, ?, ?, ?, ?)`,
-		)
-		.bind(
-			input.id,
-			input.stableUserId,
-			`${input.stableUserId}@example.com`,
-			input.stableUserId,
-			ts,
-			ts,
-			input.deletingAt ?? null,
-			input.deletedAt ?? null,
-			input.guestExpiresAt ?? null,
-		)
-		.run()
-}
-
-async function seedGuest(db: D1Database, personId: string, deleteAt: string) {
-	await seedUser(db, {
-		id: Number(personId.replace(/\D/g, '')),
-		stableUserId: personId,
-		guestExpiresAt: deleteAt,
-	})
-	await db
-		.prepare(
-			`INSERT INTO guest_accounts (person_id, personal_org_id, claim_code, expires_at, delete_at, created_at)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-		)
-		.bind(
-			personId,
-			personId,
-			`code-${personId}`,
-			deleteAt,
-			deleteAt,
-			'2026-01-01T00:00:00.000Z',
-		)
-		.run()
-}
-
-const guestNow = new Date('2026-10-01T12:00:00.000Z')
 
 async function seedArtifact(
 	db: D1Database,
@@ -192,7 +99,7 @@ test('published bundle retention advances past artifacts skipped for an active r
 		AUDIT_DB: createAuditDb(),
 		BUNDLE_ARTIFACTS_KV: kv,
 	} as unknown as Env
-	const result = await pruneRetention({
+	await pruneRetention({
 		env,
 		now: new Date('2026-10-01T12:00:00.000Z'),
 		timeBudgetMs: 300,
@@ -236,7 +143,7 @@ test('OAuth purge grant phase revokes more than one expired grant per run when b
 			expiresAt: 1,
 		})
 	}
-	const { kv, store } = createMemoryKvNamespace(initial)
+	const { kv } = createMemoryKvNamespace(initial)
 	const stored = new Map<string, unknown>()
 	const storage = {
 		async get(key: string) {
@@ -251,6 +158,5 @@ test('OAuth purge grant phase revokes more than one expired grant per run when b
 		{ OAUTH_KV: kv } as unknown as Env,
 	)
 	const result = await coordinator.run({ scheduledAt: Date.now() })
-	const grantsLeft = [...store.keys()].filter((key) => key.startsWith('grant:'))
 	expect(result.grantsPurged).toBe(5)
 })
