@@ -116,13 +116,35 @@ test('a profile package is addressed at the root of its owner host', () => {
 			restPath: '/newsletter/unsubscribe',
 		}),
 	).toBe('http://kody.localhost:8788/newsletter/unsubscribe')
-	// Other packages keep the owner-subdomain path until the links flip.
+})
+
+test('every package app links to its own host, never the shared owner host path address', () => {
+	const hostedUrl = resolveHostedPackageAppUrl({
+		packageAppBaseUrl: 'https://kody.run',
+		appBaseUrl: 'https://kody.codes',
+		username: 'kentcdodds',
+		kodyId: 'mailroom',
+		restPath: '/inbox',
+	})
+	expect(hostedUrl).toBe('https://mailroom--kentcdodds.kody.run/inbox')
+	// The old shapes: `{user}.kody.run/{app}` and `{user}.kody.run/packages/{app}`.
+	expect(hostedUrl).not.toMatch(/^https:\/\/kentcdodds\.kody\.run\//)
+	expect(hostedUrl).not.toContain('/packages/')
+	// A leaf with no valid host label keeps the only address that routes.
 	expect(
 		resolveHostedPackageAppUrl({
 			packageAppBaseUrl: 'https://kody.run',
 			appBaseUrl: 'https://kody.codes',
-			username: 'kody',
-			kodyId: 'newsletter',
+			username: 'kentcdodds',
+			kodyId: 'Legacy_App',
 		}),
-	).toBe('https://kody.kody.run/newsletter')
+	).toBe('https://kentcdodds.kody.run/Legacy_App')
+	expect(
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: null,
+			appBaseUrl: 'https://preview.kody.codes',
+			username: 'kentcdodds',
+			kodyId: 'mailroom',
+		}),
+	).toBe('https://preview.kody.codes/@kentcdodds/packages/mailroom')
 })

@@ -15,9 +15,9 @@ import {
 	buildPackageAppOpenPath,
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
-	buildPackageAppSubdomainUrl,
 	buildPackagePagePath,
 	packageAppHostEntryQueryParam,
+	resolveHostedPackageAppUrl,
 } from '@kody-internal/shared/public-urls.ts'
 import {
 	isPackageAppHostProbePath,
@@ -287,8 +287,9 @@ async function buildHandoffHostedTarget(input: {
 	})
 	const target = new URL(
 		publicLocation?.hostedUrl ??
-			buildPackageAppSubdomainUrl({
-				packageAppOrigin: input.packageAppOrigin,
+			resolveHostedPackageAppUrl({
+				packageAppBaseUrl: input.packageAppOrigin,
+				appBaseUrl: input.packageAppOrigin,
 				username: input.packagePath.username,
 				kodyId: input.kodyId,
 				restPath,
@@ -301,17 +302,18 @@ async function buildHandoffHostedTarget(input: {
 }
 
 /**
- * Sync subdomain URL (tests and call sites that already know there is no
- * custom hostname). Prefer {@link buildHandoffHostedTarget} for handoff.
+ * Sync hosted URL for call sites that already know there is no custom
+ * hostname. Prefer {@link buildHandoffHostedTarget} for handoff.
  */
-function buildSubdomainTarget(input: {
+function buildHostedTarget(input: {
 	packageAppOrigin: string
 	packagePath: PackageAppPath
 	url: URL
 }) {
 	const target = new URL(
-		buildPackageAppSubdomainUrl({
-			packageAppOrigin: input.packageAppOrigin,
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: input.packageAppOrigin,
+			appBaseUrl: input.packageAppOrigin,
 			username: input.packagePath.username,
 			kodyId: input.packagePath.kodyId,
 			restPath:
@@ -1039,7 +1041,7 @@ async function stayOnAppOriginPackagePage(input: {
 		})
 		const target = location
 			? new URL(location.hostedUrl)
-			: buildSubdomainTarget({
+			: buildHostedTarget({
 					packageAppOrigin: input.packageAppOrigin,
 					packagePath: input.packagePath,
 					url: input.url,
