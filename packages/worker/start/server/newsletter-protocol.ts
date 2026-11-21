@@ -92,12 +92,15 @@ export async function handleNewsletterConfirmPost({
 	if (!isSameOriginPost(request)) return rejectForm(request, 403)
 	const form = await readForm(request)
 	if (!form) return rejectForm(request, 415)
-	const { confirmNewsletterSignup } =
-		await import('../../src/newsletter/signup.ts')
+	const [{ confirmNewsletterSignup }, { waitUntil }] = await Promise.all([
+		import('../../src/newsletter/signup.ts'),
+		import('cloudflare:workers'),
+	])
 	const result = await confirmNewsletterSignup({
 		env: getStartRequestEnv(),
 		request,
 		token: form.token ?? null,
+		waitUntil,
 	})
 	return seeOther(
 		request,
