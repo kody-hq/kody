@@ -225,8 +225,7 @@ export async function sweepStaleInboundDeliveries(input: {
 			console.warn('inbound-email-user-reconciliation-failed', userId, error)
 			continue
 		}
-		// The owner already reconciled and was counted; a failed hint refresh is
-		// one more error and a deferral, not a second processed owner.
+		// Outside the reconcile try: a refresh failure is not a reconcile failure.
 		if (userId !== systemEmailOwnerId) {
 			try {
 				const hint = await mailboxRpc({
