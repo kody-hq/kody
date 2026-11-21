@@ -158,6 +158,7 @@ export async function sweepStaleInboundDeliveries(input: {
 	)
 	for (const { user_id: userId } of dueOwners) {
 		if (clock() >= deadlineMs) break
+		let ownerBudgetExhausted: boolean | undefined
 		try {
 			const reconcileUser = async () => {
 				const systemOwner = userId === systemEmailOwnerId
@@ -209,7 +210,24 @@ export async function sweepStaleInboundDeliveries(input: {
 			effectsProcessed += effectResult.processed
 			errors += effectResult.errors
 			usersProcessed += 1
+			ownerBudgetExhausted = result.budgetExhausted
+		} catch (error) {
+			errors += 1
+			usersProcessed += 1
 			if (userId !== systemEmailOwnerId) {
+				await deferInboundDueOwner({
+					db: input.env.APP_DB,
+					userId,
+					error,
+					now,
+				}).catch(() => undefined)
+			}
+			console.warn('inbound-email-user-reconciliation-failed', userId, error)
+			continue
+		}
+		// Outside the reconcile try: a refresh failure is not a reconcile failure.
+		if (userId !== systemEmailOwnerId) {
+			try {
 				const hint = await mailboxRpc({
 					env: input.env,
 					userId,
@@ -224,21 +242,18 @@ export async function sweepStaleInboundDeliveries(input: {
 					reason: 'scheduled-refresh',
 					now,
 				})
-			}
-			if (result.budgetExhausted) break
-		} catch (error) {
-			errors += 1
-			usersProcessed += 1
-			if (userId !== systemEmailOwnerId) {
+			} catch (error) {
+				errors += 1
 				await deferInboundDueOwner({
 					db: input.env.APP_DB,
 					userId,
 					error,
 					now,
 				}).catch(() => undefined)
+				console.warn('inbound-email-due-hint-refresh-failed', userId, error)
 			}
-			console.warn('inbound-email-user-reconciliation-failed', userId, error)
 		}
+		if (ownerBudgetExhausted) break
 	}
 
 	return {

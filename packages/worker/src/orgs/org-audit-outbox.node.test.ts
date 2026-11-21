@@ -3,7 +3,10 @@ import { expect, test, vi } from 'vitest'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { consoleError } from '#worker/test-support/console-spies.ts'
+import {
+	consoleError,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import {
 	deliverOrgAuditOutboxPayload,
 	drainOrgAuditOutbox,
@@ -200,6 +203,58 @@ test('only the delivery that inserts a successful row emits its event', async ()
 
 	// A redelivery finds the row already there and stays quiet.
 	await tryDeliverOrgAuditOutboxPlan(writer, plan)
+	await Promise.all(resourceEvents.pending)
+	expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
+})
+
+/** APP_DB whose next outbox-row delete fails once, after the audit insert. */
+function failNextOutboxDelete(appDb: D1Database): D1Database {
+	let fail = true
+	return new Proxy(appDb, {
+		get(target, key, receiver) {
+			if (key !== 'prepare') return Reflect.get(target, key, receiver)
+			return (query: string) => {
+				const statement = target.prepare(query)
+				if (!fail || !query.startsWith('DELETE FROM org_audit_outbox')) {
+					return statement
+				}
+				fail = false
+				return {
+					bind: () => ({
+						run: async () => {
+							throw new Error('D1_ERROR: network connection lost')
+						},
+					}),
+				}
+			}
+		},
+	})
+}
+
+test('a failed outbox delete after insert still emits the resource change event once', async () => {
+	consoleError.mockImplementation(() => {})
+	consoleWarn.mockImplementation(() => {})
+	const appDb = createAppDb()
+	const auditDb = createAuditTestDb()
+	const writer = {
+		appDb: failNextOutboxDelete(appDb),
+		db: auditDb,
+		actorUserId: 'actor-1',
+		actorUsername: null,
+		credentialKind: null,
+		credentialId: null,
+		env: { APP_DB: appDb, AUDIT_DB: auditDb } as Env,
+	}
+	resourceEvents.dispatch.mockClear()
+	resourceEvents.pending.length = 0
+	const plan = await enqueueOrgAuditOutbox(writer, {
+		orgId: 'org-1',
+		action: 'job.created',
+		resourceType: 'job',
+		resourceId: 'job-1',
+	})
+	expect(await tryDeliverOrgAuditOutboxPlan(writer, plan)).toBe(false)
+	expect(await tryDeliverOrgAuditOutboxPlan(writer, plan)).toBe(true)
 	await Promise.all(resourceEvents.pending)
 	expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
 })
