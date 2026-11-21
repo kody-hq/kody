@@ -1,4 +1,4 @@
-import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox-edge.ts'
 import type { EmailVerificationResult } from '#universal/token-outcomes.ts'
 import {
 	auditDatabaseFromEnv,

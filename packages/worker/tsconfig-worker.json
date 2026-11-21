@@ -1,6 +1,22 @@
 {
 	"extends": "@epic-web/config/typescript",
 	"compilerOptions": {
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"diagnosticSeverity": {
+					"anyUnknownInErrorContext": "error",
+					"floatingEffect": "error",
+					"globalConsoleInEffect": "warning",
+					"globalDateInEffect": "warning",
+					"globalFetchInEffect": "off",
+					"leakingRequirements": "warning",
+					"schemaSyncInEffect": "warning",
+					"strictEffectProvide": "off",
+					"tryCatchInEffectGen": "warning"
+				}
+			}
+		],
 		"composite": true,
 		"allowImportingTsExtensions": true,
 		"tsBuildInfoFile": "../../node_modules/.tmp/tsconfig.worker.tsbuildinfo",

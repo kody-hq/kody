@@ -1,29 +1,54 @@
 import { DatabaseSync } from 'node:sqlite'
-import { expect, test, vi } from 'vitest'
+import { assert, describe, it } from '@effect/vitest'
+import { Effect, Fiber, Layer } from 'effect'
+import { TestClock } from 'effect/testing'
+import { expect, vi } from 'vitest'
+import {
+	honeypotFieldName,
+	turnstileResponseFieldName,
+} from '#universal/public-form-protection.ts'
 import {
 	listWhatsNewRecipients,
 	setWhatsNewOptIn,
 } from '#worker/admin/whats-new.ts'
+import { Background } from '#worker/effect/background.ts'
+import { D1 } from '#worker/effect/d1.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { captureLogs } from '#worker/test-support/effect-test-logger.ts'
+import { NewsletterAudit } from './audit.ts'
+import { ConsentOutboxQueue } from './consent-outbox.ts'
+import { HumanVerification } from './human-verification.ts'
+import { NewsletterMailer } from './mailer.ts'
+import { RateLimiter } from './rate-limiter.ts'
+import {
+	buildNewsletterConfirmEmail,
+	confirmNewsletterSignup,
+	newsletterSignupEmailRateLimit,
+	newsletterSignupIpRateLimit,
+	requestNewsletterSignup,
+} from './signup.ts'
 
 const mocks = vi.hoisted(() => ({ sendNewsletterConfirmationEmail: vi.fn() }))
 vi.mock('#worker/email/system-outbound.ts', () => ({
 	sendNewsletterConfirmationEmail: mocks.sendNewsletterConfirmationEmail,
 }))
 
-const {
-	buildNewsletterConfirmEmail,
-	confirmNewsletterSignup,
-	newsletterConfirmTokenExpiryMs,
-	newsletterSignupEmailRateLimit,
-	newsletterSignupIpRateLimit,
-	requestNewsletterSignup,
-} = await import('./signup.ts')
+const startedAt = Date.parse('2026-11-15T12:00:00.000Z')
+const startedAtIso = new Date(startedAt).toISOString()
+const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
 
-const now = new Date('2026-11-15T12:00:00.000Z')
+/** Every test starts at the same instant on the TestClock. */
+const atStart = TestClock.setTime(startedAt)
+
+/** Lets retries and timeouts run by moving the TestClock forward. */
+const settle = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+	Effect.gen(function* () {
+		const fiber = yield* Effect.forkChild(effect)
+		for (let step = 0; step < 40; step++) yield* TestClock.adjust('500 millis')
+		return yield* Fiber.join(fiber)
+	})
 
 function setup() {
 	const sqlite = new DatabaseSync(':memory:')
@@ -35,39 +60,62 @@ function setup() {
 		SYSTEM_EMAIL_DOMAIN: 'kody.example.com',
 		TURNSTILE_SITE_KEY: 'site-key',
 		TURNSTILE_SECRET_KEY: 'secret-key',
+		SENTRY_ENVIRONMENT: 'test',
 	} as unknown as Env
-	const siteverify = vi.fn(async (_url: unknown, _init?: RequestInit) =>
-		Response.json({ success: true, hostname: 'kody.example.com' }),
+	const siteverify = vi.fn(
+		async (_url: unknown, _init?: RequestInit): Promise<Response> =>
+			Response.json({ success: true, hostname: 'kody.example.com' }),
 	)
 	vi.stubGlobal('fetch', siteverify)
+	const enqueued: Array<unknown> = []
+	const { logs, layer: logLayer } = captureLogs()
+	const layer = Layer.mergeAll(
+		RateLimiter.layer,
+		HumanVerification.layer(env),
+		NewsletterMailer.layer(env),
+		NewsletterAudit.layer(env),
+		ConsentOutboxQueue.queueLayer({
+			send: async (body: unknown) => void enqueued.push(body),
+		} as unknown as Queue),
+	).pipe(
+		Layer.provideMerge(D1.layer(db)),
+		Layer.provide(Background.inline),
+		Layer.provideMerge(logLayer),
+	)
+	/** `ok`, or the tag of the typed failure the route maps to a page error. */
+	const outcome = <E extends { readonly _tag: string }>(
+		effect: Effect.Effect<void, E, Layer.Success<typeof layer>>,
+	) =>
+		effect.pipe(
+			Effect.as('ok'),
+			Effect.catch((error) => Effect.succeed(error._tag)),
+			Effect.provide(layer),
+		)
 	let ipCounter = 0
-	function request(ip = `203.0.113.${++ipCounter}`) {
-		return new Request('https://kody.example.com/newsletter', {
+	const request = (ip = `203.0.113.${++ipCounter}`) =>
+		new Request('https://kody.example.com/newsletter', {
 			method: 'POST',
 			headers: { 'CF-Connecting-IP': ip },
 		})
-	}
-	function signup(
-		email: unknown,
-		extra: Record<string, unknown> = {},
+	const signup = (
+		email: string | undefined,
+		extra: Record<string, string> = {},
 		ip?: string,
-	) {
-		return requestNewsletterSignup({
-			env,
-			request: request(ip),
-			form: { email, turnstileToken: 'turnstile-token', ...extra },
-			now,
-		})
-	}
-	function sentToken(call = -1) {
+	) =>
+		outcome(
+			requestNewsletterSignup(request(ip), {
+				...(email === undefined ? {} : { email }),
+				[turnstileResponseFieldName]: 'turnstile-token',
+				...extra,
+			}),
+		)
+	const confirm = (token: string | undefined) =>
+		outcome(confirmNewsletterSignup(request(), token))
+	const sentToken = (call = -1) => {
 		const input = mocks.sendNewsletterConfirmationEmail.mock.calls.at(call)![0]
-		const match = /\/newsletter\/confirm\?token=([a-f0-9]{64})/.exec(input.text)
-		return match![1]!
+		return /\/newsletter\/confirm\?token=([a-f0-9]{64})/.exec(input.text)![1]!
 	}
-	function confirm(token: string | null, at = now) {
-		return confirmNewsletterSignup({ env, request: request(), token, now: at })
-	}
-	function user(email: string, optIn = 0, updatedAt: string | null = null) {
+	const user = (email: string, optIn = 0, updatedAt: string | null = null) => {
 		const id = 'a'.repeat(64)
 		sqlite
 			.prepare(
@@ -77,397 +125,530 @@ function setup() {
 		return id
 	}
 	const recipients = (audience: 'opted-in' | 'all-users' = 'opted-in') =>
-		listWhatsNewRecipients({ db, audience, limit: 100 })
+		Effect.promise(() => listWhatsNewRecipients({ db, audience, limit: 100 }))
+	const optIn = (input: Parameters<typeof setWhatsNewOptIn>[0]) =>
+		Effect.promise(() => setWhatsNewOptIn(input))
 	const rows = () =>
 		sqlite.prepare('SELECT * FROM newsletter_signups').all() as Array<
 			Record<string, unknown>
 		>
-	return {
-		sqlite,
-		db,
-		signup,
-		sentToken,
-		confirm,
-		user,
-		recipients,
-		rows,
-		siteverify,
-	}
-}
-
-test('a sign-up only emails a confirmation link; the address joins the list when the link is confirmed, once', async () => {
-	const { signup, sentToken, confirm, recipients, rows, db } = setup()
-	expect(await signup('  New.Reader@Example.com ')).toEqual({ ok: true })
-	expect(mocks.sendNewsletterConfirmationEmail).toHaveBeenCalledTimes(1)
-	expect(mocks.sendNewsletterConfirmationEmail.mock.calls[0]![0]).toMatchObject(
-		{
-			to: 'new.reader@example.com',
-			subject: "Confirm your What's New in Kody subscription",
-		},
-	)
-	const token = sentToken()
-	// Only a hash of the token is stored, and nobody is a recipient yet.
-	expect(rows()).toEqual([
-		expect.objectContaining({
-			email: 'new.reader@example.com',
-			status: 'pending',
-			confirmed_at: null,
-			token_expires_at: now.getTime() + newsletterConfirmTokenExpiryMs,
-		}),
-	])
-	expect(JSON.stringify(rows())).not.toContain(token)
-	expect((await recipients('all-users')).users).toEqual([])
-
-	expect(await confirm(token)).toEqual({ ok: true })
-	const stableId = rows()[0]!.stable_id as string
-	expect(stableId).toMatch(/^[a-f0-9]{64}$/)
-	expect((await recipients()).users).toEqual([
-		{
-			stable_user_id: stableId,
-			email: 'new.reader@example.com',
-			username: '',
-			opted_in: true,
-			opt_in_updated_at: now.toISOString(),
-			opt_in_source: 'newsletter_page',
-			unsubscribed: false,
-		},
-	])
-	// The link is single use.
-	expect(await confirm(token)).toEqual({ ok: false, error: 'invalid_link' })
-
-	// Unsubscribing through the admin capability removes the address from
-	// the opted-in audience and keeps the stable id.
-	await setWhatsNewOptIn({
-		db,
-		stable_user_id: stableId,
-		opted_in: false,
-		source: 'email_link',
-	})
-	expect((await recipients()).users).toEqual([])
-	expect((await recipients('all-users')).users).toEqual([
-		expect.objectContaining({
-			stable_user_id: stableId,
-			opted_in: false,
-			opt_in_source: 'email_link',
-			unsubscribed: true,
-		}),
-	])
-	// Signing up again needs a fresh confirmation and keeps the same id.
-	await signup('new.reader@example.com')
-	expect((await recipients()).users).toEqual([])
-	expect(await confirm(sentToken())).toEqual({ ok: true })
-	expect((await recipients()).users[0]).toMatchObject({
-		stable_user_id: stableId,
-		opt_in_source: 'newsletter_page',
-	})
-	expect(logAuditEventSpy).toHaveBeenCalledWith(
-		expect.objectContaining({
-			action: 'newsletter_signup_confirm',
-			result: 'success',
-		}),
-	)
-})
-
-test('a pending sign-up cannot be switched on without its link', async () => {
-	const { signup, rows, db, recipients } = setup()
-	await signup('pending@example.com')
-	await expect(
-		setWhatsNewOptIn({
-			db,
-			stable_user_id: rows()[0]!.stable_id as string,
-			opted_in: true,
-			source: 'admin',
-		}),
-	).rejects.toThrow('User not found.')
-	expect((await recipients('all-users')).users).toEqual([])
-})
-
-test('expired, malformed, and missing tokens confirm nothing; a newer link replaces the older one', async () => {
-	const { signup, sentToken, confirm, recipients } = setup()
-	await signup('late@example.com')
-	const first = sentToken()
-	for (const token of [null, '', 'nope', 'A'.repeat(64), 'b'.repeat(64)])
-		expect(await confirm(token)).toEqual({ ok: false, error: 'invalid_link' })
-	expect(
-		await confirm(
-			first,
-			new Date(now.getTime() + newsletterConfirmTokenExpiryMs),
-		),
-	).toEqual({ ok: false, error: 'invalid_link' })
-	await signup('late@example.com')
-	const second = sentToken()
-	expect(second).not.toBe(first)
-	expect(await confirm(first)).toEqual({ ok: false, error: 'invalid_link' })
-	expect((await recipients('all-users')).users).toEqual([])
-	expect(await confirm(second)).toEqual({ ok: true })
-	expect((await recipients()).users).toHaveLength(1)
-})
-
-test('invalid addresses are rejected without an email', async () => {
-	const { signup, rows } = setup()
-	for (const email of [
-		undefined,
-		'',
-		'nope',
-		'a@b',
-		'two@@example.com',
-		'a b@example.com',
-		"o'connor@example.com",
-		`${'x'.repeat(250)}@example.com`,
-	])
-		expect(await signup(email)).toEqual({ ok: false, error: 'invalid_email' })
-	expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
-	expect(rows()).toEqual([])
-})
-
-test('a filled honeypot gets the normal success result and no email or row', async () => {
-	const { signup, rows } = setup()
-	expect(await signup('bot@example.com', { kody_hp: 'https://spam' })).toEqual({
-		ok: true,
-	})
-	expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
-	expect(rows()).toEqual([])
-})
-
-test('rate limits: per IP is reported, per address is silent', async () => {
-	const { signup } = setup()
-	for (let i = 0; i < newsletterSignupIpRateLimit.maxRequests; i++)
-		expect(await signup(`ip${i}@example.com`, {}, '198.51.100.7')).toEqual({
-			ok: true,
-		})
-	expect(await signup('ip-over@example.com', {}, '198.51.100.7')).toEqual({
-		ok: false,
-		error: 'rate_limited',
-	})
-	mocks.sendNewsletterConfirmationEmail.mockClear()
-	for (let i = 0; i < newsletterSignupEmailRateLimit.maxRequests + 2; i++)
-		expect(await signup('flood@example.com')).toEqual({ ok: true })
-	expect(mocks.sendNewsletterConfirmationEmail).toHaveBeenCalledTimes(
-		newsletterSignupEmailRateLimit.maxRequests,
-	)
-})
-
-test('already subscribed addresses and failed sends look like any other sign-up', async () => {
-	const { signup, sentToken, confirm, user, recipients } = setup()
-	await signup('again@example.com')
-	await confirm(sentToken())
-	user('member@example.com', 1, '2026-11-14')
-	mocks.sendNewsletterConfirmationEmail.mockClear()
-	expect(await signup('again@example.com')).toEqual({ ok: true })
-	expect(await signup('member@example.com')).toEqual({ ok: true })
-	expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
-
-	consoleWarn.mockImplementation(() => {})
-	mocks.sendNewsletterConfirmationEmail.mockRejectedValueOnce(
-		new Error('rejected fail@example.com'),
-	)
-	expect(await signup('fail@example.com')).toEqual({ ok: true })
-	expect(consoleWarn).toHaveBeenCalledWith(
-		'newsletter-signup-confirm-email-failed',
-		'rejected [email]',
-	)
-	expect((await recipients()).users.map((row) => row.email).sort()).toEqual([
-		'again@example.com',
-		'member@example.com',
-	])
-})
-
-test('confirming an address with a verified account sets consent on the account and lists it once', async () => {
-	const { signup, sentToken, confirm, user, recipients, sqlite } = setup()
-	const id = user('member@example.com', 0, '2026-11-01')
-	expect((await recipients()).users).toEqual([])
-	await signup('member@example.com')
-	expect((await recipients()).users).toEqual([])
-	await confirm(sentToken())
-	expect((await recipients('all-users')).users).toEqual([
-		{
-			stable_user_id: id,
-			email: 'member@example.com',
-			username: 'reader',
-			opted_in: true,
-			opt_in_updated_at: now.toISOString(),
-			opt_in_source: 'newsletter_page',
-			unsubscribed: false,
-		},
-	])
-	// A later explicit choice on the account wins over the old sign-up.
-	sqlite
-		.prepare(
-			`UPDATE users SET whats_new_email_opt_in = 0, whats_new_email_opt_in_updated_at = '2026-11-16'`,
-		)
-		.run()
-	expect((await recipients()).users).toEqual([])
-})
-
-test('a sign-up confirmed before the account existed carries over while the account has made no choice', async () => {
-	const { signup, sentToken, confirm, user, recipients } = setup()
-	await signup('early@example.com')
-	await confirm(sentToken())
-	const id = user('early@example.com')
-	expect((await recipients()).users).toEqual([
-		expect.objectContaining({
-			stable_user_id: id,
-			opted_in: true,
-			opt_in_source: 'newsletter_page',
-			opt_in_updated_at: now.toISOString(),
-			unsubscribed: false,
-		}),
-	])
-})
-
-test('the confirmation email states the double opt-in terms and has no em dashes', () => {
-	const message = buildNewsletterConfirmEmail({
-		appBaseUrl: 'https://kody.example.com',
-		confirmUrl: 'https://kody.example.com/newsletter/confirm?token=abc',
-	})
-	expect(message.text).toContain('You are not subscribed until you do.')
-	expect(message.text).toContain('expires in 7 days')
-	expect(message.html).toContain(
-		'https://kody.example.com/newsletter/confirm?token=abc',
-	)
-	expect(`${message.subject}${message.text}`).not.toContain('\u2014')
-})
-
-test('unsubscribing through either id leaves the list when an address has both a sign-up and an account', async () => {
-	for (const through of ['signup', 'account'] as const) {
-		const { signup, sentToken, confirm, user, recipients, rows, db, sqlite } =
-			setup()
-		await signup('both@example.com')
-		await confirm(sentToken())
-		const signupId = rows()[0]!.stable_id as string
-		const userId = user('both@example.com', 1, '2026-11-16')
-		await setWhatsNewOptIn({
-			db,
-			stable_user_id: through === 'signup' ? signupId : userId,
-			opted_in: false,
-			source: 'email_link',
-		})
-		expect((await recipients()).users).toEqual([])
-		expect(rows()[0]!.status).toBe('unsubscribed')
-		// The old sign-up must not come back if the account's address changes.
-		sqlite.prepare(`UPDATE users SET email = 'moved@example.com'`).run()
-		expect((await recipients()).users).toEqual([])
-		// Opening the same unsubscribe link again is not an error.
-		await setWhatsNewOptIn({
-			db,
-			stable_user_id: signupId,
-			opted_in: false,
-			source: 'email_link',
-		})
-	}
-})
-
-test('the sign-up lifecycle only joins the list through a confirmed link and never returns to pending', async () => {
-	const { canHandle } = await import('@kody-internal/shared/state-machine.ts')
-	const { newsletterSignupState: machine } = await import('./signup-state.ts')
-	expect(canHandle(machine, 'pending', 'CONFIRM')).toBe(true)
-	expect(canHandle(machine, 'pending', 'RESUBSCRIBE')).toBe(false)
-	expect(canHandle(machine, 'pending', 'UNSUBSCRIBE')).toBe(false)
-	expect(canHandle(machine, 'confirmed', 'UNSUBSCRIBE')).toBe(true)
-	expect(canHandle(machine, 'confirmed', 'CONFIRM')).toBe(false)
-	expect(canHandle(machine, 'unsubscribed', 'RESUBSCRIBE')).toBe(true)
-	expect(canHandle(machine, 'unsubscribed', 'CONFIRM')).toBe(true)
-})
-
-test('a sign-up verifies its Turnstile token with siteverify before any email', async () => {
-	const { signup, rows, siteverify } = setup()
-	mocks.sendNewsletterConfirmationEmail.mockClear()
-
-	await expect(signup('reader@example.com')).resolves.toEqual({ ok: true })
-
-	expect(siteverify).toHaveBeenCalledTimes(1)
-	const [url, init] = siteverify.mock.calls[0]!
-	expect(url).toBe('https://challenges.cloudflare.com/turnstile/v0/siteverify')
-	const body = init!.body as URLSearchParams
-	expect(body.get('secret')).toBe('secret-key')
-	expect(body.get('response')).toBe('turnstile-token')
-	expect(rows()).toHaveLength(1)
-	expect(mocks.sendNewsletterConfirmationEmail).toHaveBeenCalledTimes(1)
-})
-
-test('a failed or missing Turnstile check creates no sign-up and sends no email', async () => {
-	const { signup, rows, siteverify } = setup()
-	mocks.sendNewsletterConfirmationEmail.mockClear()
-	const failed = { ok: false, error: 'verification_failed' }
-
-	siteverify.mockResolvedValueOnce(
-		Response.json({
-			success: false,
-			'error-codes': ['invalid-input-response'],
-		}),
-	)
-	await expect(signup('reader@example.com')).resolves.toEqual(failed)
-
-	// A token minted for another hostname is refused too.
-	consoleWarn.mockImplementation(() => {})
-	siteverify.mockResolvedValueOnce(
-		Response.json({ success: true, hostname: 'elsewhere.example.com' }),
-	)
-	await expect(signup('reader@example.com')).resolves.toEqual(failed)
-
-	siteverify.mockRejectedValueOnce(new Error('siteverify is down'))
-	await expect(signup('reader@example.com')).resolves.toEqual(failed)
-
-	siteverify.mockClear()
-	await expect(
-		signup('reader@example.com', { turnstileToken: '' }),
-	).resolves.toEqual(failed)
-	expect(siteverify).not.toHaveBeenCalled()
-
-	expect(rows()).toEqual([])
-	expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
-})
-
-test('repeating a consent choice reports the stored source and time', async () => {
-	const { signup, sentToken, confirm, db, recipients, rows } = setup()
-	await signup('again@example.com')
-	await confirm(sentToken())
-	const stableId = rows()[0]!.stable_id as string
-	const repeated = await setWhatsNewOptIn({
-		db,
-		stable_user_id: stableId,
-		opted_in: true,
-		source: 'admin',
-	})
-	const [listed] = (await recipients()).users
-	expect(repeated).toEqual({
-		stable_user_id: stableId,
-		opted_in: true,
-		opt_in_updated_at: listed!.opt_in_updated_at,
-		opt_in_source: 'newsletter_page',
-	})
-})
-
-test('confirming records the consent change for the newsletter ledger, under the account id when there is one', async () => {
-	const { signup, sentToken, confirm, user, rows, sqlite } = setup()
 	const outbox = () =>
 		sqlite
 			.prepare(
 				`SELECT recipient_id AS stable_user_id, opted_in, source, occurred_at FROM whats_new_consent_outbox ORDER BY created_at, rowid`,
 			)
 			.all()
-	await signup('guest@example.com')
-	expect(outbox()).toEqual([])
-	// A bad link records nothing.
-	await confirm('0'.repeat(64))
-	expect(outbox()).toEqual([])
-	await confirm(sentToken())
-	const guestId = rows()[0]!['stable_id']
-	expect(outbox()).toEqual([
-		{
-			stable_user_id: guestId,
-			opted_in: 1,
-			source: 'newsletter_page',
-			occurred_at: now.toISOString(),
-		},
-	])
-	const accountId = user('member@example.com')
-	await signup('member@example.com')
-	await confirm(sentToken())
-	expect(outbox().at(-1)).toEqual({
-		stable_user_id: accountId,
-		opted_in: 1,
-		source: 'newsletter_page',
-		occurred_at: now.toISOString(),
+	return {
+		db,
+		sqlite,
+		signup,
+		confirm,
+		sentToken,
+		user,
+		recipients,
+		optIn,
+		rows,
+		outbox,
+		enqueued,
+		logs,
+		siteverify,
+	}
+}
+
+describe('newsletter sign-up', () => {
+	it.effect(
+		'a sign-up only emails a confirmation link; the address joins the list when the link is confirmed, once',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				assert.strictEqual(yield* t.signup('  New.Reader@Example.com '), 'ok')
+				expect(mocks.sendNewsletterConfirmationEmail).toHaveBeenCalledTimes(1)
+				expect(
+					mocks.sendNewsletterConfirmationEmail.mock.calls[0]![0],
+				).toMatchObject({
+					to: 'new.reader@example.com',
+					subject: "Confirm your What's New in Kody subscription",
+					now: new Date(startedAt),
+				})
+				const token = t.sentToken()
+				// Only a hash of the token is stored, and nobody is a recipient yet.
+				expect(t.rows()).toEqual([
+					expect.objectContaining({
+						email: 'new.reader@example.com',
+						status: 'pending',
+						confirmed_at: null,
+						token_expires_at: startedAt + sevenDaysMs,
+					}),
+				])
+				expect(JSON.stringify(t.rows())).not.toContain(token)
+				expect((yield* t.recipients('all-users')).users).toEqual([])
+
+				assert.strictEqual(yield* t.confirm(token), 'ok')
+				const stableId = t.rows()[0]!.stable_id as string
+				expect(stableId).toMatch(/^[a-f0-9]{64}$/)
+				expect((yield* t.recipients()).users).toEqual([
+					{
+						stable_user_id: stableId,
+						email: 'new.reader@example.com',
+						username: '',
+						opted_in: true,
+						opt_in_updated_at: startedAtIso,
+						opt_in_source: 'newsletter_page',
+						unsubscribed: false,
+					},
+				])
+				// The link is single use.
+				assert.strictEqual(yield* t.confirm(token), 'InvalidConfirmLink')
+
+				yield* t.optIn({
+					db: t.db,
+					stable_user_id: stableId,
+					opted_in: false,
+					source: 'email_link',
+				})
+				expect((yield* t.recipients()).users).toEqual([])
+				// Signing up again needs a fresh confirmation and keeps the same id.
+				yield* t.signup('new.reader@example.com')
+				expect((yield* t.recipients()).users).toEqual([])
+				assert.strictEqual(yield* t.confirm(t.sentToken()), 'ok')
+				expect((yield* t.recipients()).users[0]).toMatchObject({
+					stable_user_id: stableId,
+					opt_in_source: 'newsletter_page',
+				})
+				expect(logAuditEventSpy).toHaveBeenCalledWith(
+					expect.objectContaining({
+						action: 'newsletter_signup_confirm',
+						result: 'success',
+					}),
+				)
+			}),
+	)
+
+	it.effect('a pending sign-up cannot be switched on without its link', () =>
+		Effect.gen(function* () {
+			yield* atStart
+			const t = setup()
+			yield* t.signup('pending@example.com')
+			const error = yield* Effect.flip(
+				Effect.tryPromise(() =>
+					setWhatsNewOptIn({
+						db: t.db,
+						stable_user_id: t.rows()[0]!.stable_id as string,
+						opted_in: true,
+						source: 'admin',
+					}),
+				),
+			)
+			expect(String(error.cause)).toContain('User not found.')
+			expect((yield* t.recipients('all-users')).users).toEqual([])
+		}),
+	)
+
+	it.effect(
+		'malformed and missing tokens confirm nothing; a link expires after 7 days on the clock',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				yield* t.signup('late@example.com')
+				const first = t.sentToken()
+				for (const token of [
+					undefined,
+					'',
+					'nope',
+					'A'.repeat(64),
+					'b'.repeat(64),
+				])
+					assert.strictEqual(yield* t.confirm(token), 'InvalidConfirmLink')
+				// A newer link replaces the older one.
+				yield* t.signup('late@example.com')
+				const second = t.sentToken()
+				assert.notStrictEqual(second, first)
+				assert.strictEqual(yield* t.confirm(first), 'InvalidConfirmLink')
+
+				yield* TestClock.adjust('7 days')
+				assert.strictEqual(yield* t.confirm(second), 'InvalidConfirmLink')
+				expect((yield* t.recipients('all-users')).users).toEqual([])
+			}),
+	)
+
+	it.effect('a link still confirms just before it expires', () =>
+		Effect.gen(function* () {
+			yield* atStart
+			const t = setup()
+			yield* t.signup('prompt@example.com')
+			yield* TestClock.adjust(sevenDaysMs - 1)
+			assert.strictEqual(yield* t.confirm(t.sentToken()), 'ok')
+		}),
+	)
+
+	it.effect('invalid addresses are rejected without an email', () =>
+		Effect.gen(function* () {
+			yield* atStart
+			const t = setup()
+			for (const email of [
+				undefined,
+				'',
+				'nope',
+				'a@b',
+				'two@@example.com',
+				'a b@example.com',
+				"o'connor@example.com",
+				`${'x'.repeat(250)}@example.com`,
+			])
+				assert.strictEqual(yield* t.signup(email), 'InvalidEmail')
+			expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
+			expect(t.rows()).toEqual([])
+		}),
+	)
+
+	it.effect(
+		'a filled honeypot gets the normal success result and no email or row',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				assert.strictEqual(
+					yield* t.signup('bot@example.com', {
+						[honeypotFieldName]: 'https://spam',
+					}),
+					'ok',
+				)
+				expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
+				expect(t.siteverify).not.toHaveBeenCalled()
+				expect(t.rows()).toEqual([])
+			}),
+	)
+
+	it.effect(
+		'rate limits: per IP is reported, per address is silent, and both windows slide on the clock',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				const ip = '198.51.100.7'
+				for (let i = 0; i < newsletterSignupIpRateLimit.maxRequests; i++)
+					assert.strictEqual(
+						yield* t.signup(`ip${i}@example.com`, {}, ip),
+						'ok',
+					)
+				assert.strictEqual(
+					yield* t.signup('ip-over@example.com', {}, ip),
+					'SignupRateLimited',
+				)
+				yield* TestClock.adjust(
+					`${newsletterSignupIpRateLimit.windowSeconds + 1} seconds`,
+				)
+				assert.strictEqual(
+					yield* t.signup('ip-later@example.com', {}, ip),
+					'ok',
+				)
+
+				mocks.sendNewsletterConfirmationEmail.mockClear()
+				for (let i = 0; i < newsletterSignupEmailRateLimit.maxRequests + 2; i++)
+					assert.strictEqual(yield* t.signup('flood@example.com'), 'ok')
+				expect(mocks.sendNewsletterConfirmationEmail).toHaveBeenCalledTimes(
+					newsletterSignupEmailRateLimit.maxRequests,
+				)
+			}),
+	)
+
+	it.effect(
+		'already subscribed addresses and failed sends look like any other sign-up',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				yield* t.signup('again@example.com')
+				yield* t.confirm(t.sentToken())
+				t.user('member@example.com', 1, '2026-11-14')
+				mocks.sendNewsletterConfirmationEmail.mockClear()
+				assert.strictEqual(yield* t.signup('again@example.com'), 'ok')
+				assert.strictEqual(yield* t.signup('member@example.com'), 'ok')
+				expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
+
+				mocks.sendNewsletterConfirmationEmail.mockRejectedValueOnce(
+					new Error('rejected fail@example.com'),
+				)
+				assert.strictEqual(yield* t.signup('fail@example.com'), 'ok')
+				expect(t.logs).toContainEqual({
+					level: 'Warn',
+					message: [
+						'newsletter-signup-confirm-email-failed',
+						'rejected [email]',
+					],
+				})
+				expect(logAuditEventSpy).toHaveBeenCalledWith(
+					expect.objectContaining({ reason: 'send_failed' }),
+				)
+			}),
+	)
+
+	it.effect(
+		'confirming an address with a verified account sets consent on the account and lists it once',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				const id = t.user('member@example.com', 0, '2026-11-01')
+				yield* t.signup('member@example.com')
+				expect((yield* t.recipients()).users).toEqual([])
+				yield* t.confirm(t.sentToken())
+				expect((yield* t.recipients('all-users')).users).toEqual([
+					{
+						stable_user_id: id,
+						email: 'member@example.com',
+						username: 'reader',
+						opted_in: true,
+						opt_in_updated_at: startedAtIso,
+						opt_in_source: 'newsletter_page',
+						unsubscribed: false,
+					},
+				])
+			}),
+	)
+
+	it.effect(
+		'a sign-up confirmed before the account existed carries over while the account has made no choice',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				yield* t.signup('early@example.com')
+				yield* t.confirm(t.sentToken())
+				const id = t.user('early@example.com')
+				expect((yield* t.recipients()).users).toEqual([
+					expect.objectContaining({
+						stable_user_id: id,
+						opted_in: true,
+						opt_in_source: 'newsletter_page',
+						opt_in_updated_at: startedAtIso,
+					}),
+				])
+			}),
+	)
+
+	it.effect(
+		'confirming records the consent change in the outbox and enqueues it, under the account id when there is one',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				yield* t.signup('guest@example.com')
+				// A bad link records nothing.
+				yield* t.confirm('0'.repeat(64))
+				expect(t.outbox()).toEqual([])
+				yield* t.confirm(t.sentToken())
+				expect(t.outbox()).toEqual([
+					{
+						stable_user_id: t.rows()[0]!['stable_id'],
+						opted_in: 1,
+						source: 'newsletter_page',
+						occurred_at: startedAtIso,
+					},
+				])
+				expect(t.enqueued).toEqual([
+					{ kind: 'whats-new-consent-outbox', outboxId: expect.any(String) },
+				])
+				const accountId = t.user('member@example.com')
+				yield* t.signup('member@example.com')
+				yield* t.confirm(t.sentToken())
+				expect(t.outbox().at(-1)).toMatchObject({ stable_user_id: accountId })
+			}),
+	)
+
+	it('the confirmation email states the double opt-in terms and has no em dashes', () => {
+		const message = buildNewsletterConfirmEmail({
+			appBaseUrl: 'https://kody.example.com',
+			confirmUrl: 'https://kody.example.com/newsletter/confirm?token=abc',
+		})
+		expect(message.text).toContain('You are not subscribed until you do.')
+		expect(message.text).toContain('expires in 7 days')
+		expect(message.html).toContain(
+			'https://kody.example.com/newsletter/confirm?token=abc',
+		)
+		expect(`${message.subject}${message.text}`).not.toContain('\u2014')
 	})
+
+	it('the sign-up lifecycle only joins the list through a confirmed link and never returns to pending', async () => {
+		const { canHandle } = await import('@kody-internal/shared/state-machine.ts')
+		const { newsletterSignupState: machine } = await import('./signup-state.ts')
+		expect(canHandle(machine, 'pending', 'CONFIRM')).toBe(true)
+		expect(canHandle(machine, 'pending', 'RESUBSCRIBE')).toBe(false)
+		expect(canHandle(machine, 'pending', 'UNSUBSCRIBE')).toBe(false)
+		expect(canHandle(machine, 'confirmed', 'UNSUBSCRIBE')).toBe(true)
+		expect(canHandle(machine, 'confirmed', 'CONFIRM')).toBe(false)
+		expect(canHandle(machine, 'unsubscribed', 'RESUBSCRIBE')).toBe(true)
+		expect(canHandle(machine, 'unsubscribed', 'CONFIRM')).toBe(true)
+	})
+})
+
+describe('Turnstile human verification', () => {
+	it.effect(
+		'a sign-up verifies its token with siteverify before any email',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				assert.strictEqual(yield* t.signup('reader@example.com'), 'ok')
+				expect(t.siteverify).toHaveBeenCalledTimes(1)
+				const [url, init] = t.siteverify.mock.calls[0]!
+				expect(url).toBe(
+					'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+				)
+				const body = init!.body as URLSearchParams
+				expect(body.get('secret')).toBe('secret-key')
+				expect(body.get('response')).toBe('turnstile-token')
+				expect(body.get('remoteip')).toMatch(/^203\.0\.113\./)
+				expect(init!.signal).toBeInstanceOf(AbortSignal)
+				expect(t.rows()).toHaveLength(1)
+			}),
+	)
+
+	it.effect(
+		'a rejected, foreign, malformed, or missing token creates no sign-up and sends no email',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				t.siteverify.mockResolvedValueOnce(
+					Response.json({ success: false, 'error-codes': ['invalid-input'] }),
+				)
+				assert.strictEqual(
+					yield* t.signup('reader@example.com'),
+					'VerificationFailed',
+				)
+				// A token minted for another hostname is refused too.
+				t.siteverify.mockResolvedValueOnce(
+					Response.json({ success: true, hostname: 'elsewhere.example.com' }),
+				)
+				assert.strictEqual(
+					yield* t.signup('reader@example.com'),
+					'VerificationFailed',
+				)
+				expect(t.logs).toContainEqual(
+					expect.objectContaining({
+						level: 'Warn',
+						message: [
+							'turnstile-hostname-mismatch',
+							{
+								expected: 'kody.example.com',
+								received: 'elsewhere.example.com',
+							},
+						],
+					}),
+				)
+				// A 200 whose body is not the siteverify shape fails closed.
+				t.siteverify.mockResolvedValueOnce(Response.json({ success: 'yes' }))
+				assert.strictEqual(
+					yield* t.signup('reader@example.com'),
+					'VerificationFailed',
+				)
+				t.siteverify.mockResolvedValueOnce(new Response('<html>'))
+				assert.strictEqual(
+					yield* t.signup('reader@example.com'),
+					'VerificationFailed',
+				)
+				t.siteverify.mockClear()
+				assert.strictEqual(
+					yield* t.signup('reader@example.com', {
+						[turnstileResponseFieldName]: '',
+					}),
+					'VerificationFailed',
+				)
+				expect(t.siteverify).not.toHaveBeenCalled()
+				expect(t.rows()).toEqual([])
+				expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
+			}),
+	)
+
+	it.effect('an outage is retried with backoff, then fails closed', () =>
+		Effect.gen(function* () {
+			yield* atStart
+			const t = setup()
+			t.siteverify.mockRejectedValueOnce(new Error('siteverify is down'))
+			t.siteverify.mockResolvedValueOnce(new Response(null, { status: 503 }))
+			assert.strictEqual(yield* settle(t.signup('retry@example.com')), 'ok')
+			expect(t.siteverify).toHaveBeenCalledTimes(3)
+
+			t.siteverify.mockClear()
+			t.siteverify.mockRejectedValue(new Error('siteverify is down'))
+			assert.strictEqual(
+				yield* settle(t.signup('down@example.com')),
+				'VerificationFailed',
+			)
+			expect(t.siteverify).toHaveBeenCalledTimes(3)
+			expect(t.rows().map((row) => row.email)).toEqual(['retry@example.com'])
+		}),
+	)
+
+	it.effect(
+		'a hung siteverify request is aborted at the timeout, not just abandoned',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const t = setup()
+				const aborted: Array<number> = []
+				t.siteverify.mockImplementation(
+					(_url, init) =>
+						new Promise<Response>((_resolve, reject) => {
+							init!.signal!.addEventListener('abort', () => {
+								aborted.push(t.siteverify.mock.calls.length)
+								reject(init!.signal!.reason)
+							})
+						}),
+				)
+				const fiber = yield* Effect.forkChild(t.signup('hung@example.com'))
+				yield* TestClock.adjust('2999 millis')
+				assert.deepStrictEqual(aborted, [])
+				yield* TestClock.adjust('1 millis')
+				assert.deepStrictEqual(aborted, [1])
+				// Backoff 200ms, second 3s attempt, backoff 400ms, third 3s attempt.
+				yield* TestClock.adjust('3200 millis')
+				assert.deepStrictEqual(aborted, [1, 2])
+				yield* TestClock.adjust('3400 millis')
+				assert.deepStrictEqual(aborted, [1, 2, 3])
+				assert.strictEqual(yield* Fiber.join(fiber), 'VerificationFailed')
+			}),
+	)
+
+	it.effect(
+		'without Turnstile keys a non-production runtime skips the check',
+		() =>
+			Effect.gen(function* () {
+				yield* atStart
+				const env = {
+					TURNSTILE_SITE_KEY: '',
+					TURNSTILE_SECRET_KEY: '',
+					SENTRY_ENVIRONMENT: 'test',
+				}
+				const verification = HumanVerification.layer(env)
+				yield* HumanVerification.use((service) =>
+					service.verify({
+						token: undefined,
+						remoteIp: undefined,
+						expectedHostname: 'kody.example.com',
+					}),
+				).pipe(Effect.provide(verification))
+			}),
+	)
+
+	it.effect('without Turnstile keys production refuses as unavailable', () =>
+		Effect.gen(function* () {
+			const error = yield* HumanVerification.use((service) =>
+				service.verify({
+					token: 'token',
+					remoteIp: undefined,
+					expectedHostname: 'kody.example.com',
+				}),
+			).pipe(
+				Effect.flip,
+				Effect.provide(
+					HumanVerification.layer({ SENTRY_ENVIRONMENT: 'production' }),
+				),
+			)
+			assert.strictEqual(error._tag, 'VerificationUnavailable')
+		}),
+	)
 })

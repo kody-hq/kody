@@ -16,7 +16,7 @@ import {
 	verifyEmailChangeToken,
 } from '#app/email-change.ts'
 import { waitUntil } from 'cloudflare:workers'
-import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox-edge.ts'
 
 function getRequestCountry(request: Request) {
 	const cf = (request as Request & { cf?: { country?: string } }).cf

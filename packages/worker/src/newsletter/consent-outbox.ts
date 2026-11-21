@@ -1,33 +1,66 @@
+import {
+	Context,
+	DateTime,
+	Effect,
+	Layer,
+	Option,
+	Predicate,
+	Schedule,
+	Schema,
+} from 'effect'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { Background } from '#worker/effect/background.ts'
+import { D1, type DatabaseError } from '#worker/effect/d1.ts'
+import { whatsNewConsentOutboxQueueMessageKind } from './consent-outbox-edge.ts'
 import { dispatchAdminPackageSubscriptionEvent } from '#worker/package-invocations/admin-package-subscriptions.ts'
 
 export const whatsNewConsentChangedTopic = 'whats_new.consent.changed'
 
-export const whatsNewConsentOutboxQueueMessageKind = 'whats-new-consent-outbox'
+export const WhatsNewConsentSource = Schema.Literals([
+	'signup',
+	'settings',
+	'email_link',
+	'admin',
+	'newsletter_page',
+])
+export type WhatsNewConsentSource = typeof WhatsNewConsentSource.Type
 
-export type WhatsNewConsentSource =
-	| 'signup'
-	| 'settings'
-	| 'email_link'
-	| 'admin'
-	| 'newsletter_page'
+/** The one queue message shape: the producer encodes it, the consumer decodes it. */
+export const WhatsNewConsentOutboxMessage = Schema.Struct({
+	kind: Schema.Literal(whatsNewConsentOutboxQueueMessageKind),
+	outboxId: Schema.Trim.check(Schema.isNonEmpty()),
+})
+export type WhatsNewConsentOutboxMessage =
+	typeof WhatsNewConsentOutboxMessage.Type
 
-export type WhatsNewConsentOutboxQueueMessage = {
-	kind: typeof whatsNewConsentOutboxQueueMessageKind
-	outboxId: string
-}
-
-type OutboxEnv = Omit<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'> &
-	Partial<Pick<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'>>
+export const decodeWhatsNewConsentOutboxMessage = Schema.decodeUnknownOption(
+	WhatsNewConsentOutboxMessage,
+)
 
 /** Rows older than this were not delivered by their own queue message. */
-const staleOutboxAgeMs = 2 * 60 * 1000
+const staleOutboxAge = { minutes: 2 } as const
 const staleOutboxBatchSize = 20
 /** A row that keeps failing stops being re-enqueued; it stays for inspection. */
 const outboxMaxAttempts = 8
 
 const whatsNewConsentSubscriptionActorTokenId =
 	'internal:whats-new-consent-subscriptions'
+
+export class OutboxEnqueueError extends Schema.TaggedError<OutboxEnqueueError>()(
+	'OutboxEnqueueError',
+	{ outboxId: Schema.String, cause: Schema.Defect() },
+) {}
+
+export class ConsentDispatchError extends Schema.TaggedError<ConsentDispatchError>()(
+	'ConsentDispatchError',
+	{
+		outboxId: Schema.String,
+		reason: Schema.Literals(['dispatch_failed', 'handlers_failed']),
+		failed: Schema.optional(Schema.Number),
+		total: Schema.optional(Schema.Number),
+		cause: Schema.optional(Schema.Defect()),
+	},
+) {}
 
 /**
  * Orgs whose packages hear consent changes besides site admins' own. The
@@ -42,298 +75,388 @@ export function whatsNewConsentFirstPartyOrgIds(env: {
 		.filter((id) => /^[0-9a-f]{64}$/.test(id))
 }
 
-export function isWhatsNewConsentOutboxQueueBody(body: unknown) {
-	return (
-		!!body &&
-		typeof body === 'object' &&
-		!Array.isArray(body) &&
-		(body as Record<string, unknown>)['kind'] ===
-			whatsNewConsentOutboxQueueMessageKind
+type ConsentEvent = {
+	readonly outboxId: string
+	readonly attempts: number
+	readonly params: Record<string, unknown>
+}
+
+export type ConsentOutboxEnv = Omit<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'> &
+	Partial<Pick<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'>>
+
+type DispatchResponses = Awaited<
+	ReturnType<typeof dispatchAdminPackageSubscriptionEvent>
+>
+
+/** Admin package subscriptions to `whats_new.consent.changed`. */
+export class ConsentDispatch extends Context.Service<
+	ConsentDispatch,
+	{
+		readonly dispatch: (
+			event: ConsentEvent,
+		) => Effect.Effect<DispatchResponses, ConsentDispatchError>
+	}
+>()('kody/newsletter/ConsentDispatch') {
+	static layer(env: ConsentOutboxEnv) {
+		return Layer.effect(
+			ConsentDispatch,
+			Effect.gen(function* () {
+				const background = yield* Background
+				const baseUrl = getAppBaseUrl({ env })
+				const additionalOwnerIds = whatsNewConsentFirstPartyOrgIds(env)
+				return ConsentDispatch.of({
+					dispatch: (event) =>
+						Effect.tryPromise({
+							try: () =>
+								dispatchAdminPackageSubscriptionEvent({
+									env,
+									baseUrl,
+									topic: whatsNewConsentChangedTopic,
+									getParams: () => event.params,
+									source: 'whats-new-consent',
+									// A handler failure is stored against its key, so each
+									// attempt gets a fresh one; handlers dedupe on `event_id`.
+									buildIdempotencyKey: (savedPackage) =>
+										`whats-new-consent:${event.outboxId}:${event.attempts}:${savedPackage.id}`,
+									actorTokenId: whatsNewConsentSubscriptionActorTokenId,
+									additionalOwnerIds,
+									retryDiscoveryFailures: true,
+									retryInvocationInfrastructureFailures: true,
+									waitUntil: background.waitUntil,
+								}),
+							catch: (cause) =>
+								new ConsentDispatchError({
+									outboxId: event.outboxId,
+									reason: 'dispatch_failed',
+									cause,
+								}),
+						}).pipe(Effect.withSpan('ConsentDispatch.dispatch')),
+				})
+			}),
+		)
+	}
+}
+
+/** Hands outbox rows to their consumer. */
+export class ConsentOutboxQueue extends Context.Service<
+	ConsentOutboxQueue,
+	{
+		readonly send: (
+			message: WhatsNewConsentOutboxMessage,
+		) => Effect.Effect<void, OutboxEnqueueError>
+	}
+>()('kody/newsletter/ConsentOutboxQueue') {
+	static queueLayer(queue: Queue) {
+		const encode = Schema.encodeEffect(WhatsNewConsentOutboxMessage)
+		return Layer.succeed(
+			ConsentOutboxQueue,
+			ConsentOutboxQueue.of({
+				send: (message) =>
+					encode(message).pipe(
+						Effect.flatMap((body) => Effect.tryPromise(() => queue.send(body))),
+						Effect.retry({
+							schedule: Schedule.exponential('100 millis'),
+							times: 2,
+						}),
+						Effect.mapError(
+							(cause) =>
+								new OutboxEnqueueError({ outboxId: message.outboxId, cause }),
+						),
+						Effect.withSpan('ConsentOutboxQueue.send'),
+					),
+			}),
+		)
+	}
+
+	/**
+	 * No Queue binding (local dev / preview): deliver inline with the
+	 * consumer's code path so subscribers still hear about the change.
+	 */
+	static readonly inlineLayer = Layer.effect(
+		ConsentOutboxQueue,
+		Effect.gen(function* () {
+			const context = yield* Effect.context<D1 | ConsentDispatch>()
+			return ConsentOutboxQueue.of({
+				send: (message) =>
+					deliverWhatsNewConsentOutboxRow(message.outboxId).pipe(
+						Effect.asVoid,
+						Effect.mapError(
+							(cause) =>
+								new OutboxEnqueueError({ outboxId: message.outboxId, cause }),
+						),
+						Effect.provideContext(context),
+					),
+			})
+		}),
 	)
 }
 
-export function parseWhatsNewConsentOutboxQueueMessage(
-	body: unknown,
-): WhatsNewConsentOutboxQueueMessage | null {
-	if (!isWhatsNewConsentOutboxQueueBody(body)) return null
-	const outboxId = (body as Record<string, unknown>)['outboxId']
-	if (typeof outboxId !== 'string' || !outboxId.trim()) return null
-	return {
-		kind: whatsNewConsentOutboxQueueMessageKind,
-		outboxId: outboxId.trim(),
-	}
-}
-
-async function enqueueOutboxIds(env: OutboxEnv, outboxIds: Array<string>) {
+/** The queue producer, or inline delivery where no Queue is bound. */
+export function consentOutboxProducerLayer(env: ConsentOutboxEnv) {
 	const queue = env.PACKAGE_EVENTS_DISPATCH_QUEUE
-	for (const outboxId of outboxIds) {
-		if (queue) {
-			await queue.send({
-				kind: whatsNewConsentOutboxQueueMessageKind,
-				outboxId,
-			} satisfies WhatsNewConsentOutboxQueueMessage)
-			continue
-		}
-		// No Queue binding (local dev / preview): deliver inline with the
-		// consumer's code path so subscribers still hear about the change.
-		await deliverWhatsNewConsentOutboxRow({ env, outboxId })
-	}
+	return queue
+		? ConsentOutboxQueue.queueLayer(queue)
+		: ConsentOutboxQueue.inlineLayer.pipe(
+				Layer.provide(ConsentDispatch.layer(env)),
+			)
 }
 
 /**
  * Record a What's New consent or subscriber change for admin package
- * subscribers and hand it to the queue. Never throws: the change is already
- * stored, and a row that could not be enqueued is picked up by the next one.
- * `optedIn: null` announces a recipient that has made no choice.
+ * subscribers and hand it to the queue, with any stale rows a lost message
+ * left behind. `optedIn: null` announces a recipient that has made no choice.
  */
-export async function recordWhatsNewConsentChange(input: {
-	env: OutboxEnv
-	stableUserId: string
-	optedIn: boolean | null
-	source: WhatsNewConsentSource | null
-	occurredAt: string
-	now?: Date
+export const recordWhatsNewConsentChange = Effect.fn(
+	'recordWhatsNewConsentChange',
+)(function* (change: {
+	readonly stableUserId: string
+	readonly optedIn: boolean | null
+	readonly source: WhatsNewConsentSource | null
+	readonly occurredAt: string
 }) {
-	try {
-		const now = input.now ?? new Date()
-		const outboxId = crypto.randomUUID()
-		await input.env.APP_DB.prepare(
-			`INSERT INTO whats_new_consent_outbox (id, recipient_id, opted_in, source, occurred_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-		)
-			.bind(
-				outboxId,
-				input.stableUserId,
-				input.optedIn === null ? null : input.optedIn ? 1 : 0,
-				input.source,
-				input.occurredAt,
-				now.toISOString(),
-			)
-			.run()
-		const stale = await input.env.APP_DB.prepare(
-			`SELECT id FROM whats_new_consent_outbox
-			 WHERE id != ? AND created_at < ? AND attempts < ?
-			 ORDER BY created_at LIMIT ?`,
-		)
-			.bind(
-				outboxId,
-				new Date(now.getTime() - staleOutboxAgeMs).toISOString(),
-				outboxMaxAttempts,
-				staleOutboxBatchSize,
-			)
-			.all<{ id: string }>()
-		await enqueueOutboxIds(input.env, [
+	const d1 = yield* D1
+	const queue = yield* ConsentOutboxQueue
+	const now = yield* DateTime.now
+	const outboxId = crypto.randomUUID()
+	yield* d1.run({
+		name: 'consentOutbox.insert',
+		sql: `INSERT INTO whats_new_consent_outbox (id, recipient_id, opted_in, source, occurred_at, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+		params: [
 			outboxId,
-			...stale.results.map((row) => row.id),
-		])
-	} catch (error) {
-		console.error('whats-new-consent-outbox-record-failed', {
-			stableUserId: input.stableUserId,
-			error,
+			change.stableUserId,
+			change.optedIn === null ? null : change.optedIn ? 1 : 0,
+			change.source,
+			change.occurredAt,
+			DateTime.formatIso(now),
+		],
+	})
+	const stale = yield* d1.all({
+		name: 'consentOutbox.listStale',
+		sql: `SELECT id FROM whats_new_consent_outbox
+			WHERE id != ? AND created_at < ? AND attempts < ?
+			ORDER BY created_at LIMIT ?`,
+		params: [
+			outboxId,
+			DateTime.formatIso(DateTime.subtract(now, staleOutboxAge)),
+			outboxMaxAttempts,
+			staleOutboxBatchSize,
+		],
+		row: Schema.Struct({ id: Schema.String }),
+	})
+	for (const id of [outboxId, ...stale.map((row) => row.id)]) {
+		yield* queue.send({
+			kind: whatsNewConsentOutboxQueueMessageKind,
+			outboxId: id,
 		})
 	}
-}
+})
+
+const VerifiedAccountConsentRow = Schema.Struct({
+	opted_in: Schema.Number,
+	updated_at: Schema.NullOr(Schema.String),
+	source: Schema.NullOr(WhatsNewConsentSource),
+	email_verified_at: Schema.String,
+	email: Schema.String,
+})
 
 /**
  * Announce a verified account to subscribers with whatever newsletter choice
  * it holds (the sign-up checkbox, or none). Call when an account becomes a
  * possible recipient: its address was just verified.
  */
-export async function recordWhatsNewVerifiedAccount(input: {
-	env: OutboxEnv
-	stableUserId: string
-	now?: Date
-}) {
-	try {
-		const row = await input.env.APP_DB.prepare(
-			`SELECT whats_new_email_opt_in AS opted_in, whats_new_email_opt_in_updated_at AS updated_at,
+export const recordWhatsNewVerifiedAccount = Effect.fn(
+	'recordWhatsNewVerifiedAccount',
+)(function* (stableUserId: string) {
+	const d1 = yield* D1
+	const account = yield* d1.first({
+		name: 'consentOutbox.findVerifiedAccount',
+		sql: `SELECT whats_new_email_opt_in AS opted_in, whats_new_email_opt_in_updated_at AS updated_at,
 				whats_new_email_opt_in_source AS source, email_verified_at, email
-			 FROM users
-			 WHERE stable_user_id = ? AND deleted_at IS NULL AND deleting_at IS NULL
+			FROM users
+			WHERE stable_user_id = ? AND deleted_at IS NULL AND deleting_at IS NULL
 				AND email_verified_at IS NOT NULL`,
-		)
-			.bind(input.stableUserId)
-			.first<{
-				opted_in: number
-				updated_at: string | null
-				source: WhatsNewConsentSource | null
-				email_verified_at: string
-				email: string
-			}>()
-		if (!row) return
-		const madeChoice = row.updated_at !== null
-		if (!madeChoice) {
-			// The recipient list counts a confirmed public sign-up for the same
-			// address as this account's opt-in until the account makes a choice.
-			const signup = await input.env.APP_DB.prepare(
-				`SELECT confirmed_at FROM newsletter_signups
-				 WHERE email = ? AND status = 'confirmed' AND source = 'newsletter_page'`,
-			)
-				.bind(row.email)
-				.first<{ confirmed_at: string }>()
-			if (signup) {
-				await recordWhatsNewConsentChange({
-					env: input.env,
-					stableUserId: input.stableUserId,
-					optedIn: true,
-					source: 'newsletter_page',
-					// Dated when the choice was made, so any later choice on the
-					// account still wins.
-					occurredAt: signup.confirmed_at,
-					now: input.now,
-				})
-				return
-			}
+		params: [stableUserId],
+		row: VerifiedAccountConsentRow,
+	})
+	if (Option.isNone(account)) return
+	const row = account.value
+	if (row.updated_at === null) {
+		// The recipient list counts a confirmed public sign-up for the same
+		// address as this account's opt-in until the account makes a choice.
+		const signup = yield* d1.first({
+			name: 'consentOutbox.findConfirmedSignup',
+			sql: `SELECT confirmed_at FROM newsletter_signups
+				WHERE email = ? AND status = 'confirmed' AND source = 'newsletter_page'`,
+			params: [row.email],
+			row: Schema.Struct({ confirmed_at: Schema.String }),
+		})
+		if (Option.isSome(signup)) {
+			// Dated when the choice was made, so any later account choice wins.
+			return yield* recordWhatsNewConsentChange({
+				stableUserId,
+				optedIn: true,
+				source: 'newsletter_page',
+				occurredAt: signup.value.confirmed_at,
+			})
 		}
-		await recordWhatsNewConsentChange({
-			env: input.env,
-			stableUserId: input.stableUserId,
-			optedIn: madeChoice ? row.opted_in === 1 : null,
-			source: madeChoice ? row.source : null,
-			occurredAt: row.updated_at ?? row.email_verified_at,
-			now: input.now,
-		})
-	} catch (error) {
-		console.error('whats-new-consent-outbox-record-failed', {
-			stableUserId: input.stableUserId,
-			error,
-		})
 	}
-}
+	const madeChoice = row.updated_at !== null
+	yield* recordWhatsNewConsentChange({
+		stableUserId,
+		optedIn: madeChoice ? row.opted_in === 1 : null,
+		source: madeChoice ? row.source : null,
+		occurredAt: row.updated_at ?? row.email_verified_at,
+	})
+})
 
-async function loadSubscriber(db: D1Database, stableUserId: string) {
-	const user = await db
-		.prepare(
-			`SELECT email, username FROM users
-			 WHERE stable_user_id = ? AND deleted_at IS NULL AND deleting_at IS NULL
-				AND email_verified_at IS NOT NULL`,
-		)
-		.bind(stableUserId)
-		.first<{ email: string; username: string }>()
-	if (user) return user
-	return await db
-		.prepare(
-			`SELECT email, '' AS username FROM newsletter_signups
-			 WHERE stable_id = ? AND status IN ('confirmed', 'unsubscribed')`,
-		)
-		.bind(stableUserId)
-		.first<{ email: string; username: string }>()
-}
+const ClaimedOutboxRow = Schema.Struct({
+	stable_user_id: Schema.String,
+	opted_in: Schema.NullOr(Schema.Literals([0, 1])),
+	source: Schema.NullOr(Schema.String),
+	occurred_at: Schema.String,
+	attempts: Schema.Number,
+})
+
+const SubscriberRow = Schema.Struct({
+	email: Schema.String,
+	username: Schema.String,
+})
+
+/** A skipped body carries why, e.g. `{ skipped: { reason: 'no_enablement_on' } }`. */
+const isSkippedResponseBody = (body: unknown) =>
+	Predicate.hasProperty(body, 'skipped') && Boolean(body.skipped)
 
 /**
  * Queue-consumer side: deliver one outbox row to admin package subscribers.
  * Deletes the row once every subscriber handled it and keeps it while no
- * package subscribes. Throws to retry when delivery failed; a row with no
+ * package subscribes. Fails to retry when delivery failed; a row with no
  * remaining recipient is dropped.
  */
-export async function deliverWhatsNewConsentOutboxRow(input: {
-	env: OutboxEnv
-	outboxId: string
-	waitUntil?: (promise: Promise<unknown>) => void
-}) {
-	const db = input.env.APP_DB
-	const row = await db
-		.prepare(
-			`UPDATE whats_new_consent_outbox SET attempts = attempts + 1 WHERE id = ?
-			 RETURNING recipient_id AS stable_user_id, opted_in, source, occurred_at, attempts`,
+export const deliverWhatsNewConsentOutboxRow = Effect.fn(
+	'deliverWhatsNewConsentOutboxRow',
+)(function* (
+	outboxId: string,
+): Effect.fn.Return<
+	{ readonly delivered: number },
+	DatabaseError | ConsentDispatchError,
+	D1 | ConsentDispatch
+> {
+	yield* Effect.annotateCurrentSpan('outbox.id', outboxId)
+	const d1 = yield* D1
+	const consentDispatch = yield* ConsentDispatch
+	const claimed = yield* d1.first({
+		name: 'consentOutbox.claim',
+		sql: `UPDATE whats_new_consent_outbox SET attempts = attempts + 1 WHERE id = ?
+			RETURNING recipient_id AS stable_user_id, opted_in, source, occurred_at, attempts`,
+		params: [outboxId],
+		row: ClaimedOutboxRow,
+	})
+	if (Option.isNone(claimed)) return { delivered: 0 }
+	const row = claimed.value
+	const remove = d1.run({
+		name: 'consentOutbox.delete',
+		sql: `DELETE FROM whats_new_consent_outbox WHERE id = ?`,
+		params: [outboxId],
+	})
+	const subscriber = yield* d1
+		.first({
+			name: 'consentOutbox.findAccountSubscriber',
+			sql: `SELECT email, username FROM users
+				WHERE stable_user_id = ? AND deleted_at IS NULL AND deleting_at IS NULL
+					AND email_verified_at IS NOT NULL`,
+			params: [row.stable_user_id],
+			row: SubscriberRow,
+		})
+		.pipe(
+			Effect.flatMap(
+				Option.match({
+					onSome: (user) => Effect.succeedSome(user),
+					onNone: () =>
+						d1.first({
+							name: 'consentOutbox.findSignupSubscriber',
+							sql: `SELECT email, '' AS username FROM newsletter_signups
+								WHERE stable_id = ? AND status IN ('confirmed', 'unsubscribed')`,
+							params: [row.stable_user_id],
+							row: SubscriberRow,
+						}),
+				}),
+			),
 		)
-		.bind(input.outboxId)
-		.first<{
-			stable_user_id: string
-			opted_in: number | null
-			source: string | null
-			occurred_at: string
-			attempts: number
-		}>()
-	if (!row) return { delivered: 0 }
-	const remove = async () => {
-		await db
-			.prepare(`DELETE FROM whats_new_consent_outbox WHERE id = ?`)
-			.bind(input.outboxId)
-			.run()
-	}
-	const subscriber = await loadSubscriber(db, row.stable_user_id)
-	if (!subscriber) {
-		await remove()
+	if (Option.isNone(subscriber)) {
+		yield* remove
 		return { delivered: 0 }
 	}
 	// Queue retries and concurrent batches can deliver an older change after a
 	// newer one. A change superseded by a later choice for the same recipient
 	// is dropped; subscribers also order by `occurred_at`. A no-choice row
 	// carries no consent, so it never supersedes a choice.
-	const newer = await db
-		.prepare(
-			`SELECT 1 AS newer FROM whats_new_consent_outbox
-			 WHERE recipient_id = ? AND id != ? AND opted_in IS NOT NULL
+	const newer = yield* d1.first({
+		name: 'consentOutbox.findNewerChoice',
+		sql: `SELECT 1 AS newer FROM whats_new_consent_outbox
+			WHERE recipient_id = ? AND id != ? AND opted_in IS NOT NULL
 				AND (occurred_at > ? OR (occurred_at = ? AND rowid > (
 					SELECT rowid FROM whats_new_consent_outbox WHERE id = ?)))
-			 LIMIT 1`,
-		)
-		.bind(
+			LIMIT 1`,
+		params: [
 			row.stable_user_id,
-			input.outboxId,
+			outboxId,
 			row.occurred_at,
 			row.occurred_at,
-			input.outboxId,
-		)
-		.first<{ newer: number }>()
-	if (newer) {
-		await remove()
+			outboxId,
+		],
+		row: Schema.Struct({ newer: Schema.Number }),
+	})
+	if (Option.isSome(newer)) {
+		yield* remove
 		return { delivered: 0 }
 	}
-	const responses = await dispatchAdminPackageSubscriptionEvent({
-		env: input.env as Env,
-		baseUrl: getAppBaseUrl({ env: input.env as Env }),
-		topic: whatsNewConsentChangedTopic,
-		getParams: () => ({
+	const responses = yield* consentDispatch.dispatch({
+		outboxId,
+		attempts: row.attempts,
+		params: {
 			event: whatsNewConsentChangedTopic,
-			event_id: input.outboxId,
+			event_id: outboxId,
 			subscriber: {
 				stable_user_id: row.stable_user_id,
-				email: subscriber.email,
-				username: subscriber.username,
+				email: subscriber.value.email,
+				username: subscriber.value.username,
 			},
 			consent: {
 				opted_in: row.opted_in === null ? null : row.opted_in === 1,
 				source: row.source,
 				occurred_at: row.occurred_at,
 			},
-		}),
-		source: 'whats-new-consent',
-		// A handler failure is stored against its key, so each attempt gets a
-		// fresh one; handlers dedupe on `event_id`.
-		buildIdempotencyKey: (savedPackage) =>
-			`whats-new-consent:${input.outboxId}:${row.attempts}:${savedPackage.id}`,
-		actorTokenId: whatsNewConsentSubscriptionActorTokenId,
-		additionalOwnerIds: whatsNewConsentFirstPartyOrgIds(input.env as Env),
-		retryDiscoveryFailures: true,
-		retryInvocationInfrastructureFailures: true,
-		waitUntil: input.waitUntil,
+		},
 	})
 	const failed = responses.filter(
 		(response) => !response || response.status < 200 || response.status >= 400,
-	)
-	if (failed.length > 0) {
-		throw new Error(
-			`whats_new.consent.changed was not handled by ${failed.length} of ${responses.length} subscribers.`,
-		)
+	).length
+	if (failed > 0) {
+		return yield* new ConsentDispatchError({
+			outboxId,
+			reason: 'handlers_failed',
+			failed,
+			total: responses.length,
+		})
 	}
 	// A subscription nobody has turned on answers 202 without running.
 	const handled = responses.filter(
 		(response) =>
-			!(response?.body as { skipped?: unknown } | undefined)?.skipped,
-	)
-	if (handled.length === 0) {
+			!(
+				Predicate.isNotNullish(response) && isSkippedResponseBody(response.body)
+			),
+	).length
+	if (handled === 0) {
 		// No package handler ran: keep the row, uncounted, for the sweep that
 		// runs with the next change.
-		await db
-			.prepare(
-				`UPDATE whats_new_consent_outbox SET attempts = attempts - 1 WHERE id = ? AND attempts > 0`,
-			)
-			.bind(input.outboxId)
-			.run()
+		yield* d1.run({
+			name: 'consentOutbox.release',
+			sql: `UPDATE whats_new_consent_outbox SET attempts = attempts - 1 WHERE id = ? AND attempts > 0`,
+			params: [outboxId],
+		})
 		return { delivered: 0 }
 	}
-	await remove()
-	return { delivered: handled.length }
-}
+	yield* remove
+	return { delivered: handled }
+})

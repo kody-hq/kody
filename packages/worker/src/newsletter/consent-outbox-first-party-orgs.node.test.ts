@@ -1,5 +1,10 @@
 import { DatabaseSync } from 'node:sqlite'
+import { it } from '@effect/vitest'
+import { Effect, Layer } from 'effect'
+import { TestClock } from 'effect/testing'
 import { beforeEach, expect, test, vi } from 'vitest'
+import { Background } from '#worker/effect/background.ts'
+import { D1 } from '#worker/effect/d1.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
@@ -55,6 +60,8 @@ vi.mock(
 )
 
 const {
+	ConsentDispatch,
+	ConsentOutboxQueue,
 	deliverWhatsNewConsentOutboxRow,
 	recordWhatsNewConsentChange,
 	whatsNewConsentFirstPartyOrgIds,
@@ -89,18 +96,28 @@ function setup(packageOwners: Array<string>) {
 		sqlite
 			.prepare(`SELECT id, attempts FROM whats_new_consent_outbox`)
 			.all() as Array<{ id: string; attempts: number }>
-	const record = async () => {
-		await recordWhatsNewConsentChange({
-			env,
-			stableUserId: signupId,
-			optedIn: true,
-			source: 'newsletter_page',
-			occurredAt: now.toISOString(),
-			now,
-		})
-		return outbox()[0]!.id
-	}
-	return { env, outbox, record }
+	const layer = Layer.mergeAll(
+		ConsentDispatch.layer(env),
+		ConsentOutboxQueue.queueLayer(env.PACKAGE_EVENTS_DISPATCH_QUEUE),
+	).pipe(
+		Layer.provideMerge(D1.layer(env.APP_DB)),
+		Layer.provide(Background.inline),
+	)
+	const record = TestClock.setTime(now.getTime()).pipe(
+		Effect.andThen(
+			recordWhatsNewConsentChange({
+				stableUserId: signupId,
+				optedIn: true,
+				source: 'newsletter_page',
+				occurredAt: now.toISOString(),
+			}),
+		),
+		Effect.provide(layer),
+		Effect.map(() => outbox()[0]!.id),
+	)
+	const deliver = (outboxId: string) =>
+		deliverWhatsNewConsentOutboxRow(outboxId).pipe(Effect.provide(layer))
+	return { outbox, record, deliver }
 }
 
 beforeEach(() => {
@@ -121,66 +138,70 @@ test('only well-formed org ids are read from the allowlist', () => {
 	expect(whatsNewConsentFirstPartyOrgIds({})).toEqual([])
 })
 
-test('a package owned by the allowlisted kody org receives the consent change', async () => {
-	const { env, outbox, record } = setup([kodyOrgId])
-	const outboxId = await record()
-	await expect(
-		deliverWhatsNewConsentOutboxRow({ env, outboxId }),
-	).resolves.toEqual({ delivered: 1 })
-	expect(mocks.invokePackageSubscription).toHaveBeenCalledTimes(1)
-	expect(mocks.invokePackageSubscription.mock.calls[0]![0]).toMatchObject({
-		savedPackage: { userId: kodyOrgId },
-		topic: 'whats_new.consent.changed',
-		params: {
-			event_id: outboxId,
-			subscriber: { stable_user_id: signupId, email: 'guest@example.com' },
-			consent: {
-				opted_in: true,
-				source: 'newsletter_page',
-				occurred_at: now.toISOString(),
-			},
-		},
-	})
-	expect(outbox()).toEqual([])
-})
+it.effect(
+	'a package owned by the allowlisted kody org receives the consent change',
+	() =>
+		Effect.gen(function* () {
+			const { outbox, record, deliver } = setup([kodyOrgId])
+			const outboxId = yield* record
+			expect(yield* deliver(outboxId)).toEqual({ delivered: 1 })
+			expect(mocks.invokePackageSubscription).toHaveBeenCalledTimes(1)
+			expect(mocks.invokePackageSubscription.mock.calls[0]![0]).toMatchObject({
+				savedPackage: { userId: kodyOrgId },
+				topic: 'whats_new.consent.changed',
+				params: {
+					event_id: outboxId,
+					subscriber: { stable_user_id: signupId, email: 'guest@example.com' },
+					consent: {
+						opted_in: true,
+						source: 'newsletter_page',
+						occurred_at: now.toISOString(),
+					},
+				},
+			})
+			expect(outbox()).toEqual([])
+		}),
+)
 
-test('a package owned by an org that is not allowlisted does not receive it, and the row stays queued', async () => {
-	const { env, outbox, record } = setup([otherOrgId])
-	const outboxId = await record()
-	await expect(
-		deliverWhatsNewConsentOutboxRow({ env, outboxId }),
-	).resolves.toEqual({ delivered: 0 })
-	expect(mocks.listSavedPackagesByUserId).not.toHaveBeenCalledWith(
-		expect.anything(),
-		{ userId: otherOrgId },
-	)
-	expect(mocks.invokePackageSubscription).not.toHaveBeenCalled()
-	expect(outbox()).toEqual([{ id: outboxId, attempts: 0 }])
-})
+it.effect(
+	'a package owned by an org that is not allowlisted does not receive it, and the row stays queued',
+	() =>
+		Effect.gen(function* () {
+			const { outbox, record, deliver } = setup([otherOrgId])
+			const outboxId = yield* record
+			expect(yield* deliver(outboxId)).toEqual({ delivered: 0 })
+			expect(mocks.listSavedPackagesByUserId).not.toHaveBeenCalledWith(
+				expect.anything(),
+				{ userId: otherOrgId },
+			)
+			expect(mocks.invokePackageSubscription).not.toHaveBeenCalled()
+			expect(outbox()).toEqual([{ id: outboxId, attempts: 0 }])
+		}),
+)
 
-test('the row stays queued, uncounted, when nobody subscribes', async () => {
-	const { env, outbox, record } = setup([])
-	const outboxId = await record()
-	await expect(
-		deliverWhatsNewConsentOutboxRow({ env, outboxId }),
-	).resolves.toEqual({ delivered: 0 })
-	expect(mocks.invokePackageSubscription).not.toHaveBeenCalled()
-	expect(outbox()).toEqual([{ id: outboxId, attempts: 0 }])
-})
+it.effect('the row stays queued, uncounted, when nobody subscribes', () =>
+	Effect.gen(function* () {
+		const { outbox, record, deliver } = setup([])
+		const outboxId = yield* record
+		expect(yield* deliver(outboxId)).toEqual({ delivered: 0 })
+		expect(mocks.invokePackageSubscription).not.toHaveBeenCalled()
+		expect(outbox()).toEqual([{ id: outboxId, attempts: 0 }])
+	}),
+)
 
-test('the row stays queued while the subscription is not turned on, then delivers', async () => {
-	const { env, outbox, record } = setup([kodyOrgId])
-	const outboxId = await record()
-	mocks.invokePackageSubscription.mockResolvedValueOnce({
-		status: 202,
-		body: { ok: true, skipped: { reason: 'no_enablement_on' } },
-	})
-	await expect(
-		deliverWhatsNewConsentOutboxRow({ env, outboxId }),
-	).resolves.toEqual({ delivered: 0 })
-	expect(outbox()).toEqual([{ id: outboxId, attempts: 0 }])
-	await expect(
-		deliverWhatsNewConsentOutboxRow({ env, outboxId }),
-	).resolves.toEqual({ delivered: 1 })
-	expect(outbox()).toEqual([])
-})
+it.effect(
+	'the row stays queued while the subscription is not turned on, then delivers',
+	() =>
+		Effect.gen(function* () {
+			const { outbox, record, deliver } = setup([kodyOrgId])
+			const outboxId = yield* record
+			mocks.invokePackageSubscription.mockResolvedValueOnce({
+				status: 202,
+				body: { ok: true, skipped: { reason: 'no_enablement_on' } },
+			})
+			expect(yield* deliver(outboxId)).toEqual({ delivered: 0 })
+			expect(outbox()).toEqual([{ id: outboxId, attempts: 0 }])
+			expect(yield* deliver(outboxId)).toEqual({ delivered: 1 })
+			expect(outbox()).toEqual([])
+		}),
+)

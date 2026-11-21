@@ -1,4 +1,4 @@
-import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox-edge.ts'
 import { scheduleFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
 import { maybeTagKitSubscriberOnSignup } from '#app/kit-signup.ts'
 import {

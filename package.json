@@ -123,13 +123,16 @@
     "desktop:dev": "npm run build --workspace @kodycodes/cli && npm start --workspace @kodycodes/desktop",
     "desktop:pack": "npm run build --workspace @kodycodes/cli && npm run pack --workspace @kodycodes/desktop",
     "desktop:validate": "npm run validate --workspace @kodycodes/desktop",
-    "viewers:measure": "node tools/measure-file-viewers.ts"
+    "viewers:measure": "node tools/measure-file-viewers.ts",
+    "effect:check": "effect-language-service diagnostics --project packages/worker/tsconfig-worker-typecheck.json --strict --severity error,warning"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@cloudflare/vite-plugin": "^1.62.5",
     "@cloudflare/vitest-plugin": "^1.4.7",
     "@cloudflare/workers-types": "^5.20261003.1",
+    "@effect/language-service": "^0.87.5",
+    "@effect/vitest": "^4.1.4",
     "@emotion/cache": "^11.14.0",
     "@epic-web/config": "^3.2.1",
     "@kody-internal/shared": "file:packages/shared",
@@ -203,6 +206,9 @@
     },
     "@cloudflare/vite-plugin": {
       "undici": ">=7.30.1 <8.0.0"
+    },
+    "@effect/vitest": {
+      "vitest": "$vitest"
     }
   },
   "engines": {

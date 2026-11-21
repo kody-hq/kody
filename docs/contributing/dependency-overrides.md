@@ -346,6 +346,13 @@ These packages are only reached through dev tooling, so `audit:prod` does not
 cover them. The overrides still keep the local and CI toolchain off known
 vulnerable releases.
 
+### `vitest` (under `@effect/vitest`) → `$vitest`
+
+`@effect/vitest@4.1.4` declares a `vitest >=5.0.0 <6.0.0` peer, while the repo
+runs `vitest@4.1.12`. Its `it.effect`, `layer`, and `TestClock` helpers work on
+the repo's Vitest, so the peer resolves to the root copy instead of installing a
+second Vitest major. Remove this once the repo moves to Vitest 5.
+
 ### `brace-expansion` → `>=5.0.12 <6.0.0`
 
 Keeps the `brace-expansion` copy (via `nx` and its `minimatch`) at or above the

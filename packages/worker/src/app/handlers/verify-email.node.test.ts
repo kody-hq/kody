@@ -22,7 +22,7 @@ vi.mock('cloudflare:workers', async (importOriginal) => {
 	}
 })
 
-vi.mock('#worker/newsletter/consent-outbox.ts', () => ({
+vi.mock('#worker/newsletter/consent-outbox-edge.ts', () => ({
 	recordWhatsNewVerifiedAccount: vi.fn(async () => {}),
 }))
 

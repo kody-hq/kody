@@ -1,4 +1,4 @@
-import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox-edge.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
