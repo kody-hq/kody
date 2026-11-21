@@ -376,11 +376,16 @@ async function purgeGrantPhase(
 		!pendingPage || pendingPage.unscannedKeys
 			? await scanGrantPage(kv, continuation, now, budget)
 			: 0
-	const { grantsPurged, tokensPurged } = await revokeNextPendingGrant(
-		kv,
-		continuation,
-		budget,
-	)
+	let grantsPurged = 0
+	let tokensPurged = 0
+	// Keep revoking while the budget allows; a revocation that returns 0 grants
+	// ran out of budget or still has token keys to page through.
+	for (;;) {
+		const revoked = await revokeNextPendingGrant(kv, continuation, budget)
+		grantsPurged += revoked.grantsPurged
+		tokensPurged += revoked.tokensPurged
+		if (revoked.grantsPurged === 0) break
+	}
 
 	finishGrantPage(continuation)
 	const phaseComplete =
