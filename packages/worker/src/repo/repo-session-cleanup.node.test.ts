@@ -62,3 +62,37 @@ test('repo session cleanup pages due owners and runs per-user index cleanup', as
 		errors: 0,
 	})
 })
+
+test('a wedged index RPC defers its owner and later owners still run', async () => {
+	vi.clearAllMocks()
+	vi.useFakeTimers()
+	try {
+		mockModule.listDueRepoSessionOwners.mockResolvedValue([
+			{
+				userId: ownerIdFromStored('user-1'),
+				dueAt: '2026-06-24T19:00:00.000Z',
+			},
+			{
+				userId: ownerIdFromStored('user-2'),
+				dueAt: '2026-06-24T19:30:00.000Z',
+			},
+		])
+		mockModule.runDueCleanup
+			.mockReturnValueOnce(new Promise(() => {}))
+			.mockResolvedValueOnce({ checked: 1, deleted: 1, errors: 0 })
+		let result: unknown
+		void cleanupRepoSessionBranches({
+			env: { APP_DB: {} } as Env,
+			now: new Date('2026-06-24T20:00:00.000Z'),
+		}).then((value) => {
+			result = value
+		})
+		await vi.advanceTimersByTimeAsync(10 * 60_000)
+		expect(result).toEqual({ checked: 1, deleted: 1, errors: 1 })
+		expect(mockModule.deferRepoSessionDueOwner).toHaveBeenCalledWith(
+			expect.objectContaining({ userId: ownerIdFromStored('user-1') }),
+		)
+	} finally {
+		vi.useRealTimers()
+	}
+})
