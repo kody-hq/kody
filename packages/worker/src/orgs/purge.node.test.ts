@@ -4,6 +4,12 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import {
+	createFakeLaneClock,
+	withD1Faults,
+} from '#worker/test-support/transient-d1-faults.ts'
+import * as Sentry from '@sentry/cloudflare'
+import { TransientRetryBudgetExhausted } from '#worker/scheduled/transient-d1-retry.ts'
 
 const hardPurgeOrg = vi.fn(async (input: { env: Env; orgId: string }) => {
 	await input.env.APP_DB.prepare(`DELETE FROM orgs WHERE id = ?`)
@@ -447,4 +453,214 @@ test('a failed purge audit write does not stop the rest of the batch', async () 
 		'purged',
 	])
 	expect(await userRow(db, 52)).toBeNull()
+})
+
+async function orgDeletingAt(db: D1Database, id: string) {
+	const row = await db
+		.prepare(`SELECT deleting_at FROM orgs WHERE id = ?`)
+		.bind(id)
+		.first<{ deleting_at: string | null }>()
+	return row ? row.deleting_at : 'missing'
+}
+
+async function orgAuditRows(env: Env, orgId: string) {
+	const { results } = await env.AUDIT_DB.prepare(
+		`SELECT action, result, details_json FROM org_audit_events WHERE org_id = ?`,
+	)
+		.bind(orgId)
+		.all<{ action: string; result: string; details_json: string }>()
+	return results
+}
+
+function orgClaimFault(orgId: string, failures: number) {
+	return {
+		target: 'statement',
+		failures,
+		match: (query: string, params: ReadonlyArray<unknown>) =>
+			query.startsWith('UPDATE orgs') && params[2] === orgId,
+	} as const
+}
+
+function orgDeleteFault(orgId: string, failures: number, message?: string) {
+	return {
+		target: 'statement',
+		failures,
+		message,
+		match: (query: string, params: ReadonlyArray<unknown>) =>
+			query.startsWith('DELETE FROM orgs') && params[0] === orgId,
+	} as const
+}
+
+test('a transient D1 error during an org purge is retried with backoff and the org is purged', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-transient')
+	const deleteFault = orgDeleteFault('org-transient', 2)
+	const faults = withD1Faults(db, [deleteFault])
+	const { clock, sleeps } = createFakeLaneClock()
+
+	const result = await pruneSoftDeleted({
+		env: { ...env, APP_DB: faults.db } as Env,
+		now,
+		clock,
+	})
+
+	expect(result).toMatchObject({ purged: 1, failed: 0 })
+	expect(faults.attempts(deleteFault)).toBe(3)
+	expect(sleeps).toEqual([100, 200])
+	expect(await orgDeletingAt(db, 'org-transient')).toBe('missing')
+	expect(await orgAuditRows(env, 'org-transient')).toEqual([])
+})
+
+test('a permanent D1 error during an org purge is not retried and fails the org', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-permanent')
+	const deleteFault = orgDeleteFault(
+		'org-permanent',
+		1,
+		'D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT',
+	)
+	const faults = withD1Faults(db, [deleteFault])
+	const { clock, sleeps } = createFakeLaneClock()
+	consoleWarn.mockImplementation(() => {})
+
+	const result = await pruneSoftDeleted({
+		env: { ...env, APP_DB: faults.db } as Env,
+		now,
+		clock,
+	})
+
+	expect(result).toMatchObject({ purged: 0, failed: 1 })
+	expect(faults.attempts(deleteFault)).toBe(1)
+	expect(sleeps).toEqual([])
+	expect(await orgDeletingAt(db, 'org-permanent')).toBe(now.toISOString())
+	expect(await orgAuditRows(env, 'org-permanent')).toEqual([
+		expect.objectContaining({ action: 'org.purge_failed', result: 'failure' }),
+	])
+})
+
+test('an org whose transient retries exceed the item budget fails as retry_budget_exhausted, keeps its claim, and the next org still purges', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-a-exhausted')
+	await seedSoftDeletedOrg(db, 'org-b-healthy')
+	const deleteFault = orgDeleteFault(
+		'org-a-exhausted',
+		Number.POSITIVE_INFINITY,
+	)
+	const faults = withD1Faults(db, [
+		orgClaimFault('org-a-exhausted', 3),
+		deleteFault,
+	])
+	const { clock, sleeps } = createFakeLaneClock()
+	consoleWarn.mockImplementation(() => {})
+	const isInitialized = vi.spyOn(Sentry, 'isInitialized').mockReturnValue(true)
+	const getClient = vi.spyOn(Sentry, 'getClient').mockReturnValue({
+		getOptions: () => ({ dsn: 'https://public@sentry.example/1' }),
+	} as ReturnType<typeof Sentry.getClient>)
+	const captureException = vi.spyOn(Sentry, 'captureException')
+
+	const result = await pruneSoftDeleted({
+		env: { ...env, APP_DB: faults.db } as Env,
+		now,
+		clock,
+	})
+
+	expect(result).toMatchObject({ purged: 1, failed: 1 })
+	expect(
+		result.outcomes.map((outcome) => [outcome.id, outcome.outcome]),
+	).toEqual([
+		['org-a-exhausted', 'failed'],
+		['org-b-healthy', 'purged'],
+	])
+	expect(result.outcomes[0]?.error).toBe(
+		'Transient D1 retry budget exhausted: APP_DB.run needed 400 ms more backoff after 1000 of 1000 ms',
+	)
+	// Claim: 100 + 200 + 400. Delete: 100 + 200, then 400 would pass 1,000.
+	expect(sleeps).toEqual([100, 200, 400, 100, 200])
+	expect(faults.attempts(deleteFault)).toBe(3)
+	expect(await orgDeletingAt(db, 'org-a-exhausted')).toBe(now.toISOString())
+	expect(await orgDeletingAt(db, 'org-b-healthy')).toBe('missing')
+	const audit = await orgAuditRows(env, 'org-a-exhausted')
+	expect(audit).toEqual([
+		expect.objectContaining({
+			action: 'purge.retry_budget_exhausted',
+			result: 'failure',
+		}),
+	])
+	expect(JSON.parse(audit[0]?.details_json ?? '{}')).toEqual({
+		kind: 'org',
+		lane: 'soft_delete',
+		label: 'APP_DB.run',
+		spentMs: 1_000,
+		budgetMs: 1_000,
+		nextDelayMs: 400,
+	})
+	expect(captureException).toHaveBeenCalledExactlyOnceWith(
+		expect.any(TransientRetryBudgetExhausted),
+	)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		expect.stringContaining('soft_delete_purge_retry_budget_exhausted'),
+	)
+	captureException.mockRestore()
+	getClient.mockRestore()
+	isInitialized.mockRestore()
+
+	// The kept claim backs the org off; after the fence it retries and purges.
+	const later = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+	const retried = await pruneSoftDeleted({ env, now: later })
+	expect(retried).toMatchObject({ purged: 1, failed: 0 })
+	expect(await orgDeletingAt(db, 'org-a-exhausted')).toBe('missing')
+})
+
+test('the retry budget is per org: two orgs can each spend the full 1,000 ms in one pass', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-a-slow')
+	await seedSoftDeletedOrg(db, 'org-b-slow')
+	const faults = withD1Faults(db, [
+		orgClaimFault('org-a-slow', 3),
+		orgDeleteFault('org-a-slow', 2),
+		orgClaimFault('org-b-slow', 3),
+		orgDeleteFault('org-b-slow', 2),
+	])
+	const { clock, sleeps, elapsedMs } = createFakeLaneClock()
+
+	const result = await pruneSoftDeleted({
+		env: { ...env, APP_DB: faults.db } as Env,
+		now,
+		clock,
+	})
+
+	expect(result).toMatchObject({
+		purged: 2,
+		failed: 0,
+		timeBudgetExhausted: false,
+	})
+	expect(sleeps).toEqual([100, 200, 400, 100, 200, 100, 200, 400, 100, 200])
+	expect(elapsedMs()).toBe(2_000)
+})
+
+test('retry backoff counts toward the pass time budget', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-a-backoff')
+	await seedSoftDeletedOrg(db, 'org-b-waits')
+	const faults = withD1Faults(db, [orgClaimFault('org-a-backoff', 3)])
+	const { clock, sleeps } = createFakeLaneClock()
+
+	const result = await pruneSoftDeleted({
+		env: { ...env, APP_DB: faults.db } as Env,
+		now,
+		clock,
+		timeBudgetMs: 500,
+	})
+
+	expect(sleeps).toEqual([100, 200, 400])
+	expect(result).toMatchObject({
+		purged: 1,
+		failed: 0,
+		timeBudgetExhausted: true,
+	})
+	expect(result.outcomes.map((outcome) => outcome.id)).toEqual([
+		'org-a-backoff',
+	])
+	expect(hardPurgeOrg).toHaveBeenCalledTimes(1)
+	expect(await orgDeletingAt(db, 'org-b-waits')).toBeNull()
 })

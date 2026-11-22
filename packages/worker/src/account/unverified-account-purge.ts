@@ -28,6 +28,15 @@ import {
 	withDeadline,
 } from '#worker/outbound/with-deadline.ts'
 import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
+import {
+	type LaneClock,
+	type TransientRetryBudgetExhausted,
+	createTransientD1RetryBudget,
+	reportTransientRetryBudgetExhaustedToSentry,
+	runInTransientD1RetryScope,
+	systemLaneClock,
+	withTransientD1RetryEnv,
+} from '#worker/scheduled/transient-d1-retry.ts'
 
 export { shouldRunRetentionCron as shouldRunUnverifiedAccountPurgeCron }
 
@@ -238,6 +247,12 @@ export type UnverifiedAccountPurgeFailure =
 	| { kind: 'pre_cleanup_failed'; userId: OwnerId; error: unknown }
 	/** Cleanup started: keep the fence so the retry backoff restamps it. */
 	| { kind: 'cleanup_failed'; userId: OwnerId; error: unknown }
+	/** Transient D1 backoff hit the item budget: keep the fence for the backoff. */
+	| {
+			kind: 'retry_budget_exhausted'
+			userId: OwnerId
+			error: TransientRetryBudgetExhausted
+	  }
 	| { kind: 'release_failed'; userId: OwnerId; error: unknown }
 	| { kind: 'audit_failed'; userId: OwnerId; error: unknown }
 
@@ -254,6 +269,8 @@ export function mapUnverifiedAccountPurgeFailure(
 			return { releaseClaim: true }
 		case 'cleanup_failed':
 			return { releaseClaim: false }
+		case 'retry_budget_exhausted':
+			return { releaseClaim: false }
 		case 'release_failed':
 			reportLaneError('warn', 'unverified_account_purge_release_failed', {
 				userId: failure.userId,
@@ -268,6 +285,82 @@ export function mapUnverifiedAccountPurgeFailure(
 			return { releaseClaim: false }
 		default:
 			return assertNever(failure, 'unverified account purge failure')
+	}
+}
+
+type AccountPurgeFailure = Extract<
+	UnverifiedAccountPurgeFailure,
+	{ kind: 'pre_cleanup_failed' | 'cleanup_failed' | 'retry_budget_exhausted' }
+>
+
+/**
+ * Failed outcome, warning, audit row, and Sentry event for one account. A
+ * budget exhaustion audits as `purge.retry_budget_exhausted`.
+ */
+async function recordUnverifiedAccountPurgeFailure(input: {
+	env: Env
+	result: UnverifiedAccountPurgeResult
+	account: UnverifiedAccountRow
+	ageDays: number
+	failure: AccountPurgeFailure
+}) {
+	const { account, failure } = input
+	const exhausted = failure.kind === 'retry_budget_exhausted'
+	input.result.failed += 1
+	const warnings = deletionFailureWarnings(failure.error)
+	const reason = unverifiedAccountPurgeFailureReason(failure.error, warnings)
+	input.result.outcomes.push({
+		stableUserId: account.stable_user_id,
+		ageDays: input.ageDays,
+		outcome: 'failed',
+		error: reason,
+		warnings: [...warnings],
+	})
+	reportLaneError(
+		'warn',
+		exhausted
+			? 'unverified_account_purge_retry_budget_exhausted'
+			: 'unverified_account_purge_failed',
+		{
+			userId: account.stable_user_id,
+			warnings,
+			error: reason,
+		},
+	)
+	// Workers Logs sampling drops most of the warn above; the audit row
+	// and Sentry event are the best-effort durable record of why the
+	// purge failed (each is skipped, not fatal, when its sink is down).
+	try {
+		await logAuditEvent({
+			db: auditDatabaseFromEnv(input.env),
+			category: 'account',
+			action: exhausted
+				? 'purge.retry_budget_exhausted'
+				: 'unverified_account_purge_failed',
+			result: 'failure',
+			email: account.email,
+			reason,
+		})
+	} catch (auditError) {
+		mapUnverifiedAccountPurgeFailure({
+			kind: 'audit_failed',
+			userId: account.stable_user_id,
+			error: auditError,
+		})
+	}
+	if (failure.kind === 'retry_budget_exhausted') {
+		reportTransientRetryBudgetExhaustedToSentry({
+			lane: 'unverified_account_purge',
+			itemKind: 'user',
+			itemId: account.stable_user_id,
+			error: failure.error,
+		})
+	} else {
+		reportPurgeFailureToSentry({
+			error: failure.error,
+			userId: account.stable_user_id,
+			warnings,
+		})
 	}
 }
 
@@ -410,9 +503,12 @@ export async function pruneUnverifiedAccounts(input: {
 	now?: Date
 	timeBudgetMs?: number
 	batchSize?: number
+	/** Pass-budget time source; transient D1 backoff sleeps through it. */
+	clock?: LaneClock
 }): Promise<UnverifiedAccountPurgeResult> {
 	const now = input.now ?? new Date()
-	const startedAtMs = Date.now()
+	const clock = input.clock ?? systemLaneClock
+	const startedAtMs = clock.now()
 	const timeBudgetMs =
 		input.timeBudgetMs ?? unverifiedAccountPurgeRunTimeBudgetMs
 	const batchSize = input.batchSize ?? unverifiedAccountPurgeBatchSize
@@ -425,24 +521,48 @@ export async function pruneUnverifiedAccounts(input: {
 		outcomes: [],
 	}
 	const page = await listUnverifiedAccountsPage({
-		db: input.env.APP_DB,
+		db: withTransientD1RetryEnv(input.env, { clock }).APP_DB,
 		ageCutoff,
 		retryBackoffCutoff,
 		batchSize,
 	})
 	result.scanned = page.length
 	for (const account of page) {
-		if (Date.now() - startedAtMs >= timeBudgetMs) {
+		if (clock.now() - startedAtMs >= timeBudgetMs) {
 			result.timeBudgetExhausted = true
 			break
 		}
 		const accountAgeDays = ageDays(account.created_at, now)
-		const claim = await claimUnverifiedAccountForPurge({
-			db: input.env.APP_DB,
-			dbUserId: account.id,
-			now,
-			retryBackoffCutoff,
+		const retryBudget = createTransientD1RetryBudget()
+		const itemEnv = withTransientD1RetryEnv(input.env, {
+			clock,
+			budget: retryBudget,
 		})
+		let claim: UnverifiedAccountClaim
+		try {
+			claim = await claimUnverifiedAccountForPurge({
+				db: itemEnv.APP_DB,
+				dbUserId: account.id,
+				now,
+				retryBackoffCutoff,
+			})
+		} catch (error) {
+			if (!retryBudget.exhausted) throw error
+			const failure = {
+				kind: 'retry_budget_exhausted',
+				userId: account.stable_user_id,
+				error: retryBudget.exhausted,
+			} as const
+			mapUnverifiedAccountPurgeFailure(failure)
+			await recordUnverifiedAccountPurgeFailure({
+				env: input.env,
+				result,
+				account,
+				ageDays: accountAgeDays,
+				failure,
+			})
+			continue
+		}
 		if (!claim.claimed) {
 			result.outcomes.push({
 				stableUserId: account.stable_user_id,
@@ -452,15 +572,17 @@ export async function pruneUnverifiedAccounts(input: {
 			continue
 		}
 		try {
-			await deleteUserAccount({
-				env: input.env,
-				dbUserId: account.id,
-				mcpUserId: personalOrgIdFromUserRow({
-					personal_org_id: account.personal_org_id,
-					stable_user_id: account.stable_user_id,
+			await runInTransientD1RetryScope({ clock, budget: retryBudget }, () =>
+				deleteUserAccount({
+					env: input.env,
+					dbUserId: account.id,
+					mcpUserId: personalOrgIdFromUserRow({
+						personal_org_id: account.personal_org_id,
+						stable_user_id: account.stable_user_id,
+					}),
+					personUserId: account.stable_user_id,
 				}),
-				personUserId: account.stable_user_id,
-			})
+			)
 			try {
 				await logAuditEvent({
 					db: auditDatabaseFromEnv(input.env),
@@ -484,14 +606,21 @@ export async function pruneUnverifiedAccounts(input: {
 				outcome: 'purged',
 			})
 		} catch (error) {
-			const failure = mapUnverifiedAccountPurgeFailure({
-				kind: isPreCleanupDeletionFailure(error)
-					? 'pre_cleanup_failed'
-					: 'cleanup_failed',
-				userId: account.stable_user_id,
-				error,
-			})
-			if (claim.created && failure.releaseClaim) {
+			const failure: AccountPurgeFailure = retryBudget.exhausted
+				? {
+						kind: 'retry_budget_exhausted',
+						userId: account.stable_user_id,
+						error: retryBudget.exhausted,
+					}
+				: {
+						kind: isPreCleanupDeletionFailure(error)
+							? 'pre_cleanup_failed'
+							: 'cleanup_failed',
+						userId: account.stable_user_id,
+						error,
+					}
+			const { releaseClaim } = mapUnverifiedAccountPurgeFailure(failure)
+			if (claim.created && releaseClaim) {
 				// A failed release leaves the fence in place; the retry backoff
 				// restamps it later, so it must not abort the rest of the batch.
 				try {
@@ -502,9 +631,9 @@ export async function pruneUnverifiedAccounts(input: {
 						},
 						() =>
 							abortAccountDeleting({
-								db: input.env.APP_DB,
+								db: itemEnv.APP_DB,
 								dbUserId: account.id,
-								env: input.env,
+								env: itemEnv,
 								expectedDeletingAt: claim.deletingAt,
 							}),
 					)
@@ -516,44 +645,12 @@ export async function pruneUnverifiedAccounts(input: {
 					})
 				}
 			}
-			result.failed += 1
-			const warnings = deletionFailureWarnings(error)
-			const reason = unverifiedAccountPurgeFailureReason(error, warnings)
-			result.outcomes.push({
-				stableUserId: account.stable_user_id,
+			await recordUnverifiedAccountPurgeFailure({
+				env: input.env,
+				result,
+				account,
 				ageDays: accountAgeDays,
-				outcome: 'failed',
-				error: reason,
-				warnings: [...warnings],
-			})
-			reportLaneError('warn', 'unverified_account_purge_failed', {
-				userId: account.stable_user_id,
-				warnings,
-				error: reason,
-			})
-			// Workers Logs sampling drops most of the warn above; the audit row
-			// and Sentry event are the best-effort durable record of why the
-			// purge failed (each is skipped, not fatal, when its sink is down).
-			try {
-				await logAuditEvent({
-					db: auditDatabaseFromEnv(input.env),
-					category: 'account',
-					action: 'unverified_account_purge_failed',
-					result: 'failure',
-					email: account.email,
-					reason,
-				})
-			} catch (auditError) {
-				mapUnverifiedAccountPurgeFailure({
-					kind: 'audit_failed',
-					userId: account.stable_user_id,
-					error: auditError,
-				})
-			}
-			reportPurgeFailureToSentry({
-				error,
-				userId: account.stable_user_id,
-				warnings,
+				failure,
 			})
 		}
 	}

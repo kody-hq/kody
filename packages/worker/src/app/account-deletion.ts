@@ -14,6 +14,7 @@ import {
 	revokeAllOAuthGrantsBestEffort,
 } from '#worker/oauth-grants.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
+import { withScopedTransientD1Retry } from '#worker/scheduled/transient-d1-retry.ts'
 import {
 	accountDeletionCreditNoteSubscriptionMetadataKey,
 	cancelSubscription,
@@ -1806,23 +1807,7 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
 	return result
 }
 
-/**
- * Orchestrate a full per-user data cleanup. The caller is responsible for
- * verifying the user's identity before invoking this; the orchestrator does
- * not re-authenticate.
- *
- * The cleanup ordering is:
- *   1. Pre-collect identifiers we need (vector ids, storage ids, KV keys,
- *      repo/session/package ids) while their owning rows still exist.
- *   2. Cancel active Stripe subscriptions. Like inventory, a failure here
- *      releases the deletion fence and retains the account untouched.
- *   3. Idempotent cleanup of out-of-band stores and OAuth grants.
- *   4. Abort while preserving D1 inventory and the user row if any critical
- *      cleanup failed. The five-minute usage-rollup derived cache is the sole
- *      TTL-owned omission and does not participate in this gate.
- *   5. Atomically delete user-scoped D1 rows and the user row in one batch.
- */
-export async function deleteUserAccount(input: {
+type DeleteUserAccountInput = {
 	env: AccountDeletionEnv
 	dbUserId: number
 	/**
@@ -1847,7 +1832,39 @@ export async function deleteUserAccount(input: {
 	 * through the guest alias, so they must survive the deletion.
 	 */
 	keepOAuthGrants?: boolean
-}): Promise<AccountDeletionResult> {
+}
+
+/**
+ * Orchestrate a full per-user data cleanup. The caller is responsible for
+ * verifying the user's identity before invoking this; the orchestrator does
+ * not re-authenticate.
+ *
+ * The cleanup ordering is:
+ *   1. Pre-collect identifiers we need (vector ids, storage ids, KV keys,
+ *      repo/session/package ids) while their owning rows still exist.
+ *   2. Cancel active Stripe subscriptions. Like inventory, a failure here
+ *      releases the deletion fence and retains the account untouched.
+ *   3. Idempotent cleanup of out-of-band stores and OAuth grants.
+ *   4. Abort while preserving D1 inventory and the user row if any critical
+ *      cleanup failed. The five-minute usage-rollup derived cache is the sole
+ *      TTL-owned omission and does not participate in this gate.
+ *   5. Atomically delete user-scoped D1 rows and the user row in one batch.
+ *
+ * Inside a purge item's transient D1 retry scope, every D1 statement and
+ * batch retries transient errors against that item's budget.
+ */
+export async function deleteUserAccount(
+	input: DeleteUserAccountInput,
+): Promise<AccountDeletionResult> {
+	return await deleteUserAccountWithEnv({
+		...input,
+		env: withScopedTransientD1Retry(input.env),
+	})
+}
+
+async function deleteUserAccountWithEnv(
+	input: DeleteUserAccountInput,
+): Promise<AccountDeletionResult> {
 	const personUserId = input.personUserId ?? input.mcpUserId
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
 	let marked: {

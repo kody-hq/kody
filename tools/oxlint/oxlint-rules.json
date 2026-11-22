@@ -72,6 +72,7 @@
 			"files": [
 				"**/packages/worker/src/scheduled/scheduled-lanes.ts",
 				"**/packages/worker/src/scheduled/scheduled-lane-lease.ts",
+				"**/packages/worker/src/scheduled/transient-d1-retry.ts",
 				"**/packages/worker/src/app/retention.ts",
 				"**/packages/worker/src/account/unverified-account-purge.ts",
 				"**/packages/worker/src/account/deletion-state.ts",
