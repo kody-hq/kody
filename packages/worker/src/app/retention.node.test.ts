@@ -24,6 +24,10 @@ import {
 } from './retention.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import {
+	silenceExpectedConsoleErrors,
+	silenceExpectedConsoleWarns,
+} from '#worker/test-support/console-spies.ts'
 import { createInMemoryRepoSessionIndexEnv } from '#worker/test-support/repo-session-index.ts'
 import type { RepoSessionRow } from '#worker/repo/types.ts'
 
@@ -998,4 +1002,72 @@ test('retention coverage includes every live growth-pattern table or documented 
 
 	expect(missing).toEqual([])
 	expect(stale).toEqual([])
+})
+
+test('bughunt v6a: a failed artifact KV delete is retried on a later retention run', async () => {
+	const { sqlite, db } = createRetentionDb()
+	const deleted = new Set<string>()
+	let failArtifactBlob = true
+	silenceExpectedConsoleWarns(['retention-published-bundle-kv-delete-failed'])
+	const kvDelete = vi.fn(async (key: string) => {
+		if (key === 'kv:artifact-delete' && failArtifactBlob) {
+			failArtifactBlob = false
+			throw new Error('KV delete failed: 503')
+		}
+		deleted.add(key)
+	})
+	const indexEnv = createInMemoryRepoSessionIndexEnv(db)
+	const env = {
+		APP_DB: db,
+		BUNDLE_ARTIFACTS_KV: { delete: kvDelete },
+		REPO_SESSION_INDEX: indexEnv.REPO_SESSION_INDEX,
+	} as unknown as Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'> & typeof indexEnv
+	insertRows(sqlite, 'entity_sources', entitySourceColumns, [
+		entitySourceRow('source-stale', 'commit-current'),
+	])
+	insertRows(sqlite, 'published_bundle_artifacts', artifactColumns, [
+		artifactRow(
+			'artifact-delete',
+			'source-stale',
+			'commit-old',
+			publishedBundleArtifactRetentionDays + 1,
+		),
+	])
+	const first = await prunePublishedBundleArtifactsForRetention({
+		env,
+		now,
+		batchSize: 10,
+	})
+	expect(first.kvDeleteErrors).toBe(1)
+	// KV is healthy again on the next hourly run.
+	await prunePublishedBundleArtifactsForRetention({ env, now, batchSize: 10 })
+	expect(deleted.has('kv:artifact-delete')).toBe(true)
+})
+
+test('bughunt v6a: one failing retention table does not stop the other tables from pruning', async () => {
+	const app = createRetentionDb()
+	insertRows(
+		app.sqlite,
+		'stripe_webhook_events',
+		['event_id', 'event_type', 'processed_at'],
+		[['evt_old', 'invoice.paid', daysAgo(stripeWebhookEventRetentionDays + 1)]],
+	)
+	insertResolvedFeedback(app.sqlite, feedbackIds(1))
+	silenceExpectedConsoleErrors([/./])
+	silenceExpectedConsoleWarns([/./])
+	const brokenAuditDb = {
+		prepare() {
+			throw new Error('D1_ERROR: no such table: audit_events')
+		},
+	} as unknown as D1Database
+	await pruneRetention({
+		env: retentionEnv(app.db, brokenAuditDb),
+		now,
+	}).catch(() => undefined)
+	// audit_events lives in AUDIT_DB; an outage there should not keep
+	// APP_DB tables that sort after it from ever being pruned.
+	expect(selectColumn(app.sqlite, 'platform_feedback', 'id')).toEqual([])
+	expect(selectColumn(app.sqlite, 'stripe_webhook_events', 'event_id')).toEqual(
+		[],
+	)
 })
