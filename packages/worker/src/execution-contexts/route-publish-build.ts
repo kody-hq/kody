@@ -1,7 +1,7 @@
 import type { EcpPublishBuildSource } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { Duration, Effect } from 'effect'
-import { outbound, type OutboundCallError } from '#worker/effect/outbound.ts'
+import { outbound } from '#worker/effect/outbound.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
 import {
@@ -101,14 +101,10 @@ export const routePublishBuild = Effect.fn(
 			),
 		},
 	).pipe(
-		Effect.catchTag(
-			'OutboundCallError',
-			(
-				error,
-			): Effect.Effect<never, PublishContextTimedOut | OutboundCallError> =>
-				error.reason === 'timeout'
-					? Effect.fail(timedOut(input.context ?? 'an execution context'))
-					: Effect.fail(error),
+		Effect.mapError((error) =>
+			error.reason === 'timeout'
+				? timedOut(input.context ?? 'an execution context')
+				: error,
 		),
 	)
 	if (outcome.kind === 'cloud' && input.fallbackToCloud) {
