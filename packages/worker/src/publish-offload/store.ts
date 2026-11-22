@@ -15,7 +15,8 @@ import { publishBuildState } from './publish-build-state.ts'
 import {
 	publishBuildRejectionHint,
 	publishBuildRetentionMs,
-	publishBuildTicketTtlMs,
+	publishBuildTicketLeaseMs,
+	publishBuildTicketMaxLifetimeMs,
 	type PublishBuildOrigin,
 } from './policy.ts'
 import type {
@@ -49,6 +50,7 @@ export type PublishBuildRow = {
 
 const ticketPrefix = 'kpb_'
 const sealGuard = sqlSourcesOf(publishBuildState, 'SEAL', ['uploading'])
+const abandonGuard = sqlSourcesOf(publishBuildState, 'ABANDON', ['uploading'])
 const finishGuard = sqlSourcesOf(publishBuildState, 'COMMIT', [
 	'sealed',
 	'committed',
@@ -100,7 +102,7 @@ export async function createPublishBuild(input: {
 	const id = `pb_${randomToken(12)}`
 	const ticket = `${ticketPrefix}${randomToken()}`
 	const nowIso = new Date(now).toISOString()
-	const expiresAt = new Date(now + publishBuildTicketTtlMs).toISOString()
+	const expiresAt = publishBuildLeaseExpiry(nowIso, now)
 	const ticketSha256 = await sha256Hex(ticket)
 	await withDeadline(
 		{
@@ -180,9 +182,55 @@ function timingSafeEqualHex(a: string, b: string) {
 }
 
 /**
+ * Where a ticket lease renewed at `now` ends: one lease from now, never past
+ * the maximum lifetime after the build was created.
+ */
+export function publishBuildLeaseExpiry(createdAt: string, now: number) {
+	return new Date(
+		Math.min(
+			now + publishBuildTicketLeaseMs,
+			Date.parse(createdAt) + publishBuildTicketMaxLifetimeMs,
+		),
+	).toISOString()
+}
+
+/**
+ * Slides the ticket lease after a successful chunk PUT or status GET. The
+ * lease only moves forward, and an abandoned build's lease stays put.
+ */
+export async function renewPublishBuildLease(input: {
+	db: D1Database
+	row: Pick<PublishBuildRow, 'id' | 'created_at' | 'expires_at'>
+	now?: number
+	clock?: DeadlineClock
+}) {
+	const expiresAt = publishBuildLeaseExpiry(
+		input.row.created_at,
+		input.now ?? Date.now(),
+	)
+	if (expiresAt <= input.row.expires_at) return input.row.expires_at
+	await withDeadline(
+		{
+			label: 'publish_builds.renew_lease',
+			timeoutMs: outboundTimeoutMs.d1,
+			clock: input.clock,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE publish_builds SET expires_at = ?
+					WHERE id = ? AND status != 'abandoned' AND expires_at < ?`,
+				)
+				.bind(expiresAt, input.row.id, expiresAt)
+				.run(),
+	)
+	return expiresAt
+}
+
+/**
  * The upload ticket is the build's job token: it can add chunks to and seal
- * this one build, nothing else, and it is useless once the build is sealed
- * or expired. It grants no permission; publishing still needs the
+ * this one build, nothing else, and it is useless once the build is sealed,
+ * abandoned or its lease expired. It grants no permission; publishing still needs the
  * publisher's own `package:write`.
  */
 export async function authenticatePublishBuildTicket(input: {
@@ -270,11 +318,19 @@ export async function finishPublishBuild(input: {
 	)
 }
 
-async function deletePrefix(bucket: R2Bucket, prefix: string) {
+async function deletePrefix(
+	bucket: R2Bucket,
+	prefix: string,
+	clock?: DeadlineClock,
+) {
 	let cursor: string | undefined
 	do {
 		const page = await withDeadline(
-			{ label: 'publish_build_blobs.list', timeoutMs: outboundTimeoutMs.r2 },
+			{
+				label: 'publish_build_blobs.list',
+				timeoutMs: outboundTimeoutMs.r2,
+				clock,
+			},
 			() => bucket.list({ prefix, ...(cursor ? { cursor } : {}) }),
 		)
 		const keys = page.objects.map((object) => object.key)
@@ -283,6 +339,7 @@ async function deletePrefix(bucket: R2Bucket, prefix: string) {
 				{
 					label: 'publish_build_blobs.delete',
 					timeoutMs: outboundTimeoutMs.r2,
+					clock,
 				},
 				() => bucket.delete(keys),
 			)
@@ -291,16 +348,66 @@ async function deletePrefix(bucket: R2Bucket, prefix: string) {
 	} while (cursor)
 }
 
-async function deletePublishBuildBlobs(bucket: R2Bucket, buildId: string) {
-	await deletePrefix(bucket, publishBuildBlobPrefix(buildId))
-	await deletePrefix(bucket, publishBuildDocumentPrefix(buildId))
+async function deletePublishBuildBlobs(
+	bucket: R2Bucket,
+	buildId: string,
+	clock?: DeadlineClock,
+) {
+	await deletePrefix(bucket, publishBuildBlobPrefix(buildId), clock)
+	await deletePrefix(bucket, publishBuildDocumentPrefix(buildId), clock)
+}
+
+export type AbandonPublishBuildResult =
+	| { kind: 'abandoned' }
+	| { kind: 'not_uploading'; status: PublishBuildStatus }
+	| { kind: 'not_found' }
+
+/**
+ * The builder gives up on an `uploading` build: the row turns `abandoned`
+ * first, then its chunks are deleted. A failed delete still leaves the build
+ * abandoned; the expired-build purge drops whatever chunks are left.
+ */
+export async function abandonPublishBuild(input: {
+	db: D1Database
+	bucket: R2Bucket
+	buildId: string
+	clock?: DeadlineClock
+}): Promise<AbandonPublishBuildResult> {
+	const result = await withDeadline(
+		{
+			label: 'publish_builds.abandon',
+			timeoutMs: outboundTimeoutMs.d1,
+			clock: input.clock,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE publish_builds SET status = 'abandoned', updated_at = ?
+					WHERE id = ? AND status IN ${abandonGuard}`,
+				)
+				.bind(new Date().toISOString(), input.buildId)
+				.run(),
+	)
+	if ((result.meta.changes ?? 0) === 0) {
+		const row = await getPublishBuild(input.db, input.buildId, input.clock)
+		if (!row) return { kind: 'not_found' }
+		if (row.status === 'abandoned') return { kind: 'abandoned' }
+		return { kind: 'not_uploading', status: row.status }
+	}
+	try {
+		await deletePublishBuildBlobs(input.bucket, input.buildId, input.clock)
+	} catch (error) {
+		reportHandledError('publish_builds.abandon_delete', error)
+	}
+	return { kind: 'abandoned' }
 }
 
 /**
  * Drops the chunks of builds whose ticket expired over a day ago (a
  * committed build's targets are already written by then). Committed rows
  * stay for their build origin (11B) with the manifest cleared; every other
- * row goes. Runs a few builds at a time whenever a build starts, so the
+ * row goes, abandoned ones like rejected ones, with any chunks a failed
+ * abandon delete left behind. Runs a few builds at a time whenever a build starts, so the
  * work tracks how many builds are made.
  */
 export async function purgeExpiredPublishBuilds(input: {
@@ -417,6 +524,7 @@ export type UploadedPublishBuildFailure =
 	| { kind: 'not_found'; buildId: string }
 	| { kind: 'commit_mismatch'; buildCommit: string; headCommit: string }
 	| { kind: 'not_sealed' }
+	| { kind: 'abandoned' }
 	| { kind: 'already_rejected'; message: string | null }
 	| { kind: 'no_manifest' }
 
@@ -442,6 +550,10 @@ export function mapUploadedPublishBuildFailure(
 			)
 		case 'not_sealed':
 			return rejected('the upload was never sealed; finish uploading first.')
+		case 'abandoned':
+			return rejected(
+				'the builder abandoned this upload before sealing it; start a new build.',
+			)
 		case 'already_rejected':
 			return rejected(
 				failure.message ?? 'this build already failed verification.',
@@ -509,6 +621,7 @@ async function checkUploadedPublishBuild(input: {
 		}
 	}
 	if (row.status === 'uploading') return { kind: 'not_sealed' }
+	if (row.status === 'abandoned') return { kind: 'abandoned' }
 	if (row.status === 'rejected') {
 		return { kind: 'already_rejected', message: row.message }
 	}

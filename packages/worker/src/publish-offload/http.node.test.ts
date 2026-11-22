@@ -9,6 +9,7 @@ const row = {
 	expires_at: new Date(Date.now() + 60_000).toISOString(),
 }
 const sealed = vi.fn()
+const renewed = vi.fn(async () => '2026-11-22T12:10:00.000Z')
 
 vi.mock('./store.ts', () => ({
 	authenticatePublishBuildTicket: async (input: { ticket: string | null }) =>
@@ -18,6 +19,8 @@ vi.mock('./store.ts', () => ({
 	publishBuildBlobPrefix: (buildId: string) =>
 		`publish-builds/${buildId}/blobs/`,
 	sealPublishBuild: (input: unknown) => sealed(input),
+	renewPublishBuildLease: () => renewed(),
+	abandonPublishBuild: async () => ({ kind: 'abandoned' }),
 }))
 
 const { handlePublishBuildRoute } = await import('./http.ts')
@@ -46,6 +49,7 @@ let bucket = memoryBucket()
 beforeEach(() => {
 	bucket = memoryBucket()
 	sealed.mockReset()
+	renewed.mockClear()
 })
 
 function call(
@@ -301,4 +305,37 @@ test('a hung R2 call fails with a 503 at its deadline', async () => {
 		status: 503,
 		code: 'internal_error',
 	})
+})
+
+test('a status GET and a chunk PUT renew the lease; seal does not', async () => {
+	const status = (await (
+		await call('GET', '/v1/publish-builds/pb_0123456789abcdef01234567')
+	).json()) as { expires_at: string }
+	expect(status.expires_at).toBe('2026-11-22T12:10:00.000Z')
+	expect(renewed).toHaveBeenCalledTimes(1)
+	const sha = await sha256Hex(chunk)
+	await call(
+		'PUT',
+		`/v1/publish-builds/pb_0123456789abcdef01234567/blobs/${sha}`,
+		chunk,
+	)
+	await call(
+		'PUT',
+		`/v1/publish-builds/pb_0123456789abcdef01234567/blobs/${sha}`,
+		chunk,
+	)
+	expect(renewed).toHaveBeenCalledTimes(3)
+	sealed.mockResolvedValue(true)
+	await call(
+		'POST',
+		sealPath,
+		JSON.stringify({
+			builderVersion: 2,
+			commit: row.commit_sha,
+			files: [],
+			targets: [],
+		}),
+	)
+	expect(sealed).toHaveBeenCalledTimes(1)
+	expect(renewed).toHaveBeenCalledTimes(3)
 })

@@ -165,7 +165,10 @@ A context build (named, bound, or from your chain, or `--build context`) runs on
 a context you operate (not one shared with you). The context clones only this
 package's repo with a read-only token that expires in about five minutes, builds
 with no access to your credentials, and uploads with a ticket that only works
-for that one build. See [execution contexts](./execution-contexts.md).
+for that one build. The ticket lapses after 10 minutes without a chunk upload or
+status check, and after 2 hours at most. A builder that gives up calls
+`POST /v1/publish-builds/{id}/abandon`, which drops its uploaded chunks and ends
+the ticket. See [execution contexts](./execution-contexts.md).
 
 Related: [heavy work offload](./heavy-work-offload.md) for runtime work that
 never fits a Worker.

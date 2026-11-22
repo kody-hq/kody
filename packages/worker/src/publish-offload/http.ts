@@ -14,9 +14,11 @@ import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
 import { sha256Hex } from './module-hashes.ts'
 import { publishOffloadLimits } from './policy.ts'
 import {
+	abandonPublishBuild,
 	authenticatePublishBuildTicket,
 	publishBuildBlobKey,
 	publishBuildBlobPrefix,
+	renewPublishBuildLease,
 	sealPublishBuild,
 	type PublishBuildRow,
 } from './store.ts'
@@ -25,12 +27,15 @@ import { publishBuilderVersion, type PublishBuildDocument } from './types.ts'
 /**
  * Ticket-authenticated publish build upload routes. The ticket from
  * `packagePublishBuildCreate` is the only credential: it can add chunks to,
- * read the status of, and seal one build. Publishing the build still goes
- * through `packagePublishExternalPush` with the publisher's own login.
+ * read the status of, seal, and abandon one build. Its lease slides with each
+ * successful chunk PUT or status GET (see `publishBuildTicketLeaseMs`).
+ * Publishing the build still goes through `packagePublishExternalPush` with
+ * the publisher's own login.
  *
  *   GET  /v1/publish-builds/{id}                 status + uploaded chunks
  *   PUT  /v1/publish-builds/{id}/blobs/{sha256}  one <= 4 MiB chunk
  *   POST /v1/publish-builds/{id}/seal            the build document
+ *   POST /v1/publish-builds/{id}/abandon         give up and drop the chunks
  */
 const basePath = '/v1/publish-builds/'
 const sha256Pattern = /^[0-9a-f]{64}$/
@@ -40,6 +45,7 @@ type ParsedRoute =
 	| { kind: 'status'; buildId: string }
 	| { kind: 'blob'; buildId: string; sha256: string }
 	| { kind: 'seal'; buildId: string }
+	| { kind: 'abandon'; buildId: string }
 
 function parseRoute(method: string, pathname: string): ParsedRoute | null {
 	if (!pathname.startsWith(basePath)) return null
@@ -49,6 +55,9 @@ function parseRoute(method: string, pathname: string): ParsedRoute | null {
 	if (parts.length === 1 && method === 'GET') return { kind: 'status', buildId }
 	if (parts.length === 2 && parts[1] === 'seal' && method === 'POST') {
 		return { kind: 'seal', buildId }
+	}
+	if (parts.length === 2 && parts[1] === 'abandon' && method === 'POST') {
+		return { kind: 'abandon', buildId }
 	}
 	if (
 		parts.length === 3 &&
@@ -273,14 +282,24 @@ async function runPublishBuildRoute(input: {
 	})
 	if (!row) return { kind: 'invalid_ticket' }
 	const bucket = input.env.REPO_SESSION_BLOBS
+	if (route.kind === 'abandon') {
+		return await abandonRoute({ db: input.env.APP_DB, bucket, row, clock })
+	}
+	// Only a repeated abandon still answers an abandoned build's ticket.
+	if (row.status === 'abandoned') return { kind: 'invalid_ticket' }
 	if (route.kind === 'status') {
+		const uploadedChunks = await listUploadedChunks(bucket, row.id, clock)
 		return json({
 			build_id: row.id,
 			commit: row.commit_sha,
 			status: row.status,
 			message: row.message,
-			expires_at: row.expires_at,
-			uploaded_chunks: await listUploadedChunks(bucket, row.id, clock),
+			expires_at: await renewPublishBuildLease({
+				db: input.env.APP_DB,
+				row,
+				clock,
+			}),
+			uploaded_chunks: uploadedChunks,
 		})
 	}
 	if (row.status !== 'uploading') {
@@ -297,7 +316,10 @@ async function runPublishBuildRoute(input: {
 			},
 			() => bucket.head(key),
 		)
-		if (existing) return json({ ok: true, sha256: route.sha256 })
+		if (existing) {
+			await renewPublishBuildLease({ db: input.env.APP_DB, row, clock })
+			return json({ ok: true, sha256: route.sha256 })
+		}
 		const read = await readRequestBodyUpTo(
 			input.request,
 			publishOffloadLimits.chunkBytes,
@@ -319,6 +341,7 @@ async function runPublishBuildRoute(input: {
 			},
 			() => bucket.put(key, bytes),
 		)
+		await renewPublishBuildLease({ db: input.env.APP_DB, row, clock })
 		return json({ ok: true, sha256: route.sha256 })
 	}
 	const parsed = parseJsonText(await input.request.text())
@@ -340,4 +363,37 @@ async function runPublishBuildRoute(input: {
 	// `false` means another request moved the build out of `uploading` first.
 	if (sealed === false) return { kind: 'seal_lost_race' }
 	return json({ ok: true, build_id: row.id, status: 'sealed' })
+}
+
+async function abandonRoute(input: {
+	db: D1Database
+	bucket: R2Bucket
+	row: PublishBuildRow
+	clock?: DeadlineClock
+}): Promise<Response | PublishBuildRouteFailure> {
+	const abandoned = json({
+		ok: true,
+		build_id: input.row.id,
+		status: 'abandoned',
+	})
+	if (input.row.status === 'abandoned') return abandoned
+	if (input.row.status !== 'uploading') {
+		return { kind: 'not_uploading', status: input.row.status }
+	}
+	const result = await abandonPublishBuild({
+		db: input.db,
+		bucket: input.bucket,
+		buildId: input.row.id,
+		clock: input.clock,
+	})
+	switch (result.kind) {
+		case 'abandoned':
+			return abandoned
+		case 'not_uploading':
+			return { kind: 'not_uploading', status: result.status }
+		case 'not_found':
+			return { kind: 'invalid_ticket' }
+		default:
+			return assertNever(result, 'abandon publish build result')
+	}
 }

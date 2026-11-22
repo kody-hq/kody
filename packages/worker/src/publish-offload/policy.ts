@@ -83,8 +83,15 @@ export const publishBuildDependencyResolveDeadlineMs = 2 * 60 * 1000
 /** Deadline for loading one linked Kody package's published artifact. */
 export const publishBuildLinkedArtifactDeadlineMs = 2 * 60 * 1000
 
-/** Per-build upload ticket lifetime. */
-export const publishBuildTicketTtlMs = 30 * 60 * 1000
+/**
+ * Per-build upload ticket lease: each successful chunk PUT or status GET
+ * renews it to this long from now, never past the maximum lifetime after the
+ * build was created. Sealing does not renew it.
+ */
+export const publishBuildTicketLeaseMs = 10 * 60 * 1000
+
+/** Hard cap on a ticket's lease, measured from the build's `created_at`. */
+export const publishBuildTicketMaxLifetimeMs = 2 * 60 * 60 * 1000
 
 /** T4: the context's clone token is read-only, one repo, about 5 minutes. */
 export const publishBuildCloneTokenTtlSeconds = 300

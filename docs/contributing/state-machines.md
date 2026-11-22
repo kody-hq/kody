@@ -155,34 +155,38 @@ stateDiagram-v2
 
 ## publish_builds.status
 
-Builds upload, seal and commit or reject; a committed build may be finalized
-again or rejected by a later verification.
+Builds upload, then seal or are abandoned by their builder; sealed builds commit
+or reject, and a committed build may be finalized again or rejected by a later
+verification.
 
 Source:
 [`packages/worker/src/publish-offload/publish-build-state.ts`](../../packages/worker/src/publish-offload/publish-build-state.ts)
 
-States: uploading, sealed, committed, rejected
+States: uploading, sealed, committed, rejected, abandoned
 
-Final states: rejected
+Final states: rejected, abandoned
 
 ```mermaid
 stateDiagram-v2
     [*] --> uploading
     uploading --> sealed: SEAL
+    uploading --> abandoned: ABANDON
     sealed --> committed: COMMIT
     sealed --> rejected: REJECT
     committed --> committed: COMMIT
     committed --> rejected: REJECT
     rejected --> [*]
+    abandoned --> [*]
 ```
 
-| Event  | From      | To        | Guard |
-| ------ | --------- | --------- | ----- |
-| SEAL   | uploading | sealed    | —     |
-| COMMIT | sealed    | committed | —     |
-| REJECT | sealed    | rejected  | —     |
-| COMMIT | committed | committed | —     |
-| REJECT | committed | rejected  | —     |
+| Event   | From      | To        | Guard |
+| ------- | --------- | --------- | ----- |
+| SEAL    | uploading | sealed    | —     |
+| ABANDON | uploading | abandoned | —     |
+| COMMIT  | sealed    | committed | —     |
+| REJECT  | sealed    | rejected  | —     |
+| COMMIT  | committed | committed | —     |
+| REJECT  | committed | rejected  | —     |
 
 ## dead_letter_messages.status
 
