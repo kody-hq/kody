@@ -11,12 +11,18 @@ import {
 	withDeadline,
 } from '#worker/outbound/with-deadline.ts'
 import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
+import {
+	type ChunkScanBlocked,
+	type ChunkScanUnavailable,
+	scanPublishBuildChunk,
+} from './chunk-scan.ts'
 import { sha256Hex } from './module-hashes.ts'
 import { publishOffloadLimits } from './policy.ts'
 import {
 	authenticatePublishBuildTicket,
 	publishBuildBlobKey,
 	publishBuildBlobPrefix,
+	rejectBlockedChunkPublishBuild,
 	sealPublishBuild,
 	type PublishBuildRow,
 } from './store.ts'
@@ -89,6 +95,8 @@ export type PublishBuildRouteFailure =
 	| { kind: 'invalid_document'; message: string }
 	| { kind: 'missing_chunks'; missing: Array<string> }
 	| { kind: 'seal_lost_race' }
+	| ChunkScanBlocked
+	| ChunkScanUnavailable
 	| DeadlineFailure
 
 /** The ApiError (or the 409 missing-chunks body) for a route failure. */
@@ -138,6 +146,23 @@ export function mapPublishBuildRouteFailure(
 				message:
 					'This publish build was sealed or finished by another request.',
 			})
+		case 'chunk_scan_blocked':
+			return new ApiError({
+				status: 422,
+				code: 'chunk_blocked',
+				message: blockedChunkMessage(failure),
+			})
+		case 'chunk_scan_unavailable':
+			return new ApiError({
+				status: 503,
+				code: 'chunk_scan_unavailable',
+				message: `The publish build chunk scanner is unavailable (${
+					failure.cause === 'http_status'
+						? `HTTP ${failure.status}`
+						: `${failure.cause}: ${failure.detail}`
+				}). The chunk was not stored; retry the upload.`,
+				headers: { 'Retry-After': '30' },
+			})
 		case 'deadline_exceeded':
 			return new ApiError({
 				status: 503,
@@ -148,6 +173,10 @@ export function mapPublishBuildRouteFailure(
 		default:
 			return assertNever(failure, 'publish build route failure')
 	}
+}
+
+function blockedChunkMessage(failure: ChunkScanBlocked) {
+	return `chunk ${failure.sha256} blocked: ${failure.reason}`
 }
 
 async function listUploadedChunks(
@@ -310,6 +339,27 @@ async function runPublishBuildRoute(input: {
 		const uploaded = await listUploadedChunks(bucket, row.id, clock)
 		if (uploaded.length >= publishOffloadLimits.maxBlobsPerBuild) {
 			return { kind: 'too_many_chunks' }
+		}
+		const scanUrl = input.env.PUBLISH_CHUNK_SCAN_URL?.trim()
+		if (scanUrl) {
+			const scan = await scanPublishBuildChunk({
+				url: scanUrl,
+				buildId: row.id,
+				sha256: route.sha256,
+				bytes: bytes.byteLength,
+				clock,
+			})
+			if (scan.kind === 'chunk_scan_unavailable') return scan
+			if (scan.kind === 'chunk_scan_blocked') {
+				// A seal that won the race keeps its row; the chunk is never stored.
+				await rejectBlockedChunkPublishBuild({
+					db: input.env.APP_DB,
+					buildId: row.id,
+					message: blockedChunkMessage(scan),
+					clock,
+				})
+				return scan
+			}
 		}
 		await withDeadline(
 			{

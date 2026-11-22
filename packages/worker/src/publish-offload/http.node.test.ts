@@ -1,7 +1,10 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { sha256Hex } from './module-hashes.ts'
 
-const row = {
+const row: { status: string; message: string | null } & Record<
+	string,
+	unknown
+> = {
 	id: 'pb_0123456789abcdef01234567',
 	commit_sha: 'a'.repeat(40),
 	status: 'uploading',
@@ -9,6 +12,14 @@ const row = {
 	expires_at: new Date(Date.now() + 60_000).toISOString(),
 }
 const sealed = vi.fn()
+const rejectBlocked = vi.fn(
+	async (input: { buildId: string; message: string }) => {
+		if (row.status !== 'uploading') return false
+		row.status = 'rejected'
+		row.message = input.message
+		return true
+	},
+)
 
 vi.mock('./store.ts', () => ({
 	authenticatePublishBuildTicket: async (input: { ticket: string | null }) =>
@@ -18,6 +29,10 @@ vi.mock('./store.ts', () => ({
 	publishBuildBlobPrefix: (buildId: string) =>
 		`publish-builds/${buildId}/blobs/`,
 	sealPublishBuild: (input: unknown) => sealed(input),
+	rejectBlockedChunkPublishBuild: (input: {
+		buildId: string
+		message: string
+	}) => rejectBlocked(input),
 }))
 
 const { handlePublishBuildRoute } = await import('./http.ts')
@@ -43,9 +58,15 @@ function memoryBucket() {
 }
 
 let bucket = memoryBucket()
+let scanUrl: string | undefined
 beforeEach(() => {
 	bucket = memoryBucket()
 	sealed.mockReset()
+	rejectBlocked.mockClear()
+	row.status = 'uploading'
+	row.message = null
+	scanUrl = undefined
+	vi.unstubAllGlobals()
 })
 
 function call(
@@ -61,7 +82,11 @@ function call(
 			body,
 			headers: { Authorization: `Bearer ${ticket}` },
 		}),
-		env: { REPO_SESSION_BLOBS: bucket, APP_DB: {} } as never,
+		env: {
+			REPO_SESSION_BLOBS: bucket,
+			APP_DB: {},
+			PUBLISH_CHUNK_SCAN_URL: scanUrl,
+		} as never,
 		url,
 	})
 }
@@ -301,4 +326,184 @@ test('a hung R2 call fails with a 503 at its deadline', async () => {
 		status: 503,
 		code: 'internal_error',
 	})
+})
+
+const scanner = 'https://scanner.test/scan'
+const blobPath = (sha: string) =>
+	`/v1/publish-builds/pb_0123456789abcdef01234567/blobs/${sha}`
+
+function stubScanner(answer: () => Promise<Response>) {
+	const fetchMock = vi.fn<typeof fetch>(async () => await answer())
+	vi.stubGlobal('fetch', fetchMock)
+	return fetchMock
+}
+
+test('with no chunk scan URL (unset or empty) the chunk is stored without a scan', async () => {
+	const fetchMock = stubScanner(async () => Response.json({ verdict: 'allow' }))
+	const sha = await sha256Hex(chunk)
+	expect((await call('PUT', blobPath(sha), chunk)).status).toBe(200)
+	scanUrl = '  '
+	bucket = memoryBucket()
+	expect((await call('PUT', blobPath(sha), chunk)).status).toBe(200)
+	expect(fetchMock).not.toHaveBeenCalled()
+	expect(bucket.puts).toHaveLength(1)
+})
+
+test('an allowed chunk is scanned with its build, sha256 and size, then stored', async () => {
+	scanUrl = scanner
+	const fetchMock = stubScanner(async () => Response.json({ verdict: 'allow' }))
+	const sha = await sha256Hex(chunk)
+	const response = await call('PUT', blobPath(sha), chunk)
+	expect(response.status).toBe(200)
+	expect(await response.json()).toEqual({ ok: true, sha256: sha })
+	expect(fetchMock).toHaveBeenCalledTimes(1)
+	const [url, init] = fetchMock.mock.calls[0]!
+	expect(url).toBe(scanner)
+	expect(init?.method).toBe('POST')
+	expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
+	expect(JSON.parse(String(init?.body))).toEqual({
+		buildId: row.id,
+		sha256: sha,
+		bytes: chunk.byteLength,
+	})
+	expect(init?.signal).toBeInstanceOf(AbortSignal)
+	expect(bucket.puts).toEqual([`publish-builds/${row.id}/blobs/${sha}`])
+})
+
+test('a blocked chunk is not stored, rejects the build with a 422, and later requests get a 409', async () => {
+	scanUrl = scanner
+	stubScanner(async () =>
+		Response.json({ verdict: 'block', reason: 'matched malware signature' }),
+	)
+	const sha = await sha256Hex(chunk)
+	const message = `chunk ${sha} blocked: matched malware signature`
+	await expect(call('PUT', blobPath(sha), chunk)).rejects.toMatchObject({
+		status: 422,
+		code: 'chunk_blocked',
+		message,
+	})
+	expect(bucket.puts).toHaveLength(0)
+	expect(rejectBlocked).toHaveBeenCalledWith(
+		expect.objectContaining({ buildId: row.id, message }),
+	)
+	expect(row).toMatchObject({ status: 'rejected', message })
+	await expect(call('PUT', blobPath(sha), chunk)).rejects.toMatchObject({
+		status: 409,
+		code: 'invalid_request',
+		message: 'This publish build is already rejected.',
+	})
+	expect(bucket.puts).toHaveLength(0)
+})
+
+test('a non-2xx scanner answer is a 503 with Retry-After and leaves the build uploading', async () => {
+	scanUrl = scanner
+	stubScanner(async () => new Response('busy', { status: 502 }))
+	const sha = await sha256Hex(chunk)
+	await expect(call('PUT', blobPath(sha), chunk)).rejects.toMatchObject({
+		status: 503,
+		code: 'chunk_scan_unavailable',
+		message: expect.stringContaining('HTTP 502'),
+		headers: { 'Retry-After': '30' },
+	})
+	expect(bucket.puts).toHaveLength(0)
+	expect(rejectBlocked).not.toHaveBeenCalled()
+	expect(row.status).toBe('uploading')
+})
+
+test('a scanner network error is a 503 chunk_scan_unavailable', async () => {
+	scanUrl = scanner
+	stubScanner(async () => {
+		throw new TypeError('fetch failed')
+	})
+	const sha = await sha256Hex(chunk)
+	await expect(call('PUT', blobPath(sha), chunk)).rejects.toMatchObject({
+		status: 503,
+		code: 'chunk_scan_unavailable',
+		message: expect.stringContaining('network_error: fetch failed'),
+		headers: { 'Retry-After': '30' },
+	})
+	expect(bucket.puts).toHaveLength(0)
+	expect(row.status).toBe('uploading')
+})
+
+test('a scanner that does not answer within 10 seconds is aborted and is a 503', async () => {
+	scanUrl = scanner
+	let scanSignal: AbortSignal | undefined
+	const fetchMock = vi.fn<typeof fetch>(
+		(_url, init) =>
+			new Promise<Response>(() => {
+				scanSignal = init?.signal ?? undefined
+			}),
+	)
+	vi.stubGlobal('fetch', fetchMock)
+	const timers: Array<{ ms: number; onExpire: () => void }> = []
+	const sha = await sha256Hex(chunk)
+	const url = new URL(`https://kody.test${blobPath(sha)}`)
+	const pending = handlePublishBuildRoute({
+		request: new Request(url, {
+			method: 'PUT',
+			body: chunk,
+			headers: { Authorization: 'Bearer kpb_good' },
+		}),
+		env: {
+			REPO_SESSION_BLOBS: bucket,
+			APP_DB: {},
+			PUBLISH_CHUNK_SCAN_URL: scanner,
+		} as never,
+		url,
+		clock: {
+			setTimer: (ms, onExpire) => {
+				timers.push({ ms, onExpire })
+				return () => {}
+			},
+		},
+	})
+	await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+	const scanTimer = timers.find((timer) => timer.ms === 10_000)
+	expect(scanTimer).toBeDefined()
+	scanTimer!.onExpire()
+	await expect(pending).rejects.toMatchObject({
+		status: 503,
+		code: 'chunk_scan_unavailable',
+		message: expect.stringContaining('timeout'),
+		headers: { 'Retry-After': '30' },
+	})
+	expect(scanSignal?.aborted).toBe(true)
+	expect(bucket.puts).toHaveLength(0)
+	expect(row.status).toBe('uploading')
+})
+
+test('a scanner answer that is not a verdict is a 503, not a block or an allow', async () => {
+	scanUrl = scanner
+	const sha = await sha256Hex(chunk)
+	for (const body of [
+		'not json',
+		JSON.stringify({ verdict: 'maybe' }),
+		JSON.stringify({ verdict: 'block' }),
+		JSON.stringify(['allow']),
+	]) {
+		stubScanner(async () => new Response(body, { status: 200 }))
+		await expect(call('PUT', blobPath(sha), chunk)).rejects.toMatchObject({
+			status: 503,
+			code: 'chunk_scan_unavailable',
+			message: expect.stringContaining('malformed_verdict'),
+			headers: { 'Retry-After': '30' },
+		})
+	}
+	expect(bucket.puts).toHaveLength(0)
+	expect(rejectBlocked).not.toHaveBeenCalled()
+	expect(row.status).toBe('uploading')
+})
+
+test('an already stored chunk is not scanned again', async () => {
+	const sha = await sha256Hex(chunk)
+	bucket.objects.set(`publish-builds/${row.id}/blobs/${sha}`, chunk)
+	scanUrl = scanner
+	const fetchMock = stubScanner(async () =>
+		Response.json({ verdict: 'block', reason: 'should not be asked' }),
+	)
+	expect((await call('PUT', blobPath(sha), chunk)).status).toBe(200)
+	expect(fetchMock).not.toHaveBeenCalled()
+	expect(bucket.puts).toHaveLength(0)
+	expect(row.status).toBe('uploading')
 })

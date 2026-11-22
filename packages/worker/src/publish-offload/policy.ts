@@ -83,6 +83,9 @@ export const publishBuildDependencyResolveDeadlineMs = 2 * 60 * 1000
 /** Deadline for loading one linked Kody package's published artifact. */
 export const publishBuildLinkedArtifactDeadlineMs = 2 * 60 * 1000
 
+/** Deadline for the chunk scanner's verdict on one uploaded chunk. */
+export const publishBuildChunkScanDeadlineMs = 10 * 1000
+
 /** Per-build upload ticket lifetime. */
 export const publishBuildTicketTtlMs = 30 * 60 * 1000
 

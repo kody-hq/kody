@@ -348,8 +348,10 @@ Every error is `{ error: { code, message, details? } }` with
 | 409    | `account_deleting`                                                                                                                                         |
 | 413    | `payload_too_large`                                                                                                                                        |
 | 415    | `unsupported_media_type`                                                                                                                                   |
+| 422    | `chunk_blocked` (publish build chunk scanner blocked the chunk; the build is rejected)                                                                     |
 | 429    | `rate_limited` (edge, `Retry-After`), `entitlement_limit`                                                                                                  |
 | 500    | `capability_error`, `internal_error`                                                                                                                       |
+| 503    | `chunk_scan_unavailable` (publish build chunk scanner unavailable, `Retry-After: 30`)                                                                      |
 
 ## Metering
 

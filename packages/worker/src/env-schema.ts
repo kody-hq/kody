@@ -377,6 +377,10 @@ export const EnvSchema = object({
 	KODY_DEV_COLD_ISOLATES: optionalNonEmptyStringSchema,
 	KODY_DEV_CLOCK_OFFSET_MS: optionalNonEmptyStringSchema,
 	KODY_DEV_OUTBOUND_URL: optionalNonEmptyStringSchema,
+	// Optional publish build chunk scanner. When set, every new chunk uploaded
+	// to `PUT /v1/publish-builds/{id}/blobs/{sha256}` is POSTed here for an
+	// allow/block verdict before it is stored. Unset or empty skips the scan.
+	PUBLISH_CHUNK_SCAN_URL: optionalUrlStringSchema,
 	// Optional Artifacts REST token when CLOUDFLARE_API_TOKEN is a mock
 	// credential for CLOUDFLARE_API_BASE_URL (PR previews). Mint/fork against
 	// the real Artifacts API with this token while email still uses the mock.

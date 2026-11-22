@@ -49,6 +49,9 @@ export type PublishBuildRow = {
 
 const ticketPrefix = 'kpb_'
 const sealGuard = sqlSourcesOf(publishBuildState, 'SEAL', ['uploading'])
+const blockedChunkGuard = sqlSourcesOf(publishBuildState, 'REJECT', [
+	'uploading',
+])
 const finishGuard = sqlSourcesOf(publishBuildState, 'COMMIT', [
 	'sealed',
 	'committed',
@@ -268,6 +271,36 @@ export async function finishPublishBuild(input: {
 				)
 				.run(),
 	)
+}
+
+/**
+ * Rejects a build that is still uploading because the chunk scan blocked one
+ * of its chunks. `false` means another request moved it out of `uploading`
+ * first.
+ */
+export async function rejectBlockedChunkPublishBuild(input: {
+	db: D1Database
+	buildId: string
+	message: string
+	clock?: DeadlineClock
+}) {
+	const result = await withDeadline(
+		{
+			label: 'publish_builds.reject_blocked_chunk',
+			timeoutMs: outboundTimeoutMs.d1,
+			clock: input.clock,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE publish_builds
+					SET status = 'rejected', message = ?, updated_at = ?
+					WHERE id = ? AND status IN ${blockedChunkGuard}`,
+				)
+				.bind(input.message, new Date().toISOString(), input.buildId)
+				.run(),
+	)
+	return (result.meta.changes ?? 0) > 0
 }
 
 async function deletePrefix(bucket: R2Bucket, prefix: string) {

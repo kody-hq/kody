@@ -284,6 +284,18 @@ third-party APIs can use stored secrets via `{{secret:name}}` placeholders in
 request headers over HTTPS. Host allowlists and capability policies apply per
 secret. There are no GitHub-specific Worker environment variables.
 
+## Publish build chunk scan
+
+- `PUBLISH_CHUNK_SCAN_URL` — optional Worker var. When set, each new chunk
+  uploaded to `PUT /v1/publish-builds/{id}/blobs/{sha256}` is POSTed as
+  `{"buildId","sha256","bytes"}` to this URL after its size and sha256 checks,
+  with a 10 second deadline, before it is stored. `{"verdict":"allow"}` stores
+  it; `{"verdict":"block","reason":"..."}` rejects the build
+  (`422 chunk_blocked`); any other answer, a non-2xx status, a network error, or
+  a timeout stores nothing and answers `503 chunk_scan_unavailable` with
+  `Retry-After: 30`. Chunks already stored are not scanned again. Unset or empty
+  skips the scan (see `packages/worker/src/publish-offload/chunk-scan.ts`).
+
 ## Social login (GitHub / Google / X / Discord)
 
 Optional Worker secrets (see `packages/worker/src/app/oauth-providers.ts` and

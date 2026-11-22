@@ -155,8 +155,9 @@ stateDiagram-v2
 
 ## publish_builds.status
 
-Builds upload, seal and commit or reject; a committed build may be finalized
-again or rejected by a later verification.
+Builds upload, seal and commit or reject; an uploading build is rejected when a
+chunk scan blocks a chunk, and a committed build may be finalized again or
+rejected by a later verification.
 
 Source:
 [`packages/worker/src/publish-offload/publish-build-state.ts`](../../packages/worker/src/publish-offload/publish-build-state.ts)
@@ -169,6 +170,7 @@ Final states: rejected
 stateDiagram-v2
     [*] --> uploading
     uploading --> sealed: SEAL
+    uploading --> rejected: REJECT
     sealed --> committed: COMMIT
     sealed --> rejected: REJECT
     committed --> committed: COMMIT
@@ -179,6 +181,7 @@ stateDiagram-v2
 | Event  | From      | To        | Guard |
 | ------ | --------- | --------- | ----- |
 | SEAL   | uploading | sealed    | —     |
+| REJECT | uploading | rejected  | —     |
 | COMMIT | sealed    | committed | —     |
 | REJECT | sealed    | rejected  | —     |
 | COMMIT | committed | committed | —     |

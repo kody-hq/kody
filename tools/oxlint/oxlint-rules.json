@@ -72,6 +72,7 @@
 			"files": [
 				"**/packages/worker/src/mcp/capabilities/packages/publish-build-create.ts",
 				"**/packages/worker/src/execution-contexts/route-publish-build.ts",
+				"**/packages/worker/src/publish-offload/chunk-scan.ts",
 				"**/packages/worker/src/publish-offload/context-dispatch.ts",
 				"**/packages/worker/src/publish-offload/flag.ts",
 				"**/packages/worker/src/publish-offload/http.ts",
