@@ -427,6 +427,43 @@ test('publishExternalPush publishes HEAD and rebuilds bundle artifacts per targe
 	])
 })
 
+test('a publish that renames the package links the app at its new name', async () => {
+	setupDefaultMocks({ hasApp: true })
+	const savedPackage = {
+		id: 'package-1',
+		userId: ownerIdFromStored('user-1'),
+		kodyId: 'old-name',
+		name: '@user/old-name',
+		sourceId: 'source-1',
+		hasApp: true,
+	}
+	let renamed = false
+	mockModule.getSavedPackageById.mockImplementation(async () =>
+		renamed
+			? { ...savedPackage, kodyId: 'new-name', name: '@user/new-name' }
+			: savedPackage,
+	)
+	// The publish refreshes the saved package from the new package.json name.
+	mockModule.publishFromExternalRef.mockImplementation(async () => {
+		renamed = true
+		return publishedResult({
+			manifest: {
+				name: '@user/new-name',
+				kody: { app: { entry: './app.ts' } },
+			},
+		})
+	})
+
+	const result = await publish()
+
+	expect(result.status).toBe('published')
+	expect(result).toEqual(
+		expect.objectContaining({
+			hosted_app_url: 'https://new-name--user.packages.kody.test/',
+		}),
+	)
+})
+
 test('publishExternalPush includes listing hint when the public catalog pin lags the promoted commit', async () => {
 	setupDefaultMocks({
 		publish: publishedResult({
