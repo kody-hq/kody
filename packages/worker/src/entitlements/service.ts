@@ -28,6 +28,7 @@ import {
 import { laterIsoTimestamp } from '#universal/referral-program.ts'
 import { resolvePlanOverlay } from '#universal/second-agent-standard-gift.ts'
 import { countInternalUserEmailMessages } from '#worker/email/mailbox-internal-read.ts'
+import { createPromiseLruCacheByBinding } from '#worker/package-registry/published-package-cache.ts'
 import { jobsData, type JobsDataEnv } from '#worker/jobs/jobs-data.ts'
 import type { RepoSessionIndexEnv } from '#worker/repo/repo-session-index-client.ts'
 import { countActiveRepoSessions } from '#worker/repo/repo-sessions.ts'
@@ -488,53 +489,17 @@ export type StableUserAccount = {
 const entitlementLookupCacheTtlMs = 60_000
 const entitlementLookupCacheMaxEntries = 1_000
 
-type EntitlementLookupCacheEntry<T> = {
-	value: Promise<T>
-	expiresAtMs: number
-}
-
 function createEntitlementLookupCache<T>() {
-	const cachesByDb = new WeakMap<
-		D1Database,
-		Map<string, EntitlementLookupCacheEntry<T>>
-	>()
+	const caches = createPromiseLruCacheByBinding<T>({
+		ttlMs: entitlementLookupCacheTtlMs,
+		limit: entitlementLookupCacheMaxEntries,
+	})
 	return {
-		async getOrCreate(
-			db: D1Database,
-			key: string,
-			create: () => Promise<T>,
-		): Promise<T> {
-			let cache = cachesByDb.get(db)
-			if (!cache) {
-				cache = new Map()
-				cachesByDb.set(db, cache)
-			}
-			const nowMs = Date.now()
-			const existing = cache.get(key)
-			if (existing && existing.expiresAtMs > nowMs) {
-				return await existing.value
-			}
-			const value = create()
-			// Never cache failures: a D1 blip must not pin an error for the TTL.
-			value.catch(() => {
-				if (cache.get(key)?.value === value) cache.delete(key)
-			})
-			if (cache.size >= entitlementLookupCacheMaxEntries) {
-				const oldestKey = cache.keys().next().value
-				if (oldestKey !== undefined) cache.delete(oldestKey)
-			}
-			cache.set(key, {
-				value,
-				expiresAtMs: nowMs + entitlementLookupCacheTtlMs,
-			})
-			return await value
+		getOrCreate(db: D1Database, key: string, create: () => Promise<T>) {
+			return caches.for(db).getOrCreate({ cacheKey: key, create })
 		},
 		deleteByKeyPrefix(db: D1Database, keyPrefix: string) {
-			const cache = cachesByDb.get(db)
-			if (!cache) return
-			for (const key of [...cache.keys()]) {
-				if (key.startsWith(keyPrefix)) cache.delete(key)
-			}
+			caches.for(db).deleteWhere((key) => key.startsWith(keyPrefix))
 		},
 	}
 }

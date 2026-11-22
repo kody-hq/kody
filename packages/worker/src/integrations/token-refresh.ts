@@ -29,6 +29,7 @@ import { isPublicCredentialEndpoint } from './secure-credential-url.ts'
 import { getJoinedIntegration } from './service.ts'
 import type { JoinedIntegration } from './types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 
 /**
  * `refreshed: false` is the clear skip for `not_applicable` connections
@@ -351,10 +352,15 @@ function scheduleSubscriptionEmit(
  * run while the others return the token it stored, so a 401 stampede cannot
  * rotate the refresh token out from under itself.
  */
-const inFlightIntegrationTokenRefreshes = new Map<
-	string,
-	Promise<IntegrationTokenRefreshResult>
->()
+/**
+ * Attempts settle to an outcome, so concurrent callers share a provider
+ * rejection instead of each retrying the POST; only an attempt whose request
+ * ended (a rejected promise) is rebuilt.
+ */
+const inFlightIntegrationTokenRefreshes = new PromiseLruCache<
+	| { ok: true; result: IntegrationTokenRefreshResult }
+	| { ok: false; error: unknown }
+>({ retainSettled: false })
 
 function integrationTokenRefreshDedupeKey(userId: OwnerId, name: string) {
 	return `${userId}\0${name}`
@@ -368,25 +374,16 @@ export async function refreshIntegrationTokens(input: {
 	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<IntegrationTokenRefreshResult> {
 	const key = integrationTokenRefreshDedupeKey(input.userId, input.name)
-	const existing = inFlightIntegrationTokenRefreshes.get(key)
-	if (existing) return existing
-	let resolvePending!: (value: IntegrationTokenRefreshResult) => void
-	let rejectPending!: (reason: unknown) => void
-	const pending = new Promise<IntegrationTokenRefreshResult>(
-		(resolve, reject) => {
-			resolvePending = resolve
-			rejectPending = reject
-		},
-	)
-	inFlightIntegrationTokenRefreshes.set(key, pending)
-	void refreshIntegrationTokensAttempt(input)
-		.then(resolvePending, rejectPending)
-		.finally(() => {
-			if (inFlightIntegrationTokenRefreshes.get(key) === pending) {
-				inFlightIntegrationTokenRefreshes.delete(key)
-			}
-		})
-	return pending
+	const outcome = await inFlightIntegrationTokenRefreshes.getOrCreate({
+		cacheKey: key,
+		create: () =>
+			refreshIntegrationTokensAttempt(input).then(
+				(result) => ({ ok: true as const, result }),
+				(error: unknown) => ({ ok: false as const, error }),
+			),
+	})
+	if (!outcome.ok) throw outcome.error
+	return outcome.result
 }
 
 async function refreshIntegrationTokensAttempt(input: {
