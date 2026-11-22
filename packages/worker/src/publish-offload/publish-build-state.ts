@@ -8,10 +8,12 @@ export const publishBuildState = setup({
 }).createMachine({
 	id: 'publish_builds.status',
 	description:
-		'Builds upload, seal and commit or reject; a committed build may be finalized again or rejected by a later verification.',
+		'Builds upload, seal and commit or reject; an uploading build is rejected when a chunk scan blocks a chunk, and a committed build may be finalized again or rejected by a later verification.',
 	initial: 'uploading',
 	states: {
-		uploading: { on: { SEAL: { target: 'sealed' } } },
+		uploading: {
+			on: { SEAL: { target: 'sealed' }, REJECT: { target: 'rejected' } },
+		},
 		sealed: {
 			on: { COMMIT: { target: 'committed' }, REJECT: { target: 'rejected' } },
 		},

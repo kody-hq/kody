@@ -74,3 +74,19 @@ export class PublishBuildCreateRefused extends Schema.TaggedError<PublishBuildCr
 	'PublishBuildCreateRefused',
 	{ message: Schema.String },
 ) {}
+
+/** The chunk scanner refused a chunk (422 `chunk_blocked`); the build is rejected. */
+export class ChunkScanBlocked extends Schema.TaggedError<ChunkScanBlocked>()(
+	'ChunkScanBlocked',
+	{ sha256: Schema.String, reason: Schema.String },
+) {}
+
+/**
+ * The chunk scanner gave no verdict (503 `chunk_scan_unavailable`): a non-2xx
+ * `status`, or a network error, timeout or malformed verdict (`status` null).
+ * The build keeps uploading.
+ */
+export class ChunkScanUnavailable extends Schema.TaggedError<ChunkScanUnavailable>()(
+	'ChunkScanUnavailable',
+	{ status: Schema.NullOr(Schema.Finite), cause: Schema.String },
+) {}

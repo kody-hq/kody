@@ -394,6 +394,10 @@ export const EnvSchema = object({
 	// subscribers; never fails signup when Kit is unset or errors).
 	KIT_API_KEY: optionalNonEmptyStringSchema,
 	KIT_SIGNED_UP_TAG_ID: optionalNonEmptyStringSchema,
+	// Publish build chunk scanner. When set, each uploaded chunk is POSTed
+	// here as {buildId, sha256, bytes} before it is stored; the answer is
+	// {"verdict":"allow"} or {"verdict":"block","reason":"..."}. Unset → no scan.
+	PUBLISH_CHUNK_SCAN_URL: optionalUrlStringSchema,
 	// Stripe billing — optional; when STRIPE_SECRET_KEY is unset, billing
 	// surfaces render a "not configured" notice and sync/cron/portal skip.
 	STRIPE_SECRET_KEY: optionalNonEmptyStringSchema,

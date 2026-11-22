@@ -2,7 +2,12 @@ import { Effect, Match, Schema } from 'effect'
 import { runEdge, rethrow } from '#worker/effect/edge.ts'
 import { ApiError, invalidRequest } from '#worker/open-api/errors.ts'
 import { digestSha256Hex } from './digest.ts'
-import type { PublishBuildTicketInvalid } from './errors.ts'
+import { chunkBlockedMessage, scanPublishChunk } from './chunk-scan.ts'
+import {
+	ChunkScanBlocked,
+	type ChunkScanUnavailable,
+	type PublishBuildTicketInvalid,
+} from './errors.ts'
 import { publishOffloadLimits } from './policy.ts'
 import * as Schemas from './schemas.ts'
 import { listAllKeys } from '#worker/effect/r2.ts'
@@ -12,6 +17,7 @@ import {
 	getPublishBuild,
 	publishBuildBlobPrefix,
 	publishBuildBlobKey,
+	rejectUploadingPublishBuild,
 	sealPublishBuild,
 	type PublishBuildRow,
 } from './store.ts'
@@ -25,6 +31,8 @@ import { publishBuilderVersion, type PublishBuildDocument } from './types.ts'
  *
  *   GET  /v1/publish-builds/{id}                 status + uploaded chunks
  *   PUT  /v1/publish-builds/{id}/blobs/{sha256}  one <= 4 MiB chunk
+ *        (scanned first when `PUBLISH_CHUNK_SCAN_URL` is set; a blocked
+ *        chunk rejects the build)
  *   POST /v1/publish-builds/{id}/seal            the build document
  */
 const basePath = '/v1/publish-builds/'
@@ -189,6 +197,18 @@ const uploadChunk = Effect.fn('PublishBuildHttp.uploadChunk')(function* (
 			`A build may upload at most ${publishOffloadLimits.maxBlobsPerBuild} chunks.`,
 		)
 	}
+	const scan = yield* scanPublishChunk({
+		buildId: row.id,
+		sha256,
+		bytes: bytes.byteLength,
+	})
+	if (scan.verdict === 'block') {
+		yield* rejectUploadingPublishBuild({
+			buildId: row.id,
+			message: chunkBlockedMessage(sha256, scan.reason),
+		})
+		return yield* new ChunkScanBlocked({ sha256, reason: scan.reason })
+	}
 	yield* bucket.put(key, bytes)
 	return json({ ok: true, sha256 })
 })
@@ -280,6 +300,22 @@ const publishBuildRouteFailure = Match.type<PublishBuildRouteError>().pipe(
 		},
 		PublishBuildChunksMissing: ({ missing }) =>
 			json({ ok: false, missing_chunks: missing }, 409),
+		ChunkScanBlocked: ({ sha256, reason }): Response => {
+			throw new ApiError({
+				status: 422,
+				code: 'chunk_blocked',
+				message: chunkBlockedMessage(sha256, reason),
+			})
+		},
+		ChunkScanUnavailable: (error: ChunkScanUnavailable): Response => {
+			throw new ApiError({
+				status: 503,
+				code: 'chunk_scan_unavailable',
+				message: 'The chunk scanner is unavailable. Retry this chunk later.',
+				headers: { 'Retry-After': '30' },
+				cause: error,
+			})
+		},
 		DatabaseError: rethrow,
 		OutboundCallError: rethrow,
 	}),

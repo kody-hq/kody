@@ -29,6 +29,9 @@ const finishGuard = sqlSourcesOf(publishBuildState, 'COMMIT', [
 	'sealed',
 	'committed',
 ])
+const uploadRejectGuard = sqlSourcesOf(publishBuildState, 'REJECT', [
+	'uploading',
+])
 
 export function publishBuildBlobKey(buildId: string, sha256: string) {
 	return `publish-builds/${buildId}/${sha256}`
@@ -224,6 +227,25 @@ export const finishPublishBuild = Effect.fn('PublishBuildStore.finish')(
 		)
 	},
 )
+
+/** Rejects a build that is still uploading; false when it was not uploading. */
+export const rejectUploadingPublishBuild = Effect.fn(
+	'PublishBuildStore.rejectUploading',
+)(function* (input: { buildId: string; message: string }) {
+	const db = yield* D1
+	const result = yield* db.run(
+		'publish_builds.reject_uploading',
+		sql(
+			`UPDATE publish_builds
+			SET status = 'rejected', message = ?, updated_at = ?
+			WHERE id = ? AND status IN ${uploadRejectGuard}`,
+			input.message,
+			yield* nowIso,
+			input.buildId,
+		),
+	)
+	return result.changes > 0
+})
 
 const deletePrefix = Effect.fnUntraced(function* (prefix: string) {
 	const bucket = yield* PublishBuildBucket
