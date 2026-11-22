@@ -564,7 +564,21 @@ export async function sealFullBackupDay(
 ): Promise<SealDayResult> {
 	assertBackupDay(day)
 	const manifestKey = sealedFullManifestKey(day)
-	const existing = await readFullManifest(env.BACKUP_BUCKET, manifestKey)
+	let existing: BackupFullManifest | null
+	try {
+		existing = await readFullManifest(env.BACKUP_BUCKET, manifestKey)
+	} catch (error) {
+		if (errorCode(error) !== 'full-manifest-rest-era') throw error
+		// A REST-era day is sealed but not restorable; never reseal or fail it.
+		safeLog({
+			event: 'full-backup-already-sealed',
+			status: 'success',
+			day,
+			manifestKey,
+			errorCode: 'full-manifest-rest-era',
+		})
+		return { kind: 'sealed', day, manifestKey, alreadySealed: true }
+	}
 	if (existing !== null) {
 		if (!(await verifyBackupFullManifestSignature(env, existing))) {
 			throw new BackupError(

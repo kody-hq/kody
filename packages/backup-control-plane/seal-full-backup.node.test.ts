@@ -247,6 +247,25 @@ test('sealFullBackupDay seals a complete day, is idempotent, short-circuits seal
 	assert.deepEqual(await seeded.seal('04:10'), alreadySealed(day))
 })
 
+test('a sealed REST-era day short-circuits as sealed instead of failing the scan', async () => {
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const seeded = await seedCompleteDay(bucket)
+	await seeded.seal()
+	const manifestKey = sealedFullManifestKey(seeded.day)
+	const stored = JSON.parse(await (await bucket.get(manifestKey))!.text()) as {
+		schemaVersion: number
+		payload: { schemaVersion: number }
+	}
+	stored.schemaVersion = 2
+	stored.payload.schemaVersion = 2
+	const restEraBody = JSON.stringify(stored)
+	await bucket.put(manifestKey, restEraBody)
+
+	assert.deepEqual(await seeded.seal('04:01'), alreadySealed(seeded.day))
+	assert.equal(await (await bucket.get(manifestKey))?.text(), restEraBody)
+})
+
 test('sealFullBackupDay completes over locked partial state and duplicate index entries', async () => {
 	// Reproduces the 2026-07-28 production wedge: the bucket-lock rule
 	// rejects puts on existing keys with error 10069, the storage index
