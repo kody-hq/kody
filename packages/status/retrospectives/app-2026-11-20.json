@@ -1,0 +1,45 @@
+{
+	"whatHappened": "A production deploy activated kody-production Worker version 8f17fcc7 at 05:11:17Z. From then on, Cloudflare's Western Europe colos (CDG, LHR, AMS, MAD and others: Paris, London, Amsterdam, Barcelona, Portugal, Reykjavik, Nuremberg) answered every kody.codes request with HTTP 503 and the body \"error code: 1105\" before the Worker ran. US colos kept serving the same version with 200. The status worker probes from CDG, so it opened incidents 12 (App & API), 13 (MCP endpoint), 14 (Primary database), 15 (Key-value storage), and 16 (Asset storage) at 05:13:24Z. The next production deploy activated version b6085411 at 05:33:25Z, Europe returned 200 at 05:34Z, and all five incidents resolved at 05:35:22Z, about 22 minutes after they opened.",
+	"impact": "For about 23 minutes, every request to kody.codes routed through Western Europe colos failed with a Cloudflare 503: including the web app, the API on kody.codes, and the MCP endpoint. Requests through US colos kept working. api.kody.codes, kody.run (package runtime), jobs, and status.kody.codes stayed operational in the same colos. The status worker's five status.incident.opened events rode the same down origin and timed out, so no package subscriber received them, and nothing woke an operator. The hourly status-incident triage sweep found the incidents by polling status.json at 05:17Z.",
+	"timeline": [
+		{
+			"at": "2026-11-20T05:10:22Z",
+			"note": "10:10pm MST: last good status probe from CDG; kody-production logs it on version 400b93b1."
+		},
+		{
+			"at": "2026-11-20T05:11:17Z",
+			"note": "10:11pm MST: production deploy run 44678775694 (commit a9ca242, test-only change #5452) activates Worker version 8f17fcc7. Its healthcheck and origin-only execute smoke pass from a US runner. Western Europe colos start returning 503 with error code 1105, and kody-production logs no more CDG requests."
+		},
+		{
+			"at": "2026-11-20T05:13:24Z",
+			"note": "10:13pm MST: after three failed probes, the status worker opens incidents 12 (app), 13 (mcp), 14 (app_db), 15 (kv), and 16 (assets) with detail \"HTTP 503\". Package runtime and jobs stay green."
+		},
+		{
+			"at": "2026-11-20T05:13:27Z",
+			"note": "10:13pm MST: all five status.incident.opened POSTs to https://kody.codes/__maintenance/status-incidents fail with \"The operation was aborted due to timeout\" because they ride the down origin. No subscriber gets the event."
+		},
+		{
+			"at": "2026-11-20T05:17:00Z",
+			"note": "10:17pm MST: the hourly @kentcdodds/status-incident-triage sweep finds the open incidents by polling status.json. No operator is woken."
+		},
+		{
+			"at": "2026-11-20T05:32:45Z",
+			"note": "10:32pm MST: captures confirm the Cloudflare 1105 page (server: cloudflare, content-length: 17) with CF-RAY a5d5135e2d7e98a1-CDG, a5d5135e48284ef5-LHR, and a5d5135e0b91fb8b-AMS, while ORD returns 200."
+		},
+		{
+			"at": "2026-11-20T05:33:25Z",
+			"note": "10:33pm MST: production deploy run 44681297472 (commit 15aef80) activates Worker version b6085411."
+		},
+		{
+			"at": "2026-11-20T05:34:00Z",
+			"note": "10:34pm MST: Paris, London, Amsterdam, and Madrid return 200 again."
+		},
+		{
+			"at": "2026-11-20T05:35:22Z",
+			"note": "10:35pm MST: two successful probes resolve incidents 12 to 16, about 22 minutes after they opened."
+		}
+	],
+	"cause": "Cloudflare could not serve Worker version 8f17fcc7 in Western Europe colos and returned error 1105 (Temporarily unavailable) before the Worker ran. The deployed change was test-only, the same version served normally from US colos, and the next version served everywhere, so the strongest hypothesis is a Cloudflare-side version load or propagation failure, not application code. Cloudflare Status listed no matching Workers incident. The root cause is not confirmed. Two gaps made it last longer: the deploy healthcheck only runs from one US runner, so it passed, and the status worker's only push path to operators went through the same down origin.",
+	"whatWeDid": "A new production deploy (commit 15aef80, run 44681297472) activated a fresh Worker version, b6085411, at 05:33:25Z. Western Europe recovered within a minute, and probes resolved all five incidents at 05:35:22Z. We captured CF-RAY ids and response headers from the affected colos, confirmed in Workers observability that the failing requests never reached the Worker, and checked Cloudflare Status, which listed no matching Workers incident.",
+	"whatWeWillChange": "The status worker wakes Kent's Grok Bot directly when incidents open and when everything clears, never through kody.codes, with one batched wake per probe tick, dedupe by incident id, and a daily cap. The production deploy checks kody.codes/health from Paris, London, Amsterdam, Frankfurt, Madrid, and two US points after the existing healthcheck, and fails loudly with colo, CF-RAY, status, and body when two or more probes get a Cloudflare 503 or error 1105, or any probe serves another commit. Patch owns a third change: a Kody-org status monitor that watches status.kody.codes from outside this repository."
+}

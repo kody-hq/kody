@@ -707,6 +707,7 @@ async function runChecksOnFiles(input: {
 		followCapabilityImports: false,
 		// Platform migrations must still transform legacy credential patterns
 		// before phase 2/3 stamp enforcement (#3836).
+		// Remove when: issue #3836 phase 3 enforces credential stamps on every package.
 		enforceCredentialStamp: false,
 	})
 }
@@ -1143,6 +1144,7 @@ async function processPackageForMode(input: {
 							// false, enforceCredentialStamp: false) so legacy packages
 							// without README/AGENTS and pre-stamp credential shapes can
 							// publish approved transforms. Other publish checks still run.
+							// Remove when: issue #3836 phase 3 enforces credential stamps on every package.
 							requirePackageDocs: false,
 							enforceCredentialStamp: false,
 						})

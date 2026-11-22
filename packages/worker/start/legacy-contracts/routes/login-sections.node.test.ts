@@ -14,7 +14,6 @@ const shared = {
 	usernameConfirming: false,
 	onSignupUsernameInput: () => {},
 	onSignupEmailInput: () => {},
-	onUsernameAvailabilityChange: () => {},
 }
 
 test('credential errors associate the status message with email and password', async () => {

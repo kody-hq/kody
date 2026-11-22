@@ -3,7 +3,6 @@ import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
-	useEffect,
 	useId,
 	useRef,
 	useState,
@@ -27,7 +26,7 @@ import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import {
 	UsernameChoiceField,
-	type UsernameAvailabilityView,
+	useUsernameAvailability,
 } from '../components/username-choice-field.tsx'
 import {
 	formMessageCss,
@@ -51,14 +50,17 @@ export function SignupChooseUsernamePage(props: {
 	const hydrated = useHydrated()
 	const handleId = useId()
 	const lifecycle = useRef<AbortController | null>(null)
-	useEffect(() => {
+	const trackLifecycle = useCallback((node: HTMLDivElement | null) => {
+		if (!node) return
 		const controller = new AbortController()
 		lifecycle.current = controller
 		return () => controller.abort()
 	}, [])
 	const [username, setUsername] = useState(props.suggestedUsername)
-	const [availability, setAvailability] = useState<UsernameAvailabilityView>({
-		status: 'idle',
+	const availability = useUsernameAvailability(username, {
+		email: props.email,
+		providerUsername: props.providerUsername,
+		displayName: props.displayName,
 	})
 	const [confirmedUsername, setConfirmedUsername] = useState<string | null>(
 		null,
@@ -199,7 +201,7 @@ export function SignupChooseUsernamePage(props: {
 	}
 
 	return (
-		<div css={authLayoutCss}>
+		<div ref={trackLifecycle} css={authLayoutCss}>
 			{renderLoginVisualPanel()}
 			<div css={authPanelCss}>
 				{renderMobileBrand()}
@@ -241,7 +243,6 @@ export function SignupChooseUsernamePage(props: {
 									data: uiContext({ status: 'idle' }).data,
 								} as Parameters<typeof flowActor.send>[0])
 							}}
-							onAvailabilityChange={setAvailability}
 							seeds={{
 								email: props.email,
 								providerUsername: props.providerUsername,

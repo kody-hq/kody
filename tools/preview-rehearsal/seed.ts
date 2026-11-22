@@ -609,6 +609,7 @@ export async function assertNotSeeded(
  * the seed-path users (the same SQL `seed-test-data.ts` runs, giving legacy
  * `sha256(email)` ids) and carol's auto-refill settings (no Stripe mock on
  * previews, so the settings route refuses non-Stripe customers).
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export async function seedRehearsal(
 	input: SeedInput,

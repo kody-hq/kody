@@ -607,9 +607,9 @@ export function AccountEmailPage({
 						}
 						columns={[
 							{ key: 'subject', label: 'Subject', primary: true },
-							{ key: 'from', label: 'From', drop: 1 },
-							{ key: 'direction', label: 'Direction', drop: 3 },
-							{ key: 'status', label: 'Status', drop: 2 },
+							{ key: 'from', label: 'From' },
+							{ key: 'direction', label: 'Direction' },
+							{ key: 'status', label: 'Status' },
 							{ key: 'date', label: 'Date' },
 						]}
 						rows={data.messages.map((emailMessage) => ({

@@ -50,6 +50,7 @@ export function credentialSummary(entry: CapabilityEntry) {
  * Set when a need still declares the deprecated
  * `ownerCredentialForVisitors` flag, a legacy alias for supplier
  * `publisher`: apps already use the publisher's credentials for every visitor.
+ * Remove when: no published package declares `ownerCredentialForVisitors`.
  */
 export function credentialVisitorsNote(entry: CapabilityEntry) {
 	if (!entry.ownerCredentialForVisitors) return null

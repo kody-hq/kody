@@ -28,6 +28,7 @@ function withSearch(path: string, search: URLSearchParams) {
  * Secrets index links the Credentials list cannot serve: an approval request
  * (names with hosts or a package to grant) and a list narrowed to one
  * package's keys. Those keep the legacy page.
+ * Remove when: `/connect/secret-set` gets no traffic; then delete the redirect.
  */
 const secretsIndexOnlyParams = [
 	'hosts',
@@ -85,6 +86,7 @@ const secretSetParamRenames: Record<string, string> = {
  * `/connect/secret-set` (the legacy intake, deprecated) opens the Key form
  * with the same prefill: name, description, provider, hosts, expiry, package
  * scope (`scope`, `packageId`), and package locks.
+ * Permanent: stored data or clients from before this change still exist.
  */
 function connectSecretSetRedirect(url: URL): string {
 	const search = new URLSearchParams()

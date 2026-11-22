@@ -105,6 +105,18 @@ platform-assigned sender address.
 
 ## Capabilities
 
+**Inbox permissions.**
+[`emailMessageList` and `emailMessageSearch`](../../packages/worker/src/email/authorize-email-message.node.test.ts)
+require `email:read` on an explicit `inbox_id`. Omit it to search or list across
+the inboxes the request can read.
+[`emailMessageGet`, classification, and deletion](../../packages/worker/src/email/authorize-email-message.node.test.ts)
+check the corresponding permission on the message's inbox.
+[`emailReply`](../../packages/worker/src/mcp/capabilities/email/email-reply.ts)
+requires both `email:read` and `email:send` there. For messages without an
+inbox, these
+[message checks](../../packages/worker/src/email/authorize-email-message.ts)
+require the corresponding org-wide permissions.
+
 Use the MCP `email` domain:
 
 - `emailInboxList` lists inboxes and automatic platform addresses for the
@@ -314,16 +326,16 @@ Receive-time classification is always `accepted` or `quarantined`; `spam` is
 only ever set by a person or an admin (see
 [Spam and archive](#spam-and-archive)). Decision order:
 
-1. **Authentication-Results verdict** — Kody reads SPF/DKIM/DMARC only from
-   Cloudflare-stamped `Authentication-Results` (or Cloudflare
-   `ARC-Authentication-Results`) on the Email Worker `message.headers`
-   (authserv-id `*.cloudflare.net`). Sender-forged AR/ARC rows and third-party
-   ARC seals are ignored. DMARC `fail`, or both SPF and DKIM `fail`/`softfail`
-   with no DMARC policy (`none` / missing dmarc clause), marks the message
-   suspect and stores it as quarantined with reason
-   `Failed sender authentication.` A missing or untrusted header fails open
-   (accepted, not suspect). This applies to every inbox, including operator
-   system inboxes.
+1. **Authentication-Results verdict** — On the Email Worker `message.headers`,
+   Kody checks the first stamp in `Authentication-Results`, then the first in
+   `ARC-Authentication-Results` if the former is absent or untrusted. A stamp
+   must have a `cloudflare.net` authserv-id or a subdomain; Kody
+   [ignores stamps after the first comma in either header](../../packages/worker/src/email/auth-verdict.node.test.ts).
+   DMARC `fail`, or both SPF and DKIM `fail`/`softfail` with no recognized DMARC
+   result (`none` or `unknown`), marks the message suspect and stores it as
+   quarantined with reason `Failed sender authentication.` If neither header
+   supplies a trusted stamp, the auth verdict is not suspect; the other
+   classification rules still apply.
 2. **Per-org sender rules** — at classification time, rules match the RFC5322
    From address (exact address or domain, including subdomains; address beats
    domain). Early SMTP `block` still uses the envelope sender. Effects:

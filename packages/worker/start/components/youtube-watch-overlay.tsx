@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useId, useRef } from 'react'
+import { useCallback, useId, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { YoutubeWatchLoaderData } from '#universal/loader-data.ts'
 import {
@@ -29,11 +29,18 @@ export function YouTubeWatchOverlay({
 	const videoId = parseYoutubeWatchSearch(location.searchStr)
 	const allowed =
 		videoId !== null && (snapshot?.allowedVideoIds.includes(videoId) ?? false)
-	useEffect(() => {
-		const node = dialog.current
-		if (allowed && node && !node.open) node.showModal()
-		return () => node?.close()
-	}, [allowed, videoId])
+	const dialogRef = useCallback(
+		(node: HTMLDialogElement | null) => {
+			dialog.current = node
+			if (!node || !videoId) return
+			if (!node.open) node.showModal()
+			return () => {
+				dialog.current = null
+				node.close()
+			}
+		},
+		[videoId],
+	)
 	function closeWatch() {
 		dialog.current?.close()
 		const next = stripYoutubeWatchSearch(location.pathname, location.searchStr)
@@ -44,7 +51,7 @@ export function YouTubeWatchOverlay({
 	return (
 		// oxlint-disable-next-line kody-custom/no-raw-dialog -- full-screen video player owns its own chrome.
 		<dialog
-			ref={dialog}
+			ref={dialogRef}
 			aria-labelledby={titleId}
 			data-testid="youtube-watch-overlay"
 			data-video-id={videoId}

@@ -303,7 +303,10 @@ export async function loadCredentialMappings(input: {
 	enablementIds?: ReadonlyArray<string>
 	needKey?: string
 	request?: RequestContext | null
-	/** Compatibility fills must not fall back by name after invalid mappings. */
+	/**
+	 * Compatibility fills must not fall back by name after invalid mappings.
+	 * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
+	 */
 	includeInvalid?: boolean
 }): Promise<Array<CredentialMappingRow>> {
 	const enablementIds = input.enablementIds ?? []

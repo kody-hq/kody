@@ -13,6 +13,7 @@
  * so the lanes cannot drift apart. Lane usage is recorded to Analytics
  * Engine (see `protocol-metrics.ts`); the legacy lane is retired once its
  * traffic stops.
+ * Remove when: MCP protocol metrics show no 2025-era lane traffic.
  */
 
 import type { exports as workerExports } from 'cloudflare:workers'
@@ -87,6 +88,7 @@ export async function handleStatelessMcpRequest(input: {
 			// The Durable Object McpAgent lane owns 2025-era traffic (sessions,
 			// SSE streams, resumability); rejecting legacy here keeps exactly
 			// one lane authoritative per era.
+			// Remove when: MCP protocol metrics show no 2025-era lane traffic.
 			legacy: 'reject',
 			onerror: (error) => console.warn('mcp-stateless-lane-error', error),
 		},

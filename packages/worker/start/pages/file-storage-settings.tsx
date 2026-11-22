@@ -2,7 +2,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { Dialog } from '../components/dialog.tsx'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { z } from 'zod'
 import type { fileStorageStatusSchema } from '#universal/file-storage.ts'
 import {
@@ -30,7 +30,7 @@ export default function FileStorageSettings({
 }) {
 	const queryClient = useQueryClient()
 	const router = useRouter()
-	const [status, setStatus] = useState<z.infer<
+	const [savedStatus, setStatus] = useState<z.infer<
 		typeof fileStorageStatusSchema
 	> | null>(null)
 	const [endpoint, setEndpoint] = useState(''),
@@ -38,7 +38,7 @@ export default function FileStorageSettings({
 		[region, setRegion] = useState('auto'),
 		[credentialName, setCredentialName] = useState(''),
 		[busy, setBusy] = useState(false),
-		[error, setError] = useState('')
+		[actionError, setError] = useState('')
 	const credentials = useQuery({
 		queryKey: ['file-storage-credentials', orgSlug],
 		queryFn: () => readFileStorageCredentials({ data: { orgSlug } }),
@@ -56,21 +56,20 @@ export default function FileStorageSettings({
 	}
 	const operation = useRef<string>(crypto.randomUUID())
 	const [reconnecting, setReconnecting] = useState(false)
-	useEffect(() => {
-		let active = true
-		void readFileStorage({ data: { orgSlug } }).then(
-			(value) => {
-				if (active) setStatus(value)
-			},
-			(e) => {
-				if (active)
-					setError(e instanceof Error ? e.message : 'Could not load storage.')
-			},
-		)
-		return () => {
-			active = false
-		}
-	}, [orgSlug])
+	const storage = useQuery({
+		queryKey: ['file-storage', orgSlug],
+		queryFn: () => readFileStorage({ data: { orgSlug } }),
+		retry: false,
+		refetchOnWindowFocus: false,
+	})
+	const status = savedStatus ?? storage.data ?? null
+	const error =
+		actionError ||
+		(storage.error && savedStatus === null
+			? storage.error instanceof Error
+				? storage.error.message
+				: 'Could not load storage.'
+			: '')
 	async function refreshFiles() {
 		await queryClient.invalidateQueries({
 			predicate: ({ queryKey: [resource, scope, loader] }) =>

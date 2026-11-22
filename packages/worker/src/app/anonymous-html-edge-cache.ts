@@ -63,6 +63,7 @@ export function isAnonymousHtmlCacheRequest(
 	// Legacy app hosts and package-app hosts have their own handlers (308
 	// redirects, package apps) that must run on every request; only the
 	// canonical first-party origin is safe to answer from the shared cache.
+	// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 	if (url.origin !== getCanonicalAppBaseUrl({ env, requestUrl: url })) {
 		return false
 	}

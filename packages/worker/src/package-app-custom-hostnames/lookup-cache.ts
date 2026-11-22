@@ -1,5 +1,6 @@
 import { lookupPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup.ts'
 import type { PackageAppCustomHostnameLookup } from '#worker/package-app-custom-hostnames/types.ts'
+import { createPromiseLruCacheByBinding } from '#worker/package-registry/published-package-cache.ts'
 
 /**
  * Short-TTL per-isolate cache for Host-header → custom-hostname mapping.
@@ -8,23 +9,12 @@ import type { PackageAppCustomHostnameLookup } from '#worker/package-app-custom-
  * Other isolates re-read within the TTL (same pattern as entitlements).
  */
 export const packageAppCustomHostnameLookupCacheTtlMs = 60_000
-const maxEntries = 2_000
 
-type CacheEntry = {
-	value: Promise<PackageAppCustomHostnameLookup | null>
-	expiresAtMs: number
-}
-
-const cachesByDb = new WeakMap<D1Database, Map<string, CacheEntry>>()
-
-function cacheFor(db: D1Database) {
-	let cache = cachesByDb.get(db)
-	if (!cache) {
-		cache = new Map()
-		cachesByDb.set(db, cache)
-	}
-	return cache
-}
+const lookupCaches =
+	createPromiseLruCacheByBinding<PackageAppCustomHostnameLookup | null>({
+		ttlMs: packageAppCustomHostnameLookupCacheTtlMs,
+		limit: 2_000,
+	})
 
 /**
  * Cached {@link lookupPackageAppCustomHostname} for the package-app Host
@@ -37,25 +27,10 @@ export async function lookupCachedPackageAppCustomHostname(input: {
 }): Promise<PackageAppCustomHostnameLookup | null> {
 	const key = input.hostname.trim().toLowerCase()
 	if (!key) return null
-	const cache = cacheFor(input.db)
-	const nowMs = Date.now()
-	const existing = cache.get(key)
-	if (existing && existing.expiresAtMs > nowMs) {
-		return await existing.value
-	}
-	const value = lookupPackageAppCustomHostname(input)
-	value.catch(() => {
-		if (cache.get(key)?.value === value) cache.delete(key)
+	return await lookupCaches.for(input.db).getOrCreate({
+		cacheKey: key,
+		create: () => lookupPackageAppCustomHostname(input),
 	})
-	if (cache.size >= maxEntries) {
-		const oldestKey = cache.keys().next().value
-		if (oldestKey !== undefined) cache.delete(oldestKey)
-	}
-	cache.set(key, {
-		value,
-		expiresAtMs: nowMs + packageAppCustomHostnameLookupCacheTtlMs,
-	})
-	return await value
 }
 
 /** Drop one hostname from this isolate's lookup cache after a mutation. */
@@ -65,10 +40,10 @@ export function invalidateCachedPackageAppCustomHostname(
 ): void {
 	const key = hostname.trim().toLowerCase()
 	if (!key) return
-	cacheFor(db).delete(key)
+	lookupCaches.for(db).delete(key)
 }
 
-/** Test helper: wipe this isolate's custom-hostname lookup cache. */
+/** Drop every hostname this isolate cached for a db (package renames). */
 export function clearCachedPackageAppCustomHostnames(db: D1Database): void {
-	cachesByDb.delete(db)
+	lookupCaches.clear(db)
 }

@@ -201,3 +201,21 @@ test('a chunked scan still reads the modules the stamp leaves out as oversized',
 	).not.toContain('src/generated/oversized.ts')
 	expect(result.stampKeys).not.toContain('BIG_TOKEN')
 })
+
+test('a chunked scan walks an oversized server module in the stamp view', async () => {
+	const oversized = `import { credential } from 'kody:runtime'\nexport const send = () => credential('BIG_TOKEN')\nexport const filler = ${JSON.stringify('x'.repeat(credentialStampMaxModuleScanBytes))}\n`
+	const files = tree(describedCredentials)
+	const { result, requests } = await expectChunkedMatchesInProcess({
+		...files,
+		'src/generated/oversized.ts': oversized,
+		'src/index.ts': `export { send } from './generated/oversized.ts'\n${files['src/index.ts']}`,
+	})
+
+	expect(new Set(requests.map((request) => request.view))).toEqual(
+		new Set(['stamp']),
+	)
+	expect(
+		requests.flatMap((request) => request.visit.map((module) => module.path)),
+	).toContain('src/generated/oversized.ts')
+	expect(result.stampKeys).toContain('BIG_TOKEN')
+})

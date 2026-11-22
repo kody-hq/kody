@@ -28,7 +28,8 @@ import { readPublishedCredentialStamp } from '#worker/package-runtime/published-
 import { packageSourceFiles } from './credential-needs-closure.ts'
 import {
 	isStoredCredentialStamp,
-	omitOversizedCredentialStampModules,
+	collectServerRuntimeModulePaths,
+	omitOversizedClientCredentialStampModules,
 	planCredentialStampSeal,
 	type CredentialStamp,
 	type CredentialStampGateFailure,
@@ -404,8 +405,11 @@ export async function runIsolatedCredentialStampFleetPackage(
 					env,
 					userId: request.ownerUserId,
 					packageName: request.packageName,
-					// Same oversized omit as seal planning / loadDependencyStamps.
-					files: omitOversizedCredentialStampModules(packageFiles),
+					// Same oversized client omit as seal planning / loadDependencyStamps.
+					files: omitOversizedClientCredentialStampModules(
+						packageFiles,
+						await collectServerRuntimeModulePaths(packageFiles),
+					),
 				})
 			: []
 		const stampCurrent =

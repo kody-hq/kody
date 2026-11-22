@@ -239,11 +239,13 @@ export const EnvSchema = object({
 	// the canonical `APP_BASE_URL` host during a domain migration. The deploy
 	// attaches these as custom domains so flipping APP_BASE_URL never detaches
 	// the old origin or deletes its DNS.
+	// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 	APP_LEGACY_HOSTS: optionalNonEmptyStringSchema,
 	// Exact string 'true' enables 308 redirects from legacy hosts to the
 	// canonical origin for safe browser GET/HEAD requests. Protocol surfaces
 	// (/mcp, OAuth, well-known, webhooks, email) are never redirected. Leave
 	// unset to dual-serve legacy hosts without redirecting browser navigation.
+	// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 	APP_LEGACY_REDIRECT: optionalNonEmptyStringSchema,
 	// Optional in env schema so local/preview/test can omit them. Production
 	// boot (getEnv) and request-time public-form-protection refuse when either
@@ -430,8 +432,8 @@ export const EnvSchema = object({
 	// JSON array of { binding: "APP_DB"|"AUDIT_DB"|"JOBS_DB", name, id:uuid }.
 	// Production commits APP + AUDIT + JOBS (deploy may still expand UUIDs).
 	DR_D1_PACED_SOURCES: optionalNonEmptyStringSchema,
-	// Soft-delete purge lane (Teams P7). Default false: first production
-	// enable is dry-run via adminSoftDeletePurgeRun, then flip to "true".
+	// Soft-delete purge lane (Teams P7). "true" in production; preview and
+	// test keep "false", so the lane only lists candidates there.
 	SOFT_DELETE_PURGE_ENABLED: optionalNonEmptyStringSchema,
 	DR_BACKUP_ACCOUNT_ID: optionalNonEmptyStringSchema,
 	DR_BACKUP_BUCKET_NAME: optionalNonEmptyStringSchema,

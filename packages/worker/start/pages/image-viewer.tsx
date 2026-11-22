@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { ContextMenuSurface } from '../components/context-menu-surface.tsx'
 import { createPortal } from 'react-dom'
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useRef, useState } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
 import { FileAnchorContext } from './file-anchor-context.ts'
 import { FileAnchorMarker } from './file-anchor-markers.tsx'
 import { colors, typography } from '#universal/styles/tokens.ts'
@@ -62,15 +63,19 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 	const scaleRef = useRef(scale)
 	scaleRef.current = scale
 
-	useEffect(() => {
-		const img = image.current
-		if (img?.complete && img.naturalWidth) {
-			setSize({ width: img.naturalWidth, height: img.naturalHeight })
-		}
-	}, [src, fullscreen])
+	const imageRef = useCallback(
+		(img: HTMLImageElement | null) => {
+			image.current = img
+			if (img?.complete && img.naturalWidth) {
+				setSize({ width: img.naturalWidth, height: img.naturalHeight })
+			}
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- re-read a cached image after a source or fullscreen change
+		[src, fullscreen],
+	)
 
-	useEffect(() => {
-		const element = viewport.current
+	const viewportRef = useCallback((element: HTMLDivElement | null) => {
+		viewport.current = element
 		if (!element) return
 		const observer = new ResizeObserver(([entry]) => {
 			if (entry)
@@ -80,8 +85,22 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 				})
 		})
 		observer.observe(element)
-		return () => observer.disconnect()
-	}, [fullscreen])
+		function wheel(event: WheelEvent) {
+			if (!event.ctrlKey && !event.metaKey) return
+			event.preventDefault()
+			latestZoom.current(
+				scaleRef.current * Math.exp(-event.deltaY * 0.01),
+				event.clientX,
+				event.clientY,
+			)
+		}
+		element.addEventListener('wheel', wheel, { passive: false })
+		return () => {
+			viewport.current = null
+			observer.disconnect()
+			element.removeEventListener('wheel', wheel)
+		}
+	}, [])
 
 	function zoom(value: number, clientX?: number, clientY?: number) {
 		const element = viewport.current
@@ -103,7 +122,10 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 		setMode('manual')
 	}
 
-	useLayoutEffect(() => {
+	const latestZoom = useRef(zoom)
+	latestZoom.current = zoom
+
+	useLayoutMeasure(() => {
 		const element = viewport.current
 		const img = image.current
 		const point = anchor.current
@@ -116,27 +138,14 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 		element.scrollTop += imageBox.top - box.top + point.imageY * scale - point.y
 	}, [scale, mode])
 
-	useEffect(() => {
-		const element = viewport.current
-		if (!element) return
-		function wheel(event: WheelEvent) {
-			if (!event.ctrlKey && !event.metaKey) return
-			event.preventDefault()
-			zoom(
-				scaleRef.current * Math.exp(-event.deltaY * 0.01),
-				event.clientX,
-				event.clientY,
-			)
-		}
-		element.addEventListener('wheel', wheel, { passive: false })
-		return () => element.removeEventListener('wheel', wheel)
-	})
-
-	useLayoutEffect(() => {
-		const element = dialog.current
-		if (fullscreen && element && !element.open) element.showModal()
-		if (!fullscreen && element?.open) element.close()
-	}, [fullscreen])
+	const dialogRef = useCallback(
+		(element: HTMLDialogElement | null) => {
+			dialog.current = element
+			if (fullscreen && element && !element.open) element.showModal()
+			if (!fullscreen && element?.open) element.close()
+		},
+		[fullscreen],
+	)
 
 	function toggleFullscreen() {
 		anchor.current = null
@@ -300,7 +309,7 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 					</p>
 				)}
 				<div
-					ref={viewport}
+					ref={viewportRef}
 					role="region"
 					aria-label="Image viewer"
 					tabIndex={-1}
@@ -378,7 +387,7 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 					>
 						<div css={{ position: 'relative' }}>
 							<img
-								ref={image}
+								ref={imageRef}
 								src={src}
 								alt={name}
 								draggable={false}
@@ -439,7 +448,7 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 		<>
 			{/* oxlint-disable-next-line kody-custom/no-raw-dialog -- full-screen image viewer owns its own chrome and keyboard paging. */}
 			<dialog
-				ref={dialog}
+				ref={dialogRef}
 				aria-label={`Image viewer: ${name}`}
 				onCancel={() => setFullscreen(false)}
 				onClose={() => setFullscreen(false)}

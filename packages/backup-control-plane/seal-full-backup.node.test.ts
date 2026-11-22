@@ -498,15 +498,27 @@ test('a persistent R2 put failure on one day stays isolated and is logged with i
 		}
 		return put(key, value, options)
 	}
-	await assert.rejects(
-		sealRecentCompleteDays(
-			failing.env,
-			new Date('2026-07-22T13:00:00.000Z'),
-			2,
-		),
+	vi.useFakeTimers({ toFake: ['setTimeout'] })
+	const scan = sealRecentCompleteDays(
+		failing.env,
+		new Date('2026-07-22T13:00:00.000Z'),
+		2,
+	)
+	const rejected = assert.rejects(
+		scan,
 		(error: unknown) =>
 			error instanceof BackupError && error.code === 'r2-platform-error',
 	)
+	let settled = false
+	void rejected.finally(() => (settled = true))
+	// Signing and hashing do real async work between retry waits.
+	const realDeadline = performance.now() + 10_000
+	while (!settled && performance.now() < realDeadline) {
+		await vi.advanceTimersByTimeAsync(100)
+		await new Promise((resolve) => setImmediate(resolve))
+	}
+	await rejected
+	vi.useRealTimers()
 	const failures = consoleError.mock.calls
 		.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
 		.filter((record) => record.event === 'full-backup-seal-failure')

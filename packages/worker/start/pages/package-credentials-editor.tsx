@@ -2,9 +2,10 @@
 import { Button } from '../components/button.tsx'
 import { isRedirect } from '@tanstack/react-router'
 import { postPackageCredentialChanges } from '../package-credential-changes.ts'
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 
-import { type ReactNode, useState, useRef, useEffect } from 'react'
+import { type ReactNode, useState, useRef } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import type {
@@ -91,7 +92,7 @@ export function usePackageMappingEditor(
 ) {
 	const [open, setOpen] = useState<OpenEditor | null>(null)
 	const session = useRef(0)
-	useEffect(
+	useResourceLifetime(
 		() => () => {
 			session.current += 1
 		},
@@ -184,7 +185,7 @@ export function usePackageMappingEditor(
 						{message.createUrl ? (
 							<>
 								{' '}
-								<SiteLink href={message.createUrl}>Add a credential</SiteLink>
+								<TextLink href={message.createUrl}>Add a credential</TextLink>
 							</>
 						) : null}
 					</p>
@@ -267,7 +268,7 @@ export function usePackageMappingEditor(
 					{choices.length === 0 ? (
 						<p css={{ margin: 0, color: colors.textMuted }}>
 							No credential you can map matches this need.{' '}
-							<SiteLink href={input.need.createUrl}>Add a credential</SiteLink>
+							<TextLink href={input.need.createUrl}>Add a credential</TextLink>
 						</p>
 					) : (
 						<p

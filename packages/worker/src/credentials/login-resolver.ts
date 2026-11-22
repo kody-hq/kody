@@ -2,12 +2,14 @@
  * The `login` credential kind (ADR 0068): the value holds login fields (for
  * example a username and password) as one JSON object, and the credential's
  * `config_json` holds the exchange that turns them into a session token. The
- * gateway runs the exchange, keeps the session for its lifetime (encrypted in
- * `login_credential_sessions`, with a per-isolate front cache), and places it
- * on a request to one of the credential's hosts by the credential's `inject`.
+ * gateway runs the exchange and places the session on the outbound request
+ * using the credential's `inject`. Reusable sessions are cached in memory
+ * and encrypted in `login_credential_sessions`; single-request sessions skip
+ * the cache and register logout with the caller.
  * Neither the fields, the login response, nor the session ever reach code.
  */
 import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 import { z } from 'zod'
 import { readBoundedBody } from '#mcp/capabilities/integrations/read-bounded-body.ts'
 import { isPublicFetchHostname } from '#mcp/events/ssrf.ts'
@@ -178,7 +180,7 @@ type ExchangeResult = {
  */
 const sessions = isolateCollection(new Map<string, Session>())
 const pendingSessions = isolateCollection(
-	new Map<string, Promise<ObtainedLoginSession>>(),
+	new PromiseLruCache<ObtainedLoginSession>({ retainSettled: false }),
 )
 
 function misconfigured(): never {
@@ -643,22 +645,15 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 				}
 				return obtained
 			}
-			let pending = rejected ? undefined : pendingSessions.get(key)
-			if (!pending) {
-				pending = obtain()
-				if (!rejected) pendingSessions.set(key, pending)
+			const { session, source, sessionId } = await (rejected
+				? obtain()
+				: pendingSessions.getOrCreate({ cacheKey: key, create: obtain }))
+			remember(key, { ...session, sessionId })
+			call.subject.details = {
+				...call.subject.details,
+				session: rejected ? `${source}-after-401` : source,
 			}
-			try {
-				const { session, source, sessionId } = await pending
-				remember(key, { ...session, sessionId })
-				call.subject.details = {
-					...call.subject.details,
-					session: rejected ? `${source}-after-401` : source,
-				}
-				return placeSession(inject!, session.token, sessionId)
-			} finally {
-				if (!rejected) pendingSessions.delete(key)
-			}
+			return placeSession(inject!, session.token, sessionId)
 		}
 		return {
 			authorize,

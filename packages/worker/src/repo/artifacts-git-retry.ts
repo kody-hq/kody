@@ -41,6 +41,7 @@ export type ArtifactsGitExhaustedStatusClass =
  * Legacy constant kept for message-substring detectors (for example vendor
  * outage heuristics). Prefer `ArtifactsGitUnavailableError` / `toApiError`
  * for new call sites — exhausted failures no longer tell callers to retry.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export const artifactsGitTemporarilyUnavailableMessage =
 	'The package source is temporarily unavailable. Retry the call.'

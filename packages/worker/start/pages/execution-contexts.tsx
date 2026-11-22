@@ -273,10 +273,10 @@ function EnabledPage(props: {
 				columns={[
 					{ key: 'name', label: 'Name', primary: true },
 					{ key: 'status', label: 'Status' },
-					{ key: 'operator', label: 'Operator', drop: 2 },
-					{ key: 'access', label: 'Your access', drop: 1 },
-					{ key: 'chains', label: 'Chains', drop: 2 },
-					{ key: 'exposes', label: 'Exposes', drop: 3 },
+					{ key: 'operator', label: 'Operator' },
+					{ key: 'access', label: 'Your access' },
+					{ key: 'chains', label: 'Chains' },
+					{ key: 'exposes', label: 'Exposes' },
 				]}
 				rows={shown.map((context) => ({
 					id: context.id,

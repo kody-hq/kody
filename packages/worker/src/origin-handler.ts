@@ -121,6 +121,7 @@ let legacyMcpFetchMemo: Promise<LegacyMcpFetch> | null = null
  * agents SDK. Loading `./mcp/index.ts` statically would evaluate the agents
  * and MCP server SDKs during Worker startup; the first legacy request pays
  * for it instead and the served fetch is cached for the isolate.
+ * Remove when: MCP protocol metrics show no 2025-era lane traffic.
  */
 function loadLegacyMcpFetch(): Promise<LegacyMcpFetch> {
 	legacyMcpFetchMemo ??= import('./mcp/index.ts')
@@ -1012,6 +1013,7 @@ async function handleOriginAppFetch(
 	// hosts. Runs after the API-shaped surfaces (package apps, webhooks) so
 	// those keep serving on every attached host, and skips MCP/OAuth/auth/
 	// health paths itself. No-op unless APP_LEGACY_REDIRECT is enabled.
+	// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 	const legacyHostRedirect = getLegacyHostRedirectResponse({ request, env })
 	if (legacyHostRedirect) return legacyHostRedirect
 

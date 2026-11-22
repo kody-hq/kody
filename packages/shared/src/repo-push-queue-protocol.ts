@@ -4,6 +4,7 @@
  * backward compatible: origin and the queue Worker deploy independently, so
  * either side may run a newer version during a rollout. Breaking changes ship
  * as a new Durable Object class (`RepoPushQueueV2`) and a new request path.
+ * Permanent: wire contract between independently deployed Workers.
  */
 
 export const repoPushQueueV1Path = '/v1/receive-pack'

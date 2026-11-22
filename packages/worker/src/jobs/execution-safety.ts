@@ -123,6 +123,7 @@ export async function executeOrReplayScheduledJobRun(input: {
  * Use the blob stored on the job row. Execution rebinds identity to that
  * row's owner, so a legacy blob whose user is a member person (not the org
  * id) still runs. A missing blob stays missing.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export function resolveScheduledJobCallerContext(input: {
 	callerContext: PersistedJobCallerContext | null
@@ -134,6 +135,7 @@ export function resolveScheduledJobCallerContext(input: {
  * Request for a scheduled tick's run record. Prefer the job row's persisted
  * caller when present; otherwise stamp from the enablement on `source` so
  * legacy / package-synced rows still record started_by as the enabler.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function resolveScheduledJobRunRequest(input: {
 	callerContext: PersistedJobCallerContext | null

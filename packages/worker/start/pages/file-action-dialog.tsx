@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { useQuery } from '@tanstack/react-query'
 import { Button } from '../components/button.tsx'
 import { Dialog } from '../components/dialog.tsx'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { FileMetadata } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { readFileMovePreview } from '#start/server/file-collaboration'
@@ -34,31 +35,30 @@ export function FileActionDialog({
 }) {
 	const [name, setName] = useState(item.name)
 	const [parent, setParent] = useState(item.parentId ?? '')
-	const [movePreview, setMovePreview] = useState<{
-		changed: boolean
-		token: string
-	} | null>(null)
-	const [previewError, setPreviewError] = useState('')
 	const [previewAttempt, setPreviewAttempt] = useState(0)
-	useEffect(() => {
-		if (action !== 'move' || !collaborationEnabled) return
-		let active = true
-		setMovePreview(null)
-		setPreviewError('')
-		void readFileMovePreview({
-			data: { orgSlug, fileId: item.id, parentId: parent || null },
-		}).then(
-			(result) => {
-				if (active) setMovePreview(result)
-			},
-			() => {
-				if (active) setPreviewError('Could not check destination access.')
-			},
-		)
-		return () => {
-			active = false
-		}
-	}, [action, collaborationEnabled, orgSlug, item.id, parent, previewAttempt])
+	const preview = useQuery({
+		queryKey: [
+			'file-move-preview',
+			orgSlug,
+			item.id,
+			parent || null,
+			previewAttempt,
+		],
+		queryFn: () =>
+			readFileMovePreview({
+				data: { orgSlug, fileId: item.id, parentId: parent || null },
+			}),
+		enabled: action === 'move' && collaborationEnabled,
+		staleTime: Infinity,
+		gcTime: 0,
+		retry: false,
+		refetchOnWindowFocus: false,
+	})
+	const movePreview: { changed: boolean; token: string } | null =
+		preview.data ?? null
+	const previewError = preview.isError
+		? 'Could not check destination access.'
+		: ''
 	const [message, setMessage] = useState('')
 	const title =
 		action === 'rename'
@@ -130,8 +130,6 @@ export function FileActionDialog({
 						css={{ minWidth: 0, textOverflow: 'ellipsis' }}
 						value={parent}
 						onChange={(event) => {
-							setMovePreview(null)
-							setPreviewError('')
 							setParent(event.target.value)
 						}}
 					>
@@ -160,7 +158,6 @@ export function FileActionDialog({
 									variant="secondary"
 									size="lg"
 									onClick={() => {
-										setPreviewError('')
 										setPreviewAttempt((attempt) => attempt + 1)
 									}}
 								>

@@ -39,6 +39,7 @@ const handlePayloadSchema = z.object({
 	/**
 	 * Opened for a legacy visitor need: each use re-checks the visitor's live
 	 * consent for it.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	visitorNeed: z.string().min(1).max(100).optional(),
 	/**

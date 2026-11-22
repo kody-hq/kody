@@ -22,7 +22,8 @@ import {
 	buildCredentialStamp,
 	isStoredCredentialStamp,
 	mergeCredentialStampIntoManifestFiles,
-	omitOversizedCredentialStampModules,
+	collectServerRuntimeModulePaths,
+	omitOversizedClientCredentialStampModules,
 	scanCredentialStamp,
 	type CredentialDepStamp,
 	type CredentialStamp,
@@ -49,10 +50,13 @@ async function loadDependencyStamps(input: {
 	packageName: string
 	files: Record<string, string>
 }): Promise<Array<CredentialDepStamp>> {
-	// Import collection AST-walks every file; drop oversized prebuilt assets
+	// Import collection AST-walks every file; drop oversized client modules
 	// the same way scanCredentialStamp does so fleet pin checks and publish
 	// do not DO-reset on multi-MB client bundles.
-	const files = omitOversizedCredentialStampModules(input.files)
+	const files = omitOversizedClientCredentialStampModules(
+		input.files,
+		await collectServerRuntimeModulePaths(input.files),
+	)
 	const names = [
 		...new Set(
 			(await collectStaticKodyPackageImportsFromFiles(files))

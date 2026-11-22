@@ -28,7 +28,10 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { Honeypot } from '../components/honeypot-field.tsx'
-import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
+import {
+	usePublicAuthProtection,
+	useTurnstileRef,
+} from '../components/public-auth-protection.ts'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { Input } from '../components/input.tsx'
@@ -48,6 +51,7 @@ export function ResetPasswordRoute() {
 	const status = flow.status
 	const message = 'message' in flow ? flow.message : null
 	const turnstileSiteKey = usePublicAuthProtection()
+	const turnstileRef = useTurnstileRef(turnstileSiteKey)
 	const search = useMatchedPageScope().pageLocation.searchStr
 
 	function sendFormEvent(event: Parameters<typeof flowActor.send>[0]) {
@@ -208,7 +212,7 @@ export function ResetPasswordRoute() {
 					</Field>
 				)}
 				{turnstileSiteKey ? (
-					<div className={turnstileWidgetClassName}></div>
+					<div ref={turnstileRef} className={turnstileWidgetClassName}></div>
 				) : null}
 				<Button
 					type="submit"

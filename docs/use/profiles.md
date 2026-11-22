@@ -76,6 +76,10 @@ accessGrant({
 })
 ```
 
+The
+[website grant and remove actions](../../packages/worker/src/app/handlers/profiles.ts)
+call `accessGrant` and `accessRevoke` respectively.
+
 - The checks are the ones `profileCreate` runs on `grants[]`: you hold each
   permission now, every parent profile holds it too, and the resource type and
   permissions are ones a profile can hold. No manage access on the resource is

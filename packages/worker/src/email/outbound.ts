@@ -130,6 +130,7 @@ export type EmailSendInput = {
 	 * Acting person for platform-sender resolution, email verification, and
 	 * account restriction lookups (`users.stable_user_id`). Defaults to the
 	 * same bytes as {@link userId} for legacy equal-id personal orgs.
+	 * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	 */
 	actorPersonId?: PersonId
 	/** MCP / Open API caller context when the send is user-initiated. */

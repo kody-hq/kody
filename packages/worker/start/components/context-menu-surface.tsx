@@ -2,7 +2,7 @@
 import {
 	createContext,
 	useContext,
-	useEffect,
+	useCallback,
 	useRef,
 	useState,
 	type ReactNode,
@@ -78,7 +78,10 @@ export function ContextMenuSurface({
 		container: HTMLElement | null
 		actions: ContextAction[]
 	} | null>(null)
-	useEffect(() => hold.cancel, [hold])
+	const cancelHoldOnDetach = useCallback(
+		(node: HTMLDivElement | null) => (node ? hold.cancel : undefined),
+		[hold],
+	)
 	function actionsAt(
 		target: EventTarget | null,
 		fromContextMenu = false,
@@ -121,6 +124,7 @@ export function ContextMenuSurface({
 			}}
 		>
 			<div
+				ref={cancelHoldOnDetach}
 				css={{
 					display: 'contents',
 					'& [data-workspace-item], & [data-page-block-id]': {

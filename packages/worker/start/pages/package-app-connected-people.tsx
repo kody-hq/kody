@@ -23,7 +23,7 @@ import {
 	PackageRepoTabPanel,
 	renderPackageRepoChrome,
 } from '../components/package-repo-nav.tsx'
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -117,7 +117,7 @@ export function PackageAppConnectedPeopleRoute({
 				<span css={personTextCss}>
 					<span css={rowNameCss}>
 						{person.profileHref ? (
-							<SiteLink href={person.profileHref}>{name}</SiteLink>
+							<TextLink href={person.profileHref}>{name}</TextLink>
 						) : (
 							name
 						)}

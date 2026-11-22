@@ -74,13 +74,12 @@ host, and placement checks.
 For a legacy placeholder, prefer the declared need and its credential mapping.
 Use the legacy name only where no eligible mapping exists; a denied, invalid,
 ambiguous, or intentionally cleared mapping must stay closed. Publish and
-runtime diagnostics warn about legacy use. Aggregate counts guide the removal.
+runtime diagnostics warn about legacy use.
+[Aggregate counts](../credential-request-profiles.md#tracking-legacy-fills)
+guide the removal.
 
-Credential placement is typed and approved by the owner. Body placement binds
-the package, HTTPS endpoint, method, and JSON fields. Where the request targets
-a resource through GraphQL, the approval also pins the operation and resource
-selectors. A recipient public key and key ID can be pinned to the approved
-destination for sealed-box output. The gateway applies the value at egress.
+[Approved request profiles](../credential-request-profiles.md) describe typed
+body, path, or composed placement at egress.
 
 The deletion gate requires zero measured legacy usage, a fresh scan of every
 published package with zero placeholder occurrences, and a credential path or an

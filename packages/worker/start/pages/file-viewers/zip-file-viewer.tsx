@@ -8,7 +8,8 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { renderIcon } from '../../components/icon.tsx'
 import { LoadingIndicator } from '../../components/loading-indicator.tsx'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useExternalInstanceSync } from '../../lib/primitives.ts'
 import { zipDirectory } from '#universal/zip-directory.ts'
 
 const control = {
@@ -42,7 +43,7 @@ export default function ZipFileViewer({
 	const [entries, setEntries] = useState<Entry[] | null>(null)
 	const [error, setError] = useState('')
 	const [folder, setFolder] = useState('')
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		const controller = new AbortController()
 		void fetch(src, { signal: controller.signal })
 			.then(async (response) => {

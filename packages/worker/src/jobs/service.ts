@@ -526,6 +526,7 @@ class JobOrgAccessError extends Error {
  * org must be live, and a run-now actor or enabler must still hold access to
  * it. Legacy schedule runs carry no actor, so their binding has no role,
  * exactly as a fresh schedule tick derives it.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 async function resolveJobRunOrgBinding(input: {
 	db: D1Database

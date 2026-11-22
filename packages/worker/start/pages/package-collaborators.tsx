@@ -10,7 +10,7 @@ import {
 	useMutationState,
 	useQueryClient,
 } from '@tanstack/react-query'
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import {
 	grantPackageCollaborator,
 	revokePackageCollaborator,
@@ -317,7 +317,10 @@ export function PackageCollaboratorsRoute({
 				{profiles.length === 0 ? (
 					<p css={mutedCopyCss}>
 						You have no active profiles in this organization.{' '}
-						<SiteLink href="/docs/profiles">Learn about profiles</SiteLink>.
+						<TextLink tone="prose" href="/docs/profiles">
+							Learn about profiles
+						</TextLink>
+						.
 					</p>
 				) : (
 					<form
@@ -611,7 +614,11 @@ export function PackageCollaboratorsRoute({
 				{view.options.teams.length === 0 ? (
 					<p css={mutedCopyCss}>
 						Every team in this organization already has access, or there are no
-						teams yet. <SiteLink href={teamsHref}>Manage teams</SiteLink>.
+						teams yet.{' '}
+						<TextLink tone="prose" href={teamsHref}>
+							Manage teams
+						</TextLink>
+						.
 					</p>
 				) : (
 					<form

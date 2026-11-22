@@ -61,6 +61,12 @@
 		"ALERT_EMAIL_TO": "me@kentcdodds.com",
 		"ALERT_EMAIL_FROM": "kody@kody.codes",
 		"STATUS_ALERT_DAILY_LIMIT": "6",
+		// Grok Bot woken directly on incident open and all-clear. The webhook URL
+		// and bearer are Worker secrets STATUS_GROK_BOT_WAKE_URL and
+		// STATUS_GROK_BOT_WAKE_TOKEN, synced by the deploy workflow when present.
+		"STATUS_GROK_BOT_ID": "6519d644-b6ac-4e61-989c-3d96d0b63cca",
+		"STATUS_GROK_BOT_NAME": "cole",
+		"STATUS_GROK_BOT_WAKE_DAILY_LIMIT": "12",
 		// Production Kody Cloudflare account (same as the main worker); the
 		// matching CLOUDFLARE_API_TOKEN (Email Sending only) is a Worker secret
 		// the deploy workflow syncs from CLOUDFLARE_STATUS_API_TOKEN.

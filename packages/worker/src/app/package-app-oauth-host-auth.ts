@@ -66,6 +66,7 @@ import { resolvePackageAppOauthInlineIdentity } from '#app/package-app-oauth-inl
  * authorization code for a per-app host-only package-app session cookie, clears
  * only that app's session on logout (shared hosts keep sibling app sessions),
  * and exposes `/me`.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 
 function redirectResponse(location: string, setCookies: Array<string> = []) {
@@ -141,6 +142,7 @@ async function resolveVerifiedHostApp(input: {
  * initiated the navigation, not an attacker-chosen `?app=` on a sibling
  * package. Only package-app hosts mount packages at `/{leaf}`; on the app
  * origin (inline serving) only the legacy form is a package path.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 function readAppSlugFromSameOriginReferer(
 	request: Request,
@@ -174,6 +176,7 @@ function readAppSlugFromSameOriginReferer(
  * never waits on `APP_DB` (custom-domain lookup) so a D1 outage cannot block
  * cookie clearing. When nothing trusted resolves, callers skip session
  * cookie clearing: per-app names cannot be guessed.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 async function resolveLogoutAppSlug(input: {
 	request: Request
@@ -408,6 +411,7 @@ async function handleCallback(input: { request: Request; env: Env; url: URL }) {
 
 	// Echo the callback path the browser used so codes issued for a legacy
 	// `/_kody/auth/callback` redirect URI still exchange.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	const redirectUri = `${input.url.origin}${input.url.pathname}`
 	const record = await consumePackageAppOauthCode({
 		env: input.env,
@@ -483,6 +487,7 @@ async function handleLogout(input: { request: Request; env: Env; url: URL }) {
 	// app custom domains resolve from the hostname mapping. When no leaf is
 	// known (older kit clients with `return_to=/` and no Referer), skip
 	// session cookies: per-app names cannot be guessed.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	const kodyId = await resolveLogoutAppSlug({ ...input, returnTo })
 	const cookies = [
 		...(kodyId
@@ -660,6 +665,7 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
  * Dispatch `/-/auth/*` and legacy `/_kody/auth/*` on a package-app host with
  * no redirect between them. Returns null when the path is not an auth route so
  * the caller can continue serving the package.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export async function handlePackageAppOauthHostAuth(input: {
 	request: Request

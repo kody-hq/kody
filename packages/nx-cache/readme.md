@@ -49,9 +49,12 @@ probes the cache the same way CI does and unsets
 `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` when the token cannot read, so a stale or
 rotated token degrades to the local cache with a warning. A transport error
 talking to `/v1/cache/{hash}`, or Nx's `Misconfigured remote cache endpoint` /
-`Unauthorized` cache error, after Nx already printed `Successfully ran target`
-is treated as success. The same failure before tasks finish retries once with
-`--skipRemoteCache` and without `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`.
+`Unauthorized` cache error, after Nx already printed `Successfully ran target`,
+a `✔ nx run` success mark, or Playwright's all-pass summary for `:test-e2e`
+(passed, with no failed, interrupted, did-not-run, or run-level error lines), is
+treated as success even when Nx then lists that task under `Failed tasks`. The
+same failure before tasks finish retries once with `--skipRemoteCache` and
+without `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`.
 
 `npm run nx-cache:smoke` (also part of `test:node`) starts a local HTTP cache,
 runs `nx-cache:smoke-probe` twice with an isolated local cache wiped in between,

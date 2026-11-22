@@ -1536,6 +1536,31 @@ jobs:
           echo "Execute smoke check failed after ${attempts} attempts: ${smoke_url}" >&2
           exit 1
 
+      - name: 🌍 Multi-region healthcheck (production)
+        if: >-
+          needs.sha-guard.outputs.deploy_main == 'true' ||
+          steps.resources.outputs.origin_deploy_mode == 'fresh'
+        shell: bash
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          EXPECTED_COMMIT_SHA: ${{ needs.sha-guard.outputs.deploy_sha }}
+        run: |
+          set -euo pipefail
+          # The healthcheck above runs from this US runner only. Globalping
+          # probes in Europe and the US catch a colo that cannot load the new
+          # Worker version (Cloudflare error 1105, 2026-11-20). Older deploy
+          # SHAs lack the script and skip.
+          # Remove when: every deployable main SHA includes
+          # tools/ci/regional-health-check.ts (drop the -f guard below).
+          if [ ! -f tools/ci/regional-health-check.ts ]; then exit 0; fi
+          if [ -z "${DEPLOY_URL:-}" ]; then
+            echo "::warning::Missing deploy URL output; skipping multi-region healthcheck."
+            exit 0
+          fi
+          REGIONAL_HEALTH_URL="${DEPLOY_URL%/}/health" \
+            REGIONAL_HEALTH_WINDOW_SECONDS=150 \
+            node tools/ci/regional-health-check.ts
+
       - name: 🧭 Reindex capability vectors (Vectorize)
         shell: bash
         env:
@@ -1801,6 +1826,27 @@ jobs:
           fi
           printf '%s' "$STATUS_INCIDENT_EVENT_SECRET" | npx wrangler secret put \
             STATUS_INCIDENT_EVENT_SECRET --config packages/status/wrangler.jsonc
+
+      - name: 🔐 Sync status worker Grok Bot wake secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          STATUS_GROK_BOT_WAKE_URL: ${{ secrets.STATUS_GROK_BOT_WAKE_URL }}
+          STATUS_GROK_BOT_WAKE_TOKEN: ${{ secrets.STATUS_GROK_BOT_WAKE_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The status worker wakes the Grok Bot directly (never through
+          # kody.codes). Missing GitHub secrets skip the sync; the worker then
+          # logs one skip warning per wake batch.
+          for name in STATUS_GROK_BOT_WAKE_URL STATUS_GROK_BOT_WAKE_TOKEN; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::warning::$name GitHub secret unset; skipping status worker sync."
+              continue
+            fi
+            printf '%s' "$value" | npx wrangler secret put "$name" \
+              --config packages/status/wrangler.jsonc
+          done
 
       - name: 🩺 Healthcheck (status worker)
         shell: bash

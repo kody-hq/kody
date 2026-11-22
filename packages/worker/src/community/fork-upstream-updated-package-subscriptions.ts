@@ -40,6 +40,7 @@ type FollowAliasInvokeResult = 'delivered' | 'zero_credits' | 'none' | 'failed'
  * Payload shape matches the historical fork dispatcher. A 429 (credits or
  * run limit, before the handler runs) does not throw, so nothing is queued
  * for retry.
+ * Remove when: no package subscription listens for the fork upstream-updated alias.
  */
 export async function deliverCommunityForkUpstreamUpdatedAlias(input: {
 	env: Env

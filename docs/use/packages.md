@@ -1295,11 +1295,11 @@ the commit it clones, so a dev check result is the best predictor of a publish:
   the server answers 502/503/504, or it sends no answer before the request times
   out.
 
-`packageCheck` no longer takes the tree in the request. A CLI older than 3.46.0
-gets HTTP 426 with error code `upgrade_required` and
-`details.minimum_cli_version`; upgrade `@kodycodes/cli`. The uploaded tree is
-deleted when its run ends, and stored results and abandoned uploads expire after
-one day.
+`packageCheck` takes an upload ID, not an inline tree. Clients that send the
+tree inline receive HTTP 426 with `upgrade_required` and
+`details.minimum_cli_version` (3.46.0). To run a fresh check after it finishes,
+upload the tree again. The workflow deletes its staged tree on cleanup; results
+and abandoned uploads expire after one day.
 
 What a dev check cannot run, and says so in its output: cloning the pushed
 commit from Artifacts. `git push` (and the Artifacts push limit) happens before

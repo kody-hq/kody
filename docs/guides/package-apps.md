@@ -104,12 +104,17 @@ A one-file fetch handler is a complete app (see
 
 ## Session handoff
 
-Production-hosted apps live at `https://{username}.kody.run/<package-name>/…`
-(`username` is the org handle: personal username or team slug) and on verified
-custom domains. That URL is the app. `/packages/<package-name>/…` on the same
-host resolves to the same app. `https://kody.codes/@{username}/packages/…` is
-not the hosted origin: visitors who may run the app hand off to it; everyone
-else stays on the package page (or a same-origin landing).
+Production-hosted apps open at `https://{package-name}--{username}.kody.run/…`
+(`username` is the org handle: personal username or team slug), or on a verified
+app-level custom domain. Profile packages use the owner's bare host, as
+described below. The shared-host addresses
+`https://{username}.kody.run/<package-name>/…` and `/packages/<package-name>/…`
+also resolve to the app until the
+[path-mount cutover](../contributing/environment-variables.md#hosted-package-app-origin).
+Pairs without a valid per-app host label keep the shared-host address.
+`https://kody.codes/@{username}/packages/…` is not the hosted origin: visitors
+who may run the app hand off to it; everyone else stays on the package page (or
+a same-origin landing).
 
 ### Profile package: own your whole host
 

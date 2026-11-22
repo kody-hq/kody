@@ -93,21 +93,9 @@ import {
 } from '#worker/credentials/legacy-fill-audit.ts'
 
 /**
- * Request header that disables secret placeholder resolution for one gateway
- * fetch: `x-kody-secret-resolution: off`. The header is stripped before the
- * request leaves the gateway, and any `{{secret:...}}` text passes through
- * literally. Out-of-band by design — only calling code can set a header, so
- * attacker-controlled *data* in a URL or body can never disable resolution.
- * Use it when a third party must receive literal placeholder text (for
- * example, writing config that Kody itself resolves later). `headers-only`
- * still fills header placeholders but sends the URL and body as written, for
- * a body that quotes the syntax (an issue or chat message) on a host the
- * credential allows; without it that text would be filled with the secret.
- * For merely mentioning the syntax in prose, prefer an inert form:
- * angle-bracket markers (`{{secret:<name>}}`,
- * `{{secret/<provider>:<ref>}}`,
- * `{{secret/bwvault:i/<item-uuid>/<field>}}`) or the grammar metavariable
- * token `{{secret/provider:ref}}`. Those never resolve.
+ * Per-request placeholder mode. `off` skips filling; `headers-only` fills
+ * headers but leaves the URL and body unchanged. See “Mentioning placeholders
+ * without resolving them” in `docs/use/secrets-and-values.md`.
  */
 export const secretResolutionHeaderName = 'x-kody-secret-resolution'
 

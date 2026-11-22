@@ -61,9 +61,10 @@ reused, or evolved.
 Ad hoc `execute` runs with the signed-in user's ambient authority: it can call
 discovered capabilities through `kody`. A saved package is the
 declared-authority unit. Secret mounts, host approval, integration allowlists,
-and `kody.dependencies` are the request, and agents cannot widen those. Outbound
-emissions (email, paid APIs, third-party writes) are not invertible; use a
-package `dryRun` and fresh user confirmation before a live mutation.
+and `kody.dependencies` describe the requested authority. For resource locks,
+[a use-only caller's widening request returns an approval URL without changing the allowlist](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts).
+Outbound emissions (email, paid APIs, third-party writes) are not invertible;
+use a package `dryRun` and fresh user confirmation before a live mutation.
 
 ### Fork a close public package before creating
 
@@ -355,8 +356,11 @@ npx @kodycodes/cli@latest dev --passthrough api.stripe.com
 Unmatched requests fail closed with structured `unmocked_request` (method + URL)
 and a paste-ready handler stub in `fix` / `details.handlerStub`.
 `--passthrough <host,…>` opts specific hosts into the real network; credentials
-stay fake on mock, so passthrough never carries real credentials. Private/local
-passthrough hosts also need `--allow-private-network`.
+come from mock session state. Passthrough is real network access: the
+[gateway forwards request headers and bodies](../../packages/cli/src/mock/mock-fetch-gateway.ts),
+removing only the internal `x-kody-credential-client` header. Keep real secrets
+out of mock code, inputs, and fixtures. Private/local passthrough hosts also
+need `--allow-private-network`.
 
 Example agent-facing error:
 
@@ -448,6 +452,26 @@ Require fresh confirmation if the target or scope changes.
 Keep the schedule disabled when representative testing is inconclusive,
 credentials or host approval are missing, the result is unexpected, or the live
 mutation has not been explicitly confirmed by the user.
+
+## Rename a package
+
+The package name is in `package.json#name`, and the git origin
+`https://kody.codes/@owner/{name}.git` follows it. Rename in this order:
+
+1. Set `name` to the new `@owner/new-leaf` (and `kody.id` to `new-leaf` if the
+   manifest sets it), then commit.
+2. Push to the current origin, which still uses the old name. The new git URL
+   exists only after the publish.
+3. Publish by `package_id`: `kody package publish <package_id>`. Name lookups
+   still return the old name until this publish finishes.
+4. Point origin at the new name:
+   `git remote set-url origin https://kody.codes/@owner/new-leaf.git`.
+5. Change `kody:@owner/old-leaf` to `kody:@owner/new-leaf` in each dependent
+   package, then publish each one.
+
+The publish result's `hosted_app_url` uses the new name, and the old app URL
+redirects to it. A remote from `packageGetGitRemote` does not depend on the
+name, so step 4 applies only to a `kody.codes` origin.
 
 ## Delete a package
 

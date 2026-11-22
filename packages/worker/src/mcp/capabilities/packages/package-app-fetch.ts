@@ -1,8 +1,5 @@
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import {
-	isProfilePackage,
-	resolveHostedPackageAppUrl,
-} from '@kody-internal/shared/public-urls.ts'
+import { resolveHostedPackageAppLocation } from '@kody-internal/shared/public-urls.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -406,23 +403,21 @@ export const packageAppFetchCapability = defineDomainCapability(
 			})
 
 			const packageAppOrigin = getPackageAppBaseUrl({ env: ctx.env })
-			const hostedUrl = resolveHostedPackageAppUrl({
+			const hosted = resolveHostedPackageAppLocation({
 				packageAppBaseUrl: packageAppOrigin,
 				appBaseUrl: ctx.callerContext.baseUrl,
 				username: owner.ownerScope,
 				kodyId: savedPackage.kodyId,
 				restPath: restPath === '/' ? null : restPath,
 			})
+			const hostedUrl = hosted.hostedUrl
 			const packagePath: PackageAppPath = {
 				username: owner.ownerScope,
 				kodyId: savedPackage.kodyId,
 				restPath: restPathOnly,
 				mount: !packageAppOrigin
 					? 'username-path'
-					: isProfilePackage({
-								username: owner.ownerScope,
-								kodyId: savedPackage.kodyId,
-						  })
+					: hosted.appBasePath === ''
 						? 'custom-hostname'
 						: 'user-subdomain',
 			}

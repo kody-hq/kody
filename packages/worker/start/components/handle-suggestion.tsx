@@ -1,10 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import type { CSSObject } from '@emotion/react'
 import { useServerFn } from '@tanstack/react-start'
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
-	createVerifiedHandleSuggestions,
-	type VerifiedHandleSuggestionState,
+	pickAvailableHandleSuggestion,
+	verifiedHandleSuggestionCacheMs,
+	verifiedHandleSuggestionDebounceMs,
+	waitForDebounce,
+	type PickedSuggestion,
 } from '#client/verified-handle-suggestion.ts'
 import { checkWebsiteUsernameAvailability } from '#start/server/auth-mutations'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
@@ -15,23 +18,30 @@ import { colors, radius, typography } from '#universal/styles/tokens.ts'
  */
 export function useVerifiedHandleSuggestion(candidate: string | null) {
 	const checkAvailability = useServerFn(checkWebsiteUsernameAvailability)
-	const [state, setState] = useState<VerifiedHandleSuggestionState>({
-		status: 'idle',
-		candidate: null,
-		suggestion: null,
+	const query = useQuery({
+		queryKey: ['verified-handle-suggestion', candidate],
+		queryFn: async ({ signal }): Promise<PickedSuggestion> => {
+			const username = candidate ?? ''
+			await waitForDebounce(verifiedHandleSuggestionDebounceMs, signal)
+			try {
+				return pickAvailableHandleSuggestion(
+					username,
+					await checkAvailability({ signal, data: { username } }),
+				)
+			} catch (error) {
+				if (signal.aborted) throw error
+				return { suggestion: null, verified: false }
+			}
+		},
+		enabled: Boolean(candidate),
+		staleTime: (query) =>
+			query.state.data?.verified ? verifiedHandleSuggestionCacheMs : 0,
+		gcTime: verifiedHandleSuggestionCacheMs,
+		retry: false,
+		refetchOnWindowFocus: false,
 	})
-	const [suggestions] = useState(() =>
-		createVerifiedHandleSuggestions({ onChange: setState }),
-	)
-	useEffect(() => {
-		suggestions.request(candidate, (username, signal) =>
-			checkAvailability({ signal, data: { username } }),
-		)
-		return () => suggestions.cancel()
-	}, [suggestions, candidate, checkAvailability])
-
-	return state.status === 'ready' && state.candidate === candidate
-		? state.suggestion
+	return candidate && !query.isFetching
+		? (query.data?.suggestion ?? null)
 		: null
 }
 

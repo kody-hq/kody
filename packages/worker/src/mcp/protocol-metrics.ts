@@ -7,6 +7,7 @@
  * real traffic stops using it, so every authenticated `/mcp` request records
  * one data point describing which lane served it, the protocol revision, the
  * JSON-RPC method, and the connecting client.
+ * Remove when: MCP protocol metrics show no 2025-era lane traffic (legacy lane).
  *
  * Data points go to the `MCP_PROTOCOL_EVENTS` Analytics Engine dataset —
  * deliberately not the primary D1 database: the retirement readout is a pure
@@ -55,12 +56,9 @@
  * ORDER BY week_start DESC
  * ```
  *
- * blob9 records `declared` when the request's client capabilities name MCP
- * Events (top-level `events`, `experimental.events`, or
- * `extensions["io.modelcontextprotocol/events"]`), else empty. The MCP Events
- * client-support readout (`feature-flags/mcp-events-client-support-readout.ts`)
- * uses it to split "client does not advertise events" from "advertises but
- * does not subscribe".
+ * blob9 records `declared` when this request advertises MCP Events, else
+ * empty. The client-support readout combines this signal with Events RPC
+ * activity and subscriptions; an empty blob is not proof of no support.
  */
 
 import type * as McpServerModule from '@modelcontextprotocol/server'
@@ -173,8 +171,8 @@ export function classifyMcpPackageIdentityParam(
 }
 
 /**
- * Whether client capabilities (modern `_meta` client capabilities or the
- * legacy `initialize` capabilities) declare MCP Events support.
+ * Whether a capability object declares MCP Events as an object under
+ * `events`, `experimental.events`, or the Events extension ID.
  */
 export function classifyMcpEventsClientSupport(
 	capabilities: unknown,
@@ -198,13 +196,6 @@ function firstJsonRpcMessage(body: unknown): Record<string, unknown> | null {
 	return isRecord(body) ? body : null
 }
 
-/**
- * Classify one authenticated `/mcp` request into its serving lane and extract
- * the metric fields. Uses the SDK's own {@link isLegacyRequest} predicate —
- * the exact classifier `createMcpHandler` runs — so routing and metrics can
- * never disagree. The request body is read from a clone; the request stays
- * fully readable for whichever lane serves it.
- */
 let mcpServerModuleMemo: Promise<typeof McpServerModule> | null = null
 
 /**
@@ -224,6 +215,7 @@ export function loadMcpServerModule(): Promise<typeof McpServerModule> {
 	return mcpServerModuleMemo
 }
 
+/** Use the SDK lane predicate and extract metrics from a clone of the request. */
 export async function classifyMcpProtocolRequest(
 	request: Request,
 ): Promise<McpProtocolClassification> {
@@ -242,6 +234,7 @@ export async function classifyMcpProtocolRequest(
 		} catch {
 			// Empty or invalid JSON classifies legacy; the lane handler owns
 			// the error response.
+			// Remove when: MCP protocol metrics show no 2025-era lane traffic.
 		}
 	}
 	const legacy = hasParsedBody
@@ -271,6 +264,7 @@ export async function classifyMcpProtocolRequest(
 	// Modern requests carry the revision in the `_meta` envelope; legacy
 	// requests send the negotiated `mcp-protocol-version` header (or name the
 	// offered revision in the `initialize` params).
+	// Remove when: MCP protocol metrics show no 2025-era lane traffic.
 	const protocolVersion =
 		(isRecord(meta) ? readString(meta[PROTOCOL_VERSION_META_KEY]) : '') ||
 		readString(request.headers.get('mcp-protocol-version')) ||
@@ -342,6 +336,7 @@ export function recordMcpProtocolEvent(
 				input.userId ?? '',
 				// blob7: request host, so domain migrations can measure which
 				// users still connect through a legacy hostname.
+				// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 				input.requestHost ?? '',
 				// blob8: package identity param on tools/call (kody_id vs
 				// package_id vs scoped name) for the public MCP param gate.

@@ -16,6 +16,7 @@ export { secretServiceKeyringOptions } from './keyring-entry.js'
  * Per-org OAuth credentials used by login / MCP / local-execute Bearer.
  * `org` is the bound organization slug (ADR 0064). Legacy single-org payloads
  * may omit it until silent migration discovers the slug via metaGetCurrentUser.
+ * Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
  */
 export type StoredCredentials = {
 	version: 1
@@ -39,13 +40,17 @@ export type StoredCredentials = {
 export type MultiOrgCredentialStore = {
 	version: 2
 	mcpUrl: string
-	/** Active org slug; null while a legacy v1 session awaits slug discovery. */
+	/**
+	 * Active org slug; null while a legacy v1 session awaits slug discovery.
+	 * Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
+	 */
 	activeOrg: string | null
 	/** Org slug → credentials (without version/mcpUrl envelope fields). */
 	orgs: Record<string, OrgCredentialRecord>
 	/**
 	 * Legacy single-org tokens waiting for an org slug. At most one. Cleared
 	 * once metaGetCurrentUser (or login --org) promotes them into `orgs`.
+	 * Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
 	 */
 	pending?: OrgCredentialRecord
 }
@@ -455,6 +460,7 @@ function saveCredentialStore(
 /**
  * Resolve one org's credentials. Precedence for which org: explicit `org`
  * option, else the store's active org, else the sole pending legacy session.
+ * Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
  */
 export function loadCredentials(
 	mcpUrl: string = defaultMcpUrl,
@@ -467,7 +473,10 @@ export function loadCredentials(
 	return pickCredentialsFromStore(snapshot, options?.org)
 }
 
-/** Legacy pending session only (not the active named org). */
+/**
+ * Legacy pending session only (not the active named org).
+ * Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
+ */
 export function loadPendingCredentials(
 	mcpUrl: string = defaultMcpUrl,
 	backend?: SecretBackend,
@@ -489,6 +498,7 @@ function pickCredentialsFromStore(
 		// Pending-only legacy store: keep commands working when discovery has
 		// not named the session yet, but do NOT attach the requested slug —
 		// that would let a refresh persist an unverified org name.
+		// Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
 		if (snapshot.pending && Object.keys(snapshot.orgs).length === 0) {
 			return recordToCredentials(snapshot.mcpUrl, snapshot.pending)
 		}
@@ -559,6 +569,7 @@ export function saveCredentials(
 			},
 			// Keep an unresolved legacy session unless this save is promoting it
 			// (pending tokens matched / were the only login being named).
+			// Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
 			...(existing.pending &&
 			existing.pending.accessToken !== record.accessToken
 				? { pending: existing.pending }
@@ -580,6 +591,7 @@ export function saveCredentials(
  * Promote pending legacy tokens into `orgs[slug]`.
  * Never overwrites an existing named login (a fresh `kody login` wins), and
  * never steals `activeOrg` away from an already-active named org.
+ * Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
  */
 export function promotePendingOrg(
 	mcpUrl: string,
@@ -650,7 +662,10 @@ function listOrgSlugs(snapshot: MultiOrgCredentialStore): Array<string> {
 export type ListedOrg = {
 	slug: string
 	active: boolean
-	/** True when this row is the unresolved legacy session (no slug yet). */
+	/**
+	 * True when this row is the unresolved legacy session (no slug yet).
+	 * Remove when: the CLI drops support for pre-ADR 0064 credential stores in a major release.
+	 */
 	pending?: boolean
 }
 

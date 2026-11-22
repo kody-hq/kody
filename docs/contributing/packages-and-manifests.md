@@ -373,6 +373,25 @@ publish. At runtime, event dispatch invokes the handler through the package
 execution path with package context, package-owned storage, package secrets, and
 the host-owned `kody:runtime` module.
 
+The worker's
+[invocation service](../../packages/worker/src/package-invocations/service.ts)
+re-exports shared
+[request and result types](../../packages/worker/src/package-invocations/common.ts),
+the
+[export invoker](../../packages/worker/src/package-invocations/http-invoke.ts),
+and
+[event delivery and subscription dispatch](../../packages/worker/src/package-invocations/subscription-dispatch.ts).
+Keyed export invocations require a non-empty idempotency key. For internal
+workflow step retries, pass `ephemeral: true` to bypass the ledger and rerun the
+export instead of replaying the stored result.
+
+Hosted runs use `createRunPackageEventTools` to dispatch events as the run's own
+package or the package bound to loaded code by the host. The same emitter checks
+`kody.emits` before handing the event to delivery. See the
+[cross-surface tests](../../packages/worker/src/package-runtime/package-events-surfaces.workers.test.ts)
+and the
+[package subscriptions guide](../guides/package-subscriptions.md#emitting).
+
 Wake discovery prefers a normalized source of truth (each package's
 `package.json#kody.subscriptions`) plus a per-user KV cache of the computed
 topic→package-id map

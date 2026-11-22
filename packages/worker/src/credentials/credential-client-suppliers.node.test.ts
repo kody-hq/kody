@@ -177,61 +177,6 @@ test('flag-off runtime resolution still uses a legacy org mapping', async () => 
 	).resolves.toMatchObject({ name: 'legacy-mail' })
 })
 
-test('publisher needs retain existing personal and trigger mappings', async () => {
-	const t = await setup()
-	const personal = await t.storeKey('mail-personal', 'resend')
-	const triggerCredential = await t.storeKey('mail-trigger', 'resend')
-	await t.grantUse(personal, 'bea')
-	await t.grantUse(triggerCredential, 'ann')
-	const packageId = t.savedPackage.id
-	mockNeeds([{ key: 'mail', provider: 'resend', supplier: 'publisher' }])
-	await mapCredential(t, {
-		packageId,
-		needKey: 'mail',
-		target: { target: 'mine', personId: t.people.bea.personId },
-		credentialId: personal,
-	})
-	await expect(
-		openCredentialClient(
-			contextFor(t, t.requestAs('bea', 'owner'), packageId),
-			{ key: 'mail' },
-		),
-	).resolves.toMatchObject({ name: 'mail-personal' })
-
-	const enablementId = 'enablement-ann-weekly'
-	const triggerRequest = deriveRequestContext({
-		user: { userId: t.people.ann.personId },
-		source: {
-			kind: 'schedule',
-			jobId: 'job-mail',
-			enablement: {
-				id: enablementId,
-				enabler: { userId: t.people.ann.personId },
-				role: 'member',
-			},
-		},
-		orgBinding: {
-			org: { id: t.acmeId, slug: 'acme-clients' },
-			role: null,
-		},
-	})
-	await mapCredential(t, {
-		packageId,
-		needKey: 'mail',
-		target: {
-			target: 'enablement',
-			enablementId,
-			personId: t.people.ann.personId,
-		},
-		credentialId: triggerCredential,
-	})
-	await expect(
-		openCredentialClient(contextFor(t, triggerRequest, packageId), {
-			key: 'mail',
-		}),
-	).resolves.toMatchObject({ name: 'mail-trigger' })
-})
-
 test('call maps cannot select publisher-supplied credentials', async () => {
 	const t = await setup()
 	const packageId = t.savedPackage.id

@@ -138,7 +138,7 @@ export function createFakeRunLogNamespace() {
 								? row.bindingName === input.bindingName
 								: true),
 					)
-					.sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				return matches[0] ?? null
 			},
 			async listWorkflowProjections(input: {

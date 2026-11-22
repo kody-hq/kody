@@ -30,6 +30,7 @@ export function testAccountMcpServersApiHandler(env: Env) {
 
 			// Reconstruct the explicit resource scope for this legacy test adapter,
 			// matching the named operations' already-authorized principal contract.
+			// Permanent: stored data or clients from before this change still exist.
 			const binding = await loadRequestOrgResolution(
 				request,
 				env,

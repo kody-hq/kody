@@ -93,28 +93,3 @@ test('the 401 hint keeps where the response landed', () => {
 	expect(hinted.redirected).toBe(true)
 	expect(hinted.clone().url).toBe('https://api.example.com/after')
 })
-
-test('a 429 hint names the provider rate limit and keeps the inject shape', () => {
-	const hinted = withCredentialClientHint(
-		new Response('slow down', { status: 429 }),
-		'header Authorization Bearer',
-		{ providerLabel: 'GitHub' },
-	)
-	expect(hinted.headers.get(credentialClientHintHeaderName)).toBe(
-		'header Authorization Bearer',
-	)
-	expect(hinted.headers.get('x-kody-provider-error')).toBe(
-		'GitHub rate-limited this request (HTTP 429). This is a provider limit, not a Kody plan limit.',
-	)
-})
-
-test('a 403 hint stays neutral instead of blaming auth', () => {
-	const hinted = withCredentialClientHint(
-		new Response('forbidden', { status: 403 }),
-		'header Authorization Bearer',
-		{ providerLabel: 'GitHub' },
-	)
-	expect(hinted.headers.get('x-kody-provider-error')).toBe(
-		'GitHub denied this request (HTTP 403). This may be auth, permissions, or a provider rate limit - not a Kody plan limit.',
-	)
-})

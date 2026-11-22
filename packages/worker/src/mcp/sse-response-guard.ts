@@ -39,6 +39,7 @@ export function extractJsonRpcRequestIds(
  *
  * Only 200 SSE streaming responses to POST requests are guarded; every
  * other shape (non-200, non-SSE, non-POST) passes through unchanged.
+ * Remove when: MCP protocol metrics show no 2025-era lane traffic.
  */
 export function guardLegacyLaneSseResponse(
 	requestIds: Array<string | number>,

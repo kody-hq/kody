@@ -165,6 +165,7 @@ export function claimMailboxInboundUsageEffect(
 	).toISOString()
 	// Fresh lease only when lease+timestamp are both present and unexpired.
 	// NULL lease_at (legacy/imported) is treated as expired/claimable.
+	// Permanent: stored data or clients from before this change still exist.
 	if (
 		current.usageEffectLease != null &&
 		current.usageEffectLeaseAt != null &&
@@ -371,6 +372,7 @@ export function claimMailboxInboundSubscriptionEffect(
 		Date.parse(now) - mailboxSubscriptionEffectLeaseMs,
 	).toISOString()
 	// processing + NULL lease_at (legacy/imported) is claimable/takeover.
+	// Permanent: stored data or clients from before this change still exist.
 	if (
 		current.subscriptionEffectState === 'processing' &&
 		current.subscriptionEffectLeaseAt != null &&

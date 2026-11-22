@@ -25,6 +25,7 @@ const legacyOriginPattern =
  * Legacy hostname mentions that survive the origin rewrite (bare
  * `kodyapps.dev` prose, nested labels, and lookalike hosts such as
  * `kodyapps.dev.evil.example`). Reported for manual review, never rewritten.
+ * Remove when: a codemod rescan finds no published package that still uses these patterns.
  */
 const legacyMentionPattern = /\bkodyapps\.dev\b/
 
@@ -120,6 +121,7 @@ function transformLegacyPackageAppOrigins(
  * every other kodyapps.dev hostname mention for manual review. Kept
  * registered while any published package still references the legacy
  * package-app host.
+ * Remove when: a codemod rescan finds no published package that still uses these patterns.
  */
 export const kodyappsDevToKodyRunCodemod = {
 	id: kodyappsDevToKodyRunCodemodId,

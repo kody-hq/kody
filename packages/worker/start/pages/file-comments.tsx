@@ -1,13 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { commentAnchorLabel } from '#universal/comment-anchor-label.ts'
-import {
-	useEffect,
-	useId,
-	useLayoutEffect,
-	useRef,
-	useState,
-	type RefObject,
-} from 'react'
+import { useCallback, useId, useRef, useState, type RefObject } from 'react'
+import { useExternalInstanceSync, useLayoutMeasure } from '../lib/primitives.ts'
 import {
 	useHotkey,
 	useHotkeys,
@@ -260,7 +254,7 @@ function CommentComposer({
 			setSending(false)
 		}
 	}
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		const element = input.current
 		if (element) {
 			element.style.height = '0'
@@ -271,9 +265,13 @@ function CommentComposer({
 			}
 		}
 	}, [value])
-	useEffect(() => {
-		if (focus) input.current?.focus({ preventScroll: true })
-	}, [focus])
+	const inputRef = useCallback(
+		(node: HTMLTextAreaElement | null) => {
+			input.current = node
+			if (node && focus) node.focus({ preventScroll: true })
+		},
+		[focus],
+	)
 	useHotkey('Mod+Enter', () => void submit(), {
 		target: input,
 		ignoreInputs: false,
@@ -339,7 +337,7 @@ function CommentComposer({
 				<Avatar actor={actor} />
 				{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- borderless composer inside its own frame */}
 				<textarea
-					ref={input}
+					ref={inputRef}
 					role="combobox"
 					aria-autocomplete="list"
 					aria-haspopup="listbox"
@@ -557,7 +555,7 @@ export function FileComments({
 	const focusCreated = useRef<string | null>(null)
 	const selected = threads.find((thread) => thread.id === activeId)
 	const hasSelected = !!selected
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (hasSelected && focusCreated.current === activeId) {
 			root.current
 				?.querySelector<HTMLElement>('[aria-label="Reply to discussion"]')
@@ -568,6 +566,7 @@ export function FileComments({
 			!documentRoot.current?.contains(document.activeElement)
 		)
 			root.current?.focus({ preventScroll: true })
+		// oxlint-disable-next-line react/exhaustive-deps -- closing the composer hands focus back
 	}, [activeId, composing, hasSelected, documentRoot])
 	const unread = new Set(
 		notifications
@@ -641,7 +640,7 @@ export function FileComments({
 		],
 		{ target: root, ignoreInputs: true, enabled: !!selected },
 	)
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		if (!hasSelected && !composing) {
 			setOffset(0)
 			return

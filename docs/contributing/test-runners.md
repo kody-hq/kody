@@ -1,21 +1,22 @@
-# Testing principles
+# Test runners and harness
 
-Durable rules: [Test the workflow](../principles/test-the-workflow.md) and
-[No invasive test-only code](../principles/no-invasive-test-only-code.md). This
-page is how to choose a flavor and run suites in this repo. Whether and where to
-add a test: [Writing tests](./writing-tests.md).
+This page covers which Vitest flavor to pick, how to run one file, and how the
+shared harness behaves. The testing rules live in
+[Test the workflow](../principles/test-the-workflow.md) and
+[No invasive test-only code](../principles/no-invasive-test-only-code.md).
+Whether and where to add a test: [Writing tests](./writing-tests.md).
 
 ## Test flavor decision matrix
 
 Choose the lightest flavor that can falsify the behavior. Filename suffixes pick
 the Vitest project (`vitest.config.ts`):
 
-| Flavor / command                                                                    | Use when                                                                                                                                                                                                                                                                                                        | Avoid when                                                                                                                                                                                                                                         |
-| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `*.node.test.ts` (`npm run test:node` / node-unit; also in `npm run test`)          | Pure server logic, pure functions, handlers/services that can run against an in-memory `node:sqlite` D1 facade (`createD1FromSqlite` in `packages/worker/src/test-support/`), or code that is correctly covered by spies/stubs (for example `vi.spyOn` on `recordUsage`). Fast feedback; no Workers runtime.    | The assertion needs real Cloudflare bindings (`env.APP_DB`, KV, DO, R2) or Workers-only APIs that the node stubs do not honestly exercise.                                                                                                         |
-| `*.workers.test.ts` (`npm run test:workers` / workers-unit; also in `npm run test`) | The behavior depends on real local bindings from `cloudflare:workers` / the Vitest Workers pool (D1 schema + queries, KV reads/writes, DO stubs as configured). Prefer shared explicit-import factories from `packages/worker/src/test-support/` and domain `test-schema.ts` helpers over copy-pasted seed SQL. | The file never reads `env` / bindings and only tests pure registry or string logic — prefer `*.node.test.ts` instead (several `src/mcp/**` workers suites are historical misclassifications; leave them unless you are already editing that area). |
-| `*.mcp-e2e.test.ts` (`npm run test:mcp`)                                            | A tiny smoke suite for the real MCP HTTP transport, OAuth, and package-app session wiring.                                                                                                                                                                                                                      | Capability-by-capability coverage that does not need that transport — put those beside the implementation as node or workers tests.                                                                                                                |
-| Playwright (`npm run test:e2e:run`)                                                 | A very small number of user-critical happy-path journeys through the worker + client. See [end-to-end testing](./end-to-end-testing.md).                                                                                                                                                                        | Edge cases, copy pinning, or anything a faster unit/integration test can cover.                                                                                                                                                                    |
+| Flavor / command                                                                    | Use when                                                                                                                                                                                                                                                                                                        | Avoid when                                                                                                                                 |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `*.node.test.ts` (`npm run test:node` / node-unit; also in `npm run test`)          | Pure server logic, pure functions, handlers/services that can run against an in-memory `node:sqlite` D1 facade (`createD1FromSqlite` in `packages/worker/src/test-support/`), or code that is correctly covered by spies/stubs (for example `vi.spyOn` on `recordUsage`). Fast feedback; no Workers runtime.    | The assertion needs real Cloudflare bindings (`env.APP_DB`, KV, DO, R2) or Workers-only APIs that the node stubs do not honestly exercise. |
+| `*.workers.test.ts` (`npm run test:workers` / workers-unit; also in `npm run test`) | The behavior depends on real local bindings from `cloudflare:workers` / the Vitest Workers pool (D1 schema + queries, KV reads/writes, DO stubs as configured). Prefer shared explicit-import factories from `packages/worker/src/test-support/` and domain `test-schema.ts` helpers over copy-pasted seed SQL. | The file never reads `env` / bindings and only tests pure registry or string logic; use `*.node.test.ts` for those.                        |
+| `*.mcp-e2e.test.ts` (`npm run test:mcp`)                                            | A tiny smoke suite for the real MCP HTTP transport, OAuth, and package-app session wiring.                                                                                                                                                                                                                      | Capability-by-capability coverage that does not need that transport; put those beside the implementation as node or workers tests.         |
+| Playwright (`npm run test:e2e:run`)                                                 | A very small number of user-critical happy-path journeys through the worker + client. See [end-to-end testing](./end-to-end-testing.md).                                                                                                                                                                        | Edge cases, copy pinning, or anything a faster unit/integration test can cover.                                                            |
 
 **Usage metering example** (lifted from
 [usage metering](./architecture/usage-metering.md)): in `*.node.test.ts`, spy on
@@ -135,67 +136,6 @@ other packages that share the root projects, for example
   (e.g. `getRequestIp`) declare their own `vi.mock('#worker/audit-log.ts', ...)`
   and route `logAuditEvent` back through the shared spy.
 
-## Examples
-
-### `Symbol.dispose` with `using`
-
-```ts
-import { writeFile, readFile, rm } from 'node:fs/promises'
-import { test, expect } from 'vitest'
-
-const createTempFile = async () => {
-	const path = `/tmp/test-${crypto.randomUUID()}.txt`
-	await writeFile(path, 'hello')
-
-	return {
-		path,
-		[Symbol.asyncDispose]: async () => {
-			await rm(path, { force: true }).catch(() => {
-				// Cleanup should never fail the test.
-			})
-		},
-	}
-}
-
-test('reads a temp file', async () => {
-	await using tempFile = await createTempFile()
-	const contents = await readFile(tempFile.path, 'utf8')
-	expect(contents).toBe('hello')
-})
-```
-
-### `Symbol.asyncDispose` with `await using`
-
-```ts
-import { createServer } from 'node:http'
-import { test, expect } from 'vitest'
-
-const createDisposableServer = async () => {
-	const server = createServer((_request, response) => {
-		response.end('ok')
-	})
-	await new Promise<void>((resolve) => server.listen(0, resolve))
-	const address = server.address()
-	if (!address || typeof address === 'string') {
-		throw new Error('Failed to resolve test server port')
-	}
-
-	return {
-		url: `http://localhost:${address.port}`,
-		[Symbol.asyncDispose]: async () => {
-			await new Promise<void>((resolve, reject) => {
-				server.close((error) => {
-					if (error) reject(error)
-					else resolve()
-				})
-			})
-		},
-	}
-}
-
-test('fetches from a disposable server', async () => {
-	await using server = await createDisposableServer()
-	const response = await fetch(server.url)
-	expect(await response.text()).toBe('ok')
-})
-```
+For temp files, servers, and other per-test resources, return an object with
+`[Symbol.asyncDispose]` (or `[Symbol.dispose]`) and bind it with `await using`
+(or `using`) so cleanup runs when the test scope exits.

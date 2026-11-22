@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import { Menu, MenuTrigger, type MenuActions } from './menu.tsx'
-import { useLocation } from '@tanstack/react-router'
+import { useCloseOnNavigation } from './close-on-navigation.ts'
 import { workspaceSwitchHref } from '#client/routes/account-rail.ts'
 import {
 	SwitcherPopup,
@@ -147,17 +147,22 @@ export function WorkspaceSwitcher(
 	props: WorkspaceSwitcherData & { placement: WorkspaceSwitcherPlacement },
 ) {
 	const menuActions = useRef<MenuActions>(null)
-	const href = useLocation({ select: (location) => location.href })
 	const trigger = useRef<HTMLButtonElement>(null)
-	useEffect(() => menuActions.current?.close(), [href, props.placement])
-	useEffect(() => {
-		const drawer = trigger.current?.closest('details')
+	const closeOnNavigation = useCloseOnNavigation(
+		useCallback(() => menuActions.current?.close(), []),
+	)
+	const triggerRef = useCallback((node: HTMLButtonElement | null) => {
+		trigger.current = node
+		const drawer = node?.closest('details')
 		if (!drawer) return
 		const close = () => {
 			if (!drawer.open) menuActions.current?.close()
 		}
 		drawer.addEventListener('toggle', close)
-		return () => drawer.removeEventListener('toggle', close)
+		return () => {
+			trigger.current = null
+			drawer.removeEventListener('toggle', close)
+		}
 	}, [])
 	const { placement } = props
 	const { current, orgRows, actionRows } = workspaceSwitcherRows(props)
@@ -169,11 +174,11 @@ export function WorkspaceSwitcher(
 		: null
 	const label = identity?.handle ?? `@${props.currentSlug}`
 	return (
-		<div data-account-nav-heading css={headingCss}>
-			<Menu actionsRef={menuActions}>
+		<div ref={closeOnNavigation} data-account-nav-heading css={headingCss}>
+			<Menu key={props.placement} actionsRef={menuActions}>
 				<MenuTrigger
 					id={triggerTestId(placement)}
-					ref={trigger}
+					ref={triggerRef}
 					aria-label={`${label}: switch organization`}
 					title={current?.displayName ?? undefined}
 					data-testid={triggerTestId(placement)}

@@ -569,3 +569,53 @@ test('a non-empty allowed list is enforced for self-authored and adopted package
 	).resolves.toBeUndefined()
 	expect(mockModule.getSavedPackageById).not.toHaveBeenCalled()
 })
+
+test('nested use needs the run package trusted too, and a blank run id counts as a top-level run (GHSA-5fv3)', async () => {
+	const packages: Record<string, unknown> = {
+		'pkg-1': savedPackage,
+		'pkg-run': { ...savedPackage, id: 'pkg-run', kodyId: 'runner' },
+		'pkg-fork': { ...savedPackage, id: 'pkg-fork', kodyId: 'forked' },
+	}
+	mockModule.getSavedPackageById.mockReset()
+	mockModule.getSavedPackageById.mockImplementation(
+		async (_db: unknown, input: { packageId: string }) =>
+			packages[input.packageId] ?? null,
+	)
+	mockModule.getCommunityForkByForkedPackageId.mockReset()
+	mockModule.getCommunityForkByForkedPackageId.mockImplementation(
+		async (_db: unknown, input: { forkedPackageId: string }) =>
+			input.forkedPackageId === 'pkg-fork'
+				? { ...communityFork, forkedPackageId: 'pkg-fork' }
+				: null,
+	)
+	const nestedUnder = (runContextPackageId: string | null) =>
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ authorityPackageId: 'pkg-1', runContextPackageId }),
+		)
+
+	await expect(nestedUnder('pkg-run')).resolves.toBeUndefined()
+	await expect(nestedUnder('  ')).resolves.toBeUndefined()
+	await expect(nestedUnder('pkg-fork')).rejects.toSatisfy(expectAccessDenied)
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({
+				authorityPackageId: 'pkg-fork',
+				runContextPackageId: 'pkg-run',
+			}),
+		),
+	).rejects.toBeInstanceOf(PackageSecretAccessDeniedError)
+
+	await expect(
+		assertCanSetSecrets({
+			env: {
+				APP_DB: {} as D1Database,
+				SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
+			},
+			userId: ownerIdFromStored('user-1'),
+			baseUrl: 'https://example.com',
+			secrets: [],
+		}),
+	).rejects.toThrow('At least one secret is required.')
+	mockModule.getSavedPackageById.mockReset()
+	mockModule.getCommunityForkByForkedPackageId.mockReset()
+})

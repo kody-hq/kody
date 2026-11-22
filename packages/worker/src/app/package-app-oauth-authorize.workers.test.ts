@@ -784,11 +784,13 @@ async function buildDemoAuthorizeUrl() {
 function expectDemoRetryLink(html: string) {
 	const href = /href="([^"]+)"/.exec(html)?.[1]?.replaceAll('&amp;', '&')
 	const retry = new URL(href ?? '')
+	// Retry restarts sign-in on the redirect host and returns to the app's
+	// path address there.
 	expect(retry.origin).toBe(`https://${ownerUsername}.packages.isolated.test`)
 	expect(retry.pathname).toBe(packageAppOauthPaths.login)
 	expect(retry.searchParams.get('org')).toBe(ownerUsername)
 	expect(retry.searchParams.get('app')).toBe('demo')
-	expect(retry.searchParams.get('return_to')).toMatch(/^\/demo\/?$/)
+	expect(retry.searchParams.get('return_to')).toBe('/demo')
 }
 
 test('signed-out authorize sends to /login once, then renders a retry page instead of looping', async () => {

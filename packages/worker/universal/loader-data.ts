@@ -2553,11 +2553,6 @@ export type AccountPackageApprovePublishLoaderData = {
 	 */
 	listing: AccountPackageListingBehindHint | null
 	/**
-	 * Always false after listing auto-follow: promote advances the catalog
-	 * pin with the runtime. Kept for loader shape compatibility.
-	 */
-	listingWillLagAfterPromote: boolean
-	/**
 	 * Names stale static dependents that still read a kept `kody.secretMounts`
 	 * alias, or that will break if this publish removes one. Null when there
 	 * is nothing to warn about.
@@ -2981,6 +2976,7 @@ export type AccountActivityRunListItem = {
 	/**
 	 * Who started the run. Null for legacy rows (UI shows Unknown) or when
 	 * begin had no request context.
+	 * Permanent: rows written before this field existed keep null; there is no backfill.
 	 */
 	startedBy: {
 		userId: string | null
@@ -3099,6 +3095,7 @@ export type AccountMemoriesLoaderData = {
 	/**
 	 * Team-org legacy list: read-only until cleanup. Personal org is writable.
 	 * Memory is personal-only (ADR 0072).
+	 * Remove when: the ADR 0072 cleanup has deleted every team-org memory.
 	 */
 	legacyReadOnly: boolean
 }

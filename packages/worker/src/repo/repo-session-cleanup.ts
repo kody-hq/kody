@@ -6,6 +6,9 @@ import {
 } from './repo-session-due-owners.ts'
 import { repoSessionIndexRpc } from './repo-session-index-client.ts'
 
+/** One wedged index must not hold the lane; its owner is deferred instead. */
+export const repoSessionOwnerCleanupTimeoutMs = 30_000
+
 export type RepoSessionBranchCleanupResult = {
 	checked: number
 	deleted: number
@@ -27,14 +30,23 @@ export async function cleanupRepoSessionBranches(input: {
 	let deleted = 0
 	let errors = 0
 	for (const owner of owners) {
+		let timeout: ReturnType<typeof setTimeout> | undefined
 		try {
-			const result = await repoSessionIndexRpc({
-				env: input.env,
-				userId: owner.userId,
-			}).runDueCleanup({
-				ownerId: owner.userId,
-				now: now.toISOString(),
-			})
+			const result = await Promise.race([
+				repoSessionIndexRpc({
+					env: input.env,
+					userId: owner.userId,
+				}).runDueCleanup({
+					ownerId: owner.userId,
+					now: now.toISOString(),
+				}),
+				new Promise<never>((_, reject) => {
+					timeout = setTimeout(
+						() => reject(new Error('repo_session_owner_cleanup_timeout')),
+						repoSessionOwnerCleanupTimeoutMs,
+					)
+				}),
+			])
 			checked += result.checked
 			deleted += result.deleted
 			errors += result.errors
@@ -53,6 +65,8 @@ export async function cleanupRepoSessionBranches(input: {
 					}),
 				)
 			})
+		} finally {
+			clearTimeout(timeout)
 		}
 	}
 	return {

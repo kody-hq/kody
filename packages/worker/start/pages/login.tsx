@@ -3,7 +3,6 @@ import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
-	useEffect,
 	useId,
 	useRef,
 	useState,
@@ -58,7 +57,7 @@ import { ProviderIcon } from '../components/provider-icons.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useSocialSignIn, type PublicAuthConfig } from '../social-sign-in.ts'
-import type { UsernameAvailabilityView } from '../components/username-choice-field.tsx'
+import { useUsernameAvailability } from '../components/username-choice-field.tsx'
 import { AuthForm, formMessageCss } from './login-sections.tsx'
 /**
  * Display status for `/login` and `/signup`. `confirming` (username
@@ -108,8 +107,10 @@ export function LoginPage({
 	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const [signupUsername, setSignupUsername] = useState('')
 	const [signupEmail, setSignupEmail] = useState('')
-	const [usernameAvailability, setUsernameAvailability] =
-		useState<UsernameAvailabilityView>({ status: 'idle' })
+	const usernameAvailability = useUsernameAvailability(
+		mode === 'signup' ? signupUsername : '',
+		{ email: signupEmail },
+	)
 	const usernameTouched = useRef(false)
 	const [confirmedUsername, setConfirmedUsername] = useState<string | null>(
 		null,
@@ -120,20 +121,25 @@ export function LoginPage({
 	const { providers: authProviders, turnstileSiteKey } = authConfig
 	const searchParams = new URL(currentHref, 'https://kody.local').searchParams
 	const redirectTo = normalizeRedirectTo(searchParams.get('redirectTo'))
-	useEffect(() => {
-		const controller = new AbortController()
-		lifecycle.current = controller
-		if (turnstileSiteKey) renderTurnstileWidgets(turnstileSiteKey)
-		if (mode === 'signup' && !signupStartedTracked.current) {
-			signupStartedTracked.current = trackFathomEvent(
-				fathomEventNames.signupStarted,
-			)
-		}
-		return () => {
-			controller.abort()
-			WebAuthnAbortService.cancelCeremony()
-		}
-	}, [mode, currentHref, turnstileSiteKey])
+	const trackLifecycle = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (!node) return
+			const controller = new AbortController()
+			lifecycle.current = controller
+			if (turnstileSiteKey) renderTurnstileWidgets(turnstileSiteKey)
+			if (mode === 'signup' && !signupStartedTracked.current) {
+				signupStartedTracked.current = trackFathomEvent(
+					fathomEventNames.signupStarted,
+				)
+			}
+			return () => {
+				controller.abort()
+				WebAuthnAbortService.cancelCeremony()
+			}
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- restart the lifecycle on each auth navigation
+		[mode, currentHref, turnstileSiteKey],
+	)
 	function sendFormEvent(event: Parameters<typeof flowActor.send>[0]) {
 		if (lifecycle.current?.signal.aborted) return false
 		const accepted = transition(event)
@@ -417,7 +423,7 @@ export function LoginPage({
 	const showSocial = authProviders.length > 0
 
 	return (
-		<AuthLayout title={title} description={description}>
+		<AuthLayout ref={trackLifecycle} title={title} description={description}>
 			{oauthErrorMessage ? (
 				<>
 					<p aria-live="polite" data-tone="error" css={formMessageCss}>
@@ -463,7 +469,6 @@ export function LoginPage({
 					// message for submit / confirm copy only.
 					sendFormEvent({ type: 'CANCEL', data: {} })
 				}}
-				onUsernameAvailabilityChange={setUsernameAvailability}
 				submitLabel={submitLabel}
 				submitBusyLabel={submitBusyLabel}
 				onSubmit={handleSubmit}

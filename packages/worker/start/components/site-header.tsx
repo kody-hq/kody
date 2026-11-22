@@ -8,7 +8,8 @@ import { BrandContextMenu } from './brand-context-menu.tsx'
 import { FeaturesMenu } from './features-menu.tsx'
 import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
+import { useCloseOnNavigation } from './close-on-navigation.ts'
 import type { OrganizationSession } from './org-switcher.tsx'
 import {
 	colors,
@@ -71,9 +72,10 @@ export function SiteHeader(props: SiteHeaderProps) {
 	const workspaceHref = personal
 		? workspaceHomeHref(personal)
 		: '/account/organizations'
-	useEffect(() => {
-		dismissOpenPopoverPanel(document.getElementById(menuPanelId))
-	}, [props.currentPathname])
+	const closeOnNavigation = useCloseOnNavigation<HTMLDivElement>(
+		dismissOpenPopoverPanel,
+		{ on: 'path' },
+	)
 	function onMenuToggle(event: { newState?: string }) {
 		setMenuOpen(event.newState === 'open')
 	}
@@ -207,6 +209,7 @@ export function SiteHeader(props: SiteHeaderProps) {
 					</span>
 				</button>
 				<div
+					ref={closeOnNavigation}
 					id={menuPanelId}
 					popover="auto"
 					css={menuPanelCss}

@@ -167,7 +167,9 @@ function phaseLabel(request: IsolatedCheckPhaseRequest) {
 		case 'credentials-plan':
 			return 'Planning the credential stamp scan'
 		case 'credentials-chunk':
-			return `The credential stamp scan of ${request.chunk.visit.length} module(s) starting at "${request.chunk.visit[0]?.path ?? ''}"`
+			return request.chunk.visit.length === 1
+				? `The credential stamp scan of "${request.chunk.visit[0]!.path}"`
+				: `The credential stamp scan of ${request.chunk.visit.length} module(s) starting at "${request.chunk.visit[0]?.path ?? ''}"`
 		default: {
 			const exhaustive: never = request
 			throw new Error(`Unexpected check phase: ${JSON.stringify(exhaustive)}`)

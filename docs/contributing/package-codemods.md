@@ -383,9 +383,10 @@ unstampable patterns. This module yields a publish gate failure for `index.ts`
 (computed integration/secret names and `|scope=`). Literal `kody.mcp.linear` is
 reported by this codemod as `kody.mcp` and is stampable once a `kind: "mcp"`
 slot is declared; dynamic `kody.mcp[variable]` in a scanned module fails the
-stamp gate. Modules over 256 KiB are omitted from those AST walks
-(`omitOversizedCredentialStampModules`) so prebuilt client bundles do not blow
-the Durable Object CPU budget:
+stamp gate. Modules over 256 KiB that no server runtime root reaches are omitted
+from those AST walks (`omitOversizedClientCredentialStampModules`) so prebuilt
+client bundles do not blow the Durable Object CPU budget. Server modules are
+walked whatever their size:
 
 ```ts
 import { createAuthenticatedFetch, kody } from 'kody:runtime'
@@ -990,18 +991,26 @@ own `noticeId`), `cutoverDate`, and `reminderDate`.
   the first email. `totals.recipients.apps` counts every app the emails name,
   including an emailed owner's apps that only have outside-request findings, so
   it equals the sum of the owners' `apps` arrays over the whole run.
-- **Reminder.** The `package_app_host_migration_reminder` scheduled lane sends
-  the one reminder by itself. From 2026-12-03 00:00 UTC it runs a fresh fleet
-  scan, and from 15:00 UTC that day, once the scan is complete, it sends kind
-  `reminder` with notice id `host-migration-reminder`. Owners the fresh scan
-  finds clean get nothing. Progress lives in KV under
-  `package-app-host-migration-reminder:v1` (`scanRunId`, `done`, `sent`). A
-  failed send is retried on later ticks until the lane stops; writing
-  `done: true` there before December 3 cancels it. The lane stops on 2026-12-10
-  and only runs where `PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED` is `true`
-  (production).
+- **Reminder.** The [scheduled reminder](#scheduled-host-migration-reminder)
+  emails owners whose apps still need attention after a fresh fleet scan.
 - **Prompt.** One copy per email. With one listed app `{app}` is filled in; with
   several the owner replaces `{app}` per app.
+
+### Scheduled host migration reminder
+
+The `package_app_host_migration_reminder` lane starts a fresh scan on December
+3, 2026 at 00:00 UTC. It starts sending at 15:00 UTC or later, once the scan is
+complete. The lane requires `PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED=true`
+and stops on December 10 at 00:00 UTC.
+
+The
+[runner](../../packages/worker/src/package-codemods/host-migration-reminder.ts)
+uses notice kind `reminder` and ID `host-migration-reminder`. It stores progress
+in KV under `package-app-host-migration-reminder:v1`; set `done: true` there
+before the scan starts to cancel the notice. After a send failure, the runner
+retries on a later tick. A failed recipient claim write ends the run instead of
+retrying, as covered by the
+[reminder tests](../../packages/worker/src/package-codemods/host-migration-reminder.node.test.ts).
 
 ## Revert
 

@@ -40,10 +40,7 @@ import {
 	getRecoveryBookmark,
 	restoreToBookmark,
 } from '#worker/dr/do-pitr.ts'
-import {
-	releasedWorkflowProjectionIdempotencyKey,
-	terminalWorkflowStatusValues,
-} from '#worker/package-runtime/workflow-statuses.ts'
+import { terminalWorkflowStatusValues } from '#worker/package-runtime/workflow-statuses.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
 import type { RunLogAdminInsightsSnapshot } from './admin-insights-snapshot.ts'
 import {
@@ -213,6 +210,7 @@ const sqlBillingCountableTables = {
  * Cursor namespaces for `exportRuns` phases after the raw run-id phase.
  * Run-phase cursors stay raw run ids for backward compatibility with cursors
  * minted before later phases existed.
+ * Permanent: stored data or clients from before this change still exist.
  */
 const exportLedgerCursorPrefix = 'invocation-ledger:'
 const exportWorkflowProjectionsCursorPrefix = 'workflow-projections:'
@@ -273,6 +271,7 @@ export type { PackageInvocationLedgerStatus } from './package-invocation-state.t
 /**
  * One keyed package-invocation idempotency row. Same shape as the legacy D1
  * `package_invocations` table minus `user_id` — the DO identity is the user.
+ * Permanent: rows written before this field existed keep null; there is no backfill.
  */
 export type PackageInvocationLedgerRecord = {
 	id: string
@@ -1210,6 +1209,7 @@ class RunLogBase extends DurableObject<Env> {
 	/**
 	 * Who started the run (person + client). No historical backfill — legacy
 	 * rows keep NULL and Activity shows unknown.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	/**
 	 * The profile (ADR 0092) a run acted as, and its chain frozen at start
@@ -2906,6 +2906,7 @@ class RunLogBase extends DurableObject<Env> {
 	 * Legacy contract: once the global `package_activated` milestone exists,
 	 * counters and milestones stop changing for every package (short-circuit
 	 * before any write). This matches pre-cutover D1 activation semantics.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	private applySuccessfulPackageActivationIncrement(input: {
 		packageId: string
@@ -3598,6 +3599,7 @@ class RunLogBase extends DurableObject<Env> {
 		} else if (input.runId) {
 			// Callers without a built terminal row still must not leave a
 			// running attempt (legacy / fence-only release).
+			// Permanent: stored data or clients from before this change still exist.
 			await this.deleteRunIfRunning({ runId: input.runId })
 		}
 		if (released) {
@@ -3669,42 +3671,6 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	/**
-	 * Detach a dead terminal projection from its idempotency key so a later
-	 * create with the same key can mint a new run. Active and `complete` rows
-	 * must keep their keys for dedupe/replay; this only rewrites keys that are
-	 * not already released.
-	 */
-	async releaseWorkflowProjectionIdempotencyKey(input: {
-		id: string
-	}): Promise<{ released: boolean; previousKey: string | null }> {
-		const id = input.id.trim()
-		if (!id) {
-			return { released: false, previousKey: null }
-		}
-		const existing = await this.getWorkflowProjection({ id })
-		if (!existing) {
-			return { released: false, previousKey: null }
-		}
-		const previousKey = existing.idempotencyKey
-		if (previousKey.startsWith('released:')) {
-			return { released: false, previousKey }
-		}
-		const releasedKey = releasedWorkflowProjectionIdempotencyKey(id)
-		const now = new Date().toISOString()
-		this.sql.exec(
-			`UPDATE workflow_projections
-			SET idempotency_key = ?, updated_at = ?
-			WHERE id = ?`,
-			releasedKey,
-			now,
-			id,
-		)
-		this.retentionIdleConfirmed = false
-		await this.ensureRetentionAlarm()
-		return { released: true, previousKey }
-	}
-
-	/**
 	 * Live progress of a running workflow (phase and chunk counts). Not a
 	 * status write: `updated_at` and terminal stickiness are untouched.
 	 */
@@ -3747,7 +3713,7 @@ class RunLogBase extends DurableObject<Env> {
 						WHERE idempotency_key = ?
 							AND binding_name = ?
 							AND COALESCE(status, '') != ?
-						ORDER BY created_at ASC
+						ORDER BY created_at DESC
 						LIMIT 1`,
 						trimmedKey,
 						bindingName,
@@ -3760,7 +3726,7 @@ class RunLogBase extends DurableObject<Env> {
 						FROM workflow_projections
 						WHERE idempotency_key = ?
 							AND COALESCE(status, '') != ?
-						ORDER BY created_at ASC
+						ORDER BY created_at DESC
 						LIMIT 1`,
 						trimmedKey,
 						creatingWorkflowProjectionStatus,
@@ -3786,7 +3752,7 @@ class RunLogBase extends DurableObject<Env> {
 				FROM workflow_projections
 				WHERE binding_name = ?
 					AND idempotency_key = ?
-				ORDER BY created_at ASC
+				ORDER BY created_at DESC
 				LIMIT 1`,
 				bindingName,
 				trimmedKey,
@@ -4530,6 +4496,7 @@ class RunLogBase extends DurableObject<Env> {
 		const untilDay = input.until.slice(0, 10)
 		// Warm migration floor only (null for fresh DOs). Not MIN(day): a legacy
 		// running finish must not pull the displayed boundary before no-backfill.
+		// Permanent: stored data or clients from before this change still exist.
 		const countsSince = this.runDayCountsCoverageSince()
 		const lowerDay =
 			countsSince != null && countsSince > sinceDay ? countsSince : sinceDay
@@ -5085,6 +5052,7 @@ class RunLogBase extends DurableObject<Env> {
 			// Phase exhausted. If the page budget is spent, hand off to the
 			// next phase prefix so the following call starts there (legacy
 			// ledger handoff contract).
+			// Permanent: stored data or clients from before this change still exist.
 			phaseIndex += 1
 			startAfterId = ''
 			if (remaining <= 0 && phaseIndex < phaseOrder.length) {
@@ -5476,9 +5444,6 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	upsertWorkflowProjection: (
 		input: WorkflowProjectionUpsertInput,
 	) => Promise<{ ok: true }>
-	releaseWorkflowProjectionIdempotencyKey: (input: {
-		id: string
-	}) => Promise<{ released: boolean; previousKey: string | null }>
 	setWorkflowProjectionProgress: (input: {
 		id: string
 		progress: WorkflowProjectionProgress

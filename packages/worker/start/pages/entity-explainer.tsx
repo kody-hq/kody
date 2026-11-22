@@ -1,8 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { useCloseOnNavigation } from '../components/close-on-navigation.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
 import type { CSSObject } from '@emotion/react'
-import { useEffect } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { docHref } from '#universal/docs-nav.ts'
@@ -408,10 +407,9 @@ type EntityExplainerProps = {
  */
 export function EntityExplainer(props: EntityExplainerProps) {
 	const panelId = `entity-explainer-${props.copy.id}`
-	const href = useMatchedPageScope().pageLocation.href
-	useEffect(() => {
-		dismissOpenPopoverPanel(document.getElementById(panelId))
-	}, [href, panelId])
+	const closeOnNavigation = useCloseOnNavigation<HTMLDivElement>(
+		dismissOpenPopoverPanel,
+	)
 
 	{
 		const copy = props.copy
@@ -428,6 +426,7 @@ export function EntityExplainer(props: EntityExplainerProps) {
 					{renderIcon('information', { size: '1.35rem' })}
 				</button>
 				<div
+					ref={closeOnNavigation}
 					id={panelId}
 					popover="auto"
 					role="dialog"

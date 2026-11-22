@@ -2,9 +2,7 @@
 import type { CSSObject } from '@emotion/react'
 import {
 	useCallback,
-	useEffect,
 	useId,
-	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -297,128 +295,113 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 	// context would otherwise let later page content (charts, cards) paint
 	// over it. The top layer sits above every stacking context. Declared
 	// before the clamp below so the menu is open when it is measured.
-	useLayoutEffect(() => {
-		if (!open) return
-		const menu = menuRef.current
-		// Without the Popover API (Safari < 17) it stays a plain fixed menu.
-		if (!menu || typeof menu.showPopover !== 'function') return
-		if (isPopoverOpen(menu)) return
-		menu.showPopover()
-	}, [open])
 
 	// The menu is wider than the old text-only list; keep it inside the
 	// viewport when the pointer is near the right or bottom edge.
-	useLayoutEffect(() => {
-		if (!open) return
-		const menu = menuRef.current
-		if (!menu) return
-		const rect = menu.getBoundingClientRect()
-		const margin = 8
-		// innerWidth/innerHeight include classic scrollbars; the root's client
-		// box is the area the menu can actually show in.
-		const { clientWidth, clientHeight } = document.documentElement
-		const x = Math.max(
-			margin,
-			Math.min(coords.x, clientWidth - rect.width - margin),
-		)
-		const y = Math.max(
-			margin,
-			Math.min(coords.y, clientHeight - rect.height - margin),
-		)
-		if (x !== coords.x || y !== coords.y) setCoords({ x, y })
-	}, [open, coords])
 
-	useEffect(() => {
-		if (!open) return
-
-		function onPointerDown(event: PointerEvent) {
-			const target = event.target as Node | null
-			if (!target) return
-			if (menuRef.current?.contains(target)) return
-			if (rootRef.current?.contains(target) && event.button === 2) return
-			close()
-		}
-
-		function onKey(event: KeyboardEvent) {
-			if (event.key === 'Escape') {
-				event.preventDefault()
-				close({ restoreFocus: true })
-				return
-			}
-			const target = event.target
-			const focusInsideMenu =
-				target instanceof Node && Boolean(menuRef.current?.contains(target))
-			if (!focusInsideMenu) {
-				// Focus already left (for example after Tab): drop the menu so
-				// the document listener stops intercepting page controls.
+	const menuCallback = useCallback(
+		(node: HTMLDivElement | null) => {
+			menuRef.current = node
+			if (!node) return
+			showMenuPopover(node)
+			const rect = node.getBoundingClientRect()
+			const margin = 8
+			// innerWidth/innerHeight include classic scrollbars; the root's client
+			// box is the area the menu can actually show in.
+			const { clientWidth, clientHeight } = document.documentElement
+			const x = Math.max(
+				margin,
+				Math.min(coords.x, clientWidth - rect.width - margin),
+			)
+			const y = Math.max(
+				margin,
+				Math.min(coords.y, clientHeight - rect.height - margin),
+			)
+			if (x !== coords.x || y !== coords.y) setCoords({ x, y })
+			function onPointerDown(event: PointerEvent) {
+				const target = event.target as Node | null
+				if (!target) return
+				if (menuRef.current?.contains(target)) return
+				if (rootRef.current?.contains(target) && event.button === 2) return
 				close()
-				return
 			}
-			if (event.key === 'Tab') {
-				// Let Tab move focus, then close so later keys are not stolen.
+
+			function onKey(event: KeyboardEvent) {
+				if (event.key === 'Escape') {
+					event.preventDefault()
+					close({ restoreFocus: true })
+					return
+				}
+				const target = event.target
+				const focusInsideMenu =
+					target instanceof Node && Boolean(menuRef.current?.contains(target))
+				if (!focusInsideMenu) {
+					// Focus already left (for example after Tab): drop the menu so
+					// the document listener stops intercepting page controls.
+					close()
+					return
+				}
+				if (event.key === 'Tab') {
+					// Let Tab move focus, then close so later keys are not stolen.
+					close()
+					return
+				}
+				if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+					event.preventDefault()
+					setActiveIndex((index) => (index + 1) % items.length)
+					return
+				}
+				if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+					event.preventDefault()
+					setActiveIndex((index) => (index - 1 + items.length) % items.length)
+					return
+				}
+				if (event.key === 'Home') {
+					event.preventDefault()
+					setActiveIndex(0)
+					return
+				}
+				if (event.key === 'End') {
+					event.preventDefault()
+					setActiveIndex(items.length - 1)
+					return
+				}
+				if (event.key === 'Enter' || event.key === ' ') {
+					event.preventDefault()
+					const item = items[activeIndex]
+					if (!item) return
+					void activate(item)
+				}
+			}
+
+			function onFocusOut(event: FocusEvent) {
+				const next = event.relatedTarget
+				if (next instanceof Node && menuRef.current?.contains(next)) return
 				close()
-				return
 			}
-			if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
-				event.preventDefault()
-				setActiveIndex((index) => (index + 1) % items.length)
-				return
-			}
-			if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-				event.preventDefault()
-				setActiveIndex((index) => (index - 1 + items.length) % items.length)
-				return
-			}
-			if (event.key === 'Home') {
-				event.preventDefault()
-				setActiveIndex(0)
-				return
-			}
-			if (event.key === 'End') {
-				event.preventDefault()
-				setActiveIndex(items.length - 1)
-				return
-			}
-			if (event.key === 'Enter' || event.key === ' ') {
-				event.preventDefault()
-				const item = items[activeIndex]
-				if (!item) return
-				void activate(item)
-			}
-		}
 
-		function onFocusOut(event: FocusEvent) {
-			const next = event.relatedTarget
-			if (next instanceof Node && menuRef.current?.contains(next)) return
-			close()
-		}
+			// Native context menus dismiss on resize; do the same so the menu
+			// never sits outside a viewport that shrank under it.
+			function onResize() {
+				close()
+			}
 
-		// Native context menus dismiss on resize; do the same so the menu
-		// never sits outside a viewport that shrank under it.
-		function onResize() {
-			close()
-		}
-
-		document.addEventListener('pointerdown', onPointerDown, true)
-		document.addEventListener('keydown', onKey, true)
-		window.addEventListener('resize', onResize)
-		menuRef.current?.addEventListener('focusout', onFocusOut)
-		const menuNode = menuRef.current
-		return () => {
-			document.removeEventListener('pointerdown', onPointerDown, true)
-			document.removeEventListener('keydown', onKey, true)
-			window.removeEventListener('resize', onResize)
-			menuNode?.removeEventListener('focusout', onFocusOut)
-		}
-	}, [open, activeIndex, close, items, activate])
-
-	useEffect(() => {
-		if (!open) return
-		const active = menuRef.current?.querySelector<HTMLElement>(
-			`[data-menu-index="${activeIndex}"]`,
-		)
-		active?.focus()
-	}, [open, activeIndex])
+			document.addEventListener('pointerdown', onPointerDown, true)
+			document.addEventListener('keydown', onKey, true)
+			window.addEventListener('resize', onResize)
+			node.addEventListener('focusout', onFocusOut)
+			node
+				.querySelector<HTMLElement>(`[data-menu-index="${activeIndex}"]`)
+				?.focus()
+			return () => {
+				document.removeEventListener('pointerdown', onPointerDown, true)
+				document.removeEventListener('keydown', onKey, true)
+				window.removeEventListener('resize', onResize)
+				node.removeEventListener('focusout', onFocusOut)
+			}
+		},
+		[coords, activeIndex, close, items, activate],
+	)
 
 	return (
 		<div
@@ -430,7 +413,7 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 			{children}
 			{open ? (
 				<div
-					ref={menuRef}
+					ref={menuCallback}
 					id={menuId}
 					// Hand-built on purpose: opens from the keyboard and lays
 					// download rows out as a grid, which the shared Menu does not.
@@ -613,4 +596,10 @@ const chipCss: CSSObject = {
 
 const chipSpacerCss: CSSObject = {
 	minWidth: '2.75rem',
+}
+
+// Without the Popover API (Safari < 17) it stays a plain fixed menu.
+function showMenuPopover(menu: HTMLDivElement) {
+	if (typeof menu.showPopover !== 'function' || isPopoverOpen(menu)) return
+	menu.showPopover()
 }

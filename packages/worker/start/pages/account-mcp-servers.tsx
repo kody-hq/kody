@@ -22,10 +22,11 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import { cardTitleCss } from '#universal/styles/style-primitives.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { mcpServerMutationOptions } from './account-mcp-server-mutation.ts'
 import { searchText, textSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementShell,
@@ -81,23 +82,8 @@ export function AccountMcpServersPage({
 	currentHref: string
 	selection: { selectedId: string | null; isCreating: boolean }
 }) {
-	const { actorKey, orgSlug, pageLocation } = useMatchedPageScope()
-	const currentScope = useRef<{ actorKey: string | null; href: string } | null>(
-		null,
-	)
-	useEffect(() => {
-		currentScope.current = { actorKey, href: currentHref }
-		return () => {
-			currentScope.current = null
-		}
-	}, [actorKey, currentHref])
-	function isSubmitterCurrent() {
-		return (
-			currentScope.current !== null &&
-			currentScope.current.actorKey === actorKey &&
-			currentScope.current.href === currentHref
-		)
-	}
+	const { orgSlug, pageLocation } = useMatchedPageScope()
+	const captureSubmitter = useSubmitterScope()
 	const addMutation = useMcpWrite(addMcpServer)
 	const reconnectMutation = useMcpWrite(reconnectMcpServer)
 	const refreshMutation = useMcpWrite(refreshMcpServer)
@@ -146,12 +132,15 @@ export function AccountMcpServersPage({
 	const prefill = readAddServerPrefill(currentHref)
 	const [addName, setAddName] = useState(creating ? prefill.name : '')
 	const [addUrl, setAddUrl] = useState(creating ? prefill.url : '')
-	useEffect(() => {
+	const prefillKey = creating ? `${prefill.name}\n${prefill.url}` : null
+	const [seenPrefill, setSeenPrefill] = useState(prefillKey)
+	if (prefillKey !== seenPrefill) {
+		setSeenPrefill(prefillKey)
 		if (creating) {
 			setAddName(prefill.name)
 			setAddUrl(prefill.url)
 		}
-	}, [creating, prefill.name, prefill.url])
+	}
 	const [addBearerToken, setAddBearerToken] = useState('')
 	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
 		createUiFeedback(
@@ -166,10 +155,6 @@ export function AccountMcpServersPage({
 	const router = useRouter()
 	const navigate = (href: string) =>
 		void router.navigate({ to: href, resetScroll: false })
-	useEffect(() => {
-		if (!closeOnboardingMcpOAuthPopupIfOpened())
-			clearOnboardingMcpOAuthReturnCookie()
-	}, [])
 
 	function getCurrentHref() {
 		return currentHref
@@ -242,6 +227,7 @@ export function AccountMcpServersPage({
 	}) {
 		if (actionState !== 'idle') return false
 		showMessage(null)
+		const isSubmitterCurrent = captureSubmitter()
 		try {
 			const payload = await input.write()
 			if (!isSubmitterCurrent() || router.state.location.href !== currentHref)
@@ -340,6 +326,7 @@ export function AccountMcpServersPage({
 
 	return (
 		<AccountManagementShell
+			ref={finishOAuthReturn}
 			layout="list"
 			currentHref={currentHref}
 			busy={false}
@@ -420,8 +407,8 @@ export function AccountMcpServersPage({
 						{ key: 'name', label: 'Server', primary: true },
 						{ key: 'state', label: 'State' },
 						{ key: 'enabled', label: 'Enabled' },
-						{ key: 'url', label: 'URL', drop: 1 },
-						{ key: 'tools', label: 'Tools', align: 'end', drop: 2 },
+						{ key: 'url', label: 'URL' },
+						{ key: 'tools', label: 'Tools', align: 'end' },
 					]}
 					createRow={
 						selection.isCreating
@@ -653,4 +640,9 @@ export function AccountMcpServersPage({
 			}
 		</AccountManagementShell>
 	)
+}
+
+function finishOAuthReturn(node: HTMLElement | null) {
+	if (node && !closeOnboardingMcpOAuthPopupIfOpened())
+		clearOnboardingMcpOAuthReturnCookie()
 }

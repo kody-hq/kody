@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { useRef, useLayoutEffect } from 'react'
+import { useCallback, useRef } from 'react'
 import { colors } from '#universal/styles/tokens.ts'
 import { htmlPreviewPath } from '#universal/html-preview.ts'
 export function HtmlPreview({
@@ -19,12 +19,21 @@ export function HtmlPreview({
 			{ type: 'kody-html-preview', content },
 			'*',
 		)
-	useLayoutEffect(sendContent, [content])
+	const frameRef = useCallback(
+		(node: HTMLIFrameElement | null) => {
+			frame.current = node
+			node?.contentWindow?.postMessage(
+				{ type: 'kody-html-preview', content },
+				'*',
+			)
+		},
+		[content],
+	)
 
 	return (
 		<>
 			<iframe
-				ref={frame}
+				ref={frameRef}
 				src={htmlPreviewPath(orgSlug)}
 				onLoad={sendContent}
 				title="HTML preview"

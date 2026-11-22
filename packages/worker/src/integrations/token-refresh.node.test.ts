@@ -599,6 +599,38 @@ test('in-flight refreshes of the same connection share one provider POST and one
 	}
 })
 
+test('in-flight refreshes of the same connection share one provider rejection and one failed emit', async () => {
+	const { env } = createHarness()
+	const userId = ownerIdFromStored('user-coalesce-refresh-rejected')
+	await seedPlatformConnection(env, userId, 'github')
+	failedEvents.mockClear()
+	let releaseTokenEndpoint: () => void = () => {}
+	const tokenEndpointOpened = new Promise<void>((resolve) => {
+		releaseTokenEndpoint = resolve
+	})
+	const fetchMock = vi.fn(async () => {
+		await tokenEndpointOpened
+		return jsonResponse({ error: 'invalid_grant' }, 400)
+	})
+	vi.stubGlobal('fetch', fetchMock)
+	try {
+		const first = refreshIntegrationTokens({ env, userId, name: 'github' })
+		const second = refreshIntegrationTokens({ env, userId, name: 'github' })
+		await expect.poll(() => fetchMock.mock.calls.length).toBe(1)
+		releaseTokenEndpoint()
+		const [firstResult, secondResult] = await Promise.allSettled([
+			first,
+			second,
+		])
+		expect(firstResult.status).toBe('rejected')
+		expect(secondResult.status).toBe('rejected')
+		expect(fetchMock).toHaveBeenCalledTimes(1)
+		expect(failedEvents).toHaveBeenCalledTimes(1)
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
 test('concurrent refreshes from separate isolates make one rotating provider call and keep the newest refresh token', async () => {
 	const queries: Array<string> = []
 	const { env } = createHarness({ queries })

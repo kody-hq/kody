@@ -1,12 +1,12 @@
 /** @jsxImportSource @emotion/react */
 import {
-	useEffect,
-	useLayoutEffect,
+	useCallback,
 	useRef,
 	useState,
 	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { useResponsiveSidebar } from './use-responsive-sidebar.ts'
 import { parseSidebarPreferences } from '#universal/sidebar-preferences.ts'
 import {
@@ -44,9 +44,10 @@ function read() {
 }
 function subscribe(listener: () => void) {
 	listeners.add(listener)
+	saveSidebarPreferences({ explorer: read() })
 	const storage = (event: StorageEvent) => {
 		if (event.key === key) {
-			read()
+			saveSidebarPreferences({ explorer: read() })
 			listener()
 		}
 	}
@@ -117,10 +118,6 @@ export function WorkspaceExplorerLayout({
 		read,
 		() => initial.explorer,
 	)
-	useEffect(
-		() => saveSidebarPreferences({ explorer: preferences }),
-		[preferences],
-	)
 	const responsive = useResponsiveSidebar(
 		preferences.hidden,
 		'(max-width: 1000px)',
@@ -129,8 +126,7 @@ export function WorkspaceExplorerLayout({
 	const [flyout, setFlyout] = useState(false),
 		[available, setAvailable] = useState(800),
 		[dragWidth, setDragWidth] = useState<number | null>(null)
-	const root = useRef<HTMLDivElement>(null),
-		panel = useRef<HTMLElement>(null),
+	const panel = useRef<HTMLElement>(null),
 		trigger = useRef<HTMLButtonElement>(null)
 	const opening = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
 		closing = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -143,25 +139,21 @@ export function WorkspaceExplorerLayout({
 	const maximum = Math.max(180, Math.min(360, Math.floor(available * 0.45)))
 	const width = Math.max(180, Math.min(maximum, dragWidth ?? preferences.width))
 	const visible = !browsing && (!hidden || flyout)
-	useLayoutEffect(() => {
-		const element = root.current
+	const root = useCallback((element: HTMLDivElement | null) => {
 		if (!element) return
 		const observer = new ResizeObserver(() =>
 			setAvailable(element.getBoundingClientRect().width),
 		)
 		observer.observe(element)
-		return () => observer.disconnect()
-	}, [])
-	useEffect(() => {
-		onVisibilityChange?.(visible)
-	}, [visible, onVisibilityChange])
-	useEffect(
-		() => () => {
+		return () => {
+			observer.disconnect()
 			clearTimeout(opening.current)
 			clearTimeout(closing.current)
-		},
-		[],
-	)
+		}
+	}, [])
+	useExternalInstanceSync(() => {
+		onVisibilityChange?.(visible)
+	}, [visible, onVisibilityChange])
 	function reveal(intent = false) {
 		clearTimeout(closing.current)
 		clearTimeout(opening.current)

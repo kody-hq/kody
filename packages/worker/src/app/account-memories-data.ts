@@ -45,7 +45,10 @@ export type AccountMemoriesLoaderData = {
 	selectedMemory: AccountMemoryDetail | null
 	query: string
 	includeDeleted: boolean
-	/** Team-org legacy list: read-only until cleanup (ADR 0072). */
+	/**
+	 * Team-org legacy list: read-only until cleanup (ADR 0072).
+	 * Remove when: the ADR 0072 cleanup has deleted every team-org memory.
+	 */
 	legacyReadOnly: boolean
 }
 

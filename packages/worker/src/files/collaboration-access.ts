@@ -12,9 +12,8 @@ import type {
 } from '#universal/file-collaboration.ts'
 
 /**
- * Person/org lookups shared across access checks within one handler run, so
- * sockets that belong to the same person in the same org reuse one D1 lookup.
- * Callers must start a fresh cache per run so revocations are still observed.
+ * Share binding and flag lookups by person and org within one access pass.
+ * Create a fresh cache for each pass.
  */
 export type FileAccessLookups = {
 	bindings: Map<string, ReturnType<typeof loadLiveOrgBindingForOrg>>

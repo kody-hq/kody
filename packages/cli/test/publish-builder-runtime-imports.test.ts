@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -97,6 +97,67 @@ test('the shipped publish builder rewrites kody:runtime in app, job, and export 
 				`${label} imports the runtime module Kody supplies`,
 			)
 		}
+	} finally {
+		if (previous === undefined) delete process.env.KODY_PUBLISH_BUILDER_DIR
+		else process.env.KODY_PUBLISH_BUILDER_DIR = previous
+		rmSync(builderDir, { recursive: true, force: true })
+	}
+})
+
+/**
+ * The shipped builder must typecheck without reaching npm, so it carries
+ * TypeScript's lib files. `toUpperCase` is declared only in lib.es5.d.ts:
+ * the arity error proves the builder loaded the libs, and the bundle must not
+ * name the npm tarball it would otherwise download.
+ */
+test('the shipped publish builder typechecks with embedded TypeScript lib files', async () => {
+	const builderDir = mkdtempSync(join(tmpdir(), 'kody-builder-under-test-'))
+	const previous = process.env.KODY_PUBLISH_BUILDER_DIR
+	process.env.KODY_PUBLISH_BUILDER_DIR = builderDir
+	try {
+		await buildPublishBuilder({ outDir: builderDir })
+		assert.doesNotMatch(
+			readFileSync(join(builderDir, 'publish-builder.js'), 'utf8'),
+			/registry\.npmjs\.org\/typescript\//,
+		)
+		const builder = await loadPublishBuilder()
+		await assert.rejects(
+			builder
+				.buildPublishTargets({
+					files: [
+						{
+							path: 'package.json',
+							base64: base64(
+								JSON.stringify({
+									name: '@me/typed',
+									version: '1.0.0',
+									exports: { '.': './src/index.ts' },
+									kody: { id: 'typed', description: 'Typechecked export' },
+								}),
+							),
+						},
+						{
+							path: 'tsconfig.json',
+							base64: base64(
+								JSON.stringify({ compilerOptions: { strict: true } }),
+							),
+						},
+						{
+							path: 'src/index.ts',
+							base64: base64(
+								`export default async function main() {\n\treturn 'kody'.toUpperCase(1)\n}\n`,
+							),
+						},
+					],
+					sourceRoot: '/',
+					manifestPath: 'package.json',
+					rootPackageId: 'pkg-1',
+					userId: 'user-1',
+					baseUrl: 'https://kody.test',
+				})
+				.finally(() => builder.close()),
+			/Typecheck failed[\s\S]*Expected 0 arguments, but got 1/,
+		)
 	} finally {
 		if (previous === undefined) delete process.env.KODY_PUBLISH_BUILDER_DIR
 		else process.env.KODY_PUBLISH_BUILDER_DIR = previous

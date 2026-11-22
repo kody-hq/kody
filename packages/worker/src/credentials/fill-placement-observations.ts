@@ -3,6 +3,7 @@
  * filled and which would have been blocked under the stored placement. Used by
  * the credential page and to narrow legacy credentials (migration 0195). Never
  * enforces.
+ * Remove when: every secret credential row has a stored placement (null placements backfilled).
  */
 import { waitUntil } from 'cloudflare:workers'
 

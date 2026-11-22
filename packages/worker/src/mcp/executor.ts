@@ -1809,7 +1809,10 @@ export type ExecutionErrorDetails =
 			kind: 'execution_timed_out'
 			message: string
 			nextStep: string
-			/** Enforced budget parsed from the message; null for legacy budget-less messages. */
+			/**
+			 * Enforced budget parsed from the message; null for legacy budget-less messages.
+			 * Remove when: no stored message from before the wording change is inside the 90-day run retention window.
+			 */
 			timedOutAfterMs: number | null
 			suggestedAction: {
 				type: 'fix_code'
@@ -2234,6 +2237,7 @@ function isDisposedRpcStubMessage(message: string) {
  * tolerating wrapper prefixes such as `[execution_failed] ` from package
  * invocation responses. The captured budget lets the structured hint report
  * the actual enforced limit instead of assuming the ad hoc execute default.
+ * Remove when: no stored message from before the wording change is inside the 90-day run retention window.
  */
 const executorSandboxTimeoutDetailsPattern = new RegExp(
 	`(?:^|\\s)${executorSandboxTimeoutMessagePrefix}(?: after (\\d+(?:\\.\\d+)?)(m?s))?(?:${escapeRegExp(executorSandboxTimeoutMessageExplanation)})?$`,

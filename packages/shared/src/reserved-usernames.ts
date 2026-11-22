@@ -261,6 +261,7 @@ const reservedUsernames = new Set<string>(builtInReservedUsernameList)
  *
  * `adminHandleGet` compacts stored handles with this same set. Adding a
  * character here changes both reserved-name checks and that admin lookup.
+ * Permanent: usernames created before the DNS-label rule keep working.
  */
 export const reservedUsernameSeparatorCharacters = ['-', '_'] as const
 
@@ -361,6 +362,7 @@ function isSubstringEligibleReservedToken(
  * Local parts shaped like the legacy inbound reply-token aliases
  * (`kody-r-<hex>`). Reserved so a user can never register a username that
  * collides with that address space.
+ * Permanent: stored data or clients from before this change still exist.
  */
 const reservedUsernamePrefixPattern = /^kody-r-/
 

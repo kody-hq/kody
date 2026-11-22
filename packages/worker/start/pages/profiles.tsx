@@ -8,7 +8,6 @@ import type { CSSObject } from '@emotion/react'
 import {
 	type FormEvent,
 	type KeyboardEvent,
-	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -1199,8 +1198,6 @@ function ProfileTokens(props: {
 	const [secret, setSecret] = useState<string | null>(null)
 	const [message, setMessage] = useState<string | null>(null)
 	const [pending, setPending] = useState(false)
-	useEffect(() => () => setSecret(null), [])
-
 	async function mint(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
 		if (!scopes.size) return setMessage('Pick at least one scope.')

@@ -530,6 +530,7 @@ export async function startWebsiteCheckout(input: {
 			if (planRetaining.length > 1) {
 				// Legacy double subscriptions: the portal update flow targets
 				// one subscription, so let the customer sort out which to keep.
+				// Permanent: stored data or clients from before this change still exist.
 				const portal = await createBillingPortalSession(env, {
 					customerId,
 					returnUrl: billingUrl,

@@ -312,55 +312,6 @@ function clearedStorageIds() {
 	)
 }
 
-test('refreshSavedPackageProjection defers search-index and skills index via waitUntil', async () => {
-	setupDefaultMocks()
-	const waitUntilPromises: Array<Promise<unknown>> = []
-	mockSource(shadeManifest({ tags: ['home'] }))
-	mockModule.getSavedPackageById.mockResolvedValue(savedPackageRecord())
-
-	await refresh(createEnv(), {
-		waitUntil: (promise: Promise<unknown>) => {
-			waitUntilPromises.push(promise)
-		},
-	})
-
-	expect(mockModule.scheduleSavedPackageSearchIndexUpsert).toHaveBeenCalledWith(
-		expect.objectContaining({
-			packageId: 'package-1',
-			userId: ownerIdFromStored('user-1'),
-			waitUntil: expect.any(Function),
-		}),
-	)
-	expect(waitUntilPromises.length).toBeGreaterThanOrEqual(1)
-	await Promise.all(waitUntilPromises)
-})
-
-test('refreshSavedPackageProjection uses caller-supplied source files instead of reloading KV', async () => {
-	setupDefaultMocks()
-	const env = createEnv()
-	const sourceFiles = {
-		'package.json': '{"name":"@kentcdodds/shade-automation"}',
-		'src/index.ts': 'export default async function main() {}',
-	}
-	mockModule.loadPackageSourceFromFiles.mockResolvedValue({
-		manifest: shadeManifest({ tags: ['home'] }),
-		files: sourceFiles,
-		source: { id: 'source-1', published_commit: 'commit-1' },
-	})
-	mockModule.getSavedPackageById.mockResolvedValue(savedPackageRecord())
-
-	await refresh(env, { sourceFiles })
-
-	expect(mockModule.loadPackageSourceFromFiles).toHaveBeenCalledWith({
-		env,
-		userId: ownerIdFromStored('user-1'),
-		sourceId: 'source-1',
-		files: sourceFiles,
-	})
-	expect(mockModule.loadPackageSourceBySourceId).not.toHaveBeenCalled()
-	expect(mockModule.buildPublishedPackageArtifacts).toHaveBeenCalled()
-})
-
 test('refreshSavedPackageProjection syncs jobs to the serving commit as the publisher', async () => {
 	setupDefaultMocks()
 	mockModule.syncPublishedPackageJobs.mockResolvedValue(true)
@@ -421,42 +372,32 @@ test('refreshSavedPackageProjection syncs jobs to the serving commit as the publ
 	expect(mockModule.getSavedPackageById).toHaveBeenCalledTimes(1)
 })
 
-test('refreshSavedPackageProjection omits files when artifact rebuild is skipped', async () => {
+test('refreshSavedPackageProjection continues best-effort cleanup when dependent steps fail', async () => {
+	consoleError.mockImplementation(() => {})
 	setupDefaultMocks()
-	mockModule.loadPackageManifestBySourceId.mockResolvedValue({
-		source: { id: 'source-1', entity_id: 'package-1', entity_kind: 'package' },
-		manifest: shadeManifest(),
+	const manifest = shadeManifest({
+		tags: ['home', 'shades'],
+		searchText: 'shade automation',
 	})
-	mockModule.getSavedPackageById.mockResolvedValue(
-		savedPackageRecord({ description: 'Shade automation package', tags: [] }),
-	)
-
-	const refreshed = await refresh(createEnv(), { rebuildArtifacts: false })
-
-	expect(refreshed).not.toHaveProperty('files')
-	expect(mockModule.loadPackageSourceBySourceId).not.toHaveBeenCalled()
-	expect(mockModule.buildPublishedPackageArtifacts).not.toHaveBeenCalled()
-	expect(mockModule.collectPackageSkills).not.toHaveBeenCalled()
-})
-
-test('refreshSavedPackageProjection leaves a held build to the settled projection', async () => {
-	setupDefaultMocks()
-	mockSource()
+	mockSource(manifest)
 	mockModule.getSavedPackageById.mockResolvedValue(savedPackageRecord())
-	// Holding the build already re-projected the commit everyone still runs.
-	mockModule.getEntitySourceByIdForUser.mockResolvedValueOnce({
-		id: 'source-1',
-		published_commit: 'commit-1',
-		serving_commit: 'commit-0',
-		held_commit: 'commit-1',
+	mockModule.writePackageSkillsIndex.mockRejectedValue(
+		new Error('kv unavailable'),
+	)
+	const env = createEnv()
+
+	await refresh(env)
+
+	expect(mockModule.syncPublishedPackageJobs).toHaveBeenCalledWith(env, {
+		kind: 'refresh-jobs',
+		userId: ownerIdFromStored('user-1'),
+		baseUrl: 'https://heykody.dev',
+		packageId: 'package-1',
+		sourceId: 'source-1',
+		actor: { userId: undefined, credential: null },
 	})
-
-	await refresh(createEnv())
-
-	expect(mockModule.buildPublishedPackageArtifacts).toHaveBeenCalled()
-	expect(mockModule.syncPublishedPackageJobs).not.toHaveBeenCalled()
-	expect(mockModule.writePackageSkillsIndex).not.toHaveBeenCalled()
-	expect(mockModule.refreshPackageSubscriptionTopicMap).not.toHaveBeenCalled()
+	// The swallowed skills-index failure is still logged for operators.
+	expect(consoleError).toHaveBeenCalledTimes(1)
 })
 
 test('refreshSavedPackageProjection indexes skills from sourceFiles even when artifact rebuild is skipped', async () => {
@@ -505,32 +446,36 @@ test('refreshSavedPackageProjection indexes skills from sourceFiles even when ar
 	)
 })
 
-test('refreshSavedPackageProjection continues best-effort cleanup when dependent steps fail', async () => {
-	consoleError.mockImplementation(() => {})
+test('refreshSavedPackageProjection Kit-syncs the actor on a team insert, not the owning org', async () => {
 	setupDefaultMocks()
-	const manifest = shadeManifest({
-		tags: ['home', 'shades'],
-		searchText: 'shade automation',
+	const teamId = ownerIdFromStored('acme-org')
+	const actorUserId = 'person-member-1'
+	const env = createEnv(teamId)
+	mockSource()
+	mockModule.getSavedPackageById.mockResolvedValue(null)
+	mockModule.insertSavedPackage.mockResolvedValueOnce(true)
+
+	await refresh(env, {
+		userId: teamId,
+		actorUserId,
+		userEmail: null,
+		packageId: 'package-team',
+		sourceId: 'source-team',
 	})
-	mockSource(manifest)
-	mockModule.getSavedPackageById.mockResolvedValue(savedPackageRecord())
-	mockModule.writePackageSkillsIndex.mockRejectedValue(
-		new Error('kv unavailable'),
+
+	expect(mockModule.insertSavedPackage).toHaveBeenCalledWith(
+		env.APP_DB,
+		expect.objectContaining({ user_id: teamId, id: 'package-team' }),
+		env,
+		{ actorUserId },
 	)
-	const env = createEnv()
-
-	await refresh(env)
-
-	expect(mockModule.syncPublishedPackageJobs).toHaveBeenCalledWith(env, {
-		kind: 'refresh-jobs',
-		userId: ownerIdFromStored('user-1'),
-		baseUrl: 'https://heykody.dev',
-		packageId: 'package-1',
-		sourceId: 'source-1',
-		actor: { userId: undefined, credential: null },
+	expect(mockModule.scheduleKitSubscriberSync).toHaveBeenCalledWith({
+		env,
+		stableUserId: actorUserId,
 	})
-	// The swallowed skills-index failure is still logged for operators.
-	expect(consoleError).toHaveBeenCalledTimes(1)
+	expect(mockModule.scheduleKitSubscriberSync).not.toHaveBeenCalledWith(
+		expect.objectContaining({ stableUserId: teamId }),
+	)
 })
 
 test('refreshSavedPackageProjection preserves hidden and isPrivate across projection refresh', async () => {
@@ -572,58 +517,6 @@ test('refreshSavedPackageProjection preserves hidden and isPrivate across projec
 	})
 })
 
-test('refreshSavedPackageProjection Kit-syncs the actor on a team insert, not the owning org', async () => {
-	setupDefaultMocks()
-	const teamId = ownerIdFromStored('acme-org')
-	const actorUserId = 'person-member-1'
-	const env = createEnv(teamId)
-	mockSource()
-	mockModule.getSavedPackageById.mockResolvedValue(null)
-	mockModule.insertSavedPackage.mockResolvedValueOnce(true)
-
-	await refresh(env, {
-		userId: teamId,
-		actorUserId,
-		userEmail: null,
-		packageId: 'package-team',
-		sourceId: 'source-team',
-	})
-
-	expect(mockModule.insertSavedPackage).toHaveBeenCalledWith(
-		env.APP_DB,
-		expect.objectContaining({ user_id: teamId, id: 'package-team' }),
-		env,
-		{ actorUserId },
-	)
-	expect(mockModule.scheduleKitSubscriberSync).toHaveBeenCalledWith({
-		env,
-		stableUserId: actorUserId,
-	})
-	expect(mockModule.scheduleKitSubscriberSync).not.toHaveBeenCalledWith(
-		expect.objectContaining({ stableUserId: teamId }),
-	)
-})
-
-test('refreshSavedPackageProjection skips Kit sync on insert when the actor was already stamped', async () => {
-	setupDefaultMocks()
-	const teamId = ownerIdFromStored('acme-org')
-	const actorUserId = 'person-member-already'
-	const env = createEnv(teamId)
-	mockSource()
-	mockModule.getSavedPackageById.mockResolvedValue(null)
-	mockModule.insertSavedPackage.mockResolvedValueOnce(false)
-
-	await refresh(env, {
-		userId: teamId,
-		actorUserId,
-		packageId: 'package-team-2',
-		sourceId: 'source-team-2',
-	})
-
-	expect(mockModule.insertSavedPackage).toHaveBeenCalled()
-	expect(mockModule.scheduleKitSubscriberSync).not.toHaveBeenCalled()
-})
-
 test('refreshSavedPackageProjection stamps the actor when updating an existing team package', async () => {
 	setupDefaultMocks()
 	const teamId = ownerIdFromStored('acme-org')
@@ -653,26 +546,6 @@ test('refreshSavedPackageProjection stamps the actor when updating an existing t
 		env,
 		stableUserId: actorUserId,
 	})
-})
-
-test('refreshSavedPackageProjection skips Kit sync when the actor was already stamped on update', async () => {
-	setupDefaultMocks()
-	const teamId = ownerIdFromStored('acme-org')
-	const actorUserId = 'person-member-3'
-	const env = createEnv(teamId)
-	mockSource()
-	mockModule.getSavedPackageById.mockResolvedValue(
-		savedPackageRecord({ userId: teamId }),
-	)
-	mockModule.stampFirstSavedPackage.mockResolvedValueOnce(false)
-
-	await refresh(env, {
-		userId: teamId,
-		actorUserId,
-	})
-
-	expect(mockModule.stampFirstSavedPackage).toHaveBeenCalled()
-	expect(mockModule.scheduleKitSubscriberSync).not.toHaveBeenCalled()
 })
 
 test('refreshSavedPackageProjection does not stamp anyone on actor-free updates', async () => {

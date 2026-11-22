@@ -215,7 +215,10 @@ export type ResolvedSecret = {
 	allowedPackages: Array<string>
 	/** Null means anywhere (placeholders may fill any request part). */
 	placement: CredentialFillPlacement | null
-	/** How fill placement was chosen; null/omitted on legacy rows or when not found. */
+	/**
+	 * How fill placement was chosen; null/omitted on legacy rows or when not found.
+	 * Remove when: every secret credential row has a stored placement (null placements backfilled).
+	 */
 	placementOrigin?: CredentialPlacementOrigin | null
 }
 

@@ -102,8 +102,9 @@ file style first, then run the formatter.
 - Describe the code as it is now. Git and the PR hold the history, so skip "no
   longer", "used to", and "previously".
 - Skip comments that repeat the name or the next line.
-- A compatibility, legacy, or fallback path states its exit: add a
-  `Remove when:` line naming the issue or metric that retires it.
+- A compatibility, legacy, or temporary path states its exit: add a
+  `Remove when:` line naming the issue or metric that retires it, or
+  `Permanent:` with the reason it stays. Lint enforces this.
 
 ## Swallowed errors
 

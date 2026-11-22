@@ -1,10 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import {
+	useExternalInstanceSync,
+	useResourceLifetime,
+} from '../lib/primitives.ts'
+import {
 	createContext,
 	lazy,
 	Suspense,
 	useContext,
-	useEffect,
 	useRef,
 	useMemo,
 	useState,
@@ -316,9 +319,10 @@ export function WorkspacePageEditor({
 			}
 		},
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (editor)
 			editor.view.dispatch(editor.state.tr.setMeta('comments-updated', true))
+		// oxlint-disable-next-line react/exhaustive-deps -- comment changes redraw the editor decorations
 	}, [editor, threads, activeThreadId, draftAnchor])
 	function selectedCommentAnchor(): CommentAnchor | null {
 		if (!editor || !collaboration) return null
@@ -366,8 +370,8 @@ export function WorkspacePageEditor({
 		enabled: !!onComment && !!collaboration,
 		meta: { name: 'Comment on selection' },
 	})
-	useEffect(() => {
-		if (!editor || !onComment || !collaboration) return
+	useResourceLifetime(() => {
+		if (!editor || !onComment || !collaboration) return () => {}
 		const update = () => {
 			const range = window.getSelection()
 			const active = document.activeElement
@@ -414,10 +418,10 @@ export function WorkspacePageEditor({
 			window.removeEventListener('resize', update)
 		}
 	}, [editor, onComment, collaboration])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		editor?.setEditable(editable)
 	}, [editor, editable])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (
 			!collaboration &&
 			editor &&
@@ -429,7 +433,7 @@ export function WorkspacePageEditor({
 			})
 		}
 	}, [editor, blocks, collaboration])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (!focus || !editor) return
 		editor.state.doc.forEach((node, pos) => {
 			if (node.attrs.id !== focus.id) return

@@ -36,6 +36,7 @@ export function usernameNotPersistedError(username: string) {
  * cannot skip canonicalize. There is no lenient legacy shape — the
  * underscore-era usernames were migrated out of production on 2026-08-12
  * (decision 0017).
+ * Permanent: usernames created before the DNS-label rule keep working.
  */
 export function getUsernameFormatValidationError(username: string) {
 	if (!username) {

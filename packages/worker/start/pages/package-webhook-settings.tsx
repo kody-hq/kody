@@ -22,8 +22,10 @@ import {
 	type PackageWebhookCardIntent,
 	renderPackageWebhookCard as PackageWebhookCard,
 } from './package-webhook-card.tsx'
-import { AccountManagementMessage } from './account-management-components.tsx'
-import { detailSectionCss } from '../components/community-detail-sections.tsx'
+import {
+	AccountManagementMessage,
+	AccountManagementPanel,
+} from './account-management-components.tsx'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 export function PackageWebhookSettings({
 	username,
@@ -112,25 +114,26 @@ export function PackageWebhookSettings({
 			},
 		}
 	}
-	const mutedCss = { margin: `${spacing.md} 0 0`, color: colors.textMuted }
+	const mutedCss = { margin: 0, color: colors.textMuted }
 	return (
-		<section
+		<AccountManagementPanel
 			id={packageWebhooksSectionId}
-			aria-labelledby="package-webhooks-title"
-			aria-busy={status === 'loading' || mutating}
-			data-testid="package-webhook-settings"
-			css={{ ...detailSectionCss, scrollMarginTop: spacing.xl }}
+			headingId="package-webhooks-title"
+			testId="package-webhook-settings"
+			busy={status === 'loading' || mutating}
+			title="Webhooks"
+			description={
+				<>
+					Inbound webhook URLs this package declares in{' '}
+					<code>package.json#kody.webhooks</code>. Mint a URL here, copy it into
+					the provider that will POST to it, and rotate it if it leaks. Turn it
+					off from Triggers when it goes unused. Rotate keeps the previous URL
+					live for a short overlap so providers can finish switching. Agents
+					connected over MCP can mint and apply handles but never see these
+					URLs.
+				</>
+			}
 		>
-			<h2 id="package-webhooks-title">Webhooks</h2>
-			<p>
-				Inbound webhook URLs this package declares in{' '}
-				<code>package.json#kody.webhooks</code>. Mint a URL here, copy it into
-				the provider that will POST to it, and rotate it if it leaks. Turn it
-				off from Triggers when it goes unused. Rotate keeps the previous URL
-				live for a short overlap so providers can finish switching. Agents
-				connected over MCP can mint and apply handles but never see these URLs.
-			</p>
-
 			{status === 'loading' ? (
 				<LoadingIndicator label="Loading webhooks…" />
 			) : null}
@@ -141,18 +144,18 @@ export function PackageWebhookSettings({
 			) : null}
 
 			{message ? (
-				<div css={{ marginTop: spacing.md }}>
-					<AccountManagementMessage tone={messageTone}>
-						{message}
-					</AccountManagementMessage>
-				</div>
+				<AccountManagementMessage tone={messageTone}>
+					{message}
+				</AccountManagementMessage>
 			) : null}
 			{status === 'ready' && !webhooks.length ? (
 				<p css={mutedCss} data-testid="package-webhook-settings-empty">
 					This package declares no webhooks yet. Add a{' '}
 					<code>kody.webhooks</code> entry to its <code>package.json</code> and
 					publish it.{' '}
-					<TextLink href={webhooksDocHref}>Inbound webhooks docs</TextLink>
+					<TextLink tone="prose" href={webhooksDocHref}>
+						Inbound webhooks docs
+					</TextLink>
 				</p>
 			) : null}
 			{status === 'ready' && webhooks.length ? (
@@ -161,9 +164,7 @@ export function PackageWebhookSettings({
 						{webhookDeclaredCount(webhooks)} declared ·{' '}
 						{webhooks.filter((x) => x.minted).length} minted
 					</p>
-					<div
-						css={{ display: 'grid', gap: spacing.md, marginTop: spacing.lg }}
-					>
+					<div css={{ display: 'grid', gap: spacing.md }}>
 						{webhooks.map((webhook) => (
 							<div key={webhook.id}>
 								{
@@ -196,7 +197,7 @@ export function PackageWebhookSettings({
 					</div>
 				</>
 			) : null}
-		</section>
+		</AccountManagementPanel>
 	)
 }
 

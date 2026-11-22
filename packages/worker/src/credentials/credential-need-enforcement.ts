@@ -10,6 +10,7 @@
  * limits a run by anyone but its author, and implicit user-secret read stays.
  * Ad hoc code (no package id) is never limited. Placement stays fill-anywhere;
  * this is about declaration only.
+ * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
  */
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -282,6 +283,7 @@ async function loadEnforcedPackage(input: {
 		}
 	}
 	// Author exemption is the legacy flag path. A stamp replaces it.
+	// Remove when: no published package declares `ownerCredentialForVisitors`.
 	if (!stamped && (await isAuthorsOwnPackage({ ...input, saved }))) {
 		return { kind: 'exempt' }
 	}

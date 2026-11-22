@@ -140,6 +140,7 @@ export async function applyCreditTopUpFromCheckoutSession(input: {
 	}
 	// `client_reference_id` is the signed reference for the id checkout start
 	// stamped into metadata (the org id, or a legacy personal stable_user_id).
+	// Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	const stampedId =
 		resolveOrgIdFromStripeMetadata(session.metadata ?? undefined) ??
 		input.expectedOrgId ??

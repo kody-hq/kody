@@ -3,5 +3,6 @@
  * (`getCanonicalAppBaseUrl`). SPA navigations read it so canonical/OG URLs
  * keep pointing at the canonical domain when the page is dual-served from a
  * legacy host, instead of reverting to `window.location.origin`.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export const CANONICAL_ORIGIN_META_NAME = 'kody:canonical-origin'

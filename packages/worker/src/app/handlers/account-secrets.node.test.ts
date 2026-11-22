@@ -279,9 +279,7 @@ const mockModule = vi.hoisted(() => ({
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
-	readAuthenticatedAppUser: (
-		...args: Parameters<typeof authenticatedUserModule.readAuthenticatedAppUser>
-	) => mockModule.readAuthenticatedAppUser(...args),
+	readAuthenticatedAppUser: mockModule.readAuthenticatedAppUser,
 }))
 
 vi.mock('#app/auth-session.ts', () => ({
@@ -304,52 +302,30 @@ vi.mock('#mcp/secrets/host-approval.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof HostApproval>()
 	return {
 		...actual,
-		buildSecretHostApprovalUrl: (
-			...args: Parameters<typeof HostApproval.buildSecretHostApprovalUrl>
-		) => mockModule.buildSecretHostApprovalUrl(...args),
+		buildSecretHostApprovalUrl: mockModule.buildSecretHostApprovalUrl,
 	}
 })
 
 vi.mock('#mcp/secrets/service.ts', () => ({
-	saveSecret: (...args: Parameters<typeof secretsService.saveSecret>) =>
-		mockModule.saveSecret(...args),
-	setSecretAllowedHosts: (
-		...args: Parameters<typeof secretsService.setSecretAllowedHosts>
-	) => mockModule.setSecretAllowedHosts(...args),
-	setSecretsAllowedHosts: (
-		...args: Parameters<typeof secretsService.setSecretsAllowedHosts>
-	) => mockModule.setSecretsAllowedHosts(...args),
-	listSecrets: (...args: Parameters<typeof secretsService.listSecrets>) =>
-		mockModule.listSecrets(...args),
-	listPackageSecretsByPackageIds: (
-		...args: Parameters<typeof secretsService.listPackageSecretsByPackageIds>
-	) => mockModule.listPackageSecretsByPackageIds(...args),
-	resolveSecret: (...args: Parameters<typeof secretsService.resolveSecret>) =>
-		mockModule.resolveSecret(...args),
-	deleteSecret: (...args: Parameters<typeof secretsService.deleteSecret>) =>
-		mockModule.deleteSecret(...args),
-	renameSecret: (...args: Parameters<typeof secretsService.renameSecret>) =>
-		mockModule.renameSecret(...args),
-	findSecret: (...args: Parameters<typeof secretsService.findSecret>) =>
-		mockModule.findSecret(...args),
-	setSecretAllowedPackages: (
-		...args: Parameters<typeof secretsService.setSecretAllowedPackages>
-	) => mockModule.setSecretAllowedPackages(...args),
-	setSecretsAllowedPackages: (
-		...args: Parameters<typeof secretsService.setSecretsAllowedPackages>
-	) => mockModule.setSecretsAllowedPackages(...args),
+	saveSecret: mockModule.saveSecret,
+	setSecretAllowedHosts: mockModule.setSecretAllowedHosts,
+	setSecretsAllowedHosts: mockModule.setSecretsAllowedHosts,
+	listSecrets: mockModule.listSecrets,
+	listPackageSecretsByPackageIds: mockModule.listPackageSecretsByPackageIds,
+	resolveSecret: mockModule.resolveSecret,
+	deleteSecret: mockModule.deleteSecret,
+	renameSecret: mockModule.renameSecret,
+	findSecret: mockModule.findSecret,
+	setSecretAllowedPackages: mockModule.setSecretAllowedPackages,
+	setSecretsAllowedPackages: mockModule.setSecretsAllowedPackages,
 }))
 
 vi.mock('#worker/credentials/credential-fields.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof CredentialFields>()
 	return {
 		...actual,
-		updateCredentialFields: (
-			...args: Parameters<typeof CredentialFields.updateCredentialFields>
-		) => mockModule.updateCredentialFields(...args),
-		readStoredCredentialPlacement: (
-			...args: Parameters<typeof CredentialFields.readStoredCredentialPlacement>
-		) => mockModule.readStoredCredentialPlacement(...args),
+		updateCredentialFields: mockModule.updateCredentialFields,
+		readStoredCredentialPlacement: mockModule.readStoredCredentialPlacement,
 	}
 })
 
@@ -361,31 +337,13 @@ vi.mock('#worker/orgs/org-audit.ts', () => ({
 vi.mock('#worker/integrations/service.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof IntegrationsService>()
 	return {
-		upsertIntegration: (
-			...args: Parameters<typeof IntegrationsService.upsertIntegration>
-		) => mockModule.upsertIntegration(...args),
-		upsertOauthAppWithoutConnection: (
-			...args: Parameters<
-				typeof IntegrationsService.upsertOauthAppWithoutConnection
-			>
-		) => mockModule.upsertOauthAppWithoutConnection(...args),
-		getAvailablePlatformApp: (
-			...args: Parameters<typeof IntegrationsService.getAvailablePlatformApp>
-		) => mockModule.getAvailablePlatformApp(...args),
-		upsertPlatformIntegration: (
-			...args: Parameters<typeof IntegrationsService.upsertPlatformIntegration>
-		) => mockModule.upsertPlatformIntegration(...args),
-		getJoinedIntegration: (
-			...args: Parameters<typeof IntegrationsService.getJoinedIntegration>
-		) => mockModule.getJoinedIntegration(...args),
-		getOauthApp: (
-			...args: Parameters<typeof IntegrationsService.getOauthApp>
-		) => mockModule.getOauthApp(...args),
-		findOauthAppForProviderSetup: (
-			...args: Parameters<
-				typeof IntegrationsService.findOauthAppForProviderSetup
-			>
-		) => mockModule.findOauthAppForProviderSetup(...args),
+		upsertIntegration: mockModule.upsertIntegration,
+		upsertOauthAppWithoutConnection: mockModule.upsertOauthAppWithoutConnection,
+		getAvailablePlatformApp: mockModule.getAvailablePlatformApp,
+		upsertPlatformIntegration: mockModule.upsertPlatformIntegration,
+		getJoinedIntegration: mockModule.getJoinedIntegration,
+		getOauthApp: mockModule.getOauthApp,
+		findOauthAppForProviderSetup: mockModule.findOauthAppForProviderSetup,
 		findOauthAppReusedByConfig: async () => null,
 		// Real scope validation so handler ordering tests exercise the actual
 		// allowlist semantics.
@@ -394,41 +352,24 @@ vi.mock('#worker/integrations/service.ts', async (importOriginal) => {
 })
 
 vi.mock('#worker/integrations/package-subscriptions.ts', () => ({
-	dispatchIntegrationAuthSucceededSubscriptionEvents: (
-		...args: Parameters<
-			typeof packageSubscriptions.dispatchIntegrationAuthSucceededSubscriptionEvents
-		>
-	) => mockModule.dispatchIntegrationAuthSucceededSubscriptionEvents(...args),
+	dispatchIntegrationAuthSucceededSubscriptionEvents:
+		mockModule.dispatchIntegrationAuthSucceededSubscriptionEvents,
 	dispatchIntegrationAuthFailedSubscriptionEvents: vi.fn(async () => []),
 	integrationAuthFailedTopic: 'integration.auth.failed',
 	integrationAuthSucceededTopic: 'integration.auth.succeeded',
 }))
 
 vi.mock('#worker/integrations/platform-apps.ts', () => ({
-	getPlatformOauthAppClientSecret: (
-		...args: Parameters<typeof platformApps.getPlatformOauthAppClientSecret>
-	) => mockModule.getPlatformOauthAppClientSecret(...args),
+	getPlatformOauthAppClientSecret: mockModule.getPlatformOauthAppClientSecret,
 }))
 
 vi.mock('#worker/integrations/credentials.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof IntegrationsCredentials>()
 	return {
 		...actual,
-		persistIntegrationTokens: (
-			...args: Parameters<
-				typeof IntegrationsCredentials.persistIntegrationTokens
-			>
-		) => mockModule.persistIntegrationTokens(...args),
-		persistUserOauthAppClientSecret: (
-			...args: Parameters<
-				typeof IntegrationsCredentials.persistUserOauthAppClientSecret
-			>
-		) => mockModule.persistUserOauthAppClientSecret(...args),
-		resolveUserOauthAppClientSecret: (
-			...args: Parameters<
-				typeof IntegrationsCredentials.resolveUserOauthAppClientSecret
-			>
-		) => mockModule.resolveUserOauthAppClientSecret(...args),
+		persistIntegrationTokens: mockModule.persistIntegrationTokens,
+		persistUserOauthAppClientSecret: mockModule.persistUserOauthAppClientSecret,
+		resolveUserOauthAppClientSecret: mockModule.resolveUserOauthAppClientSecret,
 	}
 })
 
@@ -439,9 +380,7 @@ vi.mock('#worker/integrations/repo.ts', async (importOriginal) => ({
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	listSavedPackagesByUserId: (
-		...args: Parameters<typeof packageRepo.listSavedPackagesByUserId>
-	) => mockModule.listSavedPackagesByUserId(...args),
+	listSavedPackagesByUserId: mockModule.listSavedPackagesByUserId,
 }))
 
 const { testAccountSecretsApiHandler } =
@@ -495,6 +434,28 @@ function mockSecretsListing(secrets: Array<unknown>) {
 	mockModule.listSavedPackagesByUserId.mockResolvedValue([])
 	mockModule.listPackageSecretsByPackageIds.mockResolvedValue(new Map())
 }
+
+test('save_oauth_app refuses a missing token URL, an unsafe token URL, or a missing client id', async () => {
+	const call = createHandler()
+	const valid = {
+		action: 'save_oauth_app',
+		provider: 'GitHub',
+		authorizeUrl: 'https://github.com/login/oauth/authorize',
+		tokenUrl: 'https://github.com/login/oauth/access_token',
+		flow: 'pkce',
+		clientId: 'github-client-id-value',
+	}
+	for (const [fields, error] of [
+		[{ tokenUrl: '' }, 'Token URL is required.'],
+		[{ tokenUrl: 'http://169.254.169.254/token' }, expect.any(String)],
+		[{ clientId: '  ' }, 'Client ID is required.'],
+	] as const) {
+		const response = await call(postRequest({ ...valid, ...fields }))
+		expect(response.status).toBe(400)
+		expect(response.data).toEqual({ ok: false, error })
+	}
+	expect(mockModule.upsertOauthAppWithoutConnection).not.toHaveBeenCalled()
+})
 
 test('save_oauth_app persists the app (client id + endpoints) before authorize redirect', async () => {
 	const call = createHandler()

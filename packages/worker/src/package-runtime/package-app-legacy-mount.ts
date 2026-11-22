@@ -20,6 +20,7 @@ export type PackageAppLegacyMountEnv = {
  * subdomain `/packages/{leaf}` mount permanently redirect to `/{leaf}`.
  * Other methods (assets, API, WebSocket upgrade probes, etc.) stay on a quiet
  * rewrite so dual-serve can soak without breaking clients.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function shouldRedirectLegacyPackageAppSubdomainMount(
 	request: Request,
@@ -60,6 +61,7 @@ export function buildLegacyPackageAppSubdomainMountLocation(input: {
  * Worker that serves package-app hosts. The removal window in #4119 counts
  * from the first recorded hit, not from a deploy: the dataset only exists once
  * a point is written.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function recordPackageAppLegacyMountHit(input: {
 	env: PackageAppLegacyMountEnv
@@ -91,6 +93,7 @@ export function recordPackageAppLegacyMountHit(input: {
  * When the request path is a legacy subdomain mount, instrument the hit and
  * either permanently redirect HTML GET/HEAD to the short path or return null
  * so the caller continues with a quiet rewrite.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function maybeHandleLegacyPackageAppSubdomainMount(input: {
 	request: Request
@@ -103,6 +106,7 @@ export function maybeHandleLegacyPackageAppSubdomainMount(input: {
 	// Reserved / non-leaf names only route on the legacy mount (the short path
 	// is a host root or prefix). Keep a quiet rewrite so HTML does not 308 to
 	// a URL the serving side cannot mount.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	const canUseShortPath = !isPackageAppHostNonLeafFirstSegment(
 		input.packagePath.kodyId,
 	)

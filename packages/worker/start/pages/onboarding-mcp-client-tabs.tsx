@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
 import type { CSSObject } from '@emotion/react'
-import { useEffect } from 'react'
+import {} from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { useRouter } from '@tanstack/react-router'
 import {
@@ -171,7 +172,7 @@ export function OnboardingMcpClientTabs(props: OnboardingMcpClientTabsProps) {
 	const greyedTitles = props.greyedTitles ?? {}
 	const ecosystemGroups = props.ecosystemGroups
 
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		const prefetchAgentIds = ecosystemGroups?.flatMap((group) => group.agents)
 		const hrefs = onboardingAgentPickerPrefetchHrefs(
 			selectedAgent,

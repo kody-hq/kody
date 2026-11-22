@@ -61,6 +61,11 @@ import {
 	runCapabilityProxyGatewayFetchStream,
 } from './capability-proxy-gateway-fetch-stream.ts'
 import { parseNativeInput } from './native-operation-helpers.ts'
+import { nativeApiOperationDefinitions } from './native-operations.ts'
+import {
+	assertNativeOutputMatchesSchema,
+	shouldCheckNativeOutput,
+} from './native-output-check.ts'
 import {
 	apiOperationUsesQueryInputs,
 	isCapabilityProxyGatewayFetchOperation,
@@ -278,7 +283,17 @@ async function handleOperation(input: {
 				{ waitUntil: input.waitUntil },
 			),
 		)
-		return json({ ...redeemed.token, login_org: redeemed.loginOrg })
+		const result = { ...redeemed.token, login_org: redeemed.loginOrg }
+		if (shouldCheckNativeOutput(input.env)) {
+			assertNativeOutputMatchesSchema({
+				operationId: matchedOperation.operationId,
+				outputSchema:
+					nativeApiOperationDefinitions.cliCredentialBootstrapRedeem
+						.outputSchema,
+				result,
+			})
+		}
+		return json(result)
 	}
 
 	function recordCapabilityProxyObservation(observation: {

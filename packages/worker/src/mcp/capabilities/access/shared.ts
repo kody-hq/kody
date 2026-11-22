@@ -412,9 +412,9 @@ export async function authorizeGrantRevoke(
 }
 
 /**
- * The permission family a live resource's grants resolve against, without
- * the manage-access check. A profile grant needs only that the caller holds
- * each permission it hands out (ADR 0092).
+ * Resolves the target's permission family without checking manage access.
+ * The profile grant path separately checks the caller's and parent profiles'
+ * permissions (ADR 0092).
  */
 export async function grantTargetFamily(
 	ctx: GrantChangeContext,

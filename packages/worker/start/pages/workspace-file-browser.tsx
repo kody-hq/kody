@@ -1,13 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import { VirtualCollection } from '../components/virtual-collection.tsx'
 import {
-	useEffect,
-	useLayoutEffect,
+	useCallback,
 	useRef,
 	useState,
 	type ReactNode,
 	type RefObject,
 } from 'react'
+import { useExternalInstanceSync, useLayoutMeasure } from '../lib/primitives.ts'
 import { useRouter } from '@tanstack/react-router'
 import { SiteLink } from '../components/site-link.tsx'
 import { colors } from '#universal/styles/tokens.ts'
@@ -88,7 +88,7 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 			: `/@${orgSlug}/-/files?file=${id}`)
 	const [selection, setSelection] = useState<string[] | null>(null)
 	const requested = useRef(selectionKey)
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		if (requested.current !== selectionKey) setSelection(null)
 		requested.current = selectionKey
 	}, [selectionKey])
@@ -106,19 +106,30 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 
 	const [activeColumn, setActiveColumn] = useState<number | null>(null)
 	const scroller = useRef<HTMLDivElement>(null)
-	useEffect(() => {
-		const id = focusHandoff?.current
-		if (!focusHandoff || !id || id !== rootId) return
-		const frame = requestAnimationFrame(() => {
-			const item = scroller.current?.querySelector<HTMLElement>(
-				`[data-browser-item="${CSS.escape(id)}"]`,
-			)
-			if (!item) return
-			focusHandoff.current = null
-			item.focus({ preventScroll: true })
-		})
-		return () => cancelAnimationFrame(frame)
-	}, [focusHandoff, rootId])
+	const scrollerRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			scroller.current = node
+			if (!node) return
+			node.lastElementChild?.scrollIntoView({
+				block: 'nearest',
+				inline: 'nearest',
+				behavior: 'auto',
+			})
+			const id = focusHandoff?.current
+			if (!focusHandoff || !id || id !== rootId) return
+			const frame = requestAnimationFrame(() => {
+				const item = node.querySelector<HTMLElement>(
+					`[data-browser-item="${CSS.escape(id)}"]`,
+				)
+				if (!item) return
+				focusHandoff.current = null
+				item.focus({ preventScroll: true })
+			})
+			return () => cancelAnimationFrame(frame)
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- a new selection scrolls its last column into view
+		[focusHandoff, rootId, selection],
+	)
 
 	const router = useRouter()
 	const byId = new Map(files.map((file) => [file.id, file]))
@@ -153,20 +164,13 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 					files.some((child) => child.parentId === file.id)),
 		),
 	]
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		onDestinationChange?.(
 			selected && isWorkspaceContainer(selected.mediaType)
 				? selected.id
 				: selected?.parentId,
 		)
 	}, [selected, onDestinationChange])
-	useEffect(() => {
-		scroller.current?.lastElementChild?.scrollIntoView({
-			block: 'nearest',
-			inline: 'nearest',
-			behavior: 'auto',
-		})
-	}, [selection])
 	const choose = (column: number, file: T) => {
 		const before = columns.slice(1, column + 1).map((item) => item!.id)
 		const next = [...before, file.id]
@@ -178,7 +182,7 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 	}
 	return (
 		<div
-			ref={scroller}
+			ref={scrollerRef}
 			aria-label="Browse workspace columns"
 			data-file-column-browser
 			onClick={(event) => {
