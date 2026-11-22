@@ -1,5 +1,6 @@
 import {
 	parseBackupFullManifest,
+	RestEraBackupFullManifestError,
 	serializeBackupFullManifest,
 	type BackupFullD1Source,
 	type BackupFullFileRef,
@@ -345,7 +346,10 @@ export async function readFullManifest(
 	if (object === null) return null
 	try {
 		return parseBackupFullManifest(await object.json<unknown>())
-	} catch {
+	} catch (error) {
+		if (error instanceof RestEraBackupFullManifestError) {
+			throw new BackupError('full-manifest-rest-era', error.message)
+		}
 		throw new BackupError(
 			'full-manifest-corrupt',
 			'full backup manifest JSON is corrupt',
@@ -560,7 +564,23 @@ export async function sealFullBackupDay(
 ): Promise<SealDayResult> {
 	assertBackupDay(day)
 	const manifestKey = sealedFullManifestKey(day)
-	const existing = await readFullManifest(env.BACKUP_BUCKET, manifestKey)
+	let existing: BackupFullManifest | null
+	try {
+		existing = await readFullManifest(env.BACKUP_BUCKET, manifestKey)
+	} catch (error) {
+		if (errorCode(error) !== 'full-manifest-rest-era') throw error
+		// A REST-era day is sealed but not restorable; never reseal or fail it.
+		// Remove when: 2026-12-02, once 2026-11-16 (the last REST-era seal)
+		// leaves the 16-day seal scan.
+		safeLog({
+			event: 'full-backup-already-sealed',
+			status: 'success',
+			day,
+			manifestKey,
+			errorCode: 'full-manifest-rest-era',
+		})
+		return { kind: 'sealed', day, manifestKey, alreadySealed: true }
+	}
 	if (existing !== null) {
 		if (!(await verifyBackupFullManifestSignature(env, existing))) {
 			throw new BackupError(

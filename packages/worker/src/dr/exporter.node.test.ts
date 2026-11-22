@@ -1540,12 +1540,20 @@ test('R2 export reuses unchanged objects from the latest sealed index', async ()
 	await client.put(
 		sealedFullManifestKey(previousDay),
 		JSON.stringify({
-			schemaVersion: 1,
+			schemaVersion: 3,
 			payload: {
-				schemaVersion: 1,
+				schemaVersion: 3,
 				day: previousDay,
-				d1ManifestKey: `daily/d1/${previousDay}/manifest.json`,
-				d1ManifestSha256: 'a'.repeat(64),
+				d1Paced: [
+					{
+						databaseId: '22222222-2222-4222-8222-222222222222',
+						databaseName: 'kody',
+						manifestKey: `daily/d1-paced/22222222-2222-4222-8222-222222222222/${previousDay}/manifest.json`,
+						manifestSha256: 'a'.repeat(64),
+					},
+				],
+				mailboxIndex: file(`${previousPrefix}mailbox-index.json`, 'd'),
+				runLogIndex: file(`${previousPrefix}run-log-index.json`, 'e'),
 				storageIndex: file(`${previousPrefix}storage-index.json`, 'b'),
 				r2Indexes: {
 					'email-blobs': {

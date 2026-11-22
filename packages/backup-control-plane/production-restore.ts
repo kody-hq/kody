@@ -7,10 +7,8 @@ import { sealedFullManifestKey } from '@kody-internal/shared/backup-staging.ts'
 import {
 	BackupError,
 	absentConfiguredSourceNote,
-	backupPayload,
 	bindSourceDatabase,
 	configuredSourceDatabases,
-	declaredSourceDatabases,
 	pacedSourceDatabases,
 	primarySourceDatabase,
 	restoreImportOrder,
@@ -23,10 +21,7 @@ import {
 	startD1Export,
 	type ApiOptions,
 } from './d1-export-api.ts'
-import { importSqlIntoD1 } from './d1-import-api.ts'
 import { verifyBackupFullManifestSignature } from './full-manifest-signing.ts'
-import { readManifest } from './immutable-storage.ts'
-import { verifyBackupManifestSignature } from './manifest-signing.ts'
 import {
 	bucketReader,
 	importPacedTargetUnits,
@@ -39,7 +34,6 @@ import {
 	type PacedTargetStep,
 } from './paced-d1-target-restore.ts'
 import { readFullManifest } from './seal-full-backup.ts'
-import { assertSqlRestorable } from './sql-statement-stats.ts'
 
 type DrRestoreChunkResponse = {
 	done: boolean
@@ -165,89 +159,10 @@ export function restoreWorkflowInstanceId(
 	return `dr-restore-${day}-${safeExpires}`
 }
 
-type RestorableD1Source = {
-	source: SourceDatabase
-	manifestKey: string
-	sqlObjectKey: string
-	sqlBytes: number
-	sqlSha256: string
-	sqlR2Etag: string
-}
-
 function sha256HexFromBuffer(buffer: ArrayBuffer): string {
 	return [...new Uint8Array(buffer)]
 		.map((byte) => byte.toString(16).padStart(2, '0'))
 		.join('')
-}
-
-async function sha256ReadableStream(
-	body: ReadableStream<Uint8Array>,
-): Promise<{ bytes: number; sha256: string }> {
-	const digest = new (
-		crypto as unknown as { DigestStream: typeof DigestStream }
-	).DigestStream('SHA-256')
-	const writer = digest.getWriter()
-	const reader = body.getReader()
-	try {
-		for (;;) {
-			const { done, value } = await reader.read()
-			if (done) break
-			if (value === undefined) continue
-			await writer.write(value)
-		}
-		await writer.close()
-	} catch (error) {
-		await writer.abort(error).catch(() => undefined)
-		throw error
-	}
-	return {
-		bytes: Number(digest.bytesWritten),
-		sha256: sha256HexFromBuffer(await digest.digest),
-	}
-}
-
-async function verifyRequiredSqlObjects(
-	bucket: R2Bucket,
-	day: string,
-	sources: Array<RestorableD1Source>,
-): Promise<void> {
-	for (const source of sources) {
-		const head = await bucket.head(source.sqlObjectKey)
-		if (head === null) {
-			throw new BackupError(
-				'restore-sql-missing',
-				`SQL object missing for ${day} (${source.source.name}): ${source.sqlObjectKey}`,
-			)
-		}
-		if (head.size !== source.sqlBytes) {
-			throw new BackupError(
-				'restore-sql-size-mismatch',
-				`SQL object size mismatch for ${day} (${source.source.name}): ${source.sqlObjectKey}`,
-			)
-		}
-	}
-	for (const source of sources) {
-		const object = await bucket.get(source.sqlObjectKey)
-		if (object?.body == null) {
-			throw new BackupError(
-				'restore-sql-missing',
-				`SQL object missing for ${day} (${source.source.name}): ${source.sqlObjectKey}`,
-			)
-		}
-		const digest = await sha256ReadableStream(object.body)
-		if (digest.bytes !== source.sqlBytes) {
-			throw new BackupError(
-				'restore-sql-size-mismatch',
-				`SQL object size mismatch for ${day} (${source.source.name}): ${source.sqlObjectKey}`,
-			)
-		}
-		if (digest.sha256 !== source.sqlSha256) {
-			throw new BackupError(
-				'restore-sql-sha256-mismatch',
-				`SQL object sha256 mismatch for ${day} (${source.source.name}): ${source.sqlObjectKey}`,
-			)
-		}
-	}
 }
 
 function appendAbsentConfiguredSourceNotes(
@@ -269,19 +184,7 @@ export function restoreProgressFailsWorkflow(
 	return progress.phase === 'failed' || progress.warnings.length > 0
 }
 
-export type ValidatedRestDay = {
-	kind: 'rest'
-	fullManifestKey: string
-	d1ManifestKey: string
-	declaredSources: Array<RestorableD1Source>
-	sqlObjectKey: string
-	sqlBytes: number
-	sqlSha256: string
-	sqlR2Etag: string
-}
-
-export type ValidatedPacedDay = {
-	kind: 'paced'
+export type ValidatedSealedDay = {
 	fullManifestKey: string
 	pacedSources: Array<SourceDatabase>
 }
@@ -289,12 +192,23 @@ export type ValidatedPacedDay = {
 export async function validateSealedDayForRestore(
 	env: BackupEnvironment,
 	day: string,
-): Promise<ValidatedRestDay | ValidatedPacedDay> {
+): Promise<ValidatedSealedDay> {
 	const fullManifestKey = sealedFullManifestKey(day)
 	const fullManifest = await readFullManifest(
 		env.BACKUP_BUCKET,
 		fullManifestKey,
-	)
+	).catch((error: unknown) => {
+		if (
+			error instanceof BackupError &&
+			error.code === 'full-manifest-rest-era'
+		) {
+			throw new BackupError(
+				'restore-rest-era-day',
+				`${day} is a REST-era backup day (${error.message}); restore a schema-v3 paced day instead`,
+			)
+		}
+		throw error
+	})
 	if (fullManifest === null) {
 		throw new BackupError(
 			'restore-full-manifest-missing',
@@ -307,135 +221,57 @@ export async function validateSealedDayForRestore(
 			`sealed full manifest signature invalid for ${day}`,
 		)
 	}
-	// Schema v3 days restore D1 from the sealed paced chain; REST evidence,
-	// when present, is not imported.
-	if ('d1Paced' in fullManifest.payload) {
-		const configured = pacedSourceDatabases(env)
-		const tier = pacedD1RetentionTierForDay(day)
-		const pacedSources: Array<SourceDatabase> = []
-		for (const entry of fullManifest.payload.d1Paced) {
-			const source = configured.find(
-				(candidate) =>
-					candidate.id.toLowerCase() === entry.databaseId.toLowerCase(),
-			)
-			if (source === undefined) {
-				throw new BackupError(
-					'restore-d1-source-not-configured',
-					`sealed paced source ${entry.databaseName} (${entry.databaseId}) is not a configured paced source`,
-				)
-			}
-			if (
-				entry.manifestKey !== pacedD1SealedManifestKey(tier, source.id, day)
-			) {
-				throw new BackupError(
-					'restore-paced-manifest-key-mismatch',
-					`sealed full manifest points ${source.name} at an unexpected paced manifest key`,
-				)
-			}
-			const object = await env.BACKUP_BUCKET.get(entry.manifestKey)
-			if (object === null) {
-				throw new BackupError(
-					'restore-paced-seal-missing',
-					`no sealed paced manifest for ${source.name} on ${day}`,
-				)
-			}
-			if (
-				sha256HexFromBuffer(
-					await crypto.subtle.digest('SHA-256', await object.arrayBuffer()),
-				) !== entry.manifestSha256.toLowerCase()
-			) {
-				throw new BackupError(
-					'restore-paced-manifest-digest-mismatch',
-					`sealed paced manifest for ${source.name} on ${day} does not match the signed full manifest`,
-				)
-			}
-			pacedSources.push(source)
-		}
-		if (
-			!pacedSources.some(
-				(source) =>
-					source.id.toLowerCase() === env.SOURCE_DATABASE_ID.toLowerCase(),
-			)
-		) {
+	const configured = pacedSourceDatabases(env)
+	const tier = pacedD1RetentionTierForDay(day)
+	const pacedSources: Array<SourceDatabase> = []
+	for (const entry of fullManifest.payload.d1Paced) {
+		const source = configured.find(
+			(candidate) =>
+				candidate.id.toLowerCase() === entry.databaseId.toLowerCase(),
+		)
+		if (source === undefined) {
 			throw new BackupError(
 				'restore-d1-source-not-configured',
-				'sealed paced D1 sources do not include the primary database',
+				`sealed paced source ${entry.databaseName} (${entry.databaseId}) is not a configured paced source`,
 			)
 		}
-		return { kind: 'paced', fullManifestKey, pacedSources }
-	}
-	if (fullManifest.payload.d1ManifestKey === undefined) {
-		throw new BackupError(
-			'restore-d1-manifest-missing',
-			`sealed full manifest for ${day} has no D1 manifest`,
-		)
-	}
-	const d1Payload = backupPayload(env, new Date(`${day}T12:00:00.000Z`))
-	if (fullManifest.payload.d1ManifestKey !== d1Payload.manifestKey) {
-		throw new BackupError(
-			'restore-d1-manifest-key-mismatch',
-			'full manifest D1 key does not match configured source',
-		)
-	}
-	const declared = declaredSourceDatabases(env, fullManifest.payload.d1Sources)
-	const restorableSources: Array<RestorableD1Source> = []
-	for (const source of declared) {
-		const sourceEnv = bindSourceDatabase(env, source)
-		const declaredEntry = fullManifest.payload.d1Sources?.find(
-			(entry) => entry.databaseId.toLowerCase() === source.id.toLowerCase(),
-		)
-		const sourcePayload = backupPayload(
-			sourceEnv,
-			new Date(`${day}T12:00:00.000Z`),
-		)
-		const manifestKey = declaredEntry?.manifestKey ?? sourcePayload.manifestKey
-		const sourceManifest = await readManifest(env.BACKUP_BUCKET, manifestKey)
-		if (sourceManifest === null) {
+		if (entry.manifestKey !== pacedD1SealedManifestKey(tier, source.id, day)) {
 			throw new BackupError(
-				'restore-d1-manifest-missing',
-				`D1 manifest missing for ${day} (${source.name})`,
+				'restore-paced-manifest-key-mismatch',
+				`sealed full manifest points ${source.name} at an unexpected paced manifest key`,
 			)
 		}
-		if (!(await verifyBackupManifestSignature(sourceEnv, sourceManifest))) {
+		const object = await env.BACKUP_BUCKET.get(entry.manifestKey)
+		if (object === null) {
 			throw new BackupError(
-				'restore-d1-manifest-signature-invalid',
-				`D1 manifest signature invalid for ${day} (${source.name})`,
+				'restore-paced-seal-missing',
+				`no sealed paced manifest for ${source.name} on ${day}`,
 			)
 		}
-		await assertSqlRestorable(
-			env.BACKUP_BUCKET,
-			day,
-			sourceManifest.payload.sql.objectKey,
-		)
-		restorableSources.push({
-			source,
-			manifestKey,
-			sqlObjectKey: sourceManifest.payload.sql.objectKey,
-			sqlBytes: sourceManifest.payload.sql.bytes,
-			sqlSha256: sourceManifest.payload.sql.sha256,
-			sqlR2Etag: sourceManifest.payload.sql.r2Etag,
-		})
+		if (
+			sha256HexFromBuffer(
+				await crypto.subtle.digest('SHA-256', await object.arrayBuffer()),
+			) !== entry.manifestSha256.toLowerCase()
+		) {
+			throw new BackupError(
+				'restore-paced-manifest-digest-mismatch',
+				`sealed paced manifest for ${source.name} on ${day} does not match the signed full manifest`,
+			)
+		}
+		pacedSources.push(source)
 	}
-	const primary = restorableSources.find(
-		(entry) =>
-			entry.source.id.toLowerCase() === env.SOURCE_DATABASE_ID.toLowerCase(),
-	)
-	if (primary === undefined) {
+	if (
+		!pacedSources.some(
+			(source) =>
+				source.id.toLowerCase() === env.SOURCE_DATABASE_ID.toLowerCase(),
+		)
+	) {
 		throw new BackupError(
 			'restore-d1-source-not-configured',
-			'sealed D1 sources do not include the primary database',
+			'sealed paced D1 sources do not include the primary database',
 		)
 	}
-	return {
-		kind: 'rest',
-		fullManifestKey,
-		d1ManifestKey: fullManifest.payload.d1ManifestKey,
-		declaredSources: restorableSources,
-		sqlObjectKey: primary.sqlObjectKey,
-		sqlBytes: primary.sqlBytes,
-		sqlSha256: primary.sqlSha256,
-		sqlR2Etag: primary.sqlR2Etag,
-	}
+	return { fullManifestKey, pacedSources }
 }
 
 async function callProductionDrRestore(
@@ -728,40 +564,25 @@ export async function runProductionRestore(
 		const validated = await step.do('restore-validate', async () =>
 			validateSealedDayForRestore(env, payload.day),
 		)
-		const restoredSources =
-			validated.kind === 'paced'
-				? validated.pacedSources
-				: validated.declaredSources.map((entry) => entry.source)
-		if (validated.kind === 'rest') {
-			await step.do('restore-verify-sql-objects', async () =>
-				verifyRequiredSqlObjects(
-					env.BACKUP_BUCKET,
-					payload.day,
-					validated.declaredSources,
-				),
-			)
-		}
-
+		const restoredSources = validated.pacedSources
 		const pacedPlans = new Map<string, PacedTargetPlan>()
-		if (validated.kind === 'paced') {
-			const reader = bucketReader(env.BACKUP_BUCKET)
-			for (const source of validated.pacedSources) {
-				const plan = await planPacedTargetRestore({
-					reader,
-					source,
-					day: payload.day,
-					step,
-					missingCode: 'restore-paced-seal-missing',
-				})
-				await preflightPacedTargetUnits({
-					reader,
-					source,
-					day: payload.day,
-					step,
-					plan,
-				})
-				pacedPlans.set(source.id, plan)
-			}
+		const reader = bucketReader(env.BACKUP_BUCKET)
+		for (const source of restoredSources) {
+			const plan = await planPacedTargetRestore({
+				reader,
+				source,
+				day: payload.day,
+				step,
+				missingCode: 'restore-paced-seal-missing',
+			})
+			await preflightPacedTargetUnits({
+				reader,
+				source,
+				day: payload.day,
+				step,
+				plan,
+			})
+			pacedPlans.set(source.id, plan)
 		}
 
 		progress.phase = 'capturing-safety-export'
@@ -803,44 +624,11 @@ export async function runProductionRestore(
 			primarySourceDatabase(env),
 		)
 		for (const source of importOrder) {
-			if (validated.kind === 'paced') {
-				await restorePacedSourceIntoProduction(env, payload.day, source, {
-					step,
-					api: options,
-					plan: pacedPlans.get(source.id)!,
-				})
-				continue
-			}
-			const restorable = validated.declaredSources.find(
-				(entry) => entry.source.id.toLowerCase() === source.id.toLowerCase(),
-			)
-			if (restorable === undefined) {
-				throw new BackupError(
-					'restore-sql-missing',
-					`SQL object missing for ${payload.day} (${source.name})`,
-				)
-			}
-			await step.do(`restore-d1-rest:${source.id}`, async () =>
-				importSqlIntoD1({
-					accountId: env.SOURCE_ACCOUNT_ID,
-					databaseId: source.id,
-					token: env.CLOUDFLARE_API_TOKEN,
-					sourceMd5Etag: restorable.sqlR2Etag,
-					loadSqlBody: async () => {
-						const sqlObject = await env.BACKUP_BUCKET.get(
-							restorable.sqlObjectKey,
-						)
-						if (sqlObject?.body == null) {
-							throw new BackupError(
-								'restore-sql-missing',
-								`SQL object missing for ${payload.day} (${source.name}): ${restorable.sqlObjectKey}`,
-							)
-						}
-						return sqlObject.body
-					},
-					options,
-				}),
-			)
+			await restorePacedSourceIntoProduction(env, payload.day, source, {
+				step,
+				api: options,
+				plan: pacedPlans.get(source.id)!,
+			})
 		}
 		progress.d1ImportComplete = true
 		progress.phase = 'restoring-stores'

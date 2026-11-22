@@ -11,17 +11,14 @@ requires each `D1_PACED_SOURCES` sealed paced night and signs a schema-v3 full
 manifest that lists them under `d1Paced`. See
 [docs/contributing/disaster-recovery.md](../../docs/contributing/disaster-recovery.md).
 
-## Legacy REST-era days
+## REST-era days are not restorable
 
 Until #4306 this Worker also exported APP_DB and JOBS_DB nightly through the
-Cloudflare D1 export API into `<tier>/d1/<database-uuid>/<yyyy-mm-dd>/` (SQL
-object, `<objectKey>.stats.json` statement stats, and a signed schema-v2
-manifest). That export lane is removed. The objects already written stay
-immutable under R2 lifecycle (`daily/` about 35 days, `weekly/` about 400 days),
-and graduated restore of a schema-v1/v2 full manifest still reads them: it
-verifies the manifest signature, requires restorable SQL statement stats, and
-imports the SQL. Delete this read-only reader after about December 2027, when no
-retained full manifest is older than schema v3.
+Cloudflare D1 export API into `<tier>/d1/<database-uuid>/<yyyy-mm-dd>/`. The
+read-only reader for those schema-v1/v2 days was removed on 2026-11-22: restore
+rejects a v1/v2 full manifest with `restore-rest-era-day`. The REST objects are
+left untouched and expire under R2 lifecycle (`daily/` about 35 days, `weekly/`
+about 400 days).
 
 ## Credential contract
 
@@ -32,12 +29,11 @@ allowlist reduces operator mistakes but does not scope the token to one
 database. Keep it separate from destination R2 administration and from drill
 credentials (`DRILL_API_TOKEN`).
 
-Set `BACKUP_MANIFEST_SIGNING_KEY_ID`,
-`BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64`,
-`TRUSTED_RESTORE_BASELINE_ID`, and `TRUSTED_RESTORE_BASELINE_SHA256` as reviewed
-non-secret vars. Set `BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64` only as
-a Worker secret; it must never appear in Wrangler config, logs, manifests,
-evidence, or signed URLs.
+Set `BACKUP_MANIFEST_SIGNING_KEY_ID` and
+`BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64` as reviewed non-secret vars.
+Set `BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64` only as a Worker secret;
+it must never appear in Wrangler config, logs, manifests, evidence, or signed
+URLs.
 
 The operator **Seal day** action enqueues workflow `kody-production-seal-day`
 (instance id `seal-day-<day>`) and redirects to `/seal-status`. The hourly

@@ -4,21 +4,10 @@ import {
 	pacedD1SealedManifestKey,
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import { createHash, generateKeyPairSync, sign as signBytes } from 'node:crypto'
-import {
-	backupManifestSchemaVersion,
-	backupManifestSignatureAlgorithm,
-	canonicalBackupManifestPayload,
-	type BackupManifestPayload,
-} from '@kody-internal/shared/backup-manifest.ts'
-import {
-	backupSqlStatsKey,
-	backupSqlStatsSchemaVersion,
-	type BackupSqlStats,
-} from '@kody-internal/shared/backup-sql-stats.ts'
 import { utf8ToBase64Url } from '@kody-internal/shared/base64.ts'
 import type { BackupRuntimeStep } from './workflow-step-boundary.ts'
-import { BackupError, objectKeyForBookmark } from './backup-policy.ts'
-import type { BackupEnvironment, BackupManifest } from './backup-types.ts'
+import { BackupError } from './backup-policy.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 
 /** `assert.rejects` predicate; `retryable` is only checked when provided. */
 export function backupError(code: string, retryable?: boolean) {
@@ -28,7 +17,7 @@ export function backupError(code: string, retryable?: boolean) {
 		(retryable === undefined || error.retryable === retryable)
 }
 
-export function encodeNodeBytesAsBase64(bytes: ArrayBuffer | Uint8Array) {
+function encodeNodeBytesAsBase64(bytes: ArrayBuffer | Uint8Array) {
 	return Buffer.from(
 		bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes,
 	).toString('base64')
@@ -255,38 +244,7 @@ export class MemoryBucket {
 export const ACCOUNT_ID = '11111111-1111-4111-8111-111111111111'
 export const DATABASE_ID = '22222222-2222-4222-8222-222222222222'
 const DRILL_ACCOUNT_ID = '33333333-3333-4333-8333-333333333333'
-const BASELINE_SHA256 = 'b'.repeat(64)
 const manifestSigningKeys = generateKeyPairSync('ed25519')
-
-export function badSqlStatsFixture(
-	day: string,
-	objectKey: string,
-): BackupSqlStats {
-	return {
-		schemaVersion: backupSqlStatsSchemaVersion,
-		day,
-		objectKey,
-		maxStatementBytes: 1_495_663,
-		oversizedStatementCount: 1,
-		importStatementLimitBytes: 100_000,
-	}
-}
-
-export async function putSqlStatsFixture(
-	bucket: MemoryBucket,
-	day: string,
-	objectKey: string,
-	options: { oversized?: boolean } = {},
-): Promise<void> {
-	const stats = options.oversized
-		? badSqlStatsFixture(day, objectKey)
-		: {
-				...badSqlStatsFixture(day, objectKey),
-				maxStatementBytes: 50_000,
-				oversizedStatementCount: 0,
-			}
-	await bucket.put(backupSqlStatsKey(objectKey), JSON.stringify(stats))
-}
 
 export function environment(bucket = new MemoryBucket()): BackupEnvironment {
 	return {
@@ -313,8 +271,6 @@ export function environment(bucket = new MemoryBucket()): BackupEnvironment {
 		BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64: encodeNodeBytesAsBase64(
 			manifestSigningKeys.publicKey.export({ format: 'der', type: 'spki' }),
 		),
-		TRUSTED_RESTORE_BASELINE_ID: 'production-baseline-2026',
-		TRUSTED_RESTORE_BASELINE_SHA256: BASELINE_SHA256,
 		ACCESS_TEAM_DOMAIN: 'example.cloudflareaccess.com',
 		ACCESS_APP_AUD: 'access-app-audience',
 		ACCESS_ALLOWED_EMAIL: 'ops@example.com',
@@ -412,65 +368,6 @@ export function identityEnvelope(
 			...(includeSize ? { file_size: fileSize } : {}),
 		},
 	})
-}
-
-export function manifest(stored: {
-	bytes: number
-	sha256: string
-	r2Etag: string
-}): BackupManifest {
-	const payload: BackupManifestPayload = {
-		schemaVersion: backupManifestSchemaVersion,
-		source: {
-			accountId: ACCOUNT_ID,
-			databaseId: DATABASE_ID,
-			databaseName: 'production-db',
-		},
-		export: {
-			bookmark: 'bookmark-1',
-			scheduledAt: '2026-07-22T02:15:00.000Z',
-			startedAt: '2026-07-22T02:15:01.000Z',
-			completedAt: '2026-07-22T02:16:00.000Z',
-		},
-		sql: {
-			objectKey: objectKeyForBookmark(
-				`daily/d1/${DATABASE_ID}/2026-07-22`,
-				'bookmark-1',
-			),
-			bytes: stored.bytes,
-			sha256: stored.sha256,
-			r2Etag: stored.r2Etag,
-		},
-		buildCommit: 'abc123',
-		retentionTier: 'daily',
-		restoreBaseline: {
-			id: 'production-baseline-2026',
-			sha256: BASELINE_SHA256,
-		},
-		signing: {
-			algorithm: backupManifestSignatureAlgorithm,
-			keyId: 'backup-manifest-2026',
-		},
-	}
-	return signedManifest(payload)
-}
-
-export function signedManifest(payload: BackupManifestPayload): BackupManifest {
-	return {
-		schemaVersion: backupManifestSchemaVersion,
-		payload,
-		signature: {
-			algorithm: backupManifestSignatureAlgorithm,
-			keyId: payload.signing.keyId,
-			value: encodeNodeBytesAsBase64(
-				signBytes(
-					null,
-					Buffer.from(canonicalBackupManifestPayload(payload)),
-					manifestSigningKeys.privateKey,
-				),
-			),
-		},
-	}
 }
 
 export async function putPacedSeal(

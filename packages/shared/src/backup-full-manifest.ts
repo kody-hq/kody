@@ -3,9 +3,8 @@ import { canonicalJsonStringify } from './canonical-json.ts'
 import { isRecord } from './is-record.ts'
 
 export const backupFullManifestSchemaVersion = 3 as const
-/** Owner indexes, REST D1 required. */
-export const backupFullManifestRestD1SchemaVersion = 2 as const
-export const backupFullManifestLegacySchemaVersion = 1 as const
+/** Full-manifest schema versions refused as REST-era; never restorable. */
+const restEraSchemaVersions: ReadonlySet<unknown> = new Set([1, 2])
 export const backupFullManifestSignatureAlgorithm = 'Ed25519' as const
 
 export type BackupFullFileRef = {
@@ -21,13 +20,18 @@ export type BackupFullD1Source = {
 	manifestSha256: string
 }
 
-type BackupFullManifestRestD1Fields = {
-	d1ManifestKey: string
-	d1ManifestSha256: string
+/**
+ * Optional REST D1 fields some schema-v3 payloads carry. They are kept so the
+ * signed payload round-trips byte-for-byte, and are never read.
+ */
+type BackupFullManifestRestD1Evidence = {
+	d1ManifestKey?: string
+	d1ManifestSha256?: string
 	d1Sources?: Array<BackupFullD1Source>
 }
 
-type BackupFullManifestPayloadBase = {
+export type BackupFullManifestPayload = BackupFullManifestRestD1Evidence & {
+	schemaVersion: typeof backupFullManifestSchemaVersion
 	day: string
 	storageIndex: BackupFullFileRef
 	r2Indexes: Partial<Record<BackupR2BucketLabel, BackupFullFileRef>>
@@ -38,38 +42,15 @@ type BackupFullManifestPayloadBase = {
 		algorithm: typeof backupFullManifestSignatureAlgorithm
 		keyId: string
 	}
+	mailboxIndex: BackupFullFileRef
+	runLogIndex: BackupFullFileRef
+	/** Each source's sealed paced night manifest: the only D1 restore source. */
+	d1Paced: Array<BackupFullD1Source>
 }
 
-export type BackupFullManifestPayloadV1 = BackupFullManifestPayloadBase &
-	BackupFullManifestRestD1Fields & {
-		schemaVersion: typeof backupFullManifestLegacySchemaVersion
-	}
-
-export type BackupFullManifestPayloadV2 = BackupFullManifestPayloadBase &
-	BackupFullManifestRestD1Fields & {
-		schemaVersion: typeof backupFullManifestRestD1SchemaVersion
-		mailboxIndex: BackupFullFileRef
-		runLogIndex: BackupFullFileRef
-	}
-
-/**
- * D1 source of truth is the paced lane: `d1Paced` lists each source's sealed
- * paced night manifest. REST D1 fields are present only when that day's REST
- * export was restorable for every REST source (informational).
- */
-export type BackupFullManifestPayload = BackupFullManifestPayloadBase &
-	Partial<BackupFullManifestRestD1Fields> & {
-		schemaVersion: typeof backupFullManifestSchemaVersion
-		mailboxIndex: BackupFullFileRef
-		runLogIndex: BackupFullFileRef
-		d1Paced: Array<BackupFullD1Source>
-	}
-
-type BackupFullManifestEnvelope<
-	TPayload extends BackupFullManifestPayloadBase & { schemaVersion: 1 | 2 | 3 },
-> = {
-	schemaVersion: TPayload['schemaVersion']
-	payload: TPayload
+export type BackupFullManifest = {
+	schemaVersion: typeof backupFullManifestSchemaVersion
+	payload: BackupFullManifestPayload
 	signature: {
 		algorithm: typeof backupFullManifestSignatureAlgorithm
 		keyId: string
@@ -77,16 +58,17 @@ type BackupFullManifestEnvelope<
 	}
 }
 
-export type BackupFullManifest =
-	| BackupFullManifestEnvelope<BackupFullManifestPayloadV1>
-	| BackupFullManifestEnvelope<BackupFullManifestPayloadV2>
-	| BackupFullManifestEnvelope<BackupFullManifestPayload>
-
-export const backupFullManifestSchemaVersions: ReadonlyArray<number> = [
-	backupFullManifestLegacySchemaVersion,
-	backupFullManifestRestD1SchemaVersion,
-	backupFullManifestSchemaVersion,
-]
+/** Thrown for a REST-era (schema v1/v2) full manifest, which is not restorable. */
+export class RestEraBackupFullManifestError extends Error {
+	readonly schemaVersion: number
+	constructor(schemaVersion: number) {
+		super(
+			`full backup manifest is a REST-era backup (schema v${String(schemaVersion)}); REST-era backups are no longer restorable`,
+		)
+		this.name = 'RestEraBackupFullManifestError'
+		this.schemaVersion = schemaVersion
+	}
+}
 
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/
 const sha256Pattern = /^[0-9a-f]{64}$/
@@ -207,45 +189,20 @@ function parseBackupFullD1Sources(
 	return sources
 }
 
-function payloadKeysForSchemaVersion(schemaVersion: unknown): {
-	required: ReadonlyArray<string>
-	optional: ReadonlyArray<string>
-} | null {
-	const common = [
-		'artifactsIndex',
-		'buildCommit',
-		'day',
-		'r2Indexes',
-		'schemaVersion',
-		'sealedAt',
-		'signing',
-		'storageIndex',
-	]
-	switch (schemaVersion) {
-		case backupFullManifestLegacySchemaVersion:
-			return {
-				required: [...common, ...restD1PayloadKeys],
-				optional: ['d1Sources'],
-			}
-		case backupFullManifestRestD1SchemaVersion:
-			return {
-				required: [
-					...common,
-					...restD1PayloadKeys,
-					'mailboxIndex',
-					'runLogIndex',
-				],
-				optional: ['d1Sources'],
-			}
-		case backupFullManifestSchemaVersion:
-			return {
-				required: [...common, 'd1Paced', 'mailboxIndex', 'runLogIndex'],
-				optional: [...restD1PayloadKeys, 'd1Sources'],
-			}
-		default:
-			return null
-	}
-}
+const payloadRequiredKeys = [
+	'artifactsIndex',
+	'buildCommit',
+	'd1Paced',
+	'day',
+	'mailboxIndex',
+	'r2Indexes',
+	'runLogIndex',
+	'schemaVersion',
+	'sealedAt',
+	'signing',
+	'storageIndex',
+] as const
+const payloadOptionalKeys = [...restD1PayloadKeys, 'd1Sources'] as const
 
 function hasValidRestD1Fields(payload: Record<string, unknown>): boolean {
 	const present = restD1PayloadKeys.filter((key) => Object.hasOwn(payload, key))
@@ -259,15 +216,15 @@ function hasValidRestD1Fields(payload: Record<string, unknown>): boolean {
 }
 
 export function parseBackupFullManifest(value: unknown): BackupFullManifest {
-	const keys = payloadKeysForSchemaVersion(
-		isRecord(value) ? value.schemaVersion : null,
-	)
+	if (isRecord(value) && restEraSchemaVersions.has(value.schemaVersion)) {
+		throw new RestEraBackupFullManifestError(Number(value.schemaVersion))
+	}
 	if (
-		keys === null ||
 		!isRecord(value) ||
+		value.schemaVersion !== backupFullManifestSchemaVersion ||
 		!hasExactKeys(value, ['payload', 'schemaVersion', 'signature']) ||
 		!isRecord(value.payload) ||
-		!hasRequiredKeys(value.payload, keys.required, keys.optional) ||
+		!hasRequiredKeys(value.payload, payloadRequiredKeys, payloadOptionalKeys) ||
 		value.payload.schemaVersion !== value.schemaVersion ||
 		!isRecord(value.payload.signing) ||
 		!hasExactKeys(value.payload.signing, ['algorithm', 'keyId']) ||
@@ -283,9 +240,8 @@ export function parseBackupFullManifest(value: unknown): BackupFullManifest {
 		!isFileRef(value.payload.storageIndex) ||
 		!isR2Indexes(value.payload.r2Indexes) ||
 		!isFileRef(value.payload.artifactsIndex) ||
-		(value.schemaVersion !== backupFullManifestLegacySchemaVersion &&
-			(!isFileRef(value.payload.mailboxIndex) ||
-				!isFileRef(value.payload.runLogIndex))) ||
+		!isFileRef(value.payload.mailboxIndex) ||
+		!isFileRef(value.payload.runLogIndex) ||
 		typeof value.payload.sealedAt !== 'string' ||
 		!Number.isFinite(Date.parse(value.payload.sealedAt)) ||
 		!isNonemptyString(value.payload.buildCommit) ||
@@ -305,9 +261,7 @@ export function parseBackupFullManifest(value: unknown): BackupFullManifest {
 			String(value.payload.d1ManifestKey),
 		)
 	}
-	if (value.schemaVersion === backupFullManifestSchemaVersion) {
-		parseBackupFullD1SourceList(value.payload.d1Paced)
-	}
+	parseBackupFullD1SourceList(value.payload.d1Paced)
 	return value as BackupFullManifest
 }
 

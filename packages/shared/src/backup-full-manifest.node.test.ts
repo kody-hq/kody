@@ -3,12 +3,11 @@ import { generateKeyPairSync, sign as signBytes } from 'node:crypto'
 import { expect, test } from 'vitest'
 
 import {
-	backupFullManifestLegacySchemaVersion,
-	backupFullManifestRestD1SchemaVersion,
 	backupFullManifestSchemaVersion,
 	backupFullManifestSignatureAlgorithm,
 	canonicalBackupFullManifestPayload,
 	parseBackupFullManifest,
+	RestEraBackupFullManifestError,
 	type BackupFullManifest,
 	type BackupFullManifestPayload,
 } from './backup-full-manifest.ts'
@@ -96,23 +95,25 @@ test('parseBackupFullManifest accepts a signed envelope and rejects shape drift'
 	] as const) {
 		expect(() => parseBackupFullManifest(input)).toThrow(error)
 	}
+})
 
-	const {
-		mailboxIndex: _mailboxIndex,
-		runLogIndex: _runLogIndex,
-		d1Paced: _d1Paced,
-		...legacy
-	} = payload
-	expect(
-		parseBackupFullManifest({
-			...manifest,
-			schemaVersion: backupFullManifestLegacySchemaVersion,
-			payload: {
-				...legacy,
-				schemaVersion: backupFullManifestLegacySchemaVersion,
-			},
-		}).payload.schemaVersion,
-	).toBe(backupFullManifestLegacySchemaVersion)
+test('parseBackupFullManifest rejects REST-era schema v1 and v2 manifests', () => {
+	const manifest = signedManifest(samplePayload())
+	for (const schemaVersion of [1, 2]) {
+		expect(() =>
+			parseBackupFullManifest({
+				...manifest,
+				schemaVersion,
+				payload: { ...manifest.payload, schemaVersion },
+			}),
+		).toThrow(RestEraBackupFullManifestError)
+	}
+	expect(() =>
+		parseBackupFullManifest({ ...manifest, schemaVersion: 2 }),
+	).toThrow(/REST-era backups are no longer restorable/)
+	expect(() =>
+		parseBackupFullManifest({ ...manifest, schemaVersion: 4 }),
+	).toThrow(/invalid versioned shape/)
 })
 
 test('parseBackupFullManifest accepts declared d1Sources and keeps historical payloads valid', () => {
@@ -184,7 +185,7 @@ test('full-manifest parse/sign/verify round-trip with Ed25519', async () => {
 	).resolves.toBe(false)
 })
 
-test('schema 3 makes paced D1 required and REST D1 optional as a group', () => {
+test('schema 3 makes paced D1 required and REST D1 evidence optional as a group', () => {
 	const payload = samplePayload()
 	const {
 		d1ManifestKey: _d1ManifestKey,
@@ -219,14 +220,4 @@ test('schema 3 makes paced D1 required and REST D1 optional as a group', () => {
 	] as const) {
 		expect(() => parseBackupFullManifest(input)).toThrow(error)
 	}
-
-	const { d1Paced: _paced, ...restOnly } = payload
-	expect(
-		parseBackupFullManifest(
-			signedManifest({
-				...restOnly,
-				schemaVersion: backupFullManifestRestD1SchemaVersion,
-			} as BackupFullManifest['payload']),
-		).payload.schemaVersion,
-	).toBe(backupFullManifestRestD1SchemaVersion)
 })
