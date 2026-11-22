@@ -1,0 +1,3 @@
+keep a exit 0
+keep b exit 0
+keep c exit 0

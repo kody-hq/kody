@@ -1,0 +1,104 @@
+{
+ "variant": "b",
+ "origin": "http://127.0.0.1:4102",
+ "n": 5,
+ "method": "server.sh restart (waits for /health 200), then first GET / and first signed-in GET /account. Session cookie minted before the restart cycle.",
+ "samples": [
+  {
+   "i": 0,
+   "order": [
+    "/",
+    "/account"
+   ],
+   "/": {
+    "status": 200,
+    "ttfbMs": 66.024146,
+    "totalMs": 66.640574,
+    "bytes": 125547
+   },
+   "/account": {
+    "status": 200,
+    "ttfbMs": 102.279356,
+    "totalMs": 102.572479,
+    "bytes": 103502
+   }
+  },
+  {
+   "i": 1,
+   "order": [
+    "/account",
+    "/"
+   ],
+   "/account": {
+    "status": 200,
+    "ttfbMs": 110.581909,
+    "totalMs": 110.926235,
+    "bytes": 103502
+   },
+   "/": {
+    "status": 200,
+    "ttfbMs": 31.39541,
+    "totalMs": 31.887954,
+    "bytes": 125762
+   }
+  },
+  {
+   "i": 2,
+   "order": [
+    "/",
+    "/account"
+   ],
+   "/": {
+    "status": 200,
+    "ttfbMs": 51.738703,
+    "totalMs": 52.728267,
+    "bytes": 125338
+   },
+   "/account": {
+    "status": 200,
+    "ttfbMs": 104.882378,
+    "totalMs": 106.743597,
+    "bytes": 103502
+   }
+  },
+  {
+   "i": 3,
+   "order": [
+    "/account",
+    "/"
+   ],
+   "/account": {
+    "status": 200,
+    "ttfbMs": 121.446903,
+    "totalMs": 121.787241,
+    "bytes": 103504
+   },
+   "/": {
+    "status": 200,
+    "ttfbMs": 41.001915,
+    "totalMs": 41.306901,
+    "bytes": 125550
+   }
+  },
+  {
+   "i": 4,
+   "order": [
+    "/",
+    "/account"
+   ],
+   "/": {
+    "status": 200,
+    "ttfbMs": 56.062819,
+    "totalMs": 56.383751,
+    "bytes": 125563
+   },
+   "/account": {
+    "status": 200,
+    "ttfbMs": 97.718119,
+    "totalMs": 98.180984,
+    "bytes": 103502
+   }
+  }
+ ],
+ "failures": []
+}

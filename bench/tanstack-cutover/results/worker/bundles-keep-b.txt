@@ -1,0 +1,8 @@
+origin startup entry: 595779 / 7750000 bytes
+platform startup entry: 5763084 / 5244000 bytes (OVER)
+runtime startup entry: 4310540 / 3793500 bytes (OVER)
+startup bundle outdir: /home/ubuntu/bench/wt-b/.tmp/startup-bundles-keep
+platform startup entry is 5_763_084 bytes, 519_084 over its 5_244_000-byte reviewed budget (warning only; does not fail CI).
+Skipped startup budget overage issue for platform: issue reporting is only enabled on main CI pushes with GH_TOKEN
+runtime startup entry is 4_310_540 bytes, 517_040 over its 3_793_500-byte reviewed budget (warning only; does not fail CI).
+Skipped startup budget overage issue for runtime: issue reporting is only enabled on main CI pushes with GH_TOKEN

@@ -1,0 +1,125 @@
+{
+ "variant": "b",
+ "pass": "2",
+ "n": 5,
+ "targets": {
+  "origin": [
+   {
+    "attempt": 1,
+    "activeMs": 43.5,
+    "garbageCollectionMs": 0,
+    "idleMs": 342.5
+   },
+   {
+    "attempt": 3,
+    "activeMs": 42.4,
+    "garbageCollectionMs": 0,
+    "idleMs": 333.8
+   },
+   {
+    "attempt": 4,
+    "activeMs": 43.8,
+    "garbageCollectionMs": 0,
+    "idleMs": 324.6
+   },
+   {
+    "attempt": 5,
+    "activeMs": 41.8,
+    "garbageCollectionMs": 0,
+    "idleMs": 332.6
+   },
+   {
+    "attempt": 8,
+    "activeMs": 46.2,
+    "garbageCollectionMs": 0,
+    "idleMs": 347
+   }
+  ],
+  "platform": [
+   {
+    "attempt": 0,
+    "activeMs": 131.4,
+    "garbageCollectionMs": 6.7,
+    "idleMs": 163.6
+   },
+   {
+    "attempt": 1,
+    "activeMs": 133.6,
+    "garbageCollectionMs": 6.9,
+    "idleMs": 165.7
+   },
+   {
+    "attempt": 2,
+    "activeMs": 178.1,
+    "garbageCollectionMs": 7.8,
+    "idleMs": 194.3
+   },
+   {
+    "attempt": 3,
+    "activeMs": 136.7,
+    "garbageCollectionMs": 7.7,
+    "idleMs": 168.1
+   },
+   {
+    "attempt": 4,
+    "activeMs": 132.8,
+    "garbageCollectionMs": 5.4,
+    "idleMs": 167.1
+   }
+  ],
+  "runtime": [
+   {
+    "attempt": 0,
+    "activeMs": 68.5,
+    "garbageCollectionMs": 3.2,
+    "idleMs": 141.1
+   },
+   {
+    "attempt": 1,
+    "activeMs": 72.2,
+    "garbageCollectionMs": 2.1,
+    "idleMs": 143.7
+   },
+   {
+    "attempt": 2,
+    "activeMs": 74.2,
+    "garbageCollectionMs": 1.1,
+    "idleMs": 176.1
+   },
+   {
+    "attempt": 3,
+    "activeMs": 74.7,
+    "garbageCollectionMs": 2.1,
+    "idleMs": 140.6
+   },
+   {
+    "attempt": 4,
+    "activeMs": 76,
+    "garbageCollectionMs": 1.1,
+    "idleMs": 150.5
+   }
+  ]
+ },
+ "failures": [
+  {
+   "target": "origin",
+   "attempt": 0,
+   "error": "✘ [ERROR] Worker startup profiling timed out after 10 seconds.\n\n\n🪵  Logs were written to \"/home/ubuntu/.config/.wrangler/logs/wrangler-2026-11-22_16-19-59_593.log\"\n"
+  },
+  {
+   "target": "origin",
+   "attempt": 2,
+   "error": "✘ [ERROR] Worker startup profiling timed out after 10 seconds.\n\n\n🪵  Logs were written to \"/home/ubuntu/.config/.wrangler/logs/wrangler-2026-11-22_16-20-27_847.log\"\n"
+  },
+  {
+   "target": "origin",
+   "attempt": 6,
+   "error": "✘ [ERROR] Worker startup profiling timed out after 10 seconds.\n\n\n🪵  Logs were written to \"/home/ubuntu/.config/.wrangler/logs/wrangler-2026-11-22_16-21-23_188.log\"\n"
+  },
+  {
+   "target": "origin",
+   "attempt": 7,
+   "error": "✘ [ERROR] Worker startup profiling timed out after 10 seconds.\n\n\n🪵  Logs were written to \"/home/ubuntu/.config/.wrangler/logs/wrangler-2026-11-22_16-21-37_343.log\"\n"
+  }
+ ]
+}

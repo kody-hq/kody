@@ -1,0 +1,2998 @@
+{
+ "variant": "b",
+ "origin": "http://127.0.0.1:4102",
+ "cpu": 4,
+ "hover": 300,
+ "reps": 10,
+ "browser": "156.0.8078.47",
+ "startedAt": "2026-11-22T21:08:26.260Z",
+ "sequences": [
+  {
+   "name": "docs",
+   "start": "/docs/connect-your-agent",
+   "steps": [
+    {
+     "to": "/docs/how-kody-works",
+     "signature": "Ask once",
+     "dest": "/docs/how-kody-works"
+    },
+    {
+     "to": "/docs/kody-factory",
+     "signature": "The Kody factory map",
+     "dest": "/docs/kody-factory"
+    }
+   ]
+  },
+  {
+   "name": "jobs",
+   "start": "/@user-me/-/overview",
+   "steps": [
+    {
+     "to": "/@user-me/-/jobs",
+     "signature": "Jobs",
+     "dest": "/@user-me/-/jobs"
+    },
+    {
+     "to": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "signature": "0 total · 0 ok · 0 error",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1"
+    },
+    {
+     "to": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "signature": "job-storage-bench-2",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2"
+    },
+    {
+     "back": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "signature": "job-storage-bench-1",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1"
+    },
+    {
+     "back": "/@user-me/-/jobs",
+     "signature": null,
+     "dest": "/@user-me/-/jobs"
+    }
+   ]
+  },
+  {
+   "name": "email",
+   "start": "/@user-me/-/email",
+   "steps": [
+    {
+     "to": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "signature": "Message body",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23"
+    },
+    {
+     "to": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "signature": null,
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6"
+    },
+    {
+     "filter": "select[aria-label=\"Filter messages by classification\"]"
+    }
+   ]
+  },
+  {
+   "name": "credentials",
+   "start": "/@user-me/-/credentials",
+   "steps": [
+    {
+     "to": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "signature": "No hosts approved yet. Kody sends it nowhere until a host is approved.",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56"
+    }
+   ]
+  },
+  {
+   "name": "marketing",
+   "start": "/",
+   "steps": [
+    {
+     "to": "/pricing",
+     "signature": "Start free. Pay when Kody earns it .",
+     "dest": "/pricing"
+    },
+    {
+     "to": "/docs",
+     "signature": "What is Kody?",
+     "dest": "/docs"
+    }
+   ]
+  },
+  {
+   "name": "org-tabs",
+   "start": "/@bench-org/-/members",
+   "steps": [
+    {
+     "to": "/@bench-org/-/teams",
+     "signature": "Teams",
+     "dest": "/@bench-org/-/teams"
+    }
+   ]
+  }
+ ],
+ "runs": [
+  {
+   "rep": 0,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 502,
+     "actionMs": 151,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 117002,
+     "longTasks": 2,
+     "longTaskMs": 375,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 16
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 364,
+     "actionMs": 219,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 289,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 16
+    }
+   ],
+   "vitals": {
+    "FCP": 232,
+    "LCP": 268,
+    "CLS": 0,
+    "TTFB": 19.300000000745058,
+    "INP": 272
+   }
+  },
+  {
+   "rep": 0,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 197,
+     "actionMs": 191,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24152,
+     "longTasks": 1,
+     "longTaskMs": 135,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 414,
+     "actionMs": 167,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6029,
+     "longTasks": 2,
+     "longTaskMs": 281,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 360,
+     "actionMs": 206,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3906,
+     "longTasks": 2,
+     "longTaskMs": 218,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 256,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 4,
+     "longTaskMs": 406,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 155,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 6,
+     "longTaskMs": 666,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    }
+   ],
+   "vitals": {
+    "FCP": 212,
+    "LCP": 212,
+    "CLS": 0.26229539455837675,
+    "TTFB": 27.800000000745058,
+    "INP": 296
+   }
+  },
+  {
+   "rep": 0,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 468,
+     "actionMs": 202,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5133,
+     "longTasks": 1,
+     "longTaskMs": 164,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 156,
+     "actionMs": 153,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3720,
+     "longTasks": 1,
+     "longTaskMs": 99,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 181,
+     "actionMs": 138,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2921,
+     "longTasks": 4,
+     "longTaskMs": 340,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 5
+    }
+   ],
+   "vitals": {
+    "FCP": 212,
+    "LCP": 296,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 65.10000000149012,
+    "INP": 264
+   }
+  },
+  {
+   "rep": 0,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 556,
+     "actionMs": 209,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8411,
+     "longTasks": 3,
+     "longTaskMs": 371,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    }
+   ],
+   "vitals": {
+    "FCP": 168,
+    "LCP": 236,
+    "CLS": 0,
+    "TTFB": 33.69999999925494,
+    "INP": 264
+   }
+  },
+  {
+   "rep": 0,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 349,
+     "actionMs": 335,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5946,
+     "longTasks": 1,
+     "longTaskMs": 109,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 376,
+     "actionMs": 99,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 186597,
+     "longTasks": 2,
+     "longTaskMs": 275,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    }
+   ],
+   "vitals": {
+    "FCP": 352,
+    "LCP": 352,
+    "CLS": 0,
+    "TTFB": 18.200000002980232,
+    "INP": 256
+   }
+  },
+  {
+   "rep": 0,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 169,
+     "actionMs": 162,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6190,
+     "longTasks": 0,
+     "longTaskMs": 0,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    }
+   ],
+   "vitals": {
+    "FCP": 172,
+    "LCP": 240,
+    "CLS": 0,
+    "TTFB": 33.80000000074506,
+    "INP": 112
+   }
+  },
+  {
+   "rep": 1,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 490,
+     "actionMs": 154,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 114466,
+     "longTasks": 2,
+     "longTaskMs": 367,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 366,
+     "actionMs": 223,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 288,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    }
+   ],
+   "vitals": {
+    "FCP": 216,
+    "LCP": 300,
+    "CLS": 0,
+    "TTFB": 14,
+    "INP": 256
+   }
+  },
+  {
+   "rep": 1,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 219,
+     "actionMs": 207,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24146,
+     "longTasks": 2,
+     "longTaskMs": 334,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 450,
+     "actionMs": 188,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6029,
+     "longTasks": 2,
+     "longTaskMs": 317,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 405,
+     "actionMs": 213,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3918,
+     "longTasks": 2,
+     "longTaskMs": 230,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 292,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1358,
+     "longTasks": 4,
+     "longTaskMs": 442,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 13
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 121,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 6,
+     "longTaskMs": 664,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 5
+    }
+   ],
+   "vitals": {
+    "FCP": 156,
+    "LCP": 216,
+    "CLS": 0.26229539455837675,
+    "TTFB": 27.700000002980232,
+    "INP": 312
+   }
+  },
+  {
+   "rep": 1,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 465,
+     "actionMs": 190,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5121,
+     "longTasks": 1,
+     "longTaskMs": 166,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 178,
+     "actionMs": 168,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3714,
+     "longTasks": 2,
+     "longTaskMs": 166,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 149,
+     "actionMs": 146,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2927,
+     "longTasks": 5,
+     "longTaskMs": 403,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    }
+   ],
+   "vitals": {
+    "FCP": 224,
+    "LCP": 224,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 58.80000000074506,
+    "INP": 288
+   }
+  },
+  {
+   "rep": 1,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 507,
+     "actionMs": 180,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8399,
+     "longTasks": 3,
+     "longTaskMs": 390,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 14
+    }
+   ],
+   "vitals": {
+    "FCP": 180,
+    "LCP": 248,
+    "CLS": 0.0000010182698567708334,
+    "TTFB": 30.399999998509884,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 1,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 377,
+     "actionMs": 363,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5952,
+     "longTasks": 2,
+     "longTaskMs": 274,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 364,
+     "actionMs": 92,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 201231,
+     "longTasks": 2,
+     "longTaskMs": 278,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    }
+   ],
+   "vitals": {
+    "FCP": 276,
+    "LCP": 276,
+    "CLS": 0,
+    "TTFB": 20.099999997764826,
+    "INP": 264
+   }
+  },
+  {
+   "rep": 1,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 185,
+     "actionMs": 176,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6190,
+     "longTasks": 0,
+     "longTaskMs": 0,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    }
+   ],
+   "vitals": {
+    "FCP": 180,
+    "LCP": 240,
+    "CLS": 0,
+    "TTFB": 35.30000000074506,
+    "INP": 120
+   }
+  },
+  {
+   "rep": 2,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 547,
+     "actionMs": 196,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 113712,
+     "longTasks": 2,
+     "longTaskMs": 415,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 377,
+     "actionMs": 228,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 299,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 16
+    }
+   ],
+   "vitals": {
+    "FCP": 220,
+    "LCP": 300,
+    "CLS": 0,
+    "TTFB": 12.5,
+    "INP": 304
+   }
+  },
+  {
+   "rep": 2,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 206,
+     "actionMs": 200,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24134,
+     "longTasks": 2,
+     "longTaskMs": 301,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 470,
+     "actionMs": 177,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6017,
+     "longTasks": 2,
+     "longTaskMs": 335,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 397,
+     "actionMs": 196,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3912,
+     "longTasks": 2,
+     "longTaskMs": 244,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 321,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 4,
+     "longTaskMs": 472,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 13
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 223,
+     "actionMs": 3,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 6,
+     "longTaskMs": 818,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 5
+    }
+   ],
+   "vitals": {
+    "FCP": 180,
+    "LCP": 180,
+    "CLS": 0.26229539455837675,
+    "TTFB": 32.70000000298023,
+    "INP": 256
+   }
+  },
+  {
+   "rep": 2,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 490,
+     "actionMs": 198,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5121,
+     "longTasks": 2,
+     "longTaskMs": 226,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 177,
+     "actionMs": 166,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3714,
+     "longTasks": 2,
+     "longTaskMs": 193,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 181,
+     "actionMs": 124,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2927,
+     "longTasks": 5,
+     "longTaskMs": 403,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    }
+   ],
+   "vitals": {
+    "FCP": 200,
+    "LCP": 404,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 55,
+    "INP": 312
+   }
+  },
+  {
+   "rep": 2,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 491,
+     "actionMs": 197,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8411,
+     "longTasks": 2,
+     "longTaskMs": 320,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 15
+    }
+   ],
+   "vitals": {
+    "FCP": 188,
+    "LCP": 188,
+    "CLS": 0,
+    "TTFB": 34.399999998509884,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 2,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 417,
+     "actionMs": 401,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5946,
+     "longTasks": 2,
+     "longTaskMs": 309,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 366,
+     "actionMs": 85,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 189828,
+     "longTasks": 1,
+     "longTaskMs": 228,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    }
+   ],
+   "vitals": {
+    "FCP": 292,
+    "LCP": 292,
+    "CLS": 0,
+    "TTFB": 23.800000000745058,
+    "INP": 272
+   }
+  },
+  {
+   "rep": 2,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 188,
+     "actionMs": 181,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6196,
+     "longTasks": 1,
+     "longTaskMs": 122,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    }
+   ],
+   "vitals": {
+    "FCP": 168,
+    "LCP": 304,
+    "CLS": 0.0009750363243950737,
+    "TTFB": 33.5,
+    "INP": 128
+   }
+  },
+  {
+   "rep": 3,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 556,
+     "actionMs": 155,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 121866,
+     "longTasks": 1,
+     "longTaskMs": 313,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 18
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 489,
+     "actionMs": 315,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 392,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 18
+    }
+   ],
+   "vitals": {
+    "FCP": 196,
+    "LCP": 240,
+    "CLS": 0,
+    "TTFB": 12.5,
+    "INP": 288
+   }
+  },
+  {
+   "rep": 3,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 219,
+     "actionMs": 215,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24122,
+     "longTasks": 2,
+     "longTaskMs": 332,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 542,
+     "actionMs": 212,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6017,
+     "longTasks": 2,
+     "longTaskMs": 374,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 421,
+     "actionMs": 226,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3912,
+     "longTasks": 2,
+     "longTaskMs": 246,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 324,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 4,
+     "longTaskMs": 474,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 13
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 139,
+     "actionMs": 3,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 5,
+     "longTaskMs": 601,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 4
+    }
+   ],
+   "vitals": {
+    "FCP": 192,
+    "LCP": 192,
+    "CLS": 0.26229539455837675,
+    "TTFB": 27.899999998509884,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 3,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 574,
+     "actionMs": 198,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5133,
+     "longTasks": 2,
+     "longTaskMs": 302,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 219,
+     "actionMs": 161,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3720,
+     "longTasks": 3,
+     "longTaskMs": 263,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 176,
+     "actionMs": 123,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2921,
+     "longTasks": 5,
+     "longTaskMs": 421,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 5
+    }
+   ],
+   "vitals": {
+    "FCP": 224,
+    "LCP": 308,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 57.69999999925494,
+    "INP": 288
+   }
+  },
+  {
+   "rep": 3,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 590,
+     "actionMs": 230,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8399,
+     "longTasks": 3,
+     "longTaskMs": 472,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 14
+    }
+   ],
+   "vitals": {
+    "FCP": 168,
+    "LCP": 240,
+    "CLS": 0,
+    "TTFB": 37.69999999925494,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 3,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 391,
+     "actionMs": 383,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5946,
+     "longTasks": 2,
+     "longTaskMs": 282,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 397,
+     "actionMs": 102,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 264310,
+     "longTasks": 2,
+     "longTaskMs": 302,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    }
+   ],
+   "vitals": {
+    "FCP": 272,
+    "LCP": 656,
+    "CLS": 0,
+    "TTFB": 31.299999997019768,
+    "INP": 288
+   }
+  },
+  {
+   "rep": 3,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 180,
+     "actionMs": 172,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6184,
+     "longTasks": 0,
+     "longTaskMs": 0,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    }
+   ],
+   "vitals": {
+    "FCP": 232,
+    "LCP": 232,
+    "CLS": 0,
+    "TTFB": 34.100000001490116,
+    "INP": 120
+   }
+  },
+  {
+   "rep": 4,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 506,
+     "actionMs": 197,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 114998,
+     "longTasks": 2,
+     "longTaskMs": 373,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 380,
+     "actionMs": 231,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 1,
+     "longTaskMs": 128,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 16
+    }
+   ],
+   "vitals": {
+    "FCP": 204,
+    "LCP": 300,
+    "CLS": 0,
+    "TTFB": 13.800000000745058,
+    "INP": 288
+   }
+  },
+  {
+   "rep": 4,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 205,
+     "actionMs": 201,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24146,
+     "longTasks": 1,
+     "longTaskMs": 158,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 497,
+     "actionMs": 204,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6023,
+     "longTasks": 2,
+     "longTaskMs": 347,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 458,
+     "actionMs": 271,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3911,
+     "longTasks": 1,
+     "longTaskMs": 75,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 13
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 305,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 3,
+     "longTaskMs": 275,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 14
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 145,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1358,
+     "longTasks": 5,
+     "longTaskMs": 543,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 4
+    }
+   ],
+   "vitals": {
+    "FCP": 156,
+    "LCP": 212,
+    "CLS": 0.10821934000651041,
+    "TTFB": 29.799999997019768,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 4,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 470,
+     "actionMs": 198,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5121,
+     "longTasks": 2,
+     "longTaskMs": 316,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 151,
+     "actionMs": 148,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3714,
+     "longTasks": 2,
+     "longTaskMs": 173,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 179,
+     "actionMs": 138,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2927,
+     "longTasks": 4,
+     "longTaskMs": 336,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    }
+   ],
+   "vitals": {
+    "FCP": 220,
+    "LCP": 284,
+    "CLS": 0.0013669748942057292,
+    "TTFB": 53.30000000074506,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 4,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 474,
+     "actionMs": 176,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8399,
+     "longTasks": 1,
+     "longTaskMs": 186,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    }
+   ],
+   "vitals": {
+    "FCP": 196,
+    "LCP": 196,
+    "CLS": 0,
+    "TTFB": 28.600000001490116,
+    "INP": 264
+   }
+  },
+  {
+   "rep": 4,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 368,
+     "actionMs": 342,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5946,
+     "longTasks": 1,
+     "longTaskMs": 110,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 340,
+     "actionMs": 90,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 186597,
+     "longTasks": 1,
+     "longTaskMs": 209,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    }
+   ],
+   "vitals": {
+    "FCP": 280,
+    "LCP": 280,
+    "CLS": 0,
+    "TTFB": 15.600000001490116,
+    "INP": 256
+   }
+  },
+  {
+   "rep": 4,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 155,
+     "actionMs": 148,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6196,
+     "longTasks": 1,
+     "longTaskMs": 107,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    }
+   ],
+   "vitals": {
+    "FCP": 164,
+    "LCP": 220,
+    "CLS": 0,
+    "TTFB": 29.300000000745058,
+    "INP": 112
+   }
+  },
+  {
+   "rep": 5,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 477,
+     "actionMs": 132,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 123592,
+     "longTasks": 2,
+     "longTaskMs": 373,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 16
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 363,
+     "actionMs": 228,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 288,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    }
+   ],
+   "vitals": {
+    "FCP": 216,
+    "LCP": 252,
+    "CLS": 0,
+    "TTFB": 16,
+    "INP": 256
+   }
+  },
+  {
+   "rep": 5,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 294,
+     "actionMs": 241,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24151,
+     "longTasks": 1,
+     "longTaskMs": 184,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 410,
+     "actionMs": 166,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6029,
+     "longTasks": 2,
+     "longTaskMs": 288,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 365,
+     "actionMs": 196,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3912,
+     "longTasks": 2,
+     "longTaskMs": 213,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 331,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 5,
+     "longTaskMs": 498,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 13
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 147,
+     "actionMs": 10,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 7,
+     "longTaskMs": 702,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    }
+   ],
+   "vitals": {
+    "FCP": 204,
+    "LCP": 204,
+    "CLS": 0.26229539455837675,
+    "TTFB": 29.699999999254942,
+    "INP": 272
+   }
+  },
+  {
+   "rep": 5,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 440,
+     "actionMs": 177,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5127,
+     "longTasks": 3,
+     "longTaskMs": 338,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 161,
+     "actionMs": 152,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3714,
+     "longTasks": 1,
+     "longTaskMs": 102,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 183,
+     "actionMs": 130,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2927,
+     "longTasks": 4,
+     "longTaskMs": 351,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    }
+   ],
+   "vitals": {
+    "FCP": 240,
+    "LCP": 240,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 52.30000000074506,
+    "INP": 280
+   }
+  },
+  {
+   "rep": 5,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 492,
+     "actionMs": 187,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8405,
+     "longTasks": 2,
+     "longTaskMs": 318,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 13
+    }
+   ],
+   "vitals": {
+    "FCP": 192,
+    "LCP": 244,
+    "CLS": 0,
+    "TTFB": 48.69999999925494,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 5,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 409,
+     "actionMs": 400,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5946,
+     "longTasks": 1,
+     "longTaskMs": 126,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 444,
+     "actionMs": 112,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 279625,
+     "longTasks": 2,
+     "longTaskMs": 329,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    }
+   ],
+   "vitals": {
+    "FCP": 388,
+    "LCP": 388,
+    "CLS": 0,
+    "TTFB": 14.199999999254942,
+    "INP": 280
+   }
+  },
+  {
+   "rep": 5,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 230,
+     "actionMs": 188,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6195,
+     "longTasks": 2,
+     "longTaskMs": 222,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    }
+   ],
+   "vitals": {
+    "FCP": 216,
+    "LCP": 288,
+    "CLS": 0.0006137515597873264,
+    "TTFB": 50.79999999701977,
+    "INP": 136
+   }
+  },
+  {
+   "rep": 6,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 626,
+     "actionMs": 156,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 114642,
+     "longTasks": 2,
+     "longTaskMs": 462,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 18
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 375,
+     "actionMs": 226,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 295,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    }
+   ],
+   "vitals": {
+    "FCP": 212,
+    "LCP": 248,
+    "CLS": 0,
+    "TTFB": 17.699999999254942,
+    "INP": 288
+   }
+  },
+  {
+   "rep": 6,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 214,
+     "actionMs": 206,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24128,
+     "longTasks": 1,
+     "longTaskMs": 152,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 433,
+     "actionMs": 177,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6023,
+     "longTasks": 2,
+     "longTaskMs": 296,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 348,
+     "actionMs": 185,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3918,
+     "longTasks": 2,
+     "longTaskMs": 214,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 268,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1358,
+     "longTasks": 4,
+     "longTaskMs": 437,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 147,
+     "actionMs": 1,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1358,
+     "longTasks": 6,
+     "longTaskMs": 691,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 6
+    }
+   ],
+   "vitals": {
+    "FCP": 172,
+    "LCP": 248,
+    "CLS": 0.26229539455837675,
+    "TTFB": 31.5,
+    "INP": 256
+   }
+  },
+  {
+   "rep": 6,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 453,
+     "actionMs": 186,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5127,
+     "longTasks": 2,
+     "longTaskMs": 297,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 162,
+     "actionMs": 156,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3714,
+     "longTasks": 1,
+     "longTaskMs": 108,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 178,
+     "actionMs": 121,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2927,
+     "longTasks": 4,
+     "longTaskMs": 368,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 4
+    }
+   ],
+   "vitals": {
+    "FCP": 192,
+    "LCP": 276,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 45.400000002235174,
+    "INP": 264
+   }
+  },
+  {
+   "rep": 6,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 541,
+     "actionMs": 226,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8411,
+     "longTasks": 1,
+     "longTaskMs": 189,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 14
+    }
+   ],
+   "vitals": {
+    "FCP": 212,
+    "LCP": 212,
+    "CLS": 0,
+    "TTFB": 30.600000001490116,
+    "INP": 240
+   }
+  },
+  {
+   "rep": 6,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 359,
+     "actionMs": 346,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5946,
+     "longTasks": 2,
+     "longTaskMs": 269,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 402,
+     "actionMs": 97,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 186591,
+     "longTasks": 2,
+     "longTaskMs": 291,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    }
+   ],
+   "vitals": {
+    "FCP": 300,
+    "LCP": 584,
+    "CLS": 0,
+    "TTFB": 22.099999997764826,
+    "INP": 256
+   }
+  },
+  {
+   "rep": 6,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 248,
+     "actionMs": 195,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6195,
+     "longTasks": 2,
+     "longTaskMs": 229,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    }
+   ],
+   "vitals": {
+    "FCP": 240,
+    "LCP": 240,
+    "CLS": 0,
+    "TTFB": 35.099999997764826,
+    "INP": 144
+   }
+  },
+  {
+   "rep": 7,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 569,
+     "actionMs": 171,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 114076,
+     "longTasks": 2,
+     "longTaskMs": 431,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 18
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 474,
+     "actionMs": 267,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 398,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    }
+   ],
+   "vitals": {
+    "FCP": 192,
+    "LCP": 272,
+    "CLS": 0,
+    "TTFB": 14.100000001490116,
+    "INP": 368
+   }
+  },
+  {
+   "rep": 7,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 256,
+     "actionMs": 245,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24158,
+     "longTasks": 1,
+     "longTaskMs": 176,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 527,
+     "actionMs": 208,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6017,
+     "longTasks": 2,
+     "longTaskMs": 363,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 543,
+     "actionMs": 320,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3918,
+     "longTasks": 1,
+     "longTaskMs": 94,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 15
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 315,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 3,
+     "longTaskMs": 380,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 276,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 4,
+     "longTaskMs": 645,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 3
+    }
+   ],
+   "vitals": {
+    "FCP": 164,
+    "LCP": 216,
+    "CLS": 0.10821934000651041,
+    "TTFB": 32.100000001490116,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 7,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 477,
+     "actionMs": 197,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5121,
+     "longTasks": 2,
+     "longTaskMs": 312,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 169,
+     "actionMs": 160,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3720,
+     "longTasks": 1,
+     "longTaskMs": 112,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 419,
+     "actionMs": 252,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2927,
+     "longTasks": 5,
+     "longTaskMs": 639,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    }
+   ],
+   "vitals": {
+    "FCP": 176,
+    "LCP": 264,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 47.399999998509884,
+    "INP": 288
+   }
+  },
+  {
+   "rep": 7,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 558,
+     "actionMs": 215,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8393,
+     "longTasks": 2,
+     "longTaskMs": 274,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    }
+   ],
+   "vitals": {
+    "FCP": 332,
+    "LCP": 516,
+    "CLS": 0,
+    "TTFB": 53.399999998509884,
+    "INP": 320
+   }
+  },
+  {
+   "rep": 7,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 364,
+     "actionMs": 354,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5952,
+     "longTasks": 2,
+     "longTaskMs": 268,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 365,
+     "actionMs": 90,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 200556,
+     "longTasks": 2,
+     "longTaskMs": 276,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    }
+   ],
+   "vitals": {
+    "FCP": 356,
+    "LCP": 356,
+    "CLS": 0,
+    "TTFB": 15.299999997019768,
+    "INP": 256
+   }
+  },
+  {
+   "rep": 7,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 194,
+     "actionMs": 185,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6196,
+     "longTasks": 1,
+     "longTaskMs": 127,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    }
+   ],
+   "vitals": {
+    "FCP": 160,
+    "LCP": 228,
+    "CLS": 0.0000010182698567708334,
+    "TTFB": 36.80000000074506,
+    "INP": 128
+   }
+  },
+  {
+   "rep": 8,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 469,
+     "actionMs": 451,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 116673,
+     "longTasks": 2,
+     "longTaskMs": 355,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 383,
+     "actionMs": 229,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 302,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 16
+    }
+   ],
+   "vitals": {
+    "FCP": 232,
+    "LCP": 260,
+    "CLS": 0,
+    "TTFB": 15.899999998509884,
+    "INP": 240
+   }
+  },
+  {
+   "rep": 8,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 215,
+     "actionMs": 206,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24128,
+     "longTasks": 1,
+     "longTaskMs": 141,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 1325,
+     "actionMs": 1065,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6023,
+     "longTasks": 2,
+     "longTaskMs": 300,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 63
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 376,
+     "actionMs": 204,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3912,
+     "longTasks": 2,
+     "longTaskMs": 213,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 265,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 4,
+     "longTaskMs": 451,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 174,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 5,
+     "longTaskMs": 613,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 4
+    }
+   ],
+   "vitals": {
+    "FCP": 160,
+    "LCP": 224,
+    "CLS": 0.26229539455837675,
+    "TTFB": 30,
+    "INP": 248
+   }
+  },
+  {
+   "rep": 8,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 493,
+     "actionMs": 192,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5127,
+     "longTasks": 3,
+     "longTaskMs": 351,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 170,
+     "actionMs": 161,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3720,
+     "longTasks": 1,
+     "longTaskMs": 110,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 186,
+     "actionMs": 120,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2927,
+     "longTasks": 5,
+     "longTaskMs": 417,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 5
+    }
+   ],
+   "vitals": {
+    "FCP": 228,
+    "LCP": 228,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 47.5,
+    "INP": 272
+   }
+  },
+  {
+   "rep": 8,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 607,
+     "actionMs": 195,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8399,
+     "longTasks": 3,
+     "longTaskMs": 398,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    }
+   ],
+   "vitals": {
+    "FCP": 156,
+    "LCP": 212,
+    "CLS": 0,
+    "TTFB": 30.900000002235174,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 8,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 347,
+     "actionMs": 338,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5946,
+     "longTasks": 2,
+     "longTaskMs": 249,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 355,
+     "actionMs": 97,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 270929,
+     "longTasks": 2,
+     "longTaskMs": 262,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    }
+   ],
+   "vitals": {
+    "FCP": 508,
+    "LCP": 508,
+    "CLS": 0,
+    "TTFB": 21.899999998509884,
+    "INP": 248
+   }
+  },
+  {
+   "rep": 8,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 182,
+     "actionMs": 174,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6190,
+     "longTasks": 1,
+     "longTaskMs": 119,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    }
+   ],
+   "vitals": {
+    "FCP": 212,
+    "LCP": 212,
+    "CLS": 0,
+    "TTFB": 32.600000001490116,
+    "INP": 120
+   }
+  },
+  {
+   "rep": 9,
+   "sequence": "docs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/docs/how-kody-works",
+     "readyMs": 520,
+     "actionMs": 459,
+     "fullReload": false,
+     "requests": 6,
+     "bytes": 114531,
+     "longTasks": 2,
+     "longTaskMs": 387,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 16
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs/kody-factory",
+     "readyMs": 462,
+     "actionMs": 307,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 220254,
+     "longTasks": 2,
+     "longTaskMs": 383,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 17
+    }
+   ],
+   "vitals": {
+    "FCP": 188,
+    "LCP": 312,
+    "CLS": 0,
+    "TTFB": 16.899999998509884,
+    "INP": 368
+   }
+  },
+  {
+   "rep": 9,
+   "sequence": "jobs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 517,
+     "actionMs": 239,
+     "fullReload": false,
+     "requests": 22,
+     "bytes": 24146,
+     "longTasks": 3,
+     "longTaskMs": 405,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 10
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 470,
+     "actionMs": 204,
+     "fullReload": false,
+     "requests": 9,
+     "bytes": 6023,
+     "longTasks": 2,
+     "longTaskMs": 313,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 2,
+     "kind": "click",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-2",
+     "readyMs": 358,
+     "actionMs": 192,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3912,
+     "longTasks": 2,
+     "longTaskMs": 218,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    },
+    {
+     "index": 3,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "readyMs": 309,
+     "actionMs": 3,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1364,
+     "longTasks": 4,
+     "longTaskMs": 481,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 13
+    },
+    {
+     "index": 4,
+     "kind": "back",
+     "dest": "/@user-me/-/jobs",
+     "readyMs": 123,
+     "actionMs": 2,
+     "fullReload": false,
+     "requests": 2,
+     "bytes": 1358,
+     "longTasks": 5,
+     "longTaskMs": 596,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 4
+    }
+   ],
+   "vitals": {
+    "FCP": 176,
+    "LCP": 236,
+    "CLS": 0.26229539455837675,
+    "TTFB": 37.599999997764826,
+    "INP": 224
+   }
+  },
+  {
+   "rep": 9,
+   "sequence": "email",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "readyMs": 472,
+     "actionMs": 198,
+     "fullReload": false,
+     "requests": 7,
+     "bytes": 5133,
+     "longTasks": 3,
+     "longTaskMs": 361,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 12
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+     "readyMs": 180,
+     "actionMs": 169,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 3720,
+     "longTasks": 1,
+     "longTaskMs": 85,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 7
+    },
+    {
+     "index": 2,
+     "kind": "filter",
+     "dest": null,
+     "readyMs": 128,
+     "actionMs": 123,
+     "fullReload": false,
+     "requests": 3,
+     "bytes": 2927,
+     "longTasks": 3,
+     "longTaskMs": 229,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 3
+    }
+   ],
+   "vitals": {
+    "FCP": 192,
+    "LCP": 280,
+    "CLS": 0.00003788723415798611,
+    "TTFB": 57.80000000074506,
+    "INP": 296
+   }
+  },
+  {
+   "rep": 9,
+   "sequence": "credentials",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@user-me/-/credentials/b3cf6897-7cb2-49a5-b019-63ab6d376c56",
+     "readyMs": 660,
+     "actionMs": 253,
+     "fullReload": false,
+     "requests": 8,
+     "bytes": 8399,
+     "longTasks": 2,
+     "longTaskMs": 260,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 18
+    }
+   ],
+   "vitals": {
+    "FCP": 236,
+    "LCP": 236,
+    "CLS": 0,
+    "TTFB": 34.80000000074506,
+    "INP": 240
+   }
+  },
+  {
+   "rep": 9,
+   "sequence": "marketing",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/pricing",
+     "readyMs": 376,
+     "actionMs": 369,
+     "fullReload": false,
+     "requests": 4,
+     "bytes": 5946,
+     "longTasks": 2,
+     "longTaskMs": 270,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 8
+    },
+    {
+     "index": 1,
+     "kind": "click",
+     "dest": "/docs",
+     "readyMs": 390,
+     "actionMs": 113,
+     "fullReload": false,
+     "requests": 81,
+     "bytes": 252469,
+     "longTasks": 2,
+     "longTaskMs": 289,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 11
+    }
+   ],
+   "vitals": {
+    "FCP": 292,
+    "LCP": 620,
+    "CLS": 0,
+    "TTFB": 31.800000000745058,
+    "INP": 272
+   }
+  },
+  {
+   "rep": 9,
+   "sequence": "org-tabs",
+   "steps": [
+    {
+     "index": 0,
+     "kind": "click",
+     "dest": "/@bench-org/-/teams",
+     "readyMs": 183,
+     "actionMs": 177,
+     "fullReload": false,
+     "requests": 10,
+     "bytes": 6190,
+     "longTasks": 1,
+     "longTaskMs": 69,
+     "flashes": 0,
+     "flashMs": 0,
+     "frames": 9
+    }
+   ],
+   "vitals": {
+    "FCP": 228,
+    "LCP": 228,
+    "CLS": 0,
+    "TTFB": 35.5,
+    "INP": 136
+   }
+  }
+ ],
+ "failures": []
+}

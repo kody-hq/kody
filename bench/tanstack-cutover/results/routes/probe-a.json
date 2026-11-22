@@ -1,0 +1,210 @@
+{
+ "/": {
+  "status": 200,
+  "location": null,
+  "bytes": 218233,
+  "links": {
+   "docs": [
+    "/docs/connect-your-agent",
+    "/docs/how-kody-works"
+   ]
+  }
+ },
+ "/pricing": {
+  "status": 200,
+  "location": null,
+  "bytes": 150176,
+  "links": {
+   "docs": [
+    "/docs/kody-factory"
+   ]
+  }
+ },
+ "/docs": {
+  "status": 200,
+  "location": null,
+  "bytes": 188755,
+  "links": {
+   "docs": [
+    "/docs/search-and-execute",
+    "/docs/how-kody-works",
+    "/docs/kody-factory",
+    "/docs/connect-your-agent"
+   ]
+  }
+ },
+ "/blog": {
+  "status": 200,
+  "location": null,
+  "bytes": 145150,
+  "links": {
+   "blog": [
+    "/blog/rss.xml",
+    "/blog/early-kody-users",
+    "/blog/openclaw-2-needs-a-home",
+    "/blog/how-to-turn-agent-work-into-software-you-own"
+   ]
+  }
+ },
+ "/community": {
+  "status": 200,
+  "location": null,
+  "bytes": 151313,
+  "links": {
+   "community": [
+    "/community/bench-listing-1"
+   ]
+  }
+ },
+ "/@user-me": {
+  "status": 200,
+  "location": null,
+  "bytes": 173250,
+  "links": {}
+ },
+ "/community/bench-listing-1": {
+  "status": 200,
+  "location": null,
+  "bytes": 158685,
+  "links": {}
+ },
+ "/account": {
+  "status": 200,
+  "location": null,
+  "bytes": 179162,
+  "links": {}
+ },
+ "/@user-me/-/jobs": {
+  "status": 200,
+  "location": null,
+  "bytes": 207697,
+  "links": {
+   "docs": [
+    "/docs/how-kody-works"
+   ],
+   "jobs": [
+    "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+    "/@user-me/-/jobs/package-job%3Ac4803c1583c773004eaa35b1e21a80157d618ab43af23316b750f1cdd170e6eb%3Abench-job-10",
+    "/@user-me/-/jobs/package-job%3Ac4803c1583c773004eaa35b1e21a80157d618ab43af23316b750f1cdd170e6eb%3Abench-job-11",
+    "/@user-me/-/jobs/package-job%3Ac4803c1583c773004eaa35b1e21a80157d618ab43af23316b750f1cdd170e6eb%3Abench-job-12"
+   ],
+   "org": [
+    "/@bench-org/-/jobs"
+   ]
+  }
+ },
+ "/@user-me/-/email": {
+  "status": 200,
+  "location": null,
+  "bytes": 216835,
+  "links": {
+   "docs": [
+    "/docs/how-kody-works"
+   ],
+   "email": [
+    "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+    "/@user-me/-/email/email-inbound-message%3Ac8f530f4024a69bdd72c03388a8deace81c77662eba70099f1aeb14837f83de6",
+    "/@user-me/-/email/email-inbound-message%3Ad5dafe44ceccae9a5d5e86744467efa322adf2c78ba666443439681a4c628e04",
+    "/@user-me/-/email/email-inbound-message%3A7e1722978c238a80e0a7efce3c3177c48eee4d48a2ccaff2093eebb38ca0b4a5"
+   ],
+   "org": [
+    "/@bench-org/-/email"
+   ]
+  }
+ },
+ "/@user-me/-/credentials": {
+  "status": 200,
+  "location": null,
+  "bytes": 217299,
+  "links": {
+   "docs": [
+    "/docs/secrets",
+    "/docs/packages-integrations-mcp",
+    "/docs/credentials"
+   ],
+   "cred": [
+    "/@user-me/-/credentials/new",
+    "/@user-me/-/credentials/71ed6bf5-4f9c-47d5-aaf4-fd2570793100",
+    "/@user-me/-/credentials/e233c2d8-0f35-4b07-910a-cabbf3ca4bee",
+    "/@user-me/-/credentials/fcaa06cd-325c-4de0-8294-30640154883b"
+   ],
+   "org": [
+    "/@bench-org/-/credentials"
+   ]
+  }
+ },
+ "/@user-me/-/memories": {
+  "status": 200,
+  "location": null,
+  "bytes": 204475,
+  "links": {
+   "mem": [
+    "/@user-me/-/memories/e221e700-9a1b-4aeb-9f81-1ed5efe21a01",
+    "/@user-me/-/memories/cacee2ac-e015-4785-ac90-d5642b67c521",
+    "/@user-me/-/memories/c40b467a-0b30-4fed-ad42-3ee7341e79a1",
+    "/@user-me/-/memories/c1190980-45d4-4be8-a9db-e5b166fc818f"
+   ],
+   "org": [
+    "/@bench-org/-/memories"
+   ]
+  }
+ },
+ "/@bench-org/-/overview": {
+  "status": 302,
+  "location": "http://127.0.0.1:4101/@bench-org",
+  "bytes": 0,
+  "links": {}
+ },
+ "/@bench-org/-/members": {
+  "status": 200,
+  "location": null,
+  "bytes": 176300,
+  "links": {
+   "org": [
+    "/@bench-org/-/usage",
+    "/@bench-org/-/members",
+    "/@bench-org/-/repositories",
+    "/@bench-org/-/jobs"
+   ]
+  }
+ },
+ "/@bench-org/-/teams": {
+  "status": 200,
+  "location": null,
+  "bytes": 176367,
+  "links": {
+   "org": [
+    "/@bench-org/-/usage",
+    "/@bench-org/-/teams",
+    "/@bench-org/-/repositories",
+    "/@bench-org/-/jobs"
+   ]
+  }
+ },
+ "/@bench-org/-/settings": {
+  "status": 200,
+  "location": null,
+  "bytes": 174693,
+  "links": {
+   "org": [
+    "/@bench-org/-/usage",
+    "/@bench-org/-/settings",
+    "/@bench-org/-/repositories",
+    "/@bench-org/-/jobs"
+   ]
+  }
+ },
+ "/@bench-org/-/usage": {
+  "status": 200,
+  "location": null,
+  "bytes": 253553,
+  "links": {
+   "org": [
+    "/@bench-org/-/usage",
+    "/@bench-org/-/repositories",
+    "/@bench-org/-/jobs",
+    "/@bench-org/-/webhooks"
+   ]
+  }
+ }
+}

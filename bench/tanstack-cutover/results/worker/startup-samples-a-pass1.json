@@ -1,0 +1,104 @@
+{
+ "variant": "a",
+ "pass": "1",
+ "n": 5,
+ "targets": {
+  "origin": [
+   {
+    "attempt": 0,
+    "activeMs": 105.1,
+    "garbageCollectionMs": 3.3,
+    "idleMs": 311.7
+   },
+   {
+    "attempt": 1,
+    "activeMs": 105.6,
+    "garbageCollectionMs": 3.3,
+    "idleMs": 317
+   },
+   {
+    "attempt": 2,
+    "activeMs": 105.3,
+    "garbageCollectionMs": 4,
+    "idleMs": 299.9
+   },
+   {
+    "attempt": 3,
+    "activeMs": 109.7,
+    "garbageCollectionMs": 4.3,
+    "idleMs": 304.8
+   },
+   {
+    "attempt": 4,
+    "activeMs": 107.2,
+    "garbageCollectionMs": 6.6,
+    "idleMs": 318.1
+   }
+  ],
+  "platform": [
+   {
+    "attempt": 0,
+    "activeMs": 157,
+    "garbageCollectionMs": 6.1,
+    "idleMs": 169.8
+   },
+   {
+    "attempt": 1,
+    "activeMs": 135.4,
+    "garbageCollectionMs": 7.8,
+    "idleMs": 169.4
+   },
+   {
+    "attempt": 2,
+    "activeMs": 138.5,
+    "garbageCollectionMs": 4.8,
+    "idleMs": 170.1
+   },
+   {
+    "attempt": 3,
+    "activeMs": 137.8,
+    "garbageCollectionMs": 6.3,
+    "idleMs": 163.2
+   },
+   {
+    "attempt": 4,
+    "activeMs": 135.4,
+    "garbageCollectionMs": 4.7,
+    "idleMs": 165.8
+   }
+  ],
+  "runtime": [
+   {
+    "attempt": 0,
+    "activeMs": 78,
+    "garbageCollectionMs": 2.5,
+    "idleMs": 157.7
+   },
+   {
+    "attempt": 1,
+    "activeMs": 82.3,
+    "garbageCollectionMs": 7.5,
+    "idleMs": 143.2
+   },
+   {
+    "attempt": 2,
+    "activeMs": 77,
+    "garbageCollectionMs": 1.1,
+    "idleMs": 141.4
+   },
+   {
+    "attempt": 3,
+    "activeMs": 85.5,
+    "garbageCollectionMs": 5.5,
+    "idleMs": 141.8
+   },
+   {
+    "attempt": 4,
+    "activeMs": 76,
+    "garbageCollectionMs": 2.2,
+    "idleMs": 138.5
+   }
+  ]
+ },
+ "failures": []
+}

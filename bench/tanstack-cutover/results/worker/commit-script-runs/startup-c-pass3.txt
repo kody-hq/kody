@@ -1,0 +1,37 @@
+node:internal/errors:999
+  const err = new Error(message);
+              ^
+
+Error: Command failed: /home/ubuntu/bench/wt-c/node_modules/.bin/wrangler check startup --outfile /tmp/kody-startup-time-FPIo3O/origin-0.cpuprofile --config wrangler.json
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mWorker startup profiling timed out after 10 seconds.[0m
+
+
+🪵  Logs were written to "/home/ubuntu/.config/.wrangler/logs/wrangler-2026-11-22_16-11-36_361.log"
+
+    at genericNodeError (node:internal/errors:999:15)
+    at wrappedFn (node:internal/errors:544:14)
+    at ChildProcess.exithandler (node:child_process:420:12)
+    at ChildProcess.emit (node:events:514:20)
+    at maybeClose (node:internal/child_process:1156:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:334:5) {
+  code: 1,
+  killed: false,
+  signal: null,
+  cmd: '/home/ubuntu/bench/wt-c/node_modules/.bin/wrangler check startup --outfile /tmp/kody-startup-time-FPIo3O/origin-0.cpuprofile --config wrangler.json',
+  stdout: '\n' +
+    ' ⛅️ wrangler 4.147.0 (update available 4.166.0)\n' +
+    '───────────────────────────────────────────────\n' +
+    '├ Building your Worker\n' +
+    '│ Worker Built! 🎉\n' +
+    '│\n' +
+    '├ Analysing\n' +
+    '│ Startup phase analysed\n' +
+    '│\n' +
+    '\n',
+  stderr: '\x1B[31m✘ \x1B[41;31m[\x1B[41;97mERROR\x1B[41;31m]\x1B[0m \x1B[1mWorker startup profiling timed out after 10 seconds.\x1B[0m\n' +
+    '\n' +
+    '\n' +
+    '🪵  Logs were written to "/home/ubuntu/.config/.wrangler/logs/wrangler-2026-11-22_16-11-36_361.log"\n'
+}
+
+Node.js v26.13.1

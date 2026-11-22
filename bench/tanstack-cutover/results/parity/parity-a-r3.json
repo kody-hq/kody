@@ -1,0 +1,173 @@
+{
+ "variant": "a",
+ "counts": {
+  "jobLinks": 12,
+  "emails": 10,
+  "credentials": 12,
+  "memories": 15
+ },
+ "routes": [
+  {
+   "name": "home",
+   "path": "/",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/",
+   "h1": "The shared cloud for your team’s agents",
+   "htmlBytes": 195228
+  },
+  {
+   "name": "pricing",
+   "path": "/pricing",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/pricing",
+   "h1": "Start free. Pay when Kody earns it .",
+   "htmlBytes": 127144
+  },
+  {
+   "name": "docs",
+   "path": "/docs",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/docs",
+   "h1": "What is Kody?",
+   "htmlBytes": 165795
+  },
+  {
+   "name": "docs-deep",
+   "path": "/docs/how-kody-works",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/docs/how-kody-works",
+   "h1": "How Kody works",
+   "htmlBytes": 528540
+  },
+  {
+   "name": "blog",
+   "path": "/blog",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/blog",
+   "h1": "Notes from the eucalyptus",
+   "htmlBytes": 122110
+  },
+  {
+   "name": "blog-post",
+   "path": "/blog/early-kody-users",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/blog/early-kody-users",
+   "h1": "Case studies",
+   "htmlBytes": 128355
+  },
+  {
+   "name": "community",
+   "path": "/community",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/community",
+   "h1": "Take what others built. Make it yours.",
+   "htmlBytes": 128265
+  },
+  {
+   "name": "profile",
+   "path": "/@user-me",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/@user-me",
+   "h1": "user-me",
+   "htmlBytes": 128868
+  },
+  {
+   "name": "community-package",
+   "path": "/community/bench-listing-1",
+   "auth": false,
+   "status": 200,
+   "finalUrl": "/community/bench-listing-1",
+   "h1": "@unknown / local-seed-pkg-1",
+   "htmlBytes": 133251
+  },
+  {
+   "name": "account",
+   "path": "/account",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/account",
+   "h1": "Account settings",
+   "htmlBytes": 179170
+  },
+  {
+   "name": "jobs",
+   "path": "/@user-me/-/jobs",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/@user-me/-/jobs",
+   "h1": "Jobs",
+   "htmlBytes": 207731
+  },
+  {
+   "name": "job-detail",
+   "path": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+   "h1": "Jobs",
+   "htmlBytes": 224258
+  },
+  {
+   "name": "email",
+   "path": "/@user-me/-/email",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/@user-me/-/email",
+   "h1": "Email inbox",
+   "htmlBytes": 216847
+  },
+  {
+   "name": "email-message",
+   "path": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+   "h1": "Email inbox",
+   "htmlBytes": 234136
+  },
+  {
+   "name": "credentials",
+   "path": "/@user-me/-/credentials",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/@user-me/-/credentials",
+   "h1": "Credentials",
+   "htmlBytes": 217354
+  },
+  {
+   "name": "credential-detail",
+   "path": "/@user-me/-/credentials/71ed6bf5-4f9c-47d5-aaf4-fd2570793100",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/@user-me/-/credentials/71ed6bf5-4f9c-47d5-aaf4-fd2570793100",
+   "h1": "Credentials",
+   "htmlBytes": 226548
+  },
+  {
+   "name": "memories",
+   "path": "/@user-me/-/memories",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/@user-me/-/memories",
+   "h1": "Memories",
+   "htmlBytes": 204515
+  },
+  {
+   "name": "org-workspace",
+   "path": "/@bench-org/-/members",
+   "auth": true,
+   "status": 200,
+   "finalUrl": "/@bench-org/-/members",
+   "h1": "Members",
+   "htmlBytes": 176312
+  }
+ ]
+}

@@ -1,0 +1,255 @@
+{
+ "variant": "c",
+ "origin": "http://127.0.0.1:4103",
+ "cpu": 4,
+ "n": 5,
+ "browser": "156.0.8078.47",
+ "method": "Menu button aria-expanded click marker",
+ "routes": {
+  "home": {
+   "path": "/",
+   "auth": false,
+   "samples": [
+    {
+     "hydratedAtMs": 1286.5,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 664.43,
+     "scriptEvaluationMsUntilHydration": 216.741,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 147.831,
+     "ScriptDuration": 330.001,
+     "TaskDuration": 1170.044,
+     "timeOrigin": 1795379353791.7
+    },
+    {
+     "hydratedAtMs": 1183.7000000029802,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 908.863,
+     "scriptEvaluationMsUntilHydration": 266.667,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 188.652,
+     "ScriptDuration": 389.843,
+     "TaskDuration": 1243.213,
+     "timeOrigin": 1795379355523.1
+    },
+    {
+     "hydratedAtMs": 1147.0999999977648,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 771.242,
+     "scriptEvaluationMsUntilHydration": 199.801,
+     "longTasksBeforeHydration": 4,
+     "functionCallMsUntilHydration": 307.622,
+     "ScriptDuration": 301.699,
+     "TaskDuration": 1101.2869999999998,
+     "timeOrigin": 1795379357211.3
+    },
+    {
+     "hydratedAtMs": 1183.699999999255,
+     "markerClicks": 12,
+     "mainThreadTaskMsUntilHydration": 833.281,
+     "scriptEvaluationMsUntilHydration": 207.603,
+     "longTasksBeforeHydration": 4,
+     "functionCallMsUntilHydration": 335.422,
+     "ScriptDuration": 333.22400000000005,
+     "TaskDuration": 1145.45,
+     "timeOrigin": 1795379358802.7
+    },
+    {
+     "hydratedAtMs": 1105.5999999977648,
+     "markerClicks": 12,
+     "mainThreadTaskMsUntilHydration": 837.372,
+     "scriptEvaluationMsUntilHydration": 211.906,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 191.367,
+     "ScriptDuration": 327.57399999999996,
+     "TaskDuration": 1132.819,
+     "timeOrigin": 1795379360551.2
+    }
+   ]
+  },
+  "docs": {
+   "path": "/docs",
+   "auth": false,
+   "samples": [
+    {
+     "hydratedAtMs": 761.9000000022352,
+     "markerClicks": 11,
+     "mainThreadTaskMsUntilHydration": 682.5290000038146,
+     "scriptEvaluationMsUntilHydration": 248.712,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 204.083,
+     "ScriptDuration": 423.115,
+     "TaskDuration": 850.041,
+     "timeOrigin": 1795379362171.4
+    },
+    {
+     "hydratedAtMs": 736,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 606.805,
+     "scriptEvaluationMsUntilHydration": 223.616,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 170.155,
+     "ScriptDuration": 391.495,
+     "TaskDuration": 777.106,
+     "timeOrigin": 1795379363497.5
+    },
+    {
+     "hydratedAtMs": 720.1000000014901,
+     "markerClicks": 9,
+     "mainThreadTaskMsUntilHydration": 646.787,
+     "scriptEvaluationMsUntilHydration": 267.805,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 123.902,
+     "ScriptDuration": 405.703,
+     "TaskDuration": 795.461,
+     "timeOrigin": 1795379364732.6
+    },
+    {
+     "hydratedAtMs": 754.5999999977648,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 667.3749999961854,
+     "scriptEvaluationMsUntilHydration": 262.243,
+     "longTasksBeforeHydration": 5,
+     "functionCallMsUntilHydration": 134.665,
+     "ScriptDuration": 403.687,
+     "TaskDuration": 836.149,
+     "timeOrigin": 1795379365910.4
+    },
+    {
+     "hydratedAtMs": 779.1999999992549,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 643.553,
+     "scriptEvaluationMsUntilHydration": 225.739,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 195.963,
+     "ScriptDuration": 414.805,
+     "TaskDuration": 821.804,
+     "timeOrigin": 1795379367139.2
+    }
+   ]
+  },
+  "account": {
+   "path": "/account",
+   "auth": true,
+   "samples": [
+    {
+     "hydratedAtMs": 948.8000000007451,
+     "markerClicks": 11,
+     "mainThreadTaskMsUntilHydration": 762.915,
+     "scriptEvaluationMsUntilHydration": 307.018,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 202.035,
+     "ScriptDuration": 448.706,
+     "TaskDuration": 901.741,
+     "timeOrigin": 1795379368399.6
+    },
+    {
+     "hydratedAtMs": 742.2000000029802,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 627.7830000038147,
+     "scriptEvaluationMsUntilHydration": 237,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 147.788,
+     "ScriptDuration": 402.243,
+     "TaskDuration": 778.5419999999999,
+     "timeOrigin": 1795379369784.6
+    },
+    {
+     "hydratedAtMs": 735.6000000014901,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 609.454,
+     "scriptEvaluationMsUntilHydration": 215.65,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 127.496,
+     "ScriptDuration": 361.236,
+     "TaskDuration": 746.225,
+     "timeOrigin": 1795379370954.1
+    },
+    {
+     "hydratedAtMs": 803.5,
+     "markerClicks": 11,
+     "mainThreadTaskMsUntilHydration": 651.273,
+     "scriptEvaluationMsUntilHydration": 262.891,
+     "longTasksBeforeHydration": 2,
+     "functionCallMsUntilHydration": 158.44,
+     "ScriptDuration": 383.753,
+     "TaskDuration": 775.547,
+     "timeOrigin": 1795379372115.9
+    },
+    {
+     "hydratedAtMs": 768.4000000022352,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 686.6640000038147,
+     "scriptEvaluationMsUntilHydration": 217.674,
+     "longTasksBeforeHydration": 5,
+     "functionCallMsUntilHydration": 170.853,
+     "ScriptDuration": 354.705,
+     "TaskDuration": 805.508,
+     "timeOrigin": 1795379373292.9
+    }
+   ]
+  },
+  "jobs": {
+   "path": "/@user-me/-/jobs",
+   "auth": true,
+   "samples": [
+    {
+     "hydratedAtMs": 826.8000000007451,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 599.343,
+     "scriptEvaluationMsUntilHydration": 228.474,
+     "longTasksBeforeHydration": 2,
+     "functionCallMsUntilHydration": 223.849,
+     "ScriptDuration": 406.835,
+     "TaskDuration": 822.959,
+     "timeOrigin": 1795379374462.9
+    },
+    {
+     "hydratedAtMs": 1009.1000000014901,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 776.728,
+     "scriptEvaluationMsUntilHydration": 337.008,
+     "longTasksBeforeHydration": 3,
+     "functionCallMsUntilHydration": 181.757,
+     "ScriptDuration": 450.347,
+     "TaskDuration": 1051.116,
+     "timeOrigin": 1795379375753.7
+    },
+    {
+     "hydratedAtMs": 728.0999999977648,
+     "markerClicks": 9,
+     "mainThreadTaskMsUntilHydration": 508.803,
+     "scriptEvaluationMsUntilHydration": 185.149,
+     "longTasksBeforeHydration": 2,
+     "functionCallMsUntilHydration": 186.312,
+     "ScriptDuration": 352.381,
+     "TaskDuration": 779.715,
+     "timeOrigin": 1795379377187.9
+    },
+    {
+     "hydratedAtMs": 733.5,
+     "markerClicks": 10,
+     "mainThreadTaskMsUntilHydration": 518.217,
+     "scriptEvaluationMsUntilHydration": 210.703,
+     "longTasksBeforeHydration": 2,
+     "functionCallMsUntilHydration": 175.072,
+     "ScriptDuration": 348.983,
+     "TaskDuration": 725.067,
+     "timeOrigin": 1795379378355.7
+    },
+    {
+     "hydratedAtMs": 862.3000000007451,
+     "markerClicks": 12,
+     "mainThreadTaskMsUntilHydration": 507.364,
+     "scriptEvaluationMsUntilHydration": 213.923,
+     "longTasksBeforeHydration": 2,
+     "functionCallMsUntilHydration": 162.169,
+     "ScriptDuration": 365.3,
+     "TaskDuration": 856.764,
+     "timeOrigin": 1795379379455.6
+    }
+   ]
+  }
+ },
+ "failures": []
+}

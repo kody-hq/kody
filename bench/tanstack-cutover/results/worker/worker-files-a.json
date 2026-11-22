@@ -1,0 +1,1720 @@
+{
+ "variant": "a",
+ "files": [
+  {
+   "file": "origin/client/assets/account-area-BlvsM0xO.js",
+   "raw": 479574,
+   "gzip": 127552
+  },
+  {
+   "file": "origin/client/assets/account-management-components-CYqCuo_K.js",
+   "raw": 24947,
+   "gzip": 8264
+  },
+  {
+   "file": "origin/client/assets/account-usage-where-it-went-BnQF8lTW.js",
+   "raw": 3835,
+   "gzip": 1689
+  },
+  {
+   "file": "origin/client/assets/admin-area-BJIRx0OF.js",
+   "raw": 152998,
+   "gzip": 39105
+  },
+  {
+   "file": "origin/client/assets/area-chart-BWPsqfSq.js",
+   "raw": 13095,
+   "gzip": 5004
+  },
+  {
+   "file": "origin/client/assets/auth-area-CCy65Gge.js",
+   "raw": 36302,
+   "gzip": 11272
+  },
+  {
+   "file": "origin/client/assets/auth-links-D83pUdWV.js",
+   "raw": 147,
+   "gzip": 155
+  },
+  {
+   "file": "origin/client/assets/blog-area-Cm_3cNFh.js",
+   "raw": 38039,
+   "gzip": 12190
+  },
+  {
+   "file": "origin/client/assets/blog-post-path-C5VMWXRS.js",
+   "raw": 8876,
+   "gzip": 3161
+  },
+  {
+   "file": "origin/client/assets/community-area-Dha66GFi.js",
+   "raw": 94297,
+   "gzip": 27614
+  },
+  {
+   "file": "origin/client/assets/community-detail-shared-B6bQ_4oR.js",
+   "raw": 5664,
+   "gzip": 2124
+  },
+  {
+   "file": "origin/client/assets/copy-code-block-T1AkF-NP.js",
+   "raw": 2003,
+   "gzip": 1042
+  },
+  {
+   "file": "origin/client/assets/credit-amount-input-DowdeQLt.js",
+   "raw": 9468,
+   "gzip": 3558
+  },
+  {
+   "file": "origin/client/assets/double-check-D3mCb0al.js",
+   "raw": 493,
+   "gzip": 352
+  },
+  {
+   "file": "origin/client/assets/entry-DGfYmtFM.js",
+   "raw": 209576,
+   "gzip": 63495
+  },
+  {
+   "file": "origin/client/assets/error-agent-prompt-button-CgQf_vh5.js",
+   "raw": 2949,
+   "gzip": 1409
+  },
+  {
+   "file": "origin/client/assets/esbuild-eina1h7z.wasm",
+   "raw": 13940120,
+   "gzip": 3744856
+  },
+  {
+   "file": "origin/client/assets/esm-CVed1Whg.js",
+   "raw": 12415,
+   "gzip": 4359
+  },
+  {
+   "file": "origin/client/assets/fathom-events-DMqEF9sK.js",
+   "raw": 1205,
+   "gzip": 570
+  },
+  {
+   "file": "origin/client/assets/feature-flags-72TAiFEk.js",
+   "raw": 926,
+   "gzip": 548
+  },
+  {
+   "file": "origin/client/assets/first-touch-attribution-DkZ2pgUD.js",
+   "raw": 1980,
+   "gzip": 743
+  },
+  {
+   "file": "origin/client/assets/first-touch-attribution-Dxkah02J.js",
+   "raw": 4717,
+   "gzip": 2036
+  },
+  {
+   "file": "origin/client/assets/follows-shared-9sA3mxoF.js",
+   "raw": 5867,
+   "gzip": 2429
+  },
+  {
+   "file": "origin/client/assets/handle-field-DW5WWO8P.js",
+   "raw": 2315,
+   "gzip": 1050
+  },
+  {
+   "file": "origin/client/assets/honeypot-field-CSmwf38N.js",
+   "raw": 2867,
+   "gzip": 1340
+  },
+  {
+   "file": "origin/client/assets/how-kody-works-transcript-B2Nm4ewz.js",
+   "raw": 20705,
+   "gzip": 6114
+  },
+  {
+   "file": "origin/client/assets/identity-icon-mark-BtOfn3XB.js",
+   "raw": 1285,
+   "gzip": 738
+  },
+  {
+   "file": "origin/client/assets/index_bg-Blvrv-U2.wasm",
+   "raw": 2478606,
+   "gzip": 957677
+  },
+  {
+   "file": "origin/client/assets/interactive-guide-transcript-BqkIHVrQ.js",
+   "raw": 1353,
+   "gzip": 658
+  },
+  {
+   "file": "origin/client/assets/interactive-guide-walkthrough-CgQ00GqP.js",
+   "raw": 9038,
+   "gzip": 3125
+  },
+  {
+   "file": "origin/client/assets/landing-images-Byb_fN9l.js",
+   "raw": 723,
+   "gzip": 405
+  },
+  {
+   "file": "origin/client/assets/list-detail-route-eZhrBCL-.js",
+   "raw": 977,
+   "gzip": 500
+  },
+  {
+   "file": "origin/client/assets/login-shared-C834rgNV.js",
+   "raw": 1828,
+   "gzip": 972
+  },
+  {
+   "file": "origin/client/assets/markdown-view-wRcT5mqL.js",
+   "raw": 61983,
+   "gzip": 19204
+  },
+  {
+   "file": "origin/client/assets/marketing-area-Du8qRFgs.js",
+   "raw": 351029,
+   "gzip": 90114
+  },
+  {
+   "file": "origin/client/assets/mcp-oauth-popup-CfZKuf0x.js",
+   "raw": 64064,
+   "gzip": 18658
+  },
+  {
+   "file": "origin/client/assets/not-found-page-BCxCDrOK.js",
+   "raw": 1800,
+   "gzip": 1027
+  },
+  {
+   "file": "origin/client/assets/oauth-login-errors-CmjACawX.js",
+   "raw": 1280,
+   "gzip": 627
+  },
+  {
+   "file": "origin/client/assets/onboarding-area-Bru5QjjM.js",
+   "raw": 107954,
+   "gzip": 30674
+  },
+  {
+   "file": "origin/client/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+   "raw": 6744,
+   "gzip": 2567
+  },
+  {
+   "file": "origin/client/assets/package-files-area-IWaTx6mb.js",
+   "raw": 16360,
+   "gzip": 5400
+  },
+  {
+   "file": "origin/client/assets/package-repo-nav-U3Vh3QON.js",
+   "raw": 37547,
+   "gzip": 10539
+  },
+  {
+   "file": "origin/client/assets/password-reveal-input-Bf5pvFcf.js",
+   "raw": 1293,
+   "gzip": 807
+  },
+  {
+   "file": "origin/client/assets/permissions-CGhJjX6f.js",
+   "raw": 394,
+   "gzip": 288
+  },
+  {
+   "file": "origin/client/assets/primitive-cards-BbV5Gvy5.js",
+   "raw": 27065,
+   "gzip": 10113
+  },
+  {
+   "file": "origin/client/assets/public-signup-copy-_IfNy7mA.js",
+   "raw": 203,
+   "gzip": 196
+  },
+  {
+   "file": "origin/client/assets/record-table-search-sync-DUGW_EOt.js",
+   "raw": 487,
+   "gzip": 224
+  },
+  {
+   "file": "origin/client/assets/replace-location-CONgH7Fn.js",
+   "raw": 1531,
+   "gzip": 720
+  },
+  {
+   "file": "origin/client/assets/route-data-t12w63KN.js",
+   "raw": 253528,
+   "gzip": 74504
+  },
+  {
+   "file": "origin/client/assets/safe-redirect-CvjsL9T2.js",
+   "raw": 8749,
+   "gzip": 3095
+  },
+  {
+   "file": "origin/client/assets/search-filter-BfL6UgI3.js",
+   "raw": 272,
+   "gzip": 222
+  },
+  {
+   "file": "origin/client/assets/sentry-init-uexVtjHD.js",
+   "raw": 219845,
+   "gzip": 70568
+  },
+  {
+   "file": "origin/client/assets/session-storage-access-AUV4JZy3.js",
+   "raw": 735,
+   "gzip": 443
+  },
+  {
+   "file": "origin/client/assets/social-sign-in-C4ZY_wxe.js",
+   "raw": 18280,
+   "gzip": 7457
+  },
+  {
+   "file": "origin/client/assets/switcher-menu-CH7JxQwd.js",
+   "raw": 16253,
+   "gzip": 5943
+  },
+  {
+   "file": "origin/client/assets/syntax-highlight-BmjAnbW0.js",
+   "raw": 901,
+   "gzip": 549
+  },
+  {
+   "file": "origin/client/assets/toast-T6WyCBUm.js",
+   "raw": 25547,
+   "gzip": 8039
+  },
+  {
+   "file": "origin/client/assets/yoga-sbSbVeWy.wasm",
+   "raw": 71736,
+   "gzip": 28818
+  },
+  {
+   "file": "origin/client/assets/youtube-light-player-D-Vm756N.js",
+   "raw": 1868,
+   "gzip": 954
+  },
+  {
+   "file": "origin/client/page-init.js",
+   "raw": 810,
+   "gzip": 486
+  },
+  {
+   "file": "origin/ssr/__fullstack_assets_manifest.js",
+   "raw": 17010,
+   "gzip": 1506
+  },
+  {
+   "file": "origin/ssr/assets/access-control--nG_sp0r.js",
+   "raw": 70444,
+   "gzip": 18721
+  },
+  {
+   "file": "origin/ssr/assets/account-activity-filters-BXEczFEF.js",
+   "raw": 5022,
+   "gzip": 1379
+  },
+  {
+   "file": "origin/ssr/assets/account-area-BwsJqqpJ.js",
+   "raw": 1049069,
+   "gzip": 210460
+  },
+  {
+   "file": "origin/ssr/assets/account-management-components-CDRDR-xf.js",
+   "raw": 44572,
+   "gzip": 12697
+  },
+  {
+   "file": "origin/ssr/assets/account-secret-route-DTpyOR96.js",
+   "raw": 4101,
+   "gzip": 1250
+  },
+  {
+   "file": "origin/ssr/assets/account-usage-where-it-went-DI36I0rT.js",
+   "raw": 7398,
+   "gzip": 2528
+  },
+  {
+   "file": "origin/ssr/assets/address-BiVdDSH2.js",
+   "raw": 1583,
+   "gzip": 729
+  },
+  {
+   "file": "origin/ssr/assets/admin-area-DmrKw4jt.js",
+   "raw": 300539,
+   "gzip": 56615
+  },
+  {
+   "file": "origin/ssr/assets/admin-shared-SdxZaYGv.js",
+   "raw": 8415,
+   "gzip": 3000
+  },
+  {
+   "file": "origin/ssr/assets/agent-credential-proposals-B8kn7C8k.js",
+   "raw": 63169,
+   "gzip": 16263
+  },
+  {
+   "file": "origin/ssr/assets/apply-destination-approval-D_ugCwwF.js",
+   "raw": 77647,
+   "gzip": 17199
+  },
+  {
+   "file": "origin/ssr/assets/approval-bundles-CegDQFjW.js",
+   "raw": 4577,
+   "gzip": 1757
+  },
+  {
+   "file": "origin/ssr/assets/area-chart-Bq2QomfV.js",
+   "raw": 28848,
+   "gzip": 9085
+  },
+  {
+   "file": "origin/ssr/assets/auth-area-CaTR30BK.js",
+   "raw": 71667,
+   "gzip": 16359
+  },
+  {
+   "file": "origin/ssr/assets/auth-links-CMjx_DUZ.js",
+   "raw": 284,
+   "gzip": 226
+  },
+  {
+   "file": "origin/ssr/assets/authenticate-FKYx9aj9.js",
+   "raw": 23171,
+   "gzip": 6753
+  },
+  {
+   "file": "origin/ssr/assets/authorize-CDeQst4f.js",
+   "raw": 148490,
+   "gzip": 40553
+  },
+  {
+   "file": "origin/ssr/assets/authorize-consent-Ck3_UVEk.js",
+   "raw": 2195,
+   "gzip": 999
+  },
+  {
+   "file": "origin/ssr/assets/authorize-integration-D5nCW2Km.js",
+   "raw": 2202,
+   "gzip": 814
+  },
+  {
+   "file": "origin/ssr/assets/automation-DuK5ijSc.js",
+   "raw": 87491,
+   "gzip": 24773
+  },
+  {
+   "file": "origin/ssr/assets/base64-BGGm7eIe.js",
+   "raw": 910,
+   "gzip": 427
+  },
+  {
+   "file": "origin/ssr/assets/blog-area-hg08Jand.js",
+   "raw": 53903,
+   "gzip": 13581
+  },
+  {
+   "file": "origin/ssr/assets/chat-BzhNayIj.js",
+   "raw": 17740,
+   "gzip": 4344
+  },
+  {
+   "file": "origin/ssr/assets/cli-credential-bootstrap-BNSiQG6_.js",
+   "raw": 16491,
+   "gzip": 4933
+  },
+  {
+   "file": "origin/ssr/assets/clipboard-BUlwsbgM.js",
+   "raw": 2725,
+   "gzip": 1028
+  },
+  {
+   "file": "origin/ssr/assets/codemode-normalize-Dil8UC10.js",
+   "raw": 141947,
+   "gzip": 38038
+  },
+  {
+   "file": "origin/ssr/assets/community-area-Bw1F8KaJ.js",
+   "raw": 185166,
+   "gzip": 42305
+  },
+  {
+   "file": "origin/ssr/assets/community-categories-C4jJqvSF.js",
+   "raw": 119443,
+   "gzip": 30317
+  },
+  {
+   "file": "origin/ssr/assets/community-detail-shared-BAD1qVcq.js",
+   "raw": 12838,
+   "gzip": 3941
+  },
+  {
+   "file": "origin/ssr/assets/community-fork-adoption-DetpMyt1.js",
+   "raw": 495,
+   "gzip": 278
+  },
+  {
+   "file": "origin/ssr/assets/community-install-controller-5ZhE8VW2.js",
+   "raw": 63743,
+   "gzip": 14344
+  },
+  {
+   "file": "origin/ssr/assets/community-search-QsTPq-H8.js",
+   "raw": 1295,
+   "gzip": 561
+  },
+  {
+   "file": "origin/ssr/assets/compat-cC4X70-t.js",
+   "raw": 763,
+   "gzip": 415
+  },
+  {
+   "file": "origin/ssr/assets/connect-oauth-whats-next-BUAXtX2F.js",
+   "raw": 2436,
+   "gzip": 1115
+  },
+  {
+   "file": "origin/ssr/assets/connection-usage-BuglADN4.js",
+   "raw": 2715,
+   "gzip": 1100
+  },
+  {
+   "file": "origin/ssr/assets/content-warning-DeU7wklL.js",
+   "raw": 447560,
+   "gzip": 102652
+  },
+  {
+   "file": "origin/ssr/assets/copy-code-block-VXaJ6kx2.js",
+   "raw": 3832,
+   "gzip": 1591
+  },
+  {
+   "file": "origin/ssr/assets/credential-ids--G409Wvy.js",
+   "raw": 5380,
+   "gzip": 2004
+  },
+  {
+   "file": "origin/ssr/assets/credentials-list-kOPQ0Mmz.js",
+   "raw": 3602,
+   "gzip": 1331
+  },
+  {
+   "file": "origin/ssr/assets/credit-amount-input-u-f0Bcmt.js",
+   "raw": 17368,
+   "gzip": 5363
+  },
+  {
+   "file": "origin/ssr/assets/credit-attribution-BbM7MT1H.js",
+   "raw": 6389,
+   "gzip": 2061
+  },
+  {
+   "file": "origin/ssr/assets/data-targets-Dw6-4tp1.js",
+   "raw": 28472,
+   "gzip": 5667
+  },
+  {
+   "file": "origin/ssr/assets/define-capability-BtPlqntK.js",
+   "raw": 29158,
+   "gzip": 8146
+  },
+  {
+   "file": "origin/ssr/assets/define-domain-capability-B1sAUdlx.js",
+   "raw": 416,
+   "gzip": 257
+  },
+  {
+   "file": "origin/ssr/assets/derive-waiting-DxKquBeq.js",
+   "raw": 37705,
+   "gzip": 11040
+  },
+  {
+   "file": "origin/ssr/assets/destination-verification-D8B29Ivx.js",
+   "raw": 14666,
+   "gzip": 3475
+  },
+  {
+   "file": "origin/ssr/assets/dispatch-queue-producer-DHTK294L.js",
+   "raw": 315,
+   "gzip": 217
+  },
+  {
+   "file": "origin/ssr/assets/dist-Dor54fLg.js",
+   "raw": 5517,
+   "gzip": 1854
+  },
+  {
+   "file": "origin/ssr/assets/dist-kE-jqph_.js",
+   "raw": 574793,
+   "gzip": 139169
+  },
+  {
+   "file": "origin/ssr/assets/docs-nav-BJgDbgKl.js",
+   "raw": 10477,
+   "gzip": 3462
+  },
+  {
+   "file": "origin/ssr/assets/document-sections-B4l9cp07.js",
+   "raw": 10918,
+   "gzip": 3367
+  },
+  {
+   "file": "origin/ssr/assets/domain-5wiQRRvA.js",
+   "raw": 10254,
+   "gzip": 3339
+  },
+  {
+   "file": "origin/ssr/assets/domain-9jDGl_kb.js",
+   "raw": 29104,
+   "gzip": 6029
+  },
+  {
+   "file": "origin/ssr/assets/domain-BPCM7eU8.js",
+   "raw": 32512,
+   "gzip": 8188
+  },
+  {
+   "file": "origin/ssr/assets/domain-BXMH02Uc.js",
+   "raw": 21276,
+   "gzip": 5195
+  },
+  {
+   "file": "origin/ssr/assets/domain-BY4fi4H4.js",
+   "raw": 5872,
+   "gzip": 1858
+  },
+  {
+   "file": "origin/ssr/assets/domain-Bc265EFY.js",
+   "raw": 19357,
+   "gzip": 5390
+  },
+  {
+   "file": "origin/ssr/assets/domain-BhutK1Rq.js",
+   "raw": 6691,
+   "gzip": 1910
+  },
+  {
+   "file": "origin/ssr/assets/domain-BvO6eYHY.js",
+   "raw": 152125,
+   "gzip": 38102
+  },
+  {
+   "file": "origin/ssr/assets/domain-Bztj4Jpu.js",
+   "raw": 17379,
+   "gzip": 4032
+  },
+  {
+   "file": "origin/ssr/assets/domain-D3JWCplM.js",
+   "raw": 5256,
+   "gzip": 2173
+  },
+  {
+   "file": "origin/ssr/assets/domain-D9h4CaB1.js",
+   "raw": 63435,
+   "gzip": 16089
+  },
+  {
+   "file": "origin/ssr/assets/domain-DJWwUHUC.js",
+   "raw": 391910,
+   "gzip": 90931
+  },
+  {
+   "file": "origin/ssr/assets/domain-DPClqTsJ.js",
+   "raw": 30945,
+   "gzip": 7321
+  },
+  {
+   "file": "origin/ssr/assets/domain-DUk2nCzk.js",
+   "raw": 17071,
+   "gzip": 3825
+  },
+  {
+   "file": "origin/ssr/assets/domain-DigjPZ37.js",
+   "raw": 64670,
+   "gzip": 14793
+  },
+  {
+   "file": "origin/ssr/assets/domain-Gsuxd14D.js",
+   "raw": 12330,
+   "gzip": 3356
+  },
+  {
+   "file": "origin/ssr/assets/domain-GyWr4Erq.js",
+   "raw": 16088,
+   "gzip": 3541
+  },
+  {
+   "file": "origin/ssr/assets/domain-metadata-B5y6UhUn.js",
+   "raw": 682,
+   "gzip": 383
+  },
+  {
+   "file": "origin/ssr/assets/domain-tfDcDUOc.js",
+   "raw": 95715,
+   "gzip": 21002
+  },
+  {
+   "file": "origin/ssr/assets/domain-twBJ0oG3.js",
+   "raw": 22553,
+   "gzip": 6456
+  },
+  {
+   "file": "origin/ssr/assets/double-check-DbraFKs5.js",
+   "raw": 1159,
+   "gzip": 515
+  },
+  {
+   "file": "origin/ssr/assets/durable-object-duration-CtpgxlEy.js",
+   "raw": 7934,
+   "gzip": 2749
+  },
+  {
+   "file": "origin/ssr/assets/email-destination-shared-e69i6sSS.js",
+   "raw": 1048,
+   "gzip": 501
+  },
+  {
+   "file": "origin/ssr/assets/email-verification-delivery-WfIyMDxu.js",
+   "raw": 5582,
+   "gzip": 1607
+  },
+  {
+   "file": "origin/ssr/assets/enablement-agent-hints-NUNdVbQl.js",
+   "raw": 4897,
+   "gzip": 1353
+  },
+  {
+   "file": "origin/ssr/assets/entitlement-consumption-DgdTMaKU.js",
+   "raw": 2160,
+   "gzip": 983
+  },
+  {
+   "file": "origin/ssr/assets/error-agent-prompt-button-NDTtFJU-.js",
+   "raw": 1395,
+   "gzip": 716
+  },
+  {
+   "file": "origin/ssr/assets/error-agent-prompt-presets-Bo9064HN.js",
+   "raw": 12497,
+   "gzip": 3803
+  },
+  {
+   "file": "origin/ssr/assets/error-agent-prompt-qrMPaq2j.js",
+   "raw": 6458,
+   "gzip": 2471
+  },
+  {
+   "file": "origin/ssr/assets/esbuild-eina1h7z.wasm",
+   "raw": 13940120,
+   "gzip": 3744856
+  },
+  {
+   "file": "origin/ssr/assets/esm-l5pSw1f4.js",
+   "raw": 27207,
+   "gzip": 7522
+  },
+  {
+   "file": "origin/ssr/assets/execute-health-heartbeat-BRhelEVt.js",
+   "raw": 520455,
+   "gzip": 109334
+  },
+  {
+   "file": "origin/ssr/assets/export-96Vkg9QM.js",
+   "raw": 64779,
+   "gzip": 15746
+  },
+  {
+   "file": "origin/ssr/assets/fathom-events-DgSn8qME.js",
+   "raw": 3465,
+   "gzip": 1297
+  },
+  {
+   "file": "origin/ssr/assets/feature-flags-cU3l17OX.js",
+   "raw": 2446,
+   "gzip": 1164
+  },
+  {
+   "file": "origin/ssr/assets/fetch-gateway-BB9qX81z.js",
+   "raw": 794498,
+   "gzip": 201368
+  },
+  {
+   "file": "origin/ssr/assets/file-anchor-BNSnEIg7.js",
+   "raw": 3870,
+   "gzip": 1457
+  },
+  {
+   "file": "origin/ssr/assets/first-touch-attribution-BX_0NgtO.js",
+   "raw": 9169,
+   "gzip": 3173
+  },
+  {
+   "file": "origin/ssr/assets/first-touch-attribution-CiUbGmYn.js",
+   "raw": 5217,
+   "gzip": 1511
+  },
+  {
+   "file": "origin/ssr/assets/follows-BiL92eze.js",
+   "raw": 2655,
+   "gzip": 1088
+  },
+  {
+   "file": "origin/ssr/assets/follows-shared-BnuVdDuI.js",
+   "raw": 10479,
+   "gzip": 3513
+  },
+  {
+   "file": "origin/ssr/assets/fork-listing-relation-B-IGcEYw.js",
+   "raw": 7711,
+   "gzip": 2605
+  },
+  {
+   "file": "origin/ssr/assets/google-oauth-transcript-BPHbSbs1.js",
+   "raw": 18848,
+   "gzip": 6422
+  },
+  {
+   "file": "origin/ssr/assets/guide-catalog-DvKbCQtO.js",
+   "raw": 623881,
+   "gzip": 188660
+  },
+  {
+   "file": "origin/ssr/assets/handle-field-pPSy66ke.js",
+   "raw": 810,
+   "gzip": 479
+  },
+  {
+   "file": "origin/ssr/assets/handle-permanence-CVBJf841.js",
+   "raw": 849,
+   "gzip": 423
+  },
+  {
+   "file": "origin/ssr/assets/handle-rules-Brd7OhOt.js",
+   "raw": 4683,
+   "gzip": 1765
+  },
+  {
+   "file": "origin/ssr/assets/highlighted-code-B2HhOahu.js",
+   "raw": 835,
+   "gzip": 488
+  },
+  {
+   "file": "origin/ssr/assets/home-og-variants-CLFILX1v.js",
+   "raw": 18630,
+   "gzip": 5827
+  },
+  {
+   "file": "origin/ssr/assets/honeypot-field-DZ3PABmA.js",
+   "raw": 7423,
+   "gzip": 2641
+  },
+  {
+   "file": "origin/ssr/assets/how-kody-works-transcript-C1G7L9-5.js",
+   "raw": 26963,
+   "gzip": 6742
+  },
+  {
+   "file": "origin/ssr/assets/how-kody-works-transcript-D7k4ilDD.js",
+   "raw": 812,
+   "gzip": 370
+  },
+  {
+   "file": "origin/ssr/assets/http-handler-XFtV-MQK.js",
+   "raw": 30768,
+   "gzip": 9459
+  },
+  {
+   "file": "origin/ssr/assets/icon-Bz0jSJy9.js",
+   "raw": 85397,
+   "gzip": 19233
+  },
+  {
+   "file": "origin/ssr/assets/identity-icon-leaf-DE8MDAof.js",
+   "raw": 691,
+   "gzip": 376
+  },
+  {
+   "file": "origin/ssr/assets/identity-icon-mark-BFcQ1i1H.js",
+   "raw": 2552,
+   "gzip": 1147
+  },
+  {
+   "file": "origin/ssr/assets/identity-icon-urls-FAGgSt03.js",
+   "raw": 976,
+   "gzip": 394
+  },
+  {
+   "file": "origin/ssr/assets/inbound-mcp-connection-last-used-sxuNw-R2.js",
+   "raw": 1409,
+   "gzip": 507
+  },
+  {
+   "file": "origin/ssr/assets/index_bg-Blvrv-U2.wasm",
+   "raw": 2478606,
+   "gzip": 957677
+  },
+  {
+   "file": "origin/ssr/assets/inspect-DJLwWht3.js",
+   "raw": 3343,
+   "gzip": 1177
+  },
+  {
+   "file": "origin/ssr/assets/inspect-published-source-dvXSXlCm.js",
+   "raw": 2846,
+   "gzip": 1060
+  },
+  {
+   "file": "origin/ssr/assets/interactive-guide-transcript-RiEpUmm-.js",
+   "raw": 2576,
+   "gzip": 922
+  },
+  {
+   "file": "origin/ssr/assets/interactive-guide-walkthrough-DhJB3xPC.js",
+   "raw": 16335,
+   "gzip": 4263
+  },
+  {
+   "file": "origin/ssr/assets/invoke-BVr5CyBO.js",
+   "raw": 98276,
+   "gzip": 24912
+  },
+  {
+   "file": "origin/ssr/assets/is-record-CDA4ERNq.js",
+   "raw": 85440,
+   "gzip": 24303
+  },
+  {
+   "file": "origin/ssr/assets/iso-DwWLPKNZ.js",
+   "raw": 388,
+   "gzip": 247
+  },
+  {
+   "file": "origin/ssr/assets/isomorphic-git-BTWZP04b.js",
+   "raw": 348711,
+   "gzip": 91302
+  },
+  {
+   "file": "origin/ssr/assets/jobs-data-Ps51oN7L.js",
+   "raw": 24245,
+   "gzip": 5851
+  },
+  {
+   "file": "origin/ssr/assets/landing-home-copy-BD_2D-We.js",
+   "raw": 4040,
+   "gzip": 1562
+  },
+  {
+   "file": "origin/ssr/assets/landing-images-CZAEMIdg.js",
+   "raw": 1324,
+   "gzip": 674
+  },
+  {
+   "file": "origin/ssr/assets/list-detail-route-o7CzE6bv.js",
+   "raw": 2081,
+   "gzip": 735
+  },
+  {
+   "file": "origin/ssr/assets/loader-data-CQz79U6R.js",
+   "raw": 106046,
+   "gzip": 29410
+  },
+  {
+   "file": "origin/ssr/assets/local-execute-runtime-support-CVLmLEDJ.js",
+   "raw": 401982,
+   "gzip": 93998
+  },
+  {
+   "file": "origin/ssr/assets/login-shared-D4LOVqGX.js",
+   "raw": 4559,
+   "gzip": 1866
+  },
+  {
+   "file": "origin/ssr/assets/manager-client-CFrIeaey.js",
+   "raw": 3395,
+   "gzip": 1193
+  },
+  {
+   "file": "origin/ssr/assets/manifest-cache-CymOhXBg.js",
+   "raw": 10360,
+   "gzip": 2445
+  },
+  {
+   "file": "origin/ssr/assets/markdown-view-DutMBHse.js",
+   "raw": 33419,
+   "gzip": 10270
+  },
+  {
+   "file": "origin/ssr/assets/marketing-area-BN25yaYk.js",
+   "raw": 508310,
+   "gzip": 102938
+  },
+  {
+   "file": "origin/ssr/assets/mcp-oauth-popup-CPRHfmDV.js",
+   "raw": 113381,
+   "gzip": 26257
+  },
+  {
+   "file": "origin/ssr/assets/mcp-oauth-return-DVi5pkCo.js",
+   "raw": 5186,
+   "gzip": 1761
+  },
+  {
+   "file": "origin/ssr/assets/mcp-y1GXSUYr.js",
+   "raw": 1211750,
+   "gzip": 295881
+  },
+  {
+   "file": "origin/ssr/assets/member-offboarding-BgABGXi5.js",
+   "raw": 58160,
+   "gzip": 15321
+  },
+  {
+   "file": "origin/ssr/assets/memory-embed-DfSa6mvA.js",
+   "raw": 2410,
+   "gzip": 880
+  },
+  {
+   "file": "origin/ssr/assets/memory-export-DdFQgpKa.js",
+   "raw": 53373,
+   "gzip": 12823
+  },
+  {
+   "file": "origin/ssr/assets/memory-owner-C6SM7O6u.js",
+   "raw": 2132,
+   "gzip": 896
+  },
+  {
+   "file": "origin/ssr/assets/messages-DHrrH2Gr.js",
+   "raw": 29758,
+   "gzip": 7670
+  },
+  {
+   "file": "origin/ssr/assets/mimetext.node.es-CwUOHLDg.js",
+   "raw": 230865,
+   "gzip": 32053
+  },
+  {
+   "file": "origin/ssr/assets/names-DV4ne4Gf.js",
+   "raw": 2398,
+   "gzip": 941
+  },
+  {
+   "file": "origin/ssr/assets/not-found-page-Bk4zmvFy.js",
+   "raw": 4117,
+   "gzip": 1701
+  },
+  {
+   "file": "origin/ssr/assets/oauth-app-shared-DxuPvAwf.js",
+   "raw": 2308,
+   "gzip": 889
+  },
+  {
+   "file": "origin/ssr/assets/oauth-helpers-BdZX2ee2.js",
+   "raw": 26010,
+   "gzip": 7739
+  },
+  {
+   "file": "origin/ssr/assets/oauth-login-errors-Bv5-D06Y.js",
+   "raw": 2291,
+   "gzip": 1004
+  },
+  {
+   "file": "origin/ssr/assets/oauth-paths-Dx46KueP.js",
+   "raw": 768,
+   "gzip": 432
+  },
+  {
+   "file": "origin/ssr/assets/oauth-provider-0Xle2NV9.js",
+   "raw": 130671,
+   "gzip": 32511
+  },
+  {
+   "file": "origin/ssr/assets/og-image-11iAKPZl.js",
+   "raw": 6154,
+   "gzip": 2014
+  },
+  {
+   "file": "origin/ssr/assets/og-image-D8tX-ciM.js",
+   "raw": 1997,
+   "gzip": 836
+  },
+  {
+   "file": "origin/ssr/assets/og-image-WFGlJmbp.js",
+   "raw": 2522,
+   "gzip": 991
+  },
+  {
+   "file": "origin/ssr/assets/onboarding-agent-ecosystems-3N_WwNhG.js",
+   "raw": 5496,
+   "gzip": 1911
+  },
+  {
+   "file": "origin/ssr/assets/onboarding-area-FJeIDGwz.js",
+   "raw": 220553,
+   "gzip": 48654
+  },
+  {
+   "file": "origin/ssr/assets/onboarding-funnel-CV1x0WC1.js",
+   "raw": 4389,
+   "gzip": 1528
+  },
+  {
+   "file": "origin/ssr/assets/onboarding-funnel-point-BXlb_Hed.js",
+   "raw": 2684,
+   "gzip": 1072
+  },
+  {
+   "file": "origin/ssr/assets/onboarding-mcp-client-cards-XSbycluK.js",
+   "raw": 10169,
+   "gzip": 3255
+  },
+  {
+   "file": "origin/ssr/assets/onboarding-prompts-5zwZB9gY.js",
+   "raw": 5893,
+   "gzip": 2413
+  },
+  {
+   "file": "origin/ssr/assets/org-profile-BL4k7807.js",
+   "raw": 29362,
+   "gzip": 7417
+  },
+  {
+   "file": "origin/ssr/assets/org-section-hrefs-DQ9f1wcL.js",
+   "raw": 726,
+   "gzip": 445
+  },
+  {
+   "file": "origin/ssr/assets/org-teams-list-itYfg9vW.js",
+   "raw": 33092,
+   "gzip": 7964
+  },
+  {
+   "file": "origin/ssr/assets/owner-id-DEZKFC-O.js",
+   "raw": 1454,
+   "gzip": 761
+  },
+  {
+   "file": "origin/ssr/assets/package-app-serve-CF4iOLAq.js",
+   "raw": 89568,
+   "gzip": 23035
+  },
+  {
+   "file": "origin/ssr/assets/package-artifact-rebuild-DmtiRP2E.js",
+   "raw": 11671,
+   "gzip": 3105
+  },
+  {
+   "file": "origin/ssr/assets/package-collaborators-BLxB862x.js",
+   "raw": 6319,
+   "gzip": 2112
+  },
+  {
+   "file": "origin/ssr/assets/package-collaborators-IsPQP0q9.js",
+   "raw": 55070,
+   "gzip": 12748
+  },
+  {
+   "file": "origin/ssr/assets/package-files-area-Ct5I6AEV.js",
+   "raw": 30627,
+   "gzip": 7535
+  },
+  {
+   "file": "origin/ssr/assets/package-mapping-scope-access-BCx2osk-.js",
+   "raw": 7270,
+   "gzip": 2538
+  },
+  {
+   "file": "origin/ssr/assets/package-owner-BVG8ZW8A.js",
+   "raw": 1741,
+   "gzip": 882
+  },
+  {
+   "file": "origin/ssr/assets/package-publish-lock-CGFh4NIk.js",
+   "raw": 10673,
+   "gzip": 3138
+  },
+  {
+   "file": "origin/ssr/assets/package-readme-BjFVKvL_.js",
+   "raw": 5119,
+   "gzip": 1753
+  },
+  {
+   "file": "origin/ssr/assets/package-readme-images-CNOhx3Y7.js",
+   "raw": 68189,
+   "gzip": 19233
+  },
+  {
+   "file": "origin/ssr/assets/package-repo-nav-DwQYo-Bz.js",
+   "raw": 9150,
+   "gzip": 2561
+  },
+  {
+   "file": "origin/ssr/assets/package-security-audit-prompt-B2xZSCxh.js",
+   "raw": 3131,
+   "gzip": 1341
+  },
+  {
+   "file": "origin/ssr/assets/package-subscriptions-DWHlBV5e.js",
+   "raw": 4823,
+   "gzip": 1746
+  },
+  {
+   "file": "origin/ssr/assets/package-subscriptions-qDtZA-EK.js",
+   "raw": 5252,
+   "gzip": 1766
+  },
+  {
+   "file": "origin/ssr/assets/page-image-BXCQ3ca7.js",
+   "raw": 19822,
+   "gzip": 5762
+  },
+  {
+   "file": "origin/ssr/assets/palette-KBX2iSyp.js",
+   "raw": 4023,
+   "gzip": 1713
+  },
+  {
+   "file": "origin/ssr/assets/password-policy-CyiFsDHZ.js",
+   "raw": 321,
+   "gzip": 207
+  },
+  {
+   "file": "origin/ssr/assets/password-reveal-input-D7SFm8uu.js",
+   "raw": 3036,
+   "gzip": 1403
+  },
+  {
+   "file": "origin/ssr/assets/paused-publishes-o9vht09e.js",
+   "raw": 19068,
+   "gzip": 6016
+  },
+  {
+   "file": "origin/ssr/assets/permissions-CnguGxsT.js",
+   "raw": 613,
+   "gzip": 308
+  },
+  {
+   "file": "origin/ssr/assets/plain-repo-git-http-AsGr2KKw.js",
+   "raw": 30468,
+   "gzip": 8838
+  },
+  {
+   "file": "origin/ssr/assets/platform-app-shared-CLlNgGA9.js",
+   "raw": 2435,
+   "gzip": 990
+  },
+  {
+   "file": "origin/ssr/assets/postal-mime-Z2Q8NV2k.js",
+   "raw": 85639,
+   "gzip": 25814
+  },
+  {
+   "file": "origin/ssr/assets/profile-og-image-5tVAHTZY.js",
+   "raw": 3741,
+   "gzip": 1326
+  },
+  {
+   "file": "origin/ssr/assets/profile-service-5T2oK8I-.js",
+   "raw": 6433,
+   "gzip": 1938
+  },
+  {
+   "file": "origin/ssr/assets/public-form-protection-DgEU7jx7.js",
+   "raw": 687,
+   "gzip": 417
+  },
+  {
+   "file": "origin/ssr/assets/public-signup-copy-DB0Jibz8.js",
+   "raw": 682,
+   "gzip": 426
+  },
+  {
+   "file": "origin/ssr/assets/public-url-CMkNr4ux.js",
+   "raw": 1633,
+   "gzip": 681
+  },
+  {
+   "file": "origin/ssr/assets/public-urls-oSB3v4VI.js",
+   "raw": 7014,
+   "gzip": 2047
+  },
+  {
+   "file": "origin/ssr/assets/r2-inventory-BHNxMuHw.js",
+   "raw": 34795,
+   "gzip": 11035
+  },
+  {
+   "file": "origin/ssr/assets/rate-limit-DVn3rIzs.js",
+   "raw": 3652,
+   "gzip": 1567
+  },
+  {
+   "file": "origin/ssr/assets/realtime-session-He78SzLb.js",
+   "raw": 78850,
+   "gzip": 21002
+  },
+  {
+   "file": "origin/ssr/assets/record-table-search-sync-DQLS_il8.js",
+   "raw": 1680,
+   "gzip": 718
+  },
+  {
+   "file": "origin/ssr/assets/referral-program-BGrjVYk7.js",
+   "raw": 7630,
+   "gzip": 2547
+  },
+  {
+   "file": "origin/ssr/assets/register-tools-uy-bMWhq.js",
+   "raw": 11479,
+   "gzip": 4195
+  },
+  {
+   "file": "origin/ssr/assets/render-DDpjZNJP.js",
+   "raw": 726016,
+   "gzip": 175202
+  },
+  {
+   "file": "origin/ssr/assets/replace-location-CROI2HDw.js",
+   "raw": 3069,
+   "gzip": 1270
+  },
+  {
+   "file": "origin/ssr/assets/repo-C1Dz2EMQ.js",
+   "raw": 6729,
+   "gzip": 1640
+  },
+  {
+   "file": "origin/ssr/assets/repo-CJmOAN_7.js",
+   "raw": 6157,
+   "gzip": 2086
+  },
+  {
+   "file": "origin/ssr/assets/repo-ChDw41gN.js",
+   "raw": 16859,
+   "gzip": 4732
+  },
+  {
+   "file": "origin/ssr/assets/repo-D_DIBnM-.js",
+   "raw": 17454,
+   "gzip": 4773
+  },
+  {
+   "file": "origin/ssr/assets/repo-flags-CfkhG359.js",
+   "raw": 3317,
+   "gzip": 1167
+  },
+  {
+   "file": "origin/ssr/assets/request-context-BZfP7Mph.js",
+   "raw": 9823,
+   "gzip": 2847
+  },
+  {
+   "file": "origin/ssr/assets/request-context-CC0NAO0E.js",
+   "raw": 2032,
+   "gzip": 764
+  },
+  {
+   "file": "origin/ssr/assets/require-user-D2so5AHE.js",
+   "raw": 789,
+   "gzip": 388
+  },
+  {
+   "file": "origin/ssr/assets/resvg-wasm-D8CA4aCh.js",
+   "raw": 15731,
+   "gzip": 4084
+  },
+  {
+   "file": "origin/ssr/assets/resvg-wasm-init-B3WtSRBL.js",
+   "raw": 1376,
+   "gzip": 707
+  },
+  {
+   "file": "origin/ssr/assets/rolldown-runtime-CEgmsyvS.js",
+   "raw": 2309,
+   "gzip": 1033
+  },
+  {
+   "file": "origin/ssr/assets/route-data-BtSDooGx.js",
+   "raw": 140138,
+   "gzip": 36625
+  },
+  {
+   "file": "origin/ssr/assets/safe-redirect-DYNjA3Wg.js",
+   "raw": 3859,
+   "gzip": 1503
+  },
+  {
+   "file": "origin/ssr/assets/schedule-Cu8yQEQx.js",
+   "raw": 40785,
+   "gzip": 10919
+  },
+  {
+   "file": "origin/ssr/assets/schedule-D6AFjNOl.js",
+   "raw": 33,
+   "gzip": 53
+  },
+  {
+   "file": "origin/ssr/assets/schemas-DyC3KWCX.js",
+   "raw": 194591,
+   "gzip": 42405
+  },
+  {
+   "file": "origin/ssr/assets/search-constants-Bff_Zld5.js",
+   "raw": 36951,
+   "gzip": 9996
+  },
+  {
+   "file": "origin/ssr/assets/search-execution-DwS6KMOa.js",
+   "raw": 59472,
+   "gzip": 16407
+  },
+  {
+   "file": "origin/ssr/assets/search-filter-rTmn0sCw.js",
+   "raw": 495,
+   "gzip": 317
+  },
+  {
+   "file": "origin/ssr/assets/search-format-B-bpiQKM.js",
+   "raw": 168700,
+   "gzip": 38636
+  },
+  {
+   "file": "origin/ssr/assets/search-timing-V6QGRkjE.js",
+   "raw": 32241,
+   "gzip": 9695
+  },
+  {
+   "file": "origin/ssr/assets/search-tool-runner-DCEbcgcw.js",
+   "raw": 80789,
+   "gzip": 21277
+  },
+  {
+   "file": "origin/ssr/assets/secret-expires-at-6qfw-t7G.js",
+   "raw": 3204,
+   "gzip": 1154
+  },
+  {
+   "file": "origin/ssr/assets/secret-set-opt-in-Dn2Crm20.js",
+   "raw": 8984,
+   "gzip": 2985
+  },
+  {
+   "file": "origin/ssr/assets/sentry-options-CIv5Dprt.js",
+   "raw": 2275331,
+   "gzip": 563076
+  },
+  {
+   "file": "origin/ssr/assets/service-CSWRHRYx.js",
+   "raw": 52074,
+   "gzip": 12426
+  },
+  {
+   "file": "origin/ssr/assets/service-CTwOvlvy.js",
+   "raw": 19378,
+   "gzip": 4012
+  },
+  {
+   "file": "origin/ssr/assets/service-CfeQUjLJ.js",
+   "raw": 51834,
+   "gzip": 13187
+  },
+  {
+   "file": "origin/ssr/assets/service-PdncQyKU.js",
+   "raw": 167704,
+   "gzip": 40153
+  },
+  {
+   "file": "origin/ssr/assets/service-iHudFcEu.js",
+   "raw": 7405,
+   "gzip": 2379
+  },
+  {
+   "file": "origin/ssr/assets/service-wpBOtGbU.js",
+   "raw": 10337,
+   "gzip": 3046
+  },
+  {
+   "file": "origin/ssr/assets/session-registry-BWd87rSq.js",
+   "raw": 1627,
+   "gzip": 785
+  },
+  {
+   "file": "origin/ssr/assets/settings-service-C0KiCzYA.js",
+   "raw": 138706,
+   "gzip": 33108
+  },
+  {
+   "file": "origin/ssr/assets/shared-B2vAxN8X.js",
+   "raw": 6009,
+   "gzip": 2250
+  },
+  {
+   "file": "origin/ssr/assets/shared-B3oVNMPP.js",
+   "raw": 1767,
+   "gzip": 753
+  },
+  {
+   "file": "origin/ssr/assets/shared-BBEBhBXC.js",
+   "raw": 18000,
+   "gzip": 4821
+  },
+  {
+   "file": "origin/ssr/assets/shared-fEqaLaLD.js",
+   "raw": 7111,
+   "gzip": 2498
+  },
+  {
+   "file": "origin/ssr/assets/shared-lflDECZh.js",
+   "raw": 52540,
+   "gzip": 12916
+  },
+  {
+   "file": "origin/ssr/assets/signing-secret-BCqr22mG.js",
+   "raw": 9628,
+   "gzip": 3183
+  },
+  {
+   "file": "origin/ssr/assets/social-sign-in-jICFExYw.js",
+   "raw": 24582,
+   "gzip": 9000
+  },
+  {
+   "file": "origin/ssr/assets/soft-delete-DCJiRRpw.js",
+   "raw": 32877,
+   "gzip": 8373
+  },
+  {
+   "file": "origin/ssr/assets/stateless-lane-wafq9kek.js",
+   "raw": 29072,
+   "gzip": 8488
+  },
+  {
+   "file": "origin/ssr/assets/storage-runner-BHyl_0ft.js",
+   "raw": 385315,
+   "gzip": 84894
+  },
+  {
+   "file": "origin/ssr/assets/switcher-menu-CSMm_c8l.js",
+   "raw": 28361,
+   "gzip": 8444
+  },
+  {
+   "file": "origin/ssr/assets/sync-active-community-listing-CsRkaF0t.js",
+   "raw": 210226,
+   "gzip": 48134
+  },
+  {
+   "file": "origin/ssr/assets/syntax-highlight-C9OgdPmz.js",
+   "raw": 1686,
+   "gzip": 789
+  },
+  {
+   "file": "origin/ssr/assets/system-inbound-delivery-store-Ds8UaxYU.js",
+   "raw": 171818,
+   "gzip": 35662
+  },
+  {
+   "file": "origin/ssr/assets/tokens-BFcskYvH.js",
+   "raw": 3079,
+   "gzip": 1133
+  },
+  {
+   "file": "origin/ssr/assets/types-BLZ9E5u5.js",
+   "raw": 764,
+   "gzip": 382
+  },
+  {
+   "file": "origin/ssr/assets/types-D6AFjNOl.js",
+   "raw": 33,
+   "gzip": 53
+  },
+  {
+   "file": "origin/ssr/assets/types-DIXj0MfQ.js",
+   "raw": 11496,
+   "gzip": 3913
+  },
+  {
+   "file": "origin/ssr/assets/url-hosts-DMuTvZ9_.js",
+   "raw": 544,
+   "gzip": 365
+  },
+  {
+   "file": "origin/ssr/assets/usage-presentation-DBxtLw3L.js",
+   "raw": 9334,
+   "gzip": 3146
+  },
+  {
+   "file": "origin/ssr/assets/user-avatar-limits-C-RBPjuz.js",
+   "raw": 733,
+   "gzip": 337
+  },
+  {
+   "file": "origin/ssr/assets/user-scope-Dad3mlxy.js",
+   "raw": 2021,
+   "gzip": 906
+  },
+  {
+   "file": "origin/ssr/assets/user-server-instructions-repo-CjPnR2Zp.js",
+   "raw": 3766,
+   "gzip": 1573
+  },
+  {
+   "file": "origin/ssr/assets/vector-namespaces-EUY2_tma.js",
+   "raw": 9119,
+   "gzip": 2923
+  },
+  {
+   "file": "origin/ssr/assets/walkthrough-ask-kicker-DetmRxF_.js",
+   "raw": 10672,
+   "gzip": 2961
+  },
+  {
+   "file": "origin/ssr/assets/worker-bundler-BU-1wSvf.js",
+   "raw": 503421,
+   "gzip": 113952
+  },
+  {
+   "file": "origin/ssr/assets/worker-bundler-typescript-lhLENss-.js",
+   "raw": 4599016,
+   "gzip": 1125244
+  },
+  {
+   "file": "origin/ssr/assets/workflow-display-DxbuLVKt.js",
+   "raw": 855,
+   "gzip": 436
+  },
+  {
+   "file": "origin/ssr/assets/yoga-sbSbVeWy.wasm",
+   "raw": 71736,
+   "gzip": 28818
+  },
+  {
+   "file": "origin/ssr/index.js",
+   "raw": 3931760,
+   "gzip": 934061
+  },
+  {
+   "file": "platform/dd4dd8881e2df4e64203b5c0ae65e1648ab55207-index_bg.wasm",
+   "raw": 2478606,
+   "gzip": 957677
+  },
+  {
+   "file": "platform/generated/guide-catalog.mjs",
+   "raw": 623841,
+   "gzip": 188625
+  },
+  {
+   "file": "platform/generated/guide-metadata.mjs",
+   "raw": 32731,
+   "gzip": 8172
+  },
+  {
+   "file": "platform/node_modules/.kody-generated/codemode-normalize.mjs",
+   "raw": 124383,
+   "gzip": 35420
+  },
+  {
+   "file": "platform/node_modules/.kody-generated/esbuild.wasm",
+   "raw": 13940120,
+   "gzip": 3744856
+  },
+  {
+   "file": "platform/node_modules/.kody-generated/isomorphic-git.mjs",
+   "raw": 265335,
+   "gzip": 81074
+  },
+  {
+   "file": "platform/node_modules/.kody-generated/local-execute-runtime-support.mjs",
+   "raw": 348564,
+   "gzip": 87989
+  },
+  {
+   "file": "platform/node_modules/.kody-generated/oauth-provider.mjs",
+   "raw": 116096,
+   "gzip": 30816
+  },
+  {
+   "file": "platform/node_modules/.kody-generated/postal-mime.mjs",
+   "raw": 77714,
+   "gzip": 24477
+  },
+  {
+   "file": "platform/node_modules/.kody-generated/worker-bundler-typescript.mjs",
+   "raw": 3606584,
+   "gzip": 1035446
+  },
+  {
+   "file": "platform/node_modules/.kody-generated/worker-bundler.mjs",
+   "raw": 387703,
+   "gzip": 104137
+  },
+  {
+   "file": "platform/platform-worker.js",
+   "raw": 5810685,
+   "gzip": 1622728
+  },
+  {
+   "file": "runtime/dd4dd8881e2df4e64203b5c0ae65e1648ab55207-index_bg.wasm",
+   "raw": 2478606,
+   "gzip": 957677
+  },
+  {
+   "file": "runtime/generated/guide-catalog.mjs",
+   "raw": 623841,
+   "gzip": 188625
+  },
+  {
+   "file": "runtime/generated/guide-metadata.mjs",
+   "raw": 32731,
+   "gzip": 8172
+  },
+  {
+   "file": "runtime/node_modules/.kody-generated/codemode-normalize.mjs",
+   "raw": 124383,
+   "gzip": 35420
+  },
+  {
+   "file": "runtime/node_modules/.kody-generated/esbuild.wasm",
+   "raw": 13940120,
+   "gzip": 3744856
+  },
+  {
+   "file": "runtime/node_modules/.kody-generated/isomorphic-git.mjs",
+   "raw": 265335,
+   "gzip": 81074
+  },
+  {
+   "file": "runtime/node_modules/.kody-generated/local-execute-runtime-support.mjs",
+   "raw": 348564,
+   "gzip": 87989
+  },
+  {
+   "file": "runtime/node_modules/.kody-generated/oauth-provider.mjs",
+   "raw": 116096,
+   "gzip": 30816
+  },
+  {
+   "file": "runtime/node_modules/.kody-generated/postal-mime.mjs",
+   "raw": 77714,
+   "gzip": 24477
+  },
+  {
+   "file": "runtime/node_modules/.kody-generated/worker-bundler-typescript.mjs",
+   "raw": 3606584,
+   "gzip": 1035446
+  },
+  {
+   "file": "runtime/node_modules/.kody-generated/worker-bundler.mjs",
+   "raw": 387703,
+   "gzip": 104137
+  },
+  {
+   "file": "runtime/runtime-worker.js",
+   "raw": 4371371,
+   "gzip": 1243315
+  }
+ ]
+}

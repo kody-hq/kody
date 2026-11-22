@@ -1,0 +1,65 @@
+diff --git a/vite.config.ts b/vite.config.ts
+index 31679d566..4807b5bd8 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -2,7 +2,6 @@ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ import { cloudflare } from '@cloudflare/vite-plugin'
+ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+-import { redact } from '@tanstack/redact/vite'
+ import react from '@vitejs/plugin-react'
+ import { defineConfig } from 'vite'
+ import {
+@@ -49,21 +48,6 @@ function alias(prefix: string, target: string) {
+ 	}
+ }
+ 
+-// Match tanstack.com's Worker setup: every server variant uses one runtime.
+-const redactServerAliases = [
+-	'react-dom/server',
+-	'react-dom/server.edge',
+-	'react-dom/server.node',
+-	'react-dom/server.bun',
+-	'react-dom/server.browser',
+-	'react-dom/static.edge',
+-	'react-dom/static.node',
+-	'react-dom/static',
+-].map((specifier) => ({
+-	find: new RegExp(`^${specifier.replaceAll('.', '\\.')}$`),
+-	replacement: '@tanstack/redact/server',
+-}))
+-
+ export default defineConfig(async ({ command }) => {
+ 	await ensureWorkerBundlerModules()
+ 	await ensureGuideCatalogModules()
+@@ -167,10 +151,8 @@ export default defineConfig(async ({ command }) => {
+ 			},
+ 			ssr: {
+ 				optimizeDeps: { noDiscovery: true, include: [] },
+-				resolve: { noExternal: ['@tanstack/redact'] },
+ 			},
+ 		},
+-		ssr: { noExternal: ['@tanstack/redact'] },
+ 		build: {
+ 			sourcemap: true,
+ 			outDir: process.env.KODY_VITE_OUTDIR ?? 'dist',
+@@ -199,7 +181,6 @@ export default defineConfig(async ({ command }) => {
+ 				auxiliaryWorkers,
+ 			}),
+ 			workerWholeGraphReload(),
+-			redact(),
+ 			tanstackStart({
+ 				srcDirectory: 'packages/worker/start',
+ 				serverFns: {
+@@ -227,11 +208,6 @@ export default defineConfig(async ({ command }) => {
+ 		],
+ 		resolve: {
+ 			alias: [
+-				...redactServerAliases,
+-				{
+-					find: /^use-sync-external-store\/shim\/index\.js$/,
+-					replacement: '@tanstack/redact',
+-				},
+ 
+ 				{
+ 					find: /^#start\/server\/(.*)$/,

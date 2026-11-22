@@ -1,0 +1,5961 @@
+{
+ "variant": "a",
+ "origin": "http://127.0.0.1:4101",
+ "browser": "156.0.8078.47",
+ "startedAt": "2026-11-22T21:13:41.179Z",
+ "routes": {
+  "home": {
+   "path": "/",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/",
+     "js": {
+      "requests": 23,
+      "raw": 576815,
+      "gzip": 181220,
+      "brotli": 156583
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      }
+     ]
+    }
+   ]
+  },
+  "pricing": {
+   "path": "/pricing",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/pricing",
+     "js": {
+      "requests": 28,
+      "raw": 950474,
+      "gzip": 280954,
+      "brotli": 238893
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/honeypot-field-CSmwf38N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2867,
+       "gzip": 1340,
+       "brotli": 1154
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/marketing-area-Du8qRFgs.js",
+       "type": "script",
+       "status": 200,
+       "raw": 351029,
+       "gzip": 90114,
+       "brotli": 74079
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/public-signup-copy-_IfNy7mA.js",
+       "type": "script",
+       "status": 200,
+       "raw": 203,
+       "gzip": 196,
+       "brotli": 147
+      }
+     ]
+    }
+   ]
+  },
+  "docs": {
+   "path": "/docs",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/docs",
+     "js": {
+      "requests": 47,
+      "raw": 1355959,
+      "gzip": 409393,
+      "brotli": 348135
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/interactive-guide-transcript-BqkIHVrQ.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1353,
+       "gzip": 658,
+       "brotli": 536
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-area-Cm_3cNFh.js",
+       "type": "script",
+       "status": 200,
+       "raw": 38039,
+       "gzip": 12190,
+       "brotli": 10562
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/how-kody-works-transcript-B2Nm4ewz.js",
+       "type": "script",
+       "status": 200,
+       "raw": 20705,
+       "gzip": 6114,
+       "brotli": 5344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/copy-code-block-T1AkF-NP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2003,
+       "gzip": 1042,
+       "brotli": 877
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/interactive-guide-walkthrough-CgQ00GqP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9038,
+       "gzip": 3125,
+       "brotli": 2805
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/markdown-view-wRcT5mqL.js",
+       "type": "script",
+       "status": 200,
+       "raw": 61983,
+       "gzip": 19204,
+       "brotli": 17413
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/public-signup-copy-_IfNy7mA.js",
+       "type": "script",
+       "status": 200,
+       "raw": 203,
+       "gzip": 196,
+       "brotli": 147
+      }
+     ]
+    }
+   ]
+  },
+  "docs-deep": {
+   "path": "/docs/how-kody-works",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/docs/how-kody-works",
+     "js": {
+      "requests": 47,
+      "raw": 1355959,
+      "gzip": 409393,
+      "brotli": 348135
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/interactive-guide-transcript-BqkIHVrQ.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1353,
+       "gzip": 658,
+       "brotli": 536
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-area-Cm_3cNFh.js",
+       "type": "script",
+       "status": 200,
+       "raw": 38039,
+       "gzip": 12190,
+       "brotli": 10562
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/how-kody-works-transcript-B2Nm4ewz.js",
+       "type": "script",
+       "status": 200,
+       "raw": 20705,
+       "gzip": 6114,
+       "brotli": 5344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/copy-code-block-T1AkF-NP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2003,
+       "gzip": 1042,
+       "brotli": 877
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/interactive-guide-walkthrough-CgQ00GqP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9038,
+       "gzip": 3125,
+       "brotli": 2805
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/public-signup-copy-_IfNy7mA.js",
+       "type": "script",
+       "status": 200,
+       "raw": 203,
+       "gzip": 196,
+       "brotli": 147
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/markdown-view-wRcT5mqL.js",
+       "type": "script",
+       "status": 200,
+       "raw": 61983,
+       "gzip": 19204,
+       "brotli": 17413
+      }
+     ]
+    }
+   ]
+  },
+  "blog": {
+   "path": "/blog",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/blog",
+     "js": {
+      "requests": 47,
+      "raw": 1355959,
+      "gzip": 409393,
+      "brotli": 348135
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/interactive-guide-transcript-BqkIHVrQ.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1353,
+       "gzip": 658,
+       "brotli": 536
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/how-kody-works-transcript-B2Nm4ewz.js",
+       "type": "script",
+       "status": 200,
+       "raw": 20705,
+       "gzip": 6114,
+       "brotli": 5344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-area-Cm_3cNFh.js",
+       "type": "script",
+       "status": 200,
+       "raw": 38039,
+       "gzip": 12190,
+       "brotli": 10562
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/interactive-guide-walkthrough-CgQ00GqP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9038,
+       "gzip": 3125,
+       "brotli": 2805
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/copy-code-block-T1AkF-NP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2003,
+       "gzip": 1042,
+       "brotli": 877
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/public-signup-copy-_IfNy7mA.js",
+       "type": "script",
+       "status": 200,
+       "raw": 203,
+       "gzip": 196,
+       "brotli": 147
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/markdown-view-wRcT5mqL.js",
+       "type": "script",
+       "status": 200,
+       "raw": 61983,
+       "gzip": 19204,
+       "brotli": 17413
+      }
+     ]
+    }
+   ]
+  },
+  "blog-post": {
+   "path": "/blog/early-kody-users",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/blog/early-kody-users",
+     "js": {
+      "requests": 47,
+      "raw": 1355959,
+      "gzip": 409393,
+      "brotli": 348135
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/interactive-guide-transcript-BqkIHVrQ.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1353,
+       "gzip": 658,
+       "brotli": 536
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-area-Cm_3cNFh.js",
+       "type": "script",
+       "status": 200,
+       "raw": 38039,
+       "gzip": 12190,
+       "brotli": 10562
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/how-kody-works-transcript-B2Nm4ewz.js",
+       "type": "script",
+       "status": 200,
+       "raw": 20705,
+       "gzip": 6114,
+       "brotli": 5344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/interactive-guide-walkthrough-CgQ00GqP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9038,
+       "gzip": 3125,
+       "brotli": 2805
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/copy-code-block-T1AkF-NP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2003,
+       "gzip": 1042,
+       "brotli": 877
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/public-signup-copy-_IfNy7mA.js",
+       "type": "script",
+       "status": 200,
+       "raw": 203,
+       "gzip": 196,
+       "brotli": 147
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/markdown-view-wRcT5mqL.js",
+       "type": "script",
+       "status": 200,
+       "raw": 61983,
+       "gzip": 19204,
+       "brotli": 17413
+      }
+     ]
+    }
+   ]
+  },
+  "community": {
+   "path": "/community",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/community",
+     "js": {
+      "requests": 34,
+      "raw": 828527,
+      "gzip": 260473,
+      "brotli": 226633
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-area-Dha66GFi.js",
+       "type": "script",
+       "status": 200,
+       "raw": 94297,
+       "gzip": 27614,
+       "brotli": 24022
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/markdown-view-wRcT5mqL.js",
+       "type": "script",
+       "status": 200,
+       "raw": 61983,
+       "gzip": 19204,
+       "brotli": 17413
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/copy-code-block-T1AkF-NP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2003,
+       "gzip": 1042,
+       "brotli": 877
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/package-repo-nav-U3Vh3QON.js",
+       "type": "script",
+       "status": 200,
+       "raw": 37547,
+       "gzip": 10539,
+       "brotli": 9373
+      }
+     ]
+    }
+   ]
+  },
+  "profile": {
+   "path": "/@user-me",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@user-me",
+     "js": {
+      "requests": 23,
+      "raw": 576815,
+      "gzip": 181220,
+      "brotli": 156583
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      }
+     ]
+    }
+   ]
+  },
+  "community-package": {
+   "path": "/community/bench-listing-1",
+   "auth": false,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/community/bench-listing-1",
+     "js": {
+      "requests": 34,
+      "raw": 828527,
+      "gzip": 260473,
+      "brotli": 226633
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-area-Dha66GFi.js",
+       "type": "script",
+       "status": 200,
+       "raw": 94297,
+       "gzip": 27614,
+       "brotli": 24022
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/copy-code-block-T1AkF-NP.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2003,
+       "gzip": 1042,
+       "brotli": 877
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/markdown-view-wRcT5mqL.js",
+       "type": "script",
+       "status": 200,
+       "raw": 61983,
+       "gzip": 19204,
+       "brotli": 17413
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/package-repo-nav-U3Vh3QON.js",
+       "type": "script",
+       "status": 200,
+       "raw": 37547,
+       "gzip": 10539,
+       "brotli": 9373
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      }
+     ]
+    }
+   ]
+  },
+  "account": {
+   "path": "/account",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/account",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      }
+     ]
+    }
+   ]
+  },
+  "jobs": {
+   "path": "/@user-me/-/jobs",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@user-me/-/jobs",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      }
+     ]
+    }
+   ]
+  },
+  "job-detail": {
+   "path": "/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@user-me/-/jobs/package-job%3Ad20b03ddd52172cf7fcc87dc15e7448321a58b13e23a4a1e2edc22ed3293b332%3Abench-job-1",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      }
+     ]
+    }
+   ]
+  },
+  "email": {
+   "path": "/@user-me/-/email",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@user-me/-/email",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      }
+     ]
+    }
+   ]
+  },
+  "email-message": {
+   "path": "/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@user-me/-/email/email-inbound-message%3A8cb8b1de74d69c971fd1e7cbe7c0e5933988a187d9fac0678fdc26a3de441b23",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      }
+     ]
+    }
+   ]
+  },
+  "credentials": {
+   "path": "/@user-me/-/credentials",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@user-me/-/credentials",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      }
+     ]
+    }
+   ]
+  },
+  "credential-detail": {
+   "path": "/@user-me/-/credentials/71ed6bf5-4f9c-47d5-aaf4-fd2570793100",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@user-me/-/credentials/71ed6bf5-4f9c-47d5-aaf4-fd2570793100",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      }
+     ]
+    }
+   ]
+  },
+  "memories": {
+   "path": "/@user-me/-/memories",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@user-me/-/memories",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      }
+     ]
+    }
+   ]
+  },
+  "org-workspace": {
+   "path": "/@bench-org/-/members",
+   "auth": true,
+   "samples": [
+    {
+     "status": 200,
+     "finalUrl": "http://127.0.0.1:4101/@bench-org/-/members",
+     "js": {
+      "requests": 40,
+      "raw": 1222635,
+      "gzip": 366864,
+      "brotli": 310451
+     },
+     "css": {
+      "requests": 0,
+      "raw": 0,
+      "gzip": 0,
+      "brotli": 0
+     },
+     "files": [
+      {
+       "url": "http://127.0.0.1:4101/page-init.js",
+       "type": "script",
+       "status": 200,
+       "raw": 810,
+       "gzip": 486,
+       "brotli": 374
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/session-storage-access-AUV4JZy3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 735,
+       "gzip": 443,
+       "brotli": 367
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/replace-location-CONgH7Fn.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1531,
+       "gzip": 720,
+       "brotli": 628
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/entry-DGfYmtFM.js",
+       "type": "script",
+       "status": 200,
+       "raw": 209576,
+       "gzip": 63495,
+       "brotli": 55469
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/route-data-t12w63KN.js",
+       "type": "script",
+       "status": 200,
+       "raw": 253528,
+       "gzip": 74504,
+       "brotli": 63232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/not-found-page-BCxCDrOK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1800,
+       "gzip": 1027,
+       "brotli": 880
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/community-detail-shared-B6bQ_4oR.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5664,
+       "gzip": 2124,
+       "brotli": 1881
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/permissions-CGhJjX6f.js",
+       "type": "script",
+       "status": 200,
+       "raw": 394,
+       "gzip": 288,
+       "brotli": 231
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/error-agent-prompt-button-CgQf_vh5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2949,
+       "gzip": 1409,
+       "brotli": 1232
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/safe-redirect-CvjsL9T2.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8749,
+       "gzip": 3095,
+       "brotli": 2587
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/blog-post-path-C5VMWXRS.js",
+       "type": "script",
+       "status": 200,
+       "raw": 8876,
+       "gzip": 3161,
+       "brotli": 2828
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/auth-links-D83pUdWV.js",
+       "type": "script",
+       "status": 200,
+       "raw": 147,
+       "gzip": 155,
+       "brotli": 150
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/switcher-menu-CH7JxQwd.js",
+       "type": "script",
+       "status": 200,
+       "raw": 16253,
+       "gzip": 5943,
+       "brotli": 5223
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/identity-icon-mark-BtOfn3XB.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1285,
+       "gzip": 738,
+       "brotli": 640
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/primitive-cards-BbV5Gvy5.js",
+       "type": "script",
+       "status": 200,
+       "raw": 27065,
+       "gzip": 10113,
+       "brotli": 8927
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/toast-T6WyCBUm.js",
+       "type": "script",
+       "status": 200,
+       "raw": 25547,
+       "gzip": 8039,
+       "brotli": 7162
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/record-table-search-sync-DUGW_EOt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 487,
+       "gzip": 224,
+       "brotli": 200
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/landing-images-Byb_fN9l.js",
+       "type": "script",
+       "status": 200,
+       "raw": 723,
+       "gzip": 405,
+       "brotli": 344
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-DkZ2pgUD.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1980,
+       "gzip": 743,
+       "brotli": 668
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/feature-flags-72TAiFEk.js",
+       "type": "script",
+       "status": 200,
+       "raw": 926,
+       "gzip": 548,
+       "brotli": 470
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/first-touch-attribution-Dxkah02J.js",
+       "type": "script",
+       "status": 200,
+       "raw": 4717,
+       "gzip": 2036,
+       "brotli": 1768
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/youtube-light-player-D-Vm756N.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1868,
+       "gzip": 954,
+       "brotli": 832
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/fathom-events-DMqEF9sK.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1205,
+       "gzip": 570,
+       "brotli": 490
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/syntax-highlight-BmjAnbW0.js",
+       "type": "script",
+       "status": 200,
+       "raw": 901,
+       "gzip": 549,
+       "brotli": 472
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/onboarding-mcp-client-cards-CJ_OviYj.js",
+       "type": "script",
+       "status": 200,
+       "raw": 6744,
+       "gzip": 2567,
+       "brotli": 2244
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/credit-amount-input-DowdeQLt.js",
+       "type": "script",
+       "status": 200,
+       "raw": 9468,
+       "gzip": 3558,
+       "brotli": 3094
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-area-BlvsM0xO.js",
+       "type": "script",
+       "status": 200,
+       "raw": 479574,
+       "gzip": 127552,
+       "brotli": 102981
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/list-detail-route-eZhrBCL-.js",
+       "type": "script",
+       "status": 200,
+       "raw": 977,
+       "gzip": 500,
+       "brotli": 442
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/esm-CVed1Whg.js",
+       "type": "script",
+       "status": 200,
+       "raw": 12415,
+       "gzip": 4359,
+       "brotli": 3747
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/password-reveal-input-Bf5pvFcf.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1293,
+       "gzip": 807,
+       "brotli": 661
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/social-sign-in-C4ZY_wxe.js",
+       "type": "script",
+       "status": 200,
+       "raw": 18280,
+       "gzip": 7457,
+       "brotli": 6435
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-management-components-CYqCuo_K.js",
+       "type": "script",
+       "status": 200,
+       "raw": 24947,
+       "gzip": 8264,
+       "brotli": 7237
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/mcp-oauth-popup-CfZKuf0x.js",
+       "type": "script",
+       "status": 200,
+       "raw": 64064,
+       "gzip": 18658,
+       "brotli": 16553
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/handle-field-DW5WWO8P.js",
+       "type": "script",
+       "status": 200,
+       "raw": 2315,
+       "gzip": 1050,
+       "brotli": 907
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/search-filter-BfL6UgI3.js",
+       "type": "script",
+       "status": 200,
+       "raw": 272,
+       "gzip": 222,
+       "brotli": 188
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/follows-shared-9sA3mxoF.js",
+       "type": "script",
+       "status": 200,
+       "raw": 5867,
+       "gzip": 2429,
+       "brotli": 2081
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/oauth-login-errors-CmjACawX.js",
+       "type": "script",
+       "status": 200,
+       "raw": 1280,
+       "gzip": 627,
+       "brotli": 495
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/double-check-D3mCb0al.js",
+       "type": "script",
+       "status": 200,
+       "raw": 493,
+       "gzip": 352,
+       "brotli": 327
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/area-chart-BWPsqfSq.js",
+       "type": "script",
+       "status": 200,
+       "raw": 13095,
+       "gzip": 5004,
+       "brotli": 4511
+      },
+      {
+       "url": "http://127.0.0.1:4101/assets/account-usage-where-it-went-BnQF8lTW.js",
+       "type": "script",
+       "status": 200,
+       "raw": 3835,
+       "gzip": 1689,
+       "brotli": 1493
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "failures": []
+}

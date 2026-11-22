@@ -1,0 +1,7 @@
+origin startup entry: 3931760 / 7750000 bytes
+platform startup entry: 5810685 / 5244000 bytes (OVER)
+runtime startup entry: 4371371 / 3793500 bytes (OVER)
+platform startup entry is 5_810_685 bytes, 566_685 over its 5_244_000-byte reviewed budget (warning only; does not fail CI).
+Skipped startup budget overage issue for platform: issue reporting is only enabled on main CI pushes with GH_TOKEN
+runtime startup entry is 4_371_371 bytes, 577_871 over its 3_793_500-byte reviewed budget (warning only; does not fail CI).
+Skipped startup budget overage issue for runtime: issue reporting is only enabled on main CI pushes with GH_TOKEN

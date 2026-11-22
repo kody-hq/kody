@@ -1,0 +1,518 @@
+{
+ "variant": "b",
+ "origin": "http://127.0.0.1:4102",
+ "rows": [
+  {
+   "side": "onlyA",
+   "pattern": "/@:orgSlug/-/billing/portal",
+   "path": "/@user-me/-/billing/portal",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/account/delete",
+   "path": "/account/delete",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/docs/mcp-events/opt-in",
+   "path": "/docs/mcp-events/opt-in",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/docs/package-skills/opt-in",
+   "path": "/docs/package-skills/opt-in",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/guides/*rest",
+   "path": "/guides/x",
+   "status": 308,
+   "location": "/docs/x",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/join/:token/decline",
+   "path": "/join/bench-missing/decline",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/logout",
+   "path": "/logout",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/orgs/:orgSlug/avatar/:hash.:ext",
+   "path": "/orgs/user-me/avatar/x.png",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/password-reset",
+   "path": "/password-reset",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/password-reset/confirm",
+   "path": "/password-reset/confirm",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/profiles/:username/avatar/:hash.:ext",
+   "path": "/profiles/user-me/avatar/x.png",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/webauthn/authentication",
+   "path": "/webauthn/authentication",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyA",
+   "pattern": "/webauthn/registration",
+   "path": "/webauthn/registration",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/.well-known/agent-skills/index.json",
+   "path": "/.well-known/agent-skills/index.json",
+   "status": 200,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/.well-known/mcp/server-card.json",
+   "path": "/.well-known/mcp/server-card.json",
+   "status": 200,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/_kody/auth/*",
+   "path": "/_kody/auth/x",
+   "status": 404,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/activity",
+   "path": "/account/activity",
+   "status": 302,
+   "location": "/@user-me/-/activity",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/activity/:runId",
+   "path": "/account/activity/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/activity/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/agents",
+   "path": "/account/agents",
+   "status": 302,
+   "location": "/@user-me/-/agents",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/agents/new",
+   "path": "/account/agents/new",
+   "status": 302,
+   "location": "/@user-me/-/agents/new",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/agents/new/:agent",
+   "path": "/account/agents/new/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/agents/new/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/agents/usage",
+   "path": "/account/agents/usage",
+   "status": 302,
+   "location": "/@user-me/-/agents/usage",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/billing",
+   "path": "/account/billing",
+   "status": 302,
+   "location": "/@user-me/-/billing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/billing/success",
+   "path": "/account/billing/success",
+   "status": 405,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/connections",
+   "path": "/account/connections",
+   "status": 302,
+   "location": "/@user-me/-/agents",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/connections/new",
+   "path": "/account/connections/new",
+   "status": 302,
+   "location": "/@user-me/-/agents/new",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/connections/new/:agent",
+   "path": "/account/connections/new/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/agents/new/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/connections/usage",
+   "path": "/account/connections/usage",
+   "status": 302,
+   "location": "/@user-me/-/agents/usage",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/email",
+   "path": "/account/email",
+   "status": 302,
+   "location": "/@user-me/-/email",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/email/:messageId",
+   "path": "/account/email/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/email/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/export.json",
+   "path": "/account/export.json",
+   "status": 200,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/integrations",
+   "path": "/account/integrations",
+   "status": 302,
+   "location": "/@user-me/-/integrations",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/integrations/:integrationName",
+   "path": "/account/integrations/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/integrations/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/integrations/approve",
+   "path": "/account/integrations/approve",
+   "status": 302,
+   "location": "/@user-me/-/integrations/approve",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/integrations/apps/:appSlug",
+   "path": "/account/integrations/apps/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/integrations/apps/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/jobs",
+   "path": "/account/jobs",
+   "status": 302,
+   "location": "/@user-me/-/jobs",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/jobs/:jobId",
+   "path": "/account/jobs/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/jobs/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/mcp-servers",
+   "path": "/account/mcp-servers",
+   "status": 302,
+   "location": "/@user-me/-/mcp-servers",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/mcp-servers/:serverId",
+   "path": "/account/mcp-servers/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/mcp-servers/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/mcp-servers/new",
+   "path": "/account/mcp-servers/new",
+   "status": 302,
+   "location": "/@user-me/-/mcp-servers/new",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/memories",
+   "path": "/account/memories",
+   "status": 302,
+   "location": "/@user-me/-/memories",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/memories-export.json",
+   "path": "/account/memories-export.json",
+   "status": 200,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/memories/:memoryId",
+   "path": "/account/memories/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/memories/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/packages",
+   "path": "/account/packages",
+   "status": 302,
+   "location": "/@user-me/-/repositories",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/secret-providers",
+   "path": "/account/secret-providers",
+   "status": 302,
+   "location": "/@user-me/-/secret-providers",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/secret-providers/approve",
+   "path": "/account/secret-providers/approve",
+   "status": 302,
+   "location": "/@user-me/-/secret-providers/approve",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/secrets",
+   "path": "/account/secrets",
+   "status": 302,
+   "location": "/@user-me/-/secrets",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/secrets/approve",
+   "path": "/account/secrets/approve",
+   "status": 302,
+   "location": "/@user-me/-/secrets/approve",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/secrets/new",
+   "path": "/account/secrets/new",
+   "status": 302,
+   "location": "/@user-me/-/secrets/new",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/secrets/package/:packageId/:secretName",
+   "path": "/account/secrets/package/bench-missing/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/secrets/package/bench-missing/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/secrets/session/:sessionId/:secretName",
+   "path": "/account/secrets/session/bench-missing/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/secrets/session/bench-missing/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/secrets/user/:secretName",
+   "path": "/account/secrets/user/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/secrets/user/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/waiting",
+   "path": "/account/waiting",
+   "status": 302,
+   "location": "/@user-me/-/waiting",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/webhooks",
+   "path": "/account/webhooks",
+   "status": 302,
+   "location": "/@user-me/-/webhooks",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/workflows",
+   "path": "/account/workflows",
+   "status": 302,
+   "location": "/@user-me/-/workflows",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/account/workflows/:workflowId",
+   "path": "/account/workflows/bench-missing",
+   "status": 302,
+   "location": "/@user-me/-/workflows/bench-missing",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/admin/*",
+   "path": "/admin/x",
+   "status": 404,
+   "location": null,
+   "notFoundPage": true
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/guides.json",
+   "path": "/guides.json",
+   "status": 308,
+   "location": "/docs.json",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/guides/*",
+   "path": "/guides/x",
+   "status": 308,
+   "location": "/docs/x",
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/oauth/authorize",
+   "path": "/oauth/authorize",
+   "status": 200,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/oauth/callback",
+   "path": "/oauth/callback",
+   "status": 200,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/oauth/package-app/authorize",
+   "path": "/oauth/package-app/authorize",
+   "status": 400,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/orgs/:orgSlug/avatar/:file",
+   "path": "/orgs/user-me/avatar/bench-missing",
+   "status": 404,
+   "location": null,
+   "notFoundPage": false
+  },
+  {
+   "side": "onlyB",
+   "pattern": "/profiles/:username/avatar/:file",
+   "path": "/profiles/user-me/avatar/bench-missing",
+   "status": 404,
+   "location": null,
+   "notFoundPage": false
+  }
+ ]
+}

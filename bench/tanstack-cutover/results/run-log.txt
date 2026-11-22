@@ -1,0 +1,36 @@
+ready after 4874 ms, 3 failed attempts
+16:46:10 a r1 start
+17:25:27 a r1 done
+ready after 455 ms, 0 failed attempts
+17:25:41 b r1 start
+17:55:57 b r1 done
+ready after 598 ms, 0 failed attempts
+17:56:11 c r1 start
+18:27:02 c r1 done
+ready after 442 ms, 0 failed attempts
+18:27:17 c r2 start
+18:53:34 c r2 done
+ready after 538 ms, 0 failed attempts
+18:53:47 b r2 start
+19:20:08 b r2 done
+ready after 5521 ms, 3 failed attempts
+19:20:21 a r2 start
+19:45:07 a r2 done
+ready after 643 ms, 0 failed attempts
+19:58:13 a r3 start
+20:11:50 a r3 done
+ready after 469 ms, 0 failed attempts
+20:12:03 b r3 start
+20:27:44 b r3 done
+ready after 658 ms, 0 failed attempts
+20:28:00 c r3 start
+20:43:13 c r3 done
+ready after 451 ms, 0 failed attempts
+20:43:27 c r4 start
+20:58:01 c r4 done
+ready after 460 ms, 0 failed attempts
+20:58:15 b r4 start
+21:13:30 b r4 done
+ready after 543 ms, 0 failed attempts
+21:13:38 a r4 start
+21:27:18 a r4 done

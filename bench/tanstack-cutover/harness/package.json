@@ -1,0 +1,11 @@
+{
+  "name": "tanstack-cutover-bench-harness",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "lighthouse": "13.6.0",
+    "playwright": "1.63.0",
+    "source-map": "0.7.6",
+    "web-vitals": "5.1.0"
+  }
+}

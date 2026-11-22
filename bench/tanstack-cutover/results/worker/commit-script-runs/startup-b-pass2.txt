@@ -1,0 +1,3 @@
+origin startup active CPU: 38.9 ms best of [38.9 / 41.0 / 41.7 / 40.3 / 40.2] (budget 280 ms)
+platform startup active CPU: 126.2 ms best of [126.2 / 127.3 / 127.4 / 153.3 / 128.8] (budget 340 ms)
+runtime startup active CPU: 67.3 ms best of [67.3 / 74.3 / 72.0 / 72.0 / 70.7] (budget 160 ms)

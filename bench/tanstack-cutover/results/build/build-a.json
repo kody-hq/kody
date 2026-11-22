@@ -1,0 +1,311 @@
+{
+ "variant": "a",
+ "root": "/home/ubuntu/bench/wt-a",
+ "totals": {
+  "js": {
+   "files": 57,
+   "raw": 2376986,
+   "gzip": 696991,
+   "brotli": 594408
+  },
+  "css": {
+   "files": 8,
+   "raw": 238431,
+   "gzip": 51480,
+   "brotli": 44045
+  },
+  "allFiles": 521,
+  "allRawBytesExcludingMaps": 28767468
+ },
+ "entries": [
+  {
+   "entry": "assets/entry-DGfYmtFM.js",
+   "entrySize": {
+    "raw": 209576,
+    "gzip": 63495,
+    "brotli": 55469
+   },
+   "closureFiles": [
+    "assets/entry-DGfYmtFM.js",
+    "assets/fathom-events-DMqEF9sK.js",
+    "assets/youtube-light-player-D-Vm756N.js",
+    "assets/route-data-t12w63KN.js",
+    "assets/first-touch-attribution-Dxkah02J.js",
+    "assets/first-touch-attribution-DkZ2pgUD.js",
+    "assets/landing-images-Byb_fN9l.js",
+    "assets/feature-flags-72TAiFEk.js",
+    "assets/auth-links-D83pUdWV.js",
+    "assets/toast-T6WyCBUm.js",
+    "assets/record-table-search-sync-DUGW_EOt.js",
+    "assets/identity-icon-mark-BtOfn3XB.js",
+    "assets/switcher-menu-CH7JxQwd.js",
+    "assets/permissions-CGhJjX6f.js",
+    "assets/replace-location-CONgH7Fn.js",
+    "assets/primitive-cards-BbV5Gvy5.js",
+    "assets/blog-post-path-C5VMWXRS.js",
+    "assets/not-found-page-BCxCDrOK.js",
+    "assets/safe-redirect-CvjsL9T2.js",
+    "assets/error-agent-prompt-button-CgQf_vh5.js",
+    "assets/community-detail-shared-B6bQ_4oR.js",
+    "assets/session-storage-access-AUV4JZy3.js"
+   ],
+   "closure": {
+    "files": 22,
+    "raw": 576005,
+    "gzip": 180734,
+    "brotli": 156209
+   }
+  }
+ ],
+ "breakdownWholeBuildRawBytes": {
+  "unmapped": 44459,
+  "app": 1883093,
+  "remix": 152971,
+  "other-deps": 295740
+ },
+ "breakdownEntryClosureRawBytes": [
+  {
+   "unmapped": 10388,
+   "remix": 126265,
+   "app": 439259
+  }
+ ],
+ "perFileCategoryRawBytes": {
+  "assets/account-area-BlvsM0xO.js": {
+   "unmapped": 3753,
+   "app": 429167,
+   "remix": 23341,
+   "other-deps": 23304
+  },
+  "assets/account-management-components-CYqCuo_K.js": {
+   "unmapped": 513,
+   "app": 24433
+  },
+  "assets/account-usage-where-it-went-BnQF8lTW.js": {
+   "unmapped": 321,
+   "app": 3513
+  },
+  "assets/admin-area-BJIRx0OF.js": {
+   "unmapped": 1273,
+   "app": 151721
+  },
+  "assets/area-chart-BWPsqfSq.js": {
+   "unmapped": 278,
+   "app": 12815
+  },
+  "assets/auth-area-CCy65Gge.js": {
+   "unmapped": 1501,
+   "app": 34800
+  },
+  "assets/auth-links-D83pUdWV.js": {
+   "unmapped": 47,
+   "app": 99
+  },
+  "assets/blog-area-Cm_3cNFh.js": {
+   "unmapped": 3783,
+   "app": 34154
+  },
+  "assets/blog-post-path-C5VMWXRS.js": {
+   "unmapped": 145,
+   "app": 8730
+  },
+  "assets/community-area-Dha66GFi.js": {
+   "unmapped": 1947,
+   "app": 92347
+  },
+  "assets/community-detail-shared-B6bQ_4oR.js": {
+   "unmapped": 136,
+   "app": 5527
+  },
+  "assets/copy-code-block-T1AkF-NP.js": {
+   "unmapped": 228,
+   "app": 1774
+  },
+  "assets/credit-amount-input-DowdeQLt.js": {
+   "unmapped": 617,
+   "remix": 3365,
+   "app": 5463
+  },
+  "assets/double-check-D3mCb0al.js": {
+   "unmapped": 95,
+   "app": 397
+  },
+  "assets/entry-DGfYmtFM.js": {
+   "unmapped": 4394,
+   "remix": 83833,
+   "app": 121331
+  },
+  "assets/error-agent-prompt-button-CgQf_vh5.js": {
+   "unmapped": 133,
+   "app": 2814
+  },
+  "assets/esm-CVed1Whg.js": {
+   "unmapped": 269,
+   "app": 3601,
+   "other-deps": 8544
+  },
+  "assets/fathom-events-DMqEF9sK.js": {
+   "unmapped": 50,
+   "app": 1154
+  },
+  "assets/feature-flags-72TAiFEk.js": {
+   "unmapped": 96,
+   "app": 829
+  },
+  "assets/first-touch-attribution-DkZ2pgUD.js": {
+   "unmapped": 60,
+   "app": 1919
+  },
+  "assets/first-touch-attribution-Dxkah02J.js": {
+   "unmapped": 238,
+   "app": 4478
+  },
+  "assets/follows-shared-9sA3mxoF.js": {
+   "unmapped": 190,
+   "app": 5676
+  },
+  "assets/handle-field-DW5WWO8P.js": {
+   "unmapped": 103,
+   "app": 2211
+  },
+  "assets/honeypot-field-CSmwf38N.js": {
+   "unmapped": 163,
+   "app": 2703
+  },
+  "assets/how-kody-works-transcript-B2Nm4ewz.js": {
+   "unmapped": 7613,
+   "app": 12781
+  },
+  "assets/identity-icon-mark-BtOfn3XB.js": {
+   "unmapped": 125,
+   "app": 1159
+  },
+  "assets/interactive-guide-transcript-BqkIHVrQ.js": {
+   "unmapped": 68,
+   "app": 1281
+  },
+  "assets/interactive-guide-walkthrough-CgQ00GqP.js": {
+   "unmapped": 791,
+   "app": 8246
+  },
+  "assets/landing-images-Byb_fN9l.js": {
+   "unmapped": 51,
+   "app": 671
+  },
+  "assets/list-detail-route-eZhrBCL-.js": {
+   "unmapped": 116,
+   "app": 860
+  },
+  "assets/login-shared-C834rgNV.js": {
+   "unmapped": 343,
+   "app": 1484
+  },
+  "assets/markdown-view-wRcT5mqL.js": {
+   "unmapped": 625,
+   "other-deps": 44894,
+   "app": 16383
+  },
+  "assets/marketing-area-Du8qRFgs.js": {
+   "unmapped": 2277,
+   "app": 348711
+  },
+  "assets/mcp-oauth-popup-CfZKuf0x.js": {
+   "unmapped": 1402,
+   "app": 62659
+  },
+  "assets/not-found-page-BCxCDrOK.js": {
+   "unmapped": 283,
+   "app": 1516
+  },
+  "assets/oauth-login-errors-CmjACawX.js": {
+   "unmapped": 55,
+   "app": 1224
+  },
+  "assets/onboarding-area-Bru5QjjM.js": {
+   "unmapped": 2293,
+   "app": 105660
+  },
+  "assets/onboarding-mcp-client-cards-CJ_OviYj.js": {
+   "unmapped": 263,
+   "app": 6480
+  },
+  "assets/package-files-area-IWaTx6mb.js": {
+   "unmapped": 679,
+   "app": 15678
+  },
+  "assets/package-repo-nav-U3Vh3QON.js": {
+   "unmapped": 760,
+   "app": 36786
+  },
+  "assets/password-reveal-input-Bf5pvFcf.js": {
+   "unmapped": 144,
+   "app": 1148
+  },
+  "assets/permissions-CGhJjX6f.js": {
+   "unmapped": 48,
+   "app": 345
+  },
+  "assets/primitive-cards-BbV5Gvy5.js": {
+   "unmapped": 192,
+   "app": 26870
+  },
+  "assets/public-signup-copy-_IfNy7mA.js": {
+   "unmapped": 101,
+   "app": 101
+  },
+  "assets/record-table-search-sync-DUGW_EOt.js": {
+   "unmapped": 61,
+   "app": 425
+  },
+  "assets/replace-location-CONgH7Fn.js": {
+   "unmapped": 114,
+   "remix": 1078,
+   "app": 338
+  },
+  "assets/route-data-t12w63KN.js": {
+   "unmapped": 2616,
+   "remix": 41354,
+   "app": 209506
+  },
+  "assets/safe-redirect-CvjsL9T2.js": {
+   "unmapped": 156,
+   "app": 8592
+  },
+  "assets/search-filter-BfL6UgI3.js": {
+   "unmapped": 50,
+   "app": 221
+  },
+  "assets/sentry-init-uexVtjHD.js": {
+   "unmapped": 375,
+   "other-deps": 218998,
+   "app": 450
+  },
+  "assets/session-storage-access-AUV4JZy3.js": {
+   "unmapped": 59,
+   "app": 675
+  },
+  "assets/social-sign-in-C4ZY_wxe.js": {
+   "unmapped": 171,
+   "app": 18108
+  },
+  "assets/switcher-menu-CH7JxQwd.js": {
+   "unmapped": 411,
+   "app": 15841
+  },
+  "assets/syntax-highlight-BmjAnbW0.js": {
+   "unmapped": 101,
+   "app": 798
+  },
+  "assets/toast-T6WyCBUm.js": {
+   "unmapped": 814,
+   "app": 24732
+  },
+  "assets/youtube-light-player-D-Vm756N.js": {
+   "unmapped": 159,
+   "app": 1708
+  },
+  "page-init.js": {
+   "unmapped": 810
+  }
+ }
+}
