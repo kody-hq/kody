@@ -82,7 +82,7 @@ function parseBooleanField(
  * updated: YYYY-MM-DD (optional; not before date)
  * description: <string>
  * order: <number>
- * category: essays | how-to | updates | stories
+ * category: essays | how-to | updates | stories | technical
  * series: <series slug> (optional)
  * featured: true | false (optional; default false)
  * image: /images/<file> (optional)

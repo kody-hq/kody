@@ -25,6 +25,11 @@ import {
 import { renderMarkdownNodes } from '../components/markdown-view.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { BlogPostList, blogCategoryLabel } from './blog-parts.tsx'
+import {
+	BlogTechnicalBreadcrumb,
+	blogTechnicalThemeCss,
+	isTechnicalBlogCategory,
+} from './blog-technical.tsx'
 /** Blog posts are repo-authored, so they render with the first-party docs policy. */
 const blogPostMarkdownOptions = {
 	headingOffset: 0,
@@ -44,16 +49,25 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 			}),
 		[post.body, post.bodyFences],
 	)
+	const technical = isTechnicalBlogCategory(post.category)
 	return (
-		<article css={postCss}>
-			<SiteLink
-				data-rise
-				style={{ '--rise': '0' } as CSSProperties}
-				href={routes.blog.href()}
-				css={postBackCss}
-			>
-				← Blog
-			</SiteLink>
+		<article css={technical ? [postCss, blogTechnicalThemeCss] : postCss}>
+			{technical ? (
+				<BlogTechnicalBreadcrumb
+					current="post"
+					data-rise
+					style={{ '--rise': '0' } as CSSProperties}
+				/>
+			) : (
+				<SiteLink
+					data-rise
+					style={{ '--rise': '0' } as CSSProperties}
+					href={routes.blog.href()}
+					css={postBackCss}
+				>
+					← Blog
+				</SiteLink>
+			)}
 
 			{post !== null ? (
 				<>

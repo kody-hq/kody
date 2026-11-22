@@ -12,6 +12,10 @@ import { pageHeadCss } from '#universal/styles/style-primitives.ts'
 import { revealRef } from '../components/reveal.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { publicAsset } from '../public-assets.ts'
+import {
+	blogTechnicalTabCss,
+	isTechnicalBlogCategory,
+} from './blog-technical.tsx'
 
 const THUMBNAIL_SIZE = 112
 
@@ -42,7 +46,11 @@ export function BlogCategoryNav({
 	active: string
 }) {
 	return (
-		<nav aria-label="Blog categories" css={categoryNavCss}>
+		<nav
+			aria-label="Blog categories"
+			css={categoryNavCss}
+			ref={scrollActiveTabIntoView}
+		>
 			<SiteLink
 				href={routes.blog.href()}
 				aria-current={active === 'all' ? 'page' : undefined}
@@ -55,7 +63,11 @@ export function BlogCategoryNav({
 					key={category.slug}
 					href={routes.blogCategory.href({ category: category.slug })}
 					aria-current={active === category.slug ? 'page' : undefined}
-					css={categoryTabCss}
+					css={
+						isTechnicalBlogCategory(category.slug)
+							? [categoryTabCss, blogTechnicalTabCss]
+							: categoryTabCss
+					}
 				>
 					{category.label}
 					<span css={categoryCountCss}>{category.count}</span>
@@ -63,6 +75,17 @@ export function BlogCategoryNav({
 			))}
 		</nav>
 	)
+}
+
+/** On narrow screens the tabs scroll; start with the active one visible. */
+function scrollActiveTabIntoView(nav: HTMLElement | null) {
+	const tab = nav?.querySelector<HTMLElement>('[aria-current="page"]')
+	if (!nav || !tab) return
+	const navBox = nav.getBoundingClientRect()
+	const tabBox = tab.getBoundingClientRect()
+	if (tabBox.right > navBox.right) {
+		nav.scrollLeft += tabBox.right - navBox.right
+	}
 }
 
 export function BlogPostList({
