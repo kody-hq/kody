@@ -129,6 +129,7 @@ const platformApiErrorCodes = [
 	'unsupported_dynamic_package_import',
 	'package_graph_resource_limit',
 	'publish_not_applied',
+	'storage_busy',
 	'upgrade_required',
 	'internal_error',
 ] as const

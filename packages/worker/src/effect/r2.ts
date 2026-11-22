@@ -69,15 +69,14 @@ export function makeR2Client(bucket: () => R2Bucket): R2Client {
 	}
 }
 
-/** Every key under `prefix`, following R2's list cursor. */
-export const listAllKeys = Effect.fnUntraced(function* (
-	client: R2Client,
-	prefix: string,
+/** Every key a paged R2 list returns, following its cursor. */
+export const listAllKeys = Effect.fnUntraced(function* <E, R>(
+	listPage: (cursor: string | undefined) => Effect.Effect<R2ListPage, E, R>,
 ) {
 	const keys: Array<string> = []
 	let cursor: string | undefined
 	do {
-		const page = yield* client.listPage(prefix, cursor)
+		const page = yield* listPage(cursor)
 		keys.push(...page.keys)
 		cursor = page.cursor
 	} while (cursor)

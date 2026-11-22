@@ -1,6 +1,7 @@
 import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { Clock, Effect, Option, Schema } from 'effect'
 import { D1, sql } from '#worker/effect/d1.ts'
+import { retryTransient } from '#worker/effect/transient-retry.ts'
 import { digestSha256Hex } from './digest.ts'
 import {
 	PublishBuildDocumentUnreadable,
@@ -162,7 +163,10 @@ export const authenticatePublishBuildTicket = Effect.fn(
 	if (!ticket?.startsWith(ticketPrefix)) {
 		return yield* new PublishBuildTicketInvalid()
 	}
-	const found = yield* getPublishBuild(input.buildId)
+	const found = yield* retryTransient(
+		'publish_builds.get',
+		getPublishBuild(input.buildId),
+	)
 	if (Option.isNone(found)) return yield* new PublishBuildTicketInvalid()
 	const row = found.value
 	if (!timingSafeEqualHex(yield* digestSha256Hex(ticket), row.ticket_sha256)) {
@@ -181,18 +185,33 @@ export const sealPublishBuild = Effect.fn('PublishBuildStore.seal')(
 		const bucket = yield* PublishBuildBucket
 		const body = JSON.stringify(input.document)
 		const sha256 = yield* digestSha256Hex(body)
-		yield* bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
-			httpMetadata: { contentType: 'application/json' },
-		})
-		const result = yield* db.run(
+		const documentKey = publishBuildDocumentKey(input.buildId, sha256)
+		yield* retryTransient(
+			'r2.put publish build document',
+			bucket.put(documentKey, body, {
+				httpMetadata: { contentType: 'application/json' },
+			}),
+		)
+		const result = yield* retryTransient(
 			'publish_builds.seal',
-			sql(
-				`UPDATE publish_builds
+			db.run(
+				'publish_builds.seal',
+				sql(
+					`UPDATE publish_builds
 			SET status = 'sealed', document_sha256 = ?, updated_at = ?
 			WHERE id = ? AND status IN ${sealGuard}`,
-				sha256,
-				yield* nowIso,
-				input.buildId,
+					sha256,
+					yield* nowIso,
+					input.buildId,
+				),
+			),
+		).pipe(
+			// The row was never sealed, so the document it would name is not
+			// recorded; drop it so a busy store leaves no orphan behind.
+			Effect.tapError((error) =>
+				error._tag === 'TransientRetryBudgetExhausted'
+					? bucket.delete([documentKey]).pipe(Effect.ignore)
+					: Effect.void,
 			),
 		)
 		return result.changes > 0
@@ -207,19 +226,22 @@ export const finishPublishBuild = Effect.fn('PublishBuildStore.finish')(
 	}) {
 		const db = yield* D1
 		const now = yield* nowIso
-		yield* db.run(
+		yield* retryTransient(
 			'publish_builds.finish',
-			sql(
-				`UPDATE publish_builds
+			db.run(
+				'publish_builds.finish',
+				sql(
+					`UPDATE publish_builds
 			SET status = ?, message = ?, updated_at = ?,
 				committed_at = CASE WHEN ? = 'committed' THEN ? ELSE committed_at END
 			WHERE id = ? AND status IN ${finishGuard}`,
-				input.status,
-				input.message ?? null,
-				now,
-				input.status,
-				now,
-				input.buildId,
+					input.status,
+					input.message ?? null,
+					now,
+					input.status,
+					now,
+					input.buildId,
+				),
 			),
 		)
 	},
@@ -297,8 +319,11 @@ export const readPublishBuildDocument = Effect.fn(
 )(function* (input: { row: Pick<PublishBuildRow, 'id' | 'document_sha256'> }) {
 	if (!input.row.document_sha256) return null
 	const bucket = yield* PublishBuildBucket
-	const text = yield* bucket.getText(
-		publishBuildDocumentKey(input.row.id, input.row.document_sha256),
+	const text = yield* retryTransient(
+		'r2.get publish build document',
+		bucket.getText(
+			publishBuildDocumentKey(input.row.id, input.row.document_sha256),
+		),
 	)
 	if (text === null) return null
 	return yield* Schema.decodeUnknownEffect(Schemas.PublishBuildDocumentJson)(

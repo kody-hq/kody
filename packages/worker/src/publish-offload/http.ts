@@ -6,6 +6,11 @@ import type { PublishBuildTicketInvalid } from './errors.ts'
 import { publishOffloadLimits } from './policy.ts'
 import * as Schemas from './schemas.ts'
 import { listAllKeys } from '#worker/effect/r2.ts'
+import {
+	retryTransient,
+	TransientRetryBudget,
+	type TransientRetryBudgetExhausted,
+} from '#worker/effect/transient-retry.ts'
 import { PublishBuildBucket, publishOffloadRuntime } from './services.ts'
 import {
 	authenticatePublishBuildTicket,
@@ -127,7 +132,12 @@ const listUploadedChunks = Effect.fn('PublishBuildHttp.listChunks')(function* (
 ) {
 	const bucket = yield* PublishBuildBucket
 	const prefix = publishBuildBlobPrefix(buildId)
-	const keys = yield* listAllKeys(bucket, prefix)
+	const keys = yield* listAllKeys((cursor) =>
+		retryTransient(
+			'r2.list publish build chunks',
+			bucket.listPage(prefix, cursor),
+		),
+	)
 	return keys.map((key) => key.slice(prefix.length))
 })
 
@@ -211,7 +221,10 @@ const sealBuild = Effect.fn('PublishBuildHttp.seal')(function* (
 	if (missing.length > 0)
 		return yield* new PublishBuildChunksMissing({ missing })
 	if (!(yield* sealPublishBuild({ buildId: row.id, document }))) {
-		const current = yield* getPublishBuild(row.id)
+		const current = yield* retryTransient(
+			'publish_builds.get',
+			getPublishBuild(row.id),
+		)
 		return yield* new PublishBuildNotUploading({
 			status: current._tag === 'Some' ? current.value.status : row.status,
 		})
@@ -219,31 +232,42 @@ const sealBuild = Effect.fn('PublishBuildHttp.seal')(function* (
 	return json({ ok: true, build_id: row.id, status: 'sealed' })
 })
 
+const serveRoute = Effect.fnUntraced(function* (
+	request: Request,
+	route: ParsedRoute,
+) {
+	const row = yield* authenticatePublishBuildTicket({
+		buildId: route.buildId,
+		ticket: bearer(request),
+	})
+	if (route.kind === 'status') {
+		return json({
+			build_id: row.id,
+			commit: row.commit_sha,
+			status: row.status,
+			message: row.message,
+			expires_at: row.expires_at,
+			uploaded_chunks: yield* listUploadedChunks(row.id),
+		})
+	}
+	if (row.status !== 'uploading') {
+		return yield* new PublishBuildNotUploading({ status: row.status })
+	}
+	if (route.kind === 'blob') {
+		return yield* uploadChunk(request, row, route.sha256)
+	}
+	return yield* sealBuild(request, row)
+})
+
 export const servePublishBuildRoute = Effect.fn('PublishBuildHttp.serve')(
 	function* (request: Request, url: URL) {
 		const route = parseRoute(request.method, url.pathname)
 		if (!route) return yield* new PublishBuildRouteNotFound()
-		const row = yield* authenticatePublishBuildTicket({
-			buildId: route.buildId,
-			ticket: bearer(request),
-		})
-		if (route.kind === 'status') {
-			return json({
-				build_id: row.id,
-				commit: row.commit_sha,
-				status: row.status,
-				message: row.message,
-				expires_at: row.expires_at,
-				uploaded_chunks: yield* listUploadedChunks(row.id),
-			})
-		}
-		if (row.status !== 'uploading') {
-			return yield* new PublishBuildNotUploading({ status: row.status })
-		}
-		if (route.kind === 'blob') {
-			return yield* uploadChunk(request, row, route.sha256)
-		}
-		return yield* sealBuild(request, row)
+		const served = serveRoute(request, route)
+		// One retry budget per seal request; the other routes do not retry.
+		return yield* route.kind === 'seal'
+			? Effect.provide(served, TransientRetryBudget.layer)
+			: served
 	},
 )
 
@@ -280,6 +304,16 @@ const publishBuildRouteFailure = Match.type<PublishBuildRouteError>().pipe(
 		},
 		PublishBuildChunksMissing: ({ missing }) =>
 			json({ ok: false, missing_chunks: missing }, 409),
+		TransientRetryBudgetExhausted: ({
+			label,
+		}: TransientRetryBudgetExhausted): Response => {
+			throw new ApiError({
+				status: 503,
+				code: 'storage_busy',
+				message: `Publish build storage is busy (${label}). Nothing was sealed; seal the build again in a few seconds.`,
+				headers: { 'Retry-After': '5' },
+			})
+		},
 		DatabaseError: rethrow,
 		OutboundCallError: rethrow,
 	}),

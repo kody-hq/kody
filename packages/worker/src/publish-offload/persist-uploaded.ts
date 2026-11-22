@@ -19,6 +19,10 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { Clock, Duration, Effect, Match, Option, Schema } from 'effect'
 import { runEdge, rethrow } from '#worker/effect/edge.ts'
 import { outbound } from '#worker/effect/outbound.ts'
+import {
+	retryTransient,
+	TransientRetryBudget,
+} from '#worker/effect/transient-retry.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import { PublishBuildBucket, publishOffloadRuntime } from './services.ts'
 import {
@@ -74,8 +78,9 @@ const readModule = Effect.fnUntraced(function* (input: {
 	const parts: Array<Uint8Array> = []
 	let size = 0
 	for (const chunk of input.entry.chunks) {
-		const bytes = yield* bucket.getBytes(
-			publishBuildBlobKey(input.buildId, chunk),
+		const bytes = yield* retryTransient(
+			'r2.get publish build chunk',
+			bucket.getBytes(publishBuildBlobKey(input.buildId, chunk)),
 		)
 		if (!bytes) {
 			return yield* fail(
@@ -181,11 +186,13 @@ const rejectBuild = Effect.fn('PublishBuildPersist.reject')(function* (
 	message: string,
 ) {
 	yield* finishPublishBuild({ buildId, status: 'rejected', message }).pipe(
-		Effect.catchTag('DatabaseError', (error) =>
-			Effect.logDebug('publish_build_reject_record_failed', {
-				buildId,
-				message: error.message,
-			}),
+		Effect.catchTag(
+			['DatabaseError', 'TransientRetryBudgetExhausted'],
+			(error) =>
+				Effect.logDebug('publish_build_reject_record_failed', {
+					buildId,
+					message: error.message,
+				}),
 		),
 	)
 	const result: PersistUploadedPublishBuildResult = {
@@ -215,7 +222,10 @@ const verifyAndPersist = Effect.fnUntraced(function* (
 			totalMs: stepMs[step],
 		})
 	})
-	const found = yield* getPublishBuild(input.buildId)
+	const found = yield* retryTransient(
+		'publish_builds.get',
+		getPublishBuild(input.buildId),
+	)
 	const row = Option.getOrUndefined(found)
 	const document = row ? yield* readPublishBuildDocument({ row }) : null
 	if (
@@ -361,6 +371,8 @@ export const persistUploaded = Effect.fn('PublishBuildPersist.persistUploaded')(
 			Effect.catchTag('PublishBuildVerificationError', (error) =>
 				rejectBuild(input.buildId, error.message),
 			),
+			// One retry budget for the whole commit.
+			Effect.provide(TransientRetryBudget.layer),
 		)
 	},
 )
@@ -382,6 +394,13 @@ const persistUploadedFailure = Match.type<PersistUploadedError>().pipe(
 		): PersistUploadedPublishBuildResult => {
 			throw new Error(error.message)
 		},
+		// Storage stayed busy: the build is still sealed, so commit it again.
+		TransientRetryBudgetExhausted: ({
+			label,
+		}): PersistUploadedPublishBuildResult => ({
+			ok: false,
+			message: `Publish storage was busy (${label}). The build is still sealed, so the publish can be retried.`,
+		}),
 		DatabaseError: rethrow,
 		OutboundCallError: rethrow,
 	}),
