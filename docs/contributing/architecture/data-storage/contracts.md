@@ -469,7 +469,13 @@ over the policy tables — every pending table gets one configured batch before
 any table gets a second one — until every table is drained or the run's time
 budget (`retentionRunTimeBudgetMs`, ~20 seconds measured with `Date.now`) is
 exhausted. The first pass always completes so a hot table cannot starve the
-others, and per-batch sizes stay small to bound D1 single-writer pressure.
+others, and per-batch sizes stay small to bound D1 single-writer pressure. A
+failed table is skipped for the rest of that run while the other tables
+continue; after processing, the run rethrows a single failure or aggregates
+multiple failures. Published-bundle scans advance a `(created_at, id)` cursor
+past skipped artifacts, including those kept for active repo sessions. These
+behaviors are covered by the
+[retention failure tests](../../../../packages/worker/src/scheduled/retention-oauth-purge-failures.node.test.ts).
 Progress is reported with a one-line `retention-prune` log that includes
 batches-per-table counts and whether the budget ran out. The retention module
 owns the named constants and manifest, and

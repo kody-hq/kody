@@ -61,9 +61,10 @@ reused, or evolved.
 Ad hoc `execute` runs with the signed-in user's ambient authority: it can call
 discovered capabilities through `kody`. A saved package is the
 declared-authority unit. Secret mounts, host approval, integration allowlists,
-and `kody.dependencies` are the request, and agents cannot widen those. Outbound
-emissions (email, paid APIs, third-party writes) are not invertible; use a
-package `dryRun` and fresh user confirmation before a live mutation.
+and `kody.dependencies` describe the requested authority. For resource locks,
+[a use-only caller's widening request returns an approval URL without changing the allowlist](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts).
+Outbound emissions (email, paid APIs, third-party writes) are not invertible;
+use a package `dryRun` and fresh user confirmation before a live mutation.
 
 ### Fork a close public package before creating
 
@@ -355,8 +356,11 @@ npx @kodycodes/cli@latest dev --passthrough api.stripe.com
 Unmatched requests fail closed with structured `unmocked_request` (method + URL)
 and a paste-ready handler stub in `fix` / `details.handlerStub`.
 `--passthrough <host,…>` opts specific hosts into the real network; credentials
-stay fake on mock, so passthrough never carries real credentials. Private/local
-passthrough hosts also need `--allow-private-network`.
+come from mock session state. Passthrough is real network access: the
+[gateway forwards request headers and bodies](../../packages/cli/src/mock/mock-fetch-gateway.ts),
+removing only the internal `x-kody-credential-client` header. Keep real secrets
+out of mock code, inputs, and fixtures. Private/local passthrough hosts also
+need `--allow-private-network`.
 
 Example agent-facing error:
 
