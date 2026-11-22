@@ -352,8 +352,15 @@ function scheduleSubscriptionEmit(
  * run while the others return the token it stored, so a 401 stampede cannot
  * rotate the refresh token out from under itself.
  */
-const inFlightIntegrationTokenRefreshes =
-	new PromiseLruCache<IntegrationTokenRefreshResult>({ retainSettled: false })
+/**
+ * Attempts settle to an outcome, so concurrent callers share a provider
+ * rejection instead of each retrying the POST; only an attempt whose request
+ * ended (a rejected promise) is rebuilt.
+ */
+const inFlightIntegrationTokenRefreshes = new PromiseLruCache<
+	| { ok: true; result: IntegrationTokenRefreshResult }
+	| { ok: false; error: unknown }
+>({ retainSettled: false })
 
 function integrationTokenRefreshDedupeKey(userId: OwnerId, name: string) {
 	return `${userId}\0${name}`
@@ -367,10 +374,16 @@ export async function refreshIntegrationTokens(input: {
 	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<IntegrationTokenRefreshResult> {
 	const key = integrationTokenRefreshDedupeKey(input.userId, input.name)
-	return await inFlightIntegrationTokenRefreshes.getOrCreate({
+	const outcome = await inFlightIntegrationTokenRefreshes.getOrCreate({
 		cacheKey: key,
-		create: () => refreshIntegrationTokensAttempt(input),
+		create: () =>
+			refreshIntegrationTokensAttempt(input).then(
+				(result) => ({ ok: true as const, result }),
+				(error: unknown) => ({ ok: false as const, error }),
+			),
 	})
+	if (!outcome.ok) throw outcome.error
+	return outcome.result
 }
 
 async function refreshIntegrationTokensAttempt(input: {
