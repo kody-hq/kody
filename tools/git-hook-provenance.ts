@@ -19,7 +19,11 @@ type GitRunner = (args: ReadonlyArray<string>) => GitCommandResult
 
 const gitHookProvenanceRelativePath = '.tmp/git-hook-provenance.json'
 
-export type GitHookProvenanceCheck = 'knip' | 'test:push'
+/** A `vitest related` script records under its own script text. */
+export type GitHookProvenanceCheck =
+	| 'knip'
+	| 'test:push'
+	| `vitest related --project ${string}`
 
 export type GitHookProvenanceEntry = {
 	at: string
