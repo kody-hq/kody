@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import type * as SentryCloudflare from '@sentry/cloudflare'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -33,8 +34,8 @@ const sentry = vi.hoisted(() => ({
 	setContext: vi.fn(),
 }))
 
-vi.mock(import('@sentry/cloudflare'), async (importOriginal) => ({
-	...(await importOriginal()),
+vi.mock('@sentry/cloudflare', async (importOriginal) => ({
+	...(await importOriginal<typeof SentryCloudflare>()),
 	isInitialized: () => true,
 	captureException: sentry.captureException,
 	withScope: (
