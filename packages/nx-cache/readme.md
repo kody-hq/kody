@@ -50,7 +50,8 @@ probes the cache the same way CI does and unsets
 rotated token degrades to the local cache with a warning. A transport error
 talking to `/v1/cache/{hash}`, or Nx's `Misconfigured remote cache endpoint` /
 `Unauthorized` cache error, after Nx already printed `Successfully ran target`,
-a `✔ nx run` success mark, or Playwright's all-pass summary for `:test-e2e`, is
+a `✔ nx run` success mark, or Playwright's all-pass summary for `:test-e2e`
+(passed, with no failed, interrupted, did-not-run, or run-level error lines), is
 treated as success even when Nx then lists that task under `Failed tasks`. The
 same failure before tasks finish retries once with `--skipRemoteCache` and
 without `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`.

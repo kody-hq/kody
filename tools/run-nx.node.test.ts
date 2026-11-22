@@ -69,6 +69,38 @@ Failed tasks:
 - worker:test-e2e
 `
 
+const e2eTeardownErrorThenCache500 = `
+  73 passed (8.6m)
+  1 error was not a part of any test, see above for details
+
+##[group]❌ > nx run worker:test-e2e
+
+Misconfigured remote cache endpoint: Unexpected response status: 500 Internal Server Error
+##[endgroup]
+
+ NX  Running target test-e2e for project worker and 2 tasks it depends on failed
+
+Failed tasks:
+
+- worker:test-e2e
+`
+
+const e2eDidNotRunThenCache500 = `
+  2 did not run
+  71 passed (8.6m)
+
+##[group]❌ > nx run worker:test-e2e
+
+Misconfigured remote cache endpoint: Unexpected response status: 500 Internal Server Error
+##[endgroup]
+
+ NX  Running target test-e2e for project worker and 2 tasks it depends on failed
+
+Failed tasks:
+
+- worker:test-e2e
+`
+
 test('a Playwright all-pass summary counts as success for test-e2e', () => {
 	expect(nxPlaywrightSuitePassed(e2ePassedThenCache500)).toBe(true)
 	expect(nxTaskPrintedSuccess(e2ePassedThenCache500, 'worker:test-e2e')).toBe(
@@ -91,6 +123,23 @@ test('a Playwright failure next to a cache 500 stays a real task failure', () =>
 	expect(nxTasksSucceededDespiteRemoteCacheFailure(e2eFailedThenCache500)).toBe(
 		false,
 	)
+})
+
+test('a Playwright worker teardown error next to a cache 500 stays a real task failure', () => {
+	expect(nxPlaywrightSuitePassed(e2eTeardownErrorThenCache500)).toBe(false)
+	expect(nxFailedTasksAreRemoteCacheOnly(e2eTeardownErrorThenCache500)).toBe(
+		false,
+	)
+	expect(nxRunReportedTaskFailure(e2eTeardownErrorThenCache500)).toBe(true)
+	expect(
+		nxTasksSucceededDespiteRemoteCacheFailure(e2eTeardownErrorThenCache500),
+	).toBe(false)
+})
+
+test('Playwright tests that did not run next to a cache 500 stay a real task failure', () => {
+	expect(nxPlaywrightSuitePassed(e2eDidNotRunThenCache500)).toBe(false)
+	expect(nxFailedTasksAreRemoteCacheOnly(e2eDidNotRunThenCache500)).toBe(false)
+	expect(nxRunReportedTaskFailure(e2eDidNotRunThenCache500)).toBe(true)
 })
 
 test('a listed task with a success mark is still a cache-only failure', () => {

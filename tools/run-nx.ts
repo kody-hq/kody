@@ -86,11 +86,16 @@ export function nxPlaywrightSuitePassed(output: string) {
 		new RegExp(`(?:^|\\n)\\s+\\d+ ${label}(?:\\s+\\([^)]+\\))?(?:\\n|$)`).test(
 			plain,
 		)
-	return (
-		summaryCount('passed') &&
-		!summaryCount('failed') &&
-		!summaryCount('interrupted')
-	)
+	if (
+		summaryCount('failed') ||
+		summaryCount('interrupted') ||
+		summaryCount('did not run') ||
+		/(?:^|\n)\s+1 error was not a part of any test/.test(plain) ||
+		/(?:^|\n)\s+\d+ errors were not a part of any test/.test(plain)
+	) {
+		return false
+	}
+	return summaryCount('passed')
 }
 
 export function nxTaskPrintedSuccess(output: string, task: string) {
@@ -99,6 +104,8 @@ export function nxTaskPrintedSuccess(output: string, task: string) {
 	if (new RegExp(`✔\\s+nx run\\s+${escaped}\\b`).test(plain)) return true
 	// Nx can mark test-e2e ❌ after Playwright already printed an all-pass
 	// summary, when the remote cache then 500s (Validate #44965301568).
+	// Remove when: Nx prints ✔ nx run for a task whose command succeeded
+	// even after a remote-cache 500.
 	return task.endsWith(':test-e2e') && nxPlaywrightSuitePassed(plain)
 }
 
