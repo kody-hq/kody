@@ -70,8 +70,9 @@ export const credentialStampFileName = 'credential-stamp.json'
  * prebuilt client bundles (e.g. @kentcdodds/world-builder's ~1.7MB
  * `public/client/main.js`) reset the Durable Object CPU budget when parsed.
  * Client/prebuilt assets never resolve credentials server-side, so
- * {@link omitOversizedCredentialStampModules} drops those modules from the
- * AST walks used by publish, fleet restamp, and credential-pattern-check.
+ * {@link omitOversizedClientCredentialStampModules} drops those modules from
+ * the AST walks used by publish, fleet restamp, and credential-pattern-check.
+ * Server-reachable modules are always walked, whatever their size.
  * UTF-8 byte length.
  */
 export const credentialStampMaxModuleScanBytes = 256 * 1024
@@ -83,16 +84,20 @@ export function measureCredentialStampModuleBytes(source: string): number {
 }
 
 /**
- * Drop oversized scannable modules from a package file map before stamp
- * planning / sealing. Non-module assets and package.json are kept. Returns
- * `files` itself when nothing is dropped so the credential scans of one check
- * share one module index.
+ * Drop oversized scannable modules that no server runtime root reaches
+ * (`serverPaths`, from {@link collectServerRuntimeModulePaths}) from a
+ * package file map before stamp planning / sealing. Server modules,
+ * non-module assets, and package.json are kept. Returns `files` itself when
+ * nothing is dropped so the credential scans of one check share one module
+ * index.
  */
-export function omitOversizedCredentialStampModules(
+export function omitOversizedClientCredentialStampModules(
 	files: Record<string, string>,
+	serverPaths: ReadonlySet<string>,
 ): Record<string, string> {
 	const oversized = Object.entries(files).filter(
 		([path, content]) =>
+			!serverPaths.has(path) &&
 			scannableModuleFilePattern.test(path) &&
 			measureCredentialStampModuleBytes(content) >
 				credentialStampMaxModuleScanBytes,
@@ -906,11 +911,15 @@ async function scanServerEvalFailures(
  */
 export async function scanLiteralMcpServerKeys(
 	files: Record<string, string>,
+	serverPaths?: ReadonlySet<string>,
 ): Promise<{
 	keys: Array<string>
 	failures: Array<CredentialStampGateFailure>
 }> {
-	files = omitOversizedCredentialStampModules(files)
+	files = omitOversizedClientCredentialStampModules(
+		files,
+		serverPaths ?? (await collectServerRuntimeModulePaths(files)),
+	)
 	const keys = new Set<string>()
 	const failures: Array<CredentialStampGateFailure> = []
 	const declaredMcpKeys = declaredMcpCredentialKeys(
@@ -1696,7 +1705,8 @@ export type CredentialStampPasses = {
 
 /**
  * Walk the modules of `files` for a credential stamp. `files` must already
- * be without oversized modules ({@link omitOversizedCredentialStampModules}).
+ * be without oversized client modules
+ * ({@link omitOversizedClientCredentialStampModules}).
  * When the file map adopted a module plan, only that plan's modules are
  * walked; {@link mergeCredentialStampPasses} joins the parts.
  */
@@ -1782,7 +1792,7 @@ export async function collectCredentialStampPasses(
 					if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
 					else scanUnparsedCredentialKeys(files[path]!, keyScan)
 				}),
-			() => scanLiteralMcpServerKeys(files),
+			() => scanLiteralMcpServerKeys(files, serverPaths),
 			() =>
 				detectLegacyCredentialPatternsCodemod.detect(files, {
 					packageName: '',
@@ -1867,13 +1877,11 @@ export async function scanCredentialStamp(
 		secretProviders?: ResolvedSecretProviderSlots
 	} = {},
 ): Promise<CredentialStampScan> {
-	files = omitOversizedCredentialStampModules(files)
+	const serverPaths = await collectServerRuntimeModulePaths(files)
+	files = omitOversizedClientCredentialStampModules(files, serverPaths)
 	return sealCredentialStamp(
 		files[packageManifestPath],
-		await collectCredentialStampPasses(
-			files,
-			await collectServerRuntimeModulePaths(files),
-		),
+		await collectCredentialStampPasses(files, serverPaths),
 		options,
 	)
 }

@@ -17,6 +17,13 @@ npx @kodycodes/cli execute --local --org kody \
   }'
 ```
 
+If the CLI says `No login stored for org "kody"`, add a kody org login: on the
+kody org MCP connection call `cliCredentialBootstrap` and run the `cli_command`
+it returns (see
+[prefer-local-cli-execute](../prefer-local-cli-execute/SKILL.md)), or run
+`npx @kodycodes/cli login --org kody`. That login becomes the default org, so
+pass `--org <your-org>` for packages in your personal org.
+
 Follow what it returns, re-ticking until `exit.done`. The PR also shows up as a
 card on the factory board, so anyone can see where it is.
 
