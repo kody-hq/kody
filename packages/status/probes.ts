@@ -9,7 +9,9 @@ import {
  * cover the worker surfaces (app, MCP, package runtime, jobs); the
  * `/health/components` endpoint on the main worker reports storage bindings.
  * Only product-affecting bindings become public cards (`app_db`, `kv`,
- * `assets`). `/health/components` may also carry timestamp-only MCP execute
+ * `assets`), and only from a parseable `/health/components` JSON report.
+ * An origin HTTP 503 or unreachable fetch is the App card, not a storage
+ * outage. `/health/components` may also carry timestamp-only MCP execute
  * evidence; that field is observational and never starts a paid execute.
  * Jobs is reached over a service binding (or an optional
  * non-public origin fallback), never through the main app and never via a
@@ -274,6 +276,16 @@ async function probeJobs(
 	}
 }
 
+function skippedStorageOutcomes(detail: string): Array<ProbeOutcome> {
+	return componentEndpointIds.map((component) => ({
+		component,
+		ok: false,
+		latencyMs: null,
+		detail,
+		skip: true,
+	}))
+}
+
 async function probeStorageComponents(
 	fetcher: typeof fetch,
 	primaryOrigin: string,
@@ -284,24 +296,14 @@ async function probeStorageComponents(
 	const result = await timedFetch(fetcher, `${primaryOrigin}/health/components`)
 	if (!result.response) {
 		return {
-			outcomes: componentEndpointIds.map((component) => ({
-				component,
-				ok: false,
-				latencyMs: null,
-				detail: 'unreachable',
-			})),
+			outcomes: skippedStorageOutcomes('unreachable'),
 			executeLastSuccessAt: null,
 		}
 	}
 	const body = await readJsonBody<HealthComponentsBody>(result.response)
 	if (!body || !Array.isArray(body.components)) {
 		return {
-			outcomes: componentEndpointIds.map((component) => ({
-				component,
-				ok: false,
-				latencyMs: null,
-				detail: `HTTP ${result.response.status}`,
-			})),
+			outcomes: skippedStorageOutcomes(`HTTP ${result.response.status}`),
 			executeLastSuccessAt: null,
 		}
 	}
