@@ -10,6 +10,7 @@ import {
 	purgeOwnerOutOfBandSurfaces,
 } from '#app/account-deletion.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import { transientD1ItemRetryEnv } from '#worker/d1-item-retry.ts'
 import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import {
@@ -106,14 +107,15 @@ export async function hardPurgeOrg(input: {
 	env: Env
 	orgId: OwnerId
 }): Promise<void> {
+	const env = transientD1ItemRetryEnv(input.env)
 	const workflow = orgHardPurgeState.provide({
 		actors: {
-			...orgPurgeActors(input.env),
+			...orgPurgeActors(env),
 			readPersonalOrgRelation: createAsyncLogic<
 				PersonalOrgHardPurgeRelation,
 				{ orgId: OwnerId }
 			>({
-				run: () => personalOrgHardPurgeRelation(input.env.APP_DB, input.orgId),
+				run: () => personalOrgHardPurgeRelation(env.APP_DB, input.orgId),
 			}),
 			// Team org: collect the same out-of-band keys account deletion collects
 			// for this owner id, delete those objects, then delete D1 rows (including
@@ -121,7 +123,7 @@ export async function hardPurgeOrg(input: {
 			purgeOutOfBandSurfaces: createAsyncLogic<void, { orgId: OwnerId }>({
 				run: async () => {
 					await purgeOwnerOutOfBandSurfaces({
-						env: input.env,
+						env,
 						ownerId: input.orgId,
 					})
 				},
@@ -189,7 +191,7 @@ async function purgePerson(input: {
 	dbUserId: number
 	stableUserId: OwnerId
 }): Promise<PersonHardPurgeOutput> {
-	const env = input.env
+	const env = transientD1ItemRetryEnv(input.env)
 	const workflow = personHardPurgeState.provide({
 		actors: {
 			...orgPurgeActors(env),
@@ -246,8 +248,10 @@ async function purgePerson(input: {
 			}),
 			deleteAccount: createAsyncLogic<number, PersonPurgeTarget>({
 				run: async ({ input: person }) => {
+					// The caller's env: account deletion resolves the attached item
+					// retry itself and hands this env to Stripe unchanged.
 					const result = await deleteUserAccount({
-						env,
+						env: input.env,
 						dbUserId: person.dbUserId,
 						mcpUserId: person.storageOwnerId,
 						personUserId: person.personUserId,

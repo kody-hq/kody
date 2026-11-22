@@ -1158,14 +1158,15 @@ stateDiagram-v2
 
 Lists candidates, previews dry-run ones, and for each live one checks the
 budget, claims it, runs the org, legacy-user or user hard purge, and records
-success or a failure audit before moving on; a failed listing or failure audit
-fails the run.
+success, a failure audit, or a retry-budget-exhausted audit before moving on; a
+failed listing or failure audit fails the run.
 
 Source:
 [`packages/worker/src/orgs/soft-delete-purge-state.ts`](../../packages/worker/src/orgs/soft-delete-purge-state.ts)
 
 States: listing, advancing, checking_budget, claiming, purging_org,
-finishing_legacy_user, purging_user, recording_failure, completed, run_failed
+finishing_legacy_user, purging_user, recording_failure,
+recording_retry_budget_exhausted, completed, run_failed
 
 Final states: completed, run_failed
 
@@ -1185,43 +1186,55 @@ stateDiagram-v2
     claiming --> recording_failure: xstate.done.actor claimCandidate [Otherwise (Claim refused) && Otherwise (Is org) && Missing db user id]
     claiming --> finishing_legacy_user: xstate.done.actor claimCandidate [Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Is legacy user]
     claiming --> purging_user: xstate.done.actor claimCandidate [Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Otherwise (Is legacy user)]
-    claiming --> recording_failure: xstate.error.actor claimCandidate
+    claiming --> recording_retry_budget_exhausted: xstate.error.actor claimCandidate [Retry budget exhausted]
+    claiming --> recording_failure: xstate.error.actor claimCandidate [Otherwise (Retry budget exhausted)]
     purging_org --> advancing: xstate.done.actor purgeOrg
-    purging_org --> recording_failure: xstate.error.actor purgeOrg
+    purging_org --> recording_retry_budget_exhausted: xstate.error.actor purgeOrg [Retry budget exhausted]
+    purging_org --> recording_failure: xstate.error.actor purgeOrg [Otherwise (Retry budget exhausted)]
     finishing_legacy_user --> advancing: xstate.done.actor finishLegacyUser
-    finishing_legacy_user --> recording_failure: xstate.error.actor finishLegacyUser
+    finishing_legacy_user --> recording_retry_budget_exhausted: xstate.error.actor finishLegacyUser [Retry budget exhausted]
+    finishing_legacy_user --> recording_failure: xstate.error.actor finishLegacyUser [Otherwise (Retry budget exhausted)]
     purging_user --> advancing: xstate.done.actor purgeUser
-    purging_user --> recording_failure: xstate.error.actor purgeUser
+    purging_user --> recording_retry_budget_exhausted: xstate.error.actor purgeUser [Retry budget exhausted]
+    purging_user --> recording_failure: xstate.error.actor purgeUser [Otherwise (Retry budget exhausted)]
     recording_failure --> advancing: xstate.done.actor recordFailure
     recording_failure --> run_failed: xstate.error.actor recordFailure
+    recording_retry_budget_exhausted --> advancing: xstate.done.actor recordRetryBudgetExhausted
+    recording_retry_budget_exhausted --> run_failed: xstate.error.actor recordRetryBudgetExhausted
     completed --> [*]
     run_failed --> [*]
 ```
 
-| Event                               | From                  | To                    | Guard                                                                                                           |
-| ----------------------------------- | --------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| xstate.done.actor listCandidates    | listing               | advancing             | —                                                                                                               |
-| xstate.error.actor listCandidates   | listing               | run_failed            | —                                                                                                               |
-| always                              | advancing             | completed             | Otherwise (Has next candidate)                                                                                  |
-| always                              | advancing             | advancing             | Has next candidate && Is preview candidate                                                                      |
-| always                              | advancing             | checking_budget       | Has next candidate && Otherwise (Is preview candidate)                                                          |
-| xstate.done.actor readClock         | checking_budget       | completed             | Budget exceeded                                                                                                 |
-| xstate.done.actor readClock         | checking_budget       | claiming              | Otherwise (Budget exceeded)                                                                                     |
-| xstate.error.actor readClock        | checking_budget       | run_failed            | —                                                                                                               |
-| xstate.done.actor claimCandidate    | claiming              | advancing             | Claim refused                                                                                                   |
-| xstate.done.actor claimCandidate    | claiming              | purging_org           | Otherwise (Claim refused) && Is org                                                                             |
-| xstate.done.actor claimCandidate    | claiming              | recording_failure     | Otherwise (Claim refused) && Otherwise (Is org) && Missing db user id                                           |
-| xstate.done.actor claimCandidate    | claiming              | finishing_legacy_user | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Is legacy user             |
-| xstate.done.actor claimCandidate    | claiming              | purging_user          | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Otherwise (Is legacy user) |
-| xstate.error.actor claimCandidate   | claiming              | recording_failure     | —                                                                                                               |
-| xstate.done.actor purgeOrg          | purging_org           | advancing             | —                                                                                                               |
-| xstate.error.actor purgeOrg         | purging_org           | recording_failure     | —                                                                                                               |
-| xstate.done.actor finishLegacyUser  | finishing_legacy_user | advancing             | —                                                                                                               |
-| xstate.error.actor finishLegacyUser | finishing_legacy_user | recording_failure     | —                                                                                                               |
-| xstate.done.actor purgeUser         | purging_user          | advancing             | —                                                                                                               |
-| xstate.error.actor purgeUser        | purging_user          | recording_failure     | —                                                                                                               |
-| xstate.done.actor recordFailure     | recording_failure     | advancing             | —                                                                                                               |
-| xstate.error.actor recordFailure    | recording_failure     | run_failed            | —                                                                                                               |
+| Event                                         | From                             | To                               | Guard                                                                                                           |
+| --------------------------------------------- | -------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| xstate.done.actor listCandidates              | listing                          | advancing                        | —                                                                                                               |
+| xstate.error.actor listCandidates             | listing                          | run_failed                       | —                                                                                                               |
+| always                                        | advancing                        | completed                        | Otherwise (Has next candidate)                                                                                  |
+| always                                        | advancing                        | advancing                        | Has next candidate && Is preview candidate                                                                      |
+| always                                        | advancing                        | checking_budget                  | Has next candidate && Otherwise (Is preview candidate)                                                          |
+| xstate.done.actor readClock                   | checking_budget                  | completed                        | Budget exceeded                                                                                                 |
+| xstate.done.actor readClock                   | checking_budget                  | claiming                         | Otherwise (Budget exceeded)                                                                                     |
+| xstate.error.actor readClock                  | checking_budget                  | run_failed                       | —                                                                                                               |
+| xstate.done.actor claimCandidate              | claiming                         | advancing                        | Claim refused                                                                                                   |
+| xstate.done.actor claimCandidate              | claiming                         | purging_org                      | Otherwise (Claim refused) && Is org                                                                             |
+| xstate.done.actor claimCandidate              | claiming                         | recording_failure                | Otherwise (Claim refused) && Otherwise (Is org) && Missing db user id                                           |
+| xstate.done.actor claimCandidate              | claiming                         | finishing_legacy_user            | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Is legacy user             |
+| xstate.done.actor claimCandidate              | claiming                         | purging_user                     | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Otherwise (Is legacy user) |
+| xstate.error.actor claimCandidate             | claiming                         | recording_retry_budget_exhausted | Retry budget exhausted                                                                                          |
+| xstate.error.actor claimCandidate             | claiming                         | recording_failure                | Otherwise (Retry budget exhausted)                                                                              |
+| xstate.done.actor purgeOrg                    | purging_org                      | advancing                        | —                                                                                                               |
+| xstate.error.actor purgeOrg                   | purging_org                      | recording_retry_budget_exhausted | Retry budget exhausted                                                                                          |
+| xstate.error.actor purgeOrg                   | purging_org                      | recording_failure                | Otherwise (Retry budget exhausted)                                                                              |
+| xstate.done.actor finishLegacyUser            | finishing_legacy_user            | advancing                        | —                                                                                                               |
+| xstate.error.actor finishLegacyUser           | finishing_legacy_user            | recording_retry_budget_exhausted | Retry budget exhausted                                                                                          |
+| xstate.error.actor finishLegacyUser           | finishing_legacy_user            | recording_failure                | Otherwise (Retry budget exhausted)                                                                              |
+| xstate.done.actor purgeUser                   | purging_user                     | advancing                        | —                                                                                                               |
+| xstate.error.actor purgeUser                  | purging_user                     | recording_retry_budget_exhausted | Retry budget exhausted                                                                                          |
+| xstate.error.actor purgeUser                  | purging_user                     | recording_failure                | Otherwise (Retry budget exhausted)                                                                              |
+| xstate.done.actor recordFailure               | recording_failure                | advancing                        | —                                                                                                               |
+| xstate.error.actor recordFailure              | recording_failure                | run_failed                       | —                                                                                                               |
+| xstate.done.actor recordRetryBudgetExhausted  | recording_retry_budget_exhausted | advancing                        | —                                                                                                               |
+| xstate.error.actor recordRetryBudgetExhausted | recording_retry_budget_exhausted | run_failed                       | —                                                                                                               |
 
 ## org_hard_purge.team_org
 
