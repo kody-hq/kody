@@ -4,7 +4,6 @@ import {
 	type WorkflowStep,
 } from 'cloudflare:workers'
 
-import type { BackupRuntimeStep } from './backup-runtime.ts'
 import { BackupError } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import {
@@ -13,7 +12,10 @@ import {
 	type ProductionRestorePayload,
 	type ProductionRestoreProgress,
 } from './production-restore.ts'
-import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
+import {
+	withNonRetryableBackupErrors,
+	type BackupRuntimeStep,
+} from './workflow-step-boundary.ts'
 import { nonRetryableBackupError } from './workflow-terminal-error.ts'
 import { withRetryingBackupBucket } from './r2-retry.ts'
 

@@ -30,12 +30,8 @@ import { isRecord } from '@kody-internal/shared/is-record.ts'
 
 import {
 	BackupError,
-	backupPayload,
-	bindSourceDatabase,
 	errorCode,
 	pacedSourceDatabases,
-	primarySourceDatabase,
-	restExportSourceDatabases,
 	safeLog,
 	utcDay,
 	type SourceDatabase,
@@ -45,10 +41,7 @@ import {
 	signBackupFullManifest,
 	verifyBackupFullManifestSignature,
 } from './full-manifest-signing.ts'
-import {
-	isBucketLockPolicyPutError,
-	readManifest,
-} from './immutable-storage.ts'
+import { isBucketLockPolicyPutError } from './immutable-storage.ts'
 import {
 	createR2CallBudget,
 	isWorkerSubrequestLimitError,
@@ -58,8 +51,6 @@ import {
 	captureFullSealBlocked,
 	captureSealScanSubrequestLimit,
 } from './sentry.ts'
-import { verifyBackupManifestSignature } from './manifest-signing.ts'
-import { readSqlRestorability } from './sql-statement-stats.ts'
 
 const sha256Pattern = /^[0-9a-f]{64}$/
 
@@ -516,58 +507,6 @@ export type SealDayResult =
 	| { kind: 'sealed'; day: string; manifestKey: string; alreadySealed: boolean }
 	| { kind: 'incomplete'; day: string; reason: string; source?: string }
 
-async function assertSourceDayRestorable(
-	env: BackupEnvironment,
-	day: string,
-): Promise<{ kind: 'ok' } | { kind: 'incomplete'; reason: string }> {
-	const d1Payload = backupPayload(env, new Date(`${day}T12:00:00.000Z`))
-	const d1Manifest = await readManifest(
-		env.BACKUP_BUCKET,
-		d1Payload.manifestKey,
-	)
-	if (d1Manifest === null) {
-		return { kind: 'incomplete', reason: 'd1-manifest-missing' }
-	}
-	if (!(await verifyBackupManifestSignature(env, d1Manifest))) {
-		return { kind: 'incomplete', reason: 'd1-manifest-signature-invalid' }
-	}
-	const restorability = await readSqlRestorability(
-		env.BACKUP_BUCKET,
-		day,
-		d1Manifest.payload.sql.objectKey,
-	)
-	switch (restorability.kind) {
-		case 'restorable':
-			return { kind: 'ok' }
-		case 'legacy-unknown':
-			safeLog({
-				event: 'backup-stats-legacy-missing',
-				status: 'stale-success',
-				day,
-				databaseId: env.SOURCE_DATABASE_ID,
-				databaseName: env.SOURCE_DATABASE_NAME,
-				objectKey: d1Manifest.payload.sql.objectKey,
-			})
-			return { kind: 'ok' }
-		case 'unrestorable':
-			return { kind: 'incomplete', reason: 'backup-unrestorable-statements' }
-		case 'missing':
-			return { kind: 'incomplete', reason: 'backup-sql-stats-missing' }
-		case 'corrupt':
-			return { kind: 'incomplete', reason: 'backup-sql-stats-corrupt' }
-		default: {
-			const exhaustive: never = restorability
-			throw exhaustive
-		}
-	}
-}
-
-type RestD1Fields = {
-	d1ManifestKey: string
-	d1ManifestSha256: string
-	d1Sources: Array<BackupFullD1Source>
-}
-
 /**
  * The paced lane's sealed night for one source and day, or why it cannot be
  * referenced. A missing or corrupt paced seal blocks the full seal.
@@ -611,95 +550,6 @@ export async function readSealedPacedNight(
 			manifestKey,
 			manifestSha256: await sha256Bytes(bytes),
 		},
-	}
-}
-
-/**
- * A REST export still in flight (02:15 UTC cron plus retries) holds the seal
- * until this hour so an early paced-only seal does not drop same-day REST SQL.
- */
-const restD1WaitUntilUtcHour = 12
-
-/**
- * REST D1 evidence for the day, recorded in the full manifest only when every
- * REST source (including the primary) has a signed, restorable manifest.
- * Informational while both lanes exist: after the wait deadline its absence
- * never blocks the seal.
- */
-async function readRestD1Fields(
-	env: BackupEnvironment,
-	day: string,
-	now: Date,
-): Promise<RestD1Fields | null | 'pending'> {
-	const skip = (reason: string) => {
-		safeLog({
-			event: 'full-backup-rest-d1-omitted',
-			status: 'success',
-			day,
-			errorCode: reason,
-		})
-		return null
-	}
-	const restSources = restExportSourceDatabases(env)
-	const primary = primarySourceDatabase(env)
-	if (
-		!restSources.some(
-			(source) => source.id.toLowerCase() === primary.id.toLowerCase(),
-		)
-	) {
-		return skip('primary-rest-export-disabled')
-	}
-	const d1Sources: Array<BackupFullD1Source> = []
-	for (const source of restSources) {
-		const sourceEnv = bindSourceDatabase(env, source)
-		let sourceResult: Awaited<ReturnType<typeof assertSourceDayRestorable>>
-		try {
-			sourceResult = await assertSourceDayRestorable(sourceEnv, day)
-		} catch (error) {
-			if (errorCode(error) === 'manifest-corrupt') {
-				return skip('manifest-corrupt')
-			}
-			throw error
-		}
-		if (sourceResult.kind === 'incomplete') {
-			const waitDeadline = Date.parse(
-				`${day}T${String(restD1WaitUntilUtcHour).padStart(2, '0')}:00:00.000Z`,
-			)
-			if (
-				sourceResult.reason === 'd1-manifest-missing' &&
-				now.getTime() < waitDeadline
-			) {
-				return 'pending'
-			}
-			return skip(sourceResult.reason)
-		}
-		const manifestKey = backupPayload(
-			sourceEnv,
-			new Date(`${day}T12:00:00.000Z`),
-		).manifestKey
-		const manifestObject = await env.BACKUP_BUCKET.get(manifestKey)
-		if (manifestObject === null) return skip('d1-manifest-missing')
-		d1Sources.push({
-			databaseId: source.id,
-			databaseName: source.name,
-			manifestKey,
-			manifestSha256: await sha256Bytes(
-				new Uint8Array(await manifestObject.arrayBuffer()),
-			),
-		})
-	}
-	const primaryKey = backupPayload(
-		env,
-		new Date(`${day}T12:00:00.000Z`),
-	).manifestKey
-	const primarySource = d1Sources.find(
-		(source) => source.manifestKey === primaryKey,
-	)
-	if (primarySource === undefined) return skip('d1-manifest-missing')
-	return {
-		d1ManifestKey: primaryKey,
-		d1ManifestSha256: primarySource.manifestSha256,
-		d1Sources,
 	}
 }
 
@@ -752,10 +602,6 @@ export async function sealFullBackupDay(
 			}
 		}
 		d1Paced.push(night.ref)
-	}
-	const restD1 = await readRestD1Fields(env, day, now)
-	if (restD1 === 'pending') {
-		return { kind: 'incomplete', day, reason: 'rest-d1-pending' }
 	}
 
 	let summary: StagingSummary
@@ -879,7 +725,6 @@ export async function sealFullBackupDay(
 	const fullManifest = await signBackupFullManifest(env, {
 		day,
 		d1Paced,
-		...restD1,
 		mailboxIndex: sealedMailboxIndex,
 		runLogIndex: sealedRunLogIndex,
 		storageIndex: toSealedRef(day, summary.storageIndex),

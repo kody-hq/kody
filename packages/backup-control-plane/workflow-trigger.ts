@@ -1,6 +1,3 @@
-import { workflowInstanceId } from './backup-policy.ts'
-import type { ScheduledBackupPayload } from './backup-types.ts'
-
 export type WorkflowInstanceStatus =
 	| 'queued'
 	| 'running'
@@ -23,25 +20,6 @@ interface WorkflowHandle {
 interface WorkflowStarter<Params> {
 	create(options: { id: string; params: Params }): Promise<unknown>
 	get(id: string): Promise<WorkflowHandle>
-}
-
-export type RetryTickResult = EnqueueResult | 'outside-window'
-
-export function isApprovedRetryWindow(scheduledAt: Date): boolean {
-	const hour = scheduledAt.getUTCHours()
-	return scheduledAt.getUTCMinutes() === 45 && hour >= 2 && hour <= 5
-}
-
-export function primaryBackupTimeForDay(scheduledAt: Date): Date {
-	return new Date(
-		Date.UTC(
-			scheduledAt.getUTCFullYear(),
-			scheduledAt.getUTCMonth(),
-			scheduledAt.getUTCDate(),
-			2,
-			15,
-		),
-	)
 }
 
 export async function enqueueWorkflow<Params>(
@@ -83,26 +61,4 @@ export async function enqueueWorkflow<Params>(
 			}
 		}
 	}
-}
-
-export async function enqueueBackup(
-	workflow: WorkflowStarter<ScheduledBackupPayload>,
-	databaseId: string,
-	payload: ScheduledBackupPayload,
-): Promise<EnqueueResult> {
-	return enqueueWorkflow(
-		workflow,
-		workflowInstanceId(databaseId, payload.day),
-		payload,
-	)
-}
-
-export async function enqueueBackupRetry(
-	workflow: WorkflowStarter<ScheduledBackupPayload>,
-	databaseId: string,
-	payload: ScheduledBackupPayload,
-	scheduledAt: Date,
-): Promise<RetryTickResult> {
-	if (!isApprovedRetryWindow(scheduledAt)) return 'outside-window'
-	return enqueueBackup(workflow, databaseId, payload)
 }

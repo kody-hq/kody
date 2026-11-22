@@ -1,6 +1,5 @@
 import type {
 	BackupEnvironment,
-	BackupPayload,
 	LogRecord,
 	RetentionTier,
 	ScheduledBackupPayload,
@@ -12,12 +11,6 @@ const CLOUDFLARE_ID_PATTERN =
 export type SourceDatabase = {
 	id: string
 	name: string
-	/**
-	 * When false, skip Cloudflare REST D1 export / freshness / seal-full
-	 * prerequisites for this database. Omitted or true keeps REST export on.
-	 * Paced D1 backup uses `DR_D1_PACED_SOURCES` independently.
-	 */
-	restExport?: boolean
 }
 
 export class BackupError extends Error {
@@ -76,7 +69,7 @@ function parseSourceDatabasesJson(
 	if (trimmed.length === 0) {
 		throw new BackupError(
 			'invalid-source-databases',
-			`${label} must be a JSON array of { id, name } or { id, name, restExport } objects`,
+			`${label} must be a JSON array of { id, name } objects`,
 		)
 	}
 	let parsed: unknown
@@ -85,13 +78,13 @@ function parseSourceDatabasesJson(
 	} catch {
 		throw new BackupError(
 			'invalid-source-databases',
-			`${label} must be a JSON array of { id, name } or { id, name, restExport } objects`,
+			`${label} must be a JSON array of { id, name } objects`,
 		)
 	}
 	if (!Array.isArray(parsed) || parsed.length === 0) {
 		throw new BackupError(
 			'invalid-source-databases',
-			`${label} must be a JSON array of { id, name } or { id, name, restExport } objects`,
+			`${label} must be a JSON array of { id, name } objects`,
 		)
 	}
 	const sources: Array<SourceDatabase> = []
@@ -101,18 +94,14 @@ function parseSourceDatabasesJson(
 		if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
 			throw new BackupError(
 				'invalid-source-databases',
-				`${label} entries must be { id, name } or { id, name, restExport } objects`,
+				`${label} entries must be { id, name } objects`,
 			)
 		}
 		const record = entry as Record<string, unknown>
-		const hasRestExport = Object.hasOwn(record, 'restExport')
-		const allowedKeys = hasRestExport
-			? (['id', 'name', 'restExport'] as const)
-			: (['id', 'name'] as const)
-		if (!hasExactKeys(record, allowedKeys)) {
+		if (!hasExactKeys(record, ['id', 'name'])) {
 			throw new BackupError(
 				'invalid-source-databases',
-				`${label} entries must be { id, name } or { id, name, restExport } objects`,
+				`${label} entries must be { id, name } objects`,
 			)
 		}
 		if (
@@ -126,12 +115,6 @@ function parseSourceDatabasesJson(
 				`${label} entries need a UUID id and a non-empty name`,
 			)
 		}
-		if (hasRestExport && typeof record.restExport !== 'boolean') {
-			throw new BackupError(
-				'invalid-source-databases',
-				`${label} restExport must be a boolean when present`,
-			)
-		}
 		const id = record.id
 		const name = record.name
 		if (ids.has(id.toLowerCase()) || names.has(name)) {
@@ -142,28 +125,9 @@ function parseSourceDatabasesJson(
 		}
 		ids.add(id.toLowerCase())
 		names.add(name)
-		const source: SourceDatabase = { id, name }
-		if (hasRestExport) {
-			source.restExport = record.restExport as boolean
-		}
-		sources.push(source)
+		sources.push({ id, name })
 	}
 	return sources
-}
-
-/** REST export is on when `restExport` is omitted or true. */
-export function sourceRestExportEnabled(source: SourceDatabase): boolean {
-	return source.restExport !== false
-}
-
-/**
- * Configured sources that still participate in Cloudflare REST D1 export,
- * hourly freshness, and seal-full REST prerequisites.
- */
-export function restExportSourceDatabases(
-	env: BackupEnvironment,
-): Array<SourceDatabase> {
-	return configuredSourceDatabases(env).filter(sourceRestExportEnabled)
 }
 
 /**
@@ -185,12 +149,6 @@ export function pacedSourceDatabases(
 		env.D1_PACED_SOURCES,
 		'D1_PACED_SOURCES',
 	)
-	if (sources.some((source) => source.restExport !== undefined)) {
-		throw new BackupError(
-			'invalid-paced-sources',
-			'D1_PACED_SOURCES entries must be { id, name } objects',
-		)
-	}
 	if (
 		!sources.some(
 			(source) =>
@@ -417,7 +375,7 @@ export function utcDay(date: Date): string {
 	return date.toISOString().slice(0, 10)
 }
 
-export function retentionTier(day: string): RetentionTier {
+function retentionTier(day: string): RetentionTier {
 	const date = new Date(`${day}T00:00:00.000Z`)
 	if (Number.isNaN(date.valueOf())) {
 		throw new BackupError('invalid-day', 'scheduled day is invalid')
@@ -469,22 +427,6 @@ export function objectKeyForBookmark(
 		.map((byte) => byte.toString(16).padStart(2, '0'))
 		.join('')
 	return `${objectPrefix}/backup-${encoded}.sql`
-}
-
-export function objectKeyForPayload(
-	payload: BackupPayload,
-	bookmark: string,
-): string {
-	return objectKeyForBookmark(payload.objectPrefix, bookmark)
-}
-
-export function isBookmarkObjectKey(
-	objectPrefix: string,
-	objectKey: string,
-): boolean {
-	if (!objectKey.startsWith(`${objectPrefix}/`)) return false
-	const filename = objectKey.slice(objectPrefix.length + 1)
-	return /^backup-(?:[0-9a-f]{2}){1,256}\.sql$/.test(filename)
 }
 
 export function workflowInstanceId(databaseId: string, day: string): string {

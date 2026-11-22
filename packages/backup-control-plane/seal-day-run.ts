@@ -1,6 +1,6 @@
 import { assertBackupDay } from '@kody-internal/shared/backup-staging.ts'
 
-import type { BackupRuntimeStep } from './backup-runtime.ts'
+import type { BackupRuntimeStep } from './workflow-step-boundary.ts'
 import { BackupError, errorCode, safeLog } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import { sealFullBackupDay, type SealDayResult } from './seal-full-backup.ts'

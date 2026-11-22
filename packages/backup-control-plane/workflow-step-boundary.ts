@@ -1,6 +1,12 @@
-import type { BackupRuntimeStep } from './backup-runtime.ts'
 import { BackupError } from './backup-policy.ts'
 import { nonRetryableBackupError } from './workflow-terminal-error.ts'
+
+/** The Workflows step surface the control-plane workflows use. */
+export interface BackupRuntimeStep {
+	do<T>(name: string, config: unknown, callback: () => Promise<T>): Promise<T>
+	do<T>(name: string, callback: () => Promise<T>): Promise<T>
+	sleep(name: string, duration: `${number} seconds`): Promise<void>
+}
 
 async function runStepCallback<T>(callback: () => Promise<T>): Promise<T> {
 	try {

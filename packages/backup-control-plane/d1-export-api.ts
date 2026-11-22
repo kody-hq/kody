@@ -3,11 +3,7 @@ import {
 	nextState,
 } from '@kody-internal/shared/state-machine.ts'
 import { backupExportState } from './backup-export-state.ts'
-import {
-	BackupError,
-	assertRemoteDatabaseIdentity,
-	safeLog,
-} from './backup-policy.ts'
+import { BackupError } from './backup-policy.ts'
 import type {
 	BackupEnvironment,
 	ExportReady,
@@ -36,7 +32,6 @@ const DEFAULT_EARLY_POLL_COUNT = 5
 const DEFAULT_EARLY_POLL_DELAY_MS = 2_000
 const DEFAULT_POLL_DELAY_MS = 15_000
 const DEFAULT_MAX_EXPORT_RESTARTS = 3
-export const DEFAULT_BACKUP_MAX_SOURCE_BYTES = 4_500_000_000
 const EXPORT_RESULT_EXPIRED_ERROR = 'Not currently exporting anything.'
 
 function isObject(value: unknown): value is JsonObject {
@@ -140,94 +135,6 @@ function authHeaders(env: BackupEnvironment): HeadersInit {
 		authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
 		'content-type': 'application/json',
 	}
-}
-
-export async function verifySourceDatabaseIdentity(
-	env: BackupEnvironment,
-	options: ApiOptions = {},
-): Promise<{ fileSize: number; maxSourceBytes: number }> {
-	const configuredMax =
-		env.BACKUP_MAX_SOURCE_BYTES ?? String(DEFAULT_BACKUP_MAX_SOURCE_BYTES)
-	if (!/^\d+$/.test(configuredMax)) {
-		throw new BackupError(
-			'invalid-max-source-bytes',
-			'BACKUP_MAX_SOURCE_BYTES must be a positive safe integer',
-		)
-	}
-	const maxSourceBytes = Number(configuredMax)
-	if (
-		!Number.isSafeInteger(maxSourceBytes) ||
-		maxSourceBytes <= 0 ||
-		maxSourceBytes > DEFAULT_BACKUP_MAX_SOURCE_BYTES
-	) {
-		throw new BackupError(
-			'invalid-max-source-bytes',
-			`BACKUP_MAX_SOURCE_BYTES must be a positive safe integer no greater than ${String(DEFAULT_BACKUP_MAX_SOURCE_BYTES)}`,
-		)
-	}
-	const database = await apiJson(
-		`https://api.cloudflare.com/client/v4/accounts/${env.SOURCE_ACCOUNT_ID}/d1/database/${env.SOURCE_DATABASE_ID}`,
-		{ headers: authHeaders(env) },
-		options,
-	)
-	if (
-		typeof database.uuid !== 'string' ||
-		typeof database.name !== 'string' ||
-		!Number.isSafeInteger(database.file_size) ||
-		(database.file_size as number) < 0
-	) {
-		safeLog({
-			event: 'source-size-failure',
-			status: 'failure',
-			errorCode: 'api-malformed-identity',
-			sourceBytes:
-				typeof database.file_size === 'number' ? database.file_size : undefined,
-			maxSourceBytes,
-		})
-		throw new BackupError(
-			'api-malformed-identity',
-			'Cloudflare identity response was invalid',
-		)
-	}
-	assertRemoteDatabaseIdentity(env, {
-		uuid: database.uuid,
-		name: database.name,
-	})
-	const fileSize = database.file_size as number
-	if (fileSize === 0) {
-		safeLog({
-			event: 'source-size-failure',
-			status: 'failure',
-			errorCode: 'source-size-zero',
-			sourceBytes: fileSize,
-			maxSourceBytes,
-		})
-		throw new BackupError(
-			'source-size-zero',
-			'D1 source size was zero; retry after live metadata becomes available',
-			true,
-		)
-	}
-	if (fileSize >= maxSourceBytes) {
-		safeLog({
-			event: 'source-size-failure',
-			status: 'failure',
-			errorCode: 'source-size-limit-exceeded',
-			sourceBytes: fileSize,
-			maxSourceBytes,
-		})
-		throw new BackupError(
-			'source-size-limit-exceeded',
-			'D1 source size is at or above the configured backup ceiling',
-		)
-	}
-	safeLog({
-		event: 'source-size-success',
-		status: 'success',
-		sourceBytes: fileSize,
-		maxSourceBytes,
-	})
-	return { fileSize, maxSourceBytes }
 }
 
 function isExportResultExpired(result: JsonObject): boolean {
@@ -424,45 +331,6 @@ export async function awaitExportReady(
 				const exhaustive: never = state
 				throw exhaustive
 			}
-		}
-	}
-}
-
-export async function refreshCompletedD1Export(
-	env: BackupEnvironment,
-	bookmark: string,
-	options: ApiOptions = {},
-): Promise<ExportReady> {
-	const state = await pollD1Export(env, bookmark, options)
-	switch (state.kind) {
-		case 'complete':
-			if (state.bookmark !== bookmark) {
-				throw new BackupError(
-					'export-bookmark-mismatch',
-					'D1 export refresh returned a different bookmark',
-				)
-			}
-			return state
-		case 'pending':
-			throw new BackupError(
-				'export-refresh-pending',
-				'D1 export refresh did not return a completed signed URL',
-				true,
-			)
-		case 'lost':
-			// The poll result for this bookmark has expired. Do not start a
-			// second blocking export inside the upload step — `runBackupRuntime`
-			// recovers with a new durable-export attempt (fresh step names).
-			// Instance `restart()` alone is not enough: Workflows replay
-			// successful start/poll steps and would hand the upload the same
-			// expired bookmark again.
-			throw new BackupError(
-				'export-result-expired',
-				'D1 export result expired before upload; runtime will start a new export under new durable step names',
-			)
-		default: {
-			const exhaustive: never = state
-			throw exhaustive
 		}
 	}
 }

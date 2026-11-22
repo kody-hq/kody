@@ -5,8 +5,8 @@ import type { BackupEnvironment } from './backup-types.ts'
 const workflowStepMechanism = 'auto.faas.cloudflare.workflow'
 
 /**
- * The backup Workflow reports its own failure once, with a DR fingerprint
- * (captureRestExportFailure). Drop the SDK's automatic capture of the same
+ * The seal Workflow reports its own failure once, with a DR fingerprint
+ * (captureFullSealBlocked). Drop the SDK's automatic capture of the same
  * failed step so one failure is one issue.
  */
 const dropWorkflowStepException: NonNullable<
@@ -51,23 +51,6 @@ function captureDrIssue(input: {
 			scope.setTag(key, value)
 		}
 		Sentry.captureMessage(input.message, 'error')
-	})
-}
-
-export function captureRestExportFailure(input: {
-	databaseName: string
-	day: string | undefined
-	code: string
-}) {
-	captureDrIssue({
-		cause: 'rest-d1-export-failed',
-		detail: `${input.databaseName}:${input.code}`,
-		message: `REST D1 export failed for ${input.databaseName}: ${input.code}`,
-		tags: {
-			'dr.database': input.databaseName,
-			'dr.error_code': input.code,
-			...(input.day ? { 'dr.day': input.day } : {}),
-		},
 	})
 }
 
