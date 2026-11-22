@@ -165,12 +165,16 @@ the hourly purge lane hard-deletes soft-deleted rows past the 30-day restore
 window. Preview and test keep it `false`, where the lane only lists those
 candidates. Legacy account deletions (`deleting_at` set, `deleted_at` null) are
 finished by the same lane regardless of that flag; see
-[authentication](../authentication.md). Fleet scans (published-commit ref repair
-and package codemods) skip packages whose owner is mid-deletion or deleted
-(`account/owner-deletion-state.ts`). Out-of-band surfaces (Durable Objects, KV
-schemes, R2, Vectorize, Artifacts) are declared in `user-owned-surfaces.ts` and
-consumed by both deletion and export. Growth-table retention dispositions are
-linked in `account-retention-dispositions.ts`.
+[authentication](../authentication.md). When `PURGE_WEBHOOK_URL` is set the lane
+notifies it before deleting an item's D1 rows, and a failed notification keeps
+both halves of a person and personal org pair for a later pass; see
+[environment variables](../../environment-variables.md#soft-delete-purge-webhook).
+Fleet scans (published-commit ref repair and package codemods) skip packages
+whose owner is mid-deletion or deleted (`account/owner-deletion-state.ts`).
+Out-of-band surfaces (Durable Objects, KV schemes, R2, Vectorize, Artifacts) are
+declared in `user-owned-surfaces.ts` and consumed by both deletion and export.
+Growth-table retention dispositions are linked in
+`account-retention-dispositions.ts`.
 `packages/worker/src/account/export.node.test.ts` applies the live migrations to
 SQLite and fails if a `user_id` / `*_user_id` column is not covered by the
 export list. The hard invariant is the same as every storage path: callers pass

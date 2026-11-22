@@ -562,6 +562,15 @@ Optional Worker secrets/vars (see `packages/worker/src/env-schema.ts` and
   persist this value in D1 as `session_repo_namespace` so follow-up lookups
   resolve the correct namespace even after env changes.
 
+## Soft-delete purge webhook
+
+- `PURGE_WEBHOOK_URL` — optional Worker var. When set, the `soft_delete_purge`
+  lane POSTs `{"kind":"org"|"user","id":"<id>","purgedAt":"<ISO time>"}` as JSON
+  to this URL for each org or person after Stripe cleanup and before it deletes
+  that item's D1 rows. A non-2xx response, network error, or timeout keeps the
+  rows and the claim fence for a later pass, writes a `purge.webhook_failed`
+  audit event, and reports to Sentry. Unset or empty skips the step.
+
 ## Disaster recovery (production Worker)
 
 Optional production-only vars/secrets for the nightly staging exporter, paced D1
