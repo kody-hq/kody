@@ -24,6 +24,7 @@ import {
 	outboundTimeoutMs,
 	withDeadline,
 } from '#worker/outbound/with-deadline.ts'
+import type { BeforePurgeRowDeletes } from './purge-webhook.ts'
 
 /**
  * How this org relates to a person account for hard-purge policy. A
@@ -90,6 +91,7 @@ async function personalOrgHardPurgeRelation(
 export async function hardPurgeOrg(input: {
 	env: Env
 	orgId: OwnerId
+	beforeRowDeletes?: BeforePurgeRowDeletes
 }): Promise<void> {
 	const relation = await personalOrgHardPurgeRelation(
 		input.env.APP_DB,
@@ -109,6 +111,7 @@ export async function hardPurgeOrg(input: {
 		env: input.env,
 		ownerId: input.orgId,
 	})
+	await input.beforeRowDeletes?.([{ kind: 'org', id: input.orgId }])
 	await deleteOrgRows({ env: input.env, orgId: input.orgId, mode: 'team' })
 }
 
@@ -180,7 +183,9 @@ async function purgePersonAndPersonalOrg(input: {
 	personUserId: string
 	personalOrgId: OwnerId | null
 	purgeSoftDeleted?: boolean
+	beforeRowDeletes?: BeforePurgeRowDeletes
 }) {
+	const { beforeRowDeletes, personalOrgId } = input
 	if (input.personalOrgId) {
 		await wipeOrgPinnedConnections(input.env, input.personalOrgId)
 	}
@@ -194,6 +199,17 @@ async function purgePersonAndPersonalOrg(input: {
 		mcpUserId: input.storageOwnerId,
 		personUserId: input.personUserId,
 		purgeSoftDeleted: input.purgeSoftDeleted,
+		// Both halves of the pair go before any row delete, so a failure on
+		// either one leaves the person and the personal org in place.
+		beforeRowDeletes: beforeRowDeletes
+			? () =>
+					beforeRowDeletes([
+						{ kind: 'user', id: input.stableUserId },
+						...(personalOrgId
+							? [{ kind: 'org' as const, id: personalOrgId }]
+							: []),
+					])
+			: undefined,
 	})
 	if (input.personalOrgId) {
 		await deleteOrgRows({
@@ -228,6 +244,7 @@ export async function hardPurgeSoftDeletedUser(input: {
 	env: Env
 	dbUserId: number
 	stableUserId: OwnerId
+	beforeRowDeletes?: BeforePurgeRowDeletes
 }): Promise<void> {
 	const personalOrgRow = await runD1WithRetry(() =>
 		withDeadline(
@@ -256,6 +273,7 @@ export async function hardPurgeSoftDeletedUser(input: {
 		personUserId,
 		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
 		purgeSoftDeleted: true,
+		beforeRowDeletes: input.beforeRowDeletes,
 	})
 	await logOrgAuditEvent({
 		env: input.env,
@@ -299,6 +317,7 @@ export async function finishLegacyUserDeletion(input: {
 	env: Env
 	dbUserId: number
 	stableUserId: OwnerId
+	beforeRowDeletes?: BeforePurgeRowDeletes
 }): Promise<{ alreadyGone: boolean }> {
 	const row = await runD1WithRetry(() =>
 		withDeadline(
@@ -363,6 +382,7 @@ export async function finishLegacyUserDeletion(input: {
 		storageOwnerId,
 		personUserId,
 		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
+		beforeRowDeletes: input.beforeRowDeletes,
 	})
 	if ((result.deletedRowCounts.users ?? 0) === 0) {
 		const stillThere = await runD1WithRetry(() =>

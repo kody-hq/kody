@@ -80,6 +80,7 @@
 				"**/packages/worker/src/orgs/purge.ts",
 				"**/packages/worker/src/orgs/hard-purge.ts",
 				"**/packages/worker/src/orgs/purge-failure-details.ts",
+				"**/packages/worker/src/orgs/purge-webhook.ts",
 				"**/packages/worker/src/orgs/soft-delete.ts",
 				"**/packages/worker/src/orgs/org-audit-outbox.ts",
 				"**/packages/worker/src/repo/repo-session-cleanup.ts",

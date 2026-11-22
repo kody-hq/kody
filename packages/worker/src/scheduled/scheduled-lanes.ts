@@ -15,6 +15,7 @@ import { refreshPackageOwnerErrorSpikesAndMaybeAlert } from '#app/package-owner-
 import { pruneRetention } from '#app/retention.ts'
 import { pruneUnverifiedAccounts } from '#worker/account/unverified-account-purge.ts'
 import { pruneSoftDeleted } from '#worker/orgs/purge.ts'
+import { PurgeWebhookFailed } from '#worker/orgs/purge-webhook.ts'
 import { reconcileKitSubscribers } from '#worker/kit/subscriber-sync.ts'
 import { sendUserEntitlementWarningEmails } from '#worker/entitlements/user-entitlement-warning-emails.ts'
 import { sendUserErrorRateEmails } from '#app/user-error-rate-emails.ts'
@@ -419,6 +420,7 @@ export async function runScheduledLane(input: {
 export type ScheduledLaneFailure =
 	| { kind: 'd1_lock_contention'; error: unknown }
 	| { kind: 'deadline_exceeded'; error: DeadlineExceededError }
+	| { kind: 'purge_webhook_failed'; error: PurgeWebhookFailed }
 	| { kind: 'unexpected'; error: unknown }
 
 export function classifyScheduledLaneFailure(
@@ -428,6 +430,8 @@ export function classifyScheduledLaneFailure(
 		return { kind: 'd1_lock_contention', error }
 	if (isDeadlineExceededError(error))
 		return { kind: 'deadline_exceeded', error }
+	if (error instanceof PurgeWebhookFailed)
+		return { kind: 'purge_webhook_failed', error }
 	return { kind: 'unexpected', error }
 }
 
@@ -445,6 +449,7 @@ export function mapScheduledLaneFailure(
 			)
 			return 'd1_lock_contention'
 		case 'deadline_exceeded':
+		case 'purge_webhook_failed':
 		case 'unexpected':
 			reportScheduledLaneFailure(failure.error, message)
 			return 'failed'

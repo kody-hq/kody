@@ -14,6 +14,7 @@
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 
+import * as Sentry from '@sentry/cloudflare'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { softDeletePurgeCutoffIso } from '#worker/soft-delete/window.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
@@ -33,6 +34,11 @@ import {
 	outboundTimeoutMs,
 	withDeadline,
 } from '#worker/outbound/with-deadline.ts'
+import {
+	type BeforePurgeRowDeletes,
+	PurgeWebhookFailed,
+	sendPurgeWebhooks,
+} from '#worker/orgs/purge-webhook.ts'
 
 export { shouldRunRetentionCron as shouldRunSoftDeletePurgeCron }
 
@@ -102,14 +108,20 @@ export type SoftDeletePurgeFailure =
 			cleanupErrors: Array<string>
 	  }
 	| {
+			kind: 'webhook_failed'
+			candidate: SoftDeletePurgeCandidate
+			error: PurgeWebhookFailed
+	  }
+	| {
 			kind: 'audit_failed'
 			candidate: SoftDeletePurgeCandidate
 			error: unknown
 	  }
 
 /**
- * Reports one failed candidate: a warning plus a `*.purge_failed` audit row.
- * An audit write failure is reported and does not stop the batch.
+ * Reports one failed candidate: a warning plus a `*.purge_failed` audit row,
+ * or for a purge webhook failure a `purge.webhook_failed` audit row and a
+ * Sentry event. An audit write failure is reported and does not stop the batch.
  */
 async function mapSoftDeletePurgeFailure(
 	failure: SoftDeletePurgeFailure,
@@ -141,6 +153,48 @@ async function mapSoftDeletePurgeFailure(
 						error: message,
 						...(candidate.legacy ? { lane } : {}),
 						...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
+					}),
+					createdAt: context.nowIso,
+				})
+			} catch (error) {
+				await mapSoftDeletePurgeFailure(
+					{ kind: 'audit_failed', candidate, error },
+					context,
+				)
+			}
+			return
+		}
+		case 'webhook_failed': {
+			const { item, status } = failure.error
+			reportLaneError(
+				'warn',
+				JSON.stringify({
+					message: 'soft_delete_purge_webhook_failed',
+					kind: candidate.kind,
+					lane,
+					webhookKind: item.kind,
+					status,
+				}),
+			)
+			Sentry.withScope((scope) => {
+				scope.setTag('soft_delete_purge.lane', lane)
+				scope.setTag('purge_webhook.kind', item.kind)
+				scope.setContext('purge_webhook', { kind: item.kind, status })
+				Sentry.captureException(failure.error)
+			})
+			try {
+				await logOrgAuditEvent({
+					env: context.env,
+					orgId: item.id,
+					action: 'purge.webhook_failed',
+					result: 'failure',
+					resourceType: item.kind,
+					resourceId: item.id,
+					detailsJson: JSON.stringify({
+						kind: item.kind,
+						id: item.id,
+						status,
+						...(candidate.legacy ? { lane } : {}),
 					}),
 					createdAt: context.nowIso,
 				})
@@ -522,6 +576,8 @@ export async function pruneSoftDeleted(input: {
 		candidate.legacy ? { legacy: true as const } : {}
 	const retryBackoffCutoff = cutoffIso(now, softDeletePurgeRetryBackoffMs)
 	const nowIso = now.toISOString()
+	const beforeRowDeletes: BeforePurgeRowDeletes = (items) =>
+		sendPurgeWebhooks({ env: input.env, items })
 
 	for (const candidate of preview.candidates) {
 		const candidateDryRun = candidate.legacy ? legacyDryRun : dryRun
@@ -572,7 +628,11 @@ export async function pruneSoftDeleted(input: {
 				continue
 			}
 			if (candidate.kind === 'org') {
-				await hardPurgeOrg({ env: input.env, orgId: candidate.id })
+				await hardPurgeOrg({
+					env: input.env,
+					orgId: candidate.id,
+					beforeRowDeletes,
+				})
 			} else if (candidate.legacy) {
 				if (candidate.dbUserId == null) {
 					throw new Error(`user_purge_missing_db_id:${candidate.id}`)
@@ -581,6 +641,7 @@ export async function pruneSoftDeleted(input: {
 					env: input.env,
 					dbUserId: candidate.dbUserId,
 					stableUserId: candidate.id,
+					beforeRowDeletes,
 				})
 			} else {
 				if (candidate.dbUserId == null) {
@@ -590,6 +651,7 @@ export async function pruneSoftDeleted(input: {
 					env: input.env,
 					dbUserId: candidate.dbUserId,
 					stableUserId: candidate.id,
+					beforeRowDeletes,
 				})
 			}
 			purged += 1
@@ -605,12 +667,17 @@ export async function pruneSoftDeleted(input: {
 			const message = redactPurgeFailureDetail(
 				error instanceof Error ? error.message : String(error),
 			)
-			const failure: SoftDeletePurgeFailure = {
-				kind: 'candidate_failed',
-				candidate,
-				message,
-				cleanupErrors: purgeFailureDetails(error),
-			}
+			// A webhook failure leaves the claim fence in place, so the next pass
+			// after the retry backoff tries this candidate again.
+			const failure: SoftDeletePurgeFailure =
+				error instanceof PurgeWebhookFailed
+					? { kind: 'webhook_failed', candidate, error }
+					: {
+							kind: 'candidate_failed',
+							candidate,
+							message,
+							cleanupErrors: purgeFailureDetails(error),
+						}
 			outcomes.push({
 				kind: candidate.kind,
 				id: candidate.id,

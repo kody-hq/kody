@@ -1847,6 +1847,11 @@ export async function deleteUserAccount(input: {
 	 * through the guest alias, so they must survive the deletion.
 	 */
 	keepOAuthGrants?: boolean
+	/**
+	 * Purge lane: runs after Stripe cleanup and before any D1 row delete. A
+	 * throw stops the deletion with the fence held.
+	 */
+	beforeRowDeletes?: () => Promise<void>
 }): Promise<AccountDeletionResult> {
 	const personUserId = input.personUserId ?? input.mcpUserId
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
@@ -2288,6 +2293,8 @@ export async function deleteUserAccount(input: {
 				}),
 		)
 	}
+
+	if (input.beforeRowDeletes) await input.beforeRowDeletes()
 
 	try {
 		const d1Cleanup = await deleteUserScopedRowsAndUser({
