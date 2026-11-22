@@ -3,15 +3,22 @@ import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 
 export const publishBuildState = setup({
 	schemas: {
-		events: { SEAL: types<{}>(), COMMIT: types<{}>(), REJECT: types<{}>() },
+		events: {
+			SEAL: types<{}>(),
+			ABANDON: types<{}>(),
+			COMMIT: types<{}>(),
+			REJECT: types<{}>(),
+		},
 	},
 }).createMachine({
 	id: 'publish_builds.status',
 	description:
-		'Builds upload, seal and commit or reject; a committed build may be finalized again or rejected by a later verification.',
+		'Builds upload, then seal and commit or reject, or the builder abandons the upload; a committed build may be finalized again or rejected by a later verification.',
 	initial: 'uploading',
 	states: {
-		uploading: { on: { SEAL: { target: 'sealed' } } },
+		uploading: {
+			on: { SEAL: { target: 'sealed' }, ABANDON: { target: 'abandoned' } },
+		},
 		sealed: {
 			on: { COMMIT: { target: 'committed' }, REJECT: { target: 'rejected' } },
 		},
@@ -19,6 +26,7 @@ export const publishBuildState = setup({
 			on: { COMMIT: { target: 'committed' }, REJECT: { target: 'rejected' } },
 		},
 		rejected: { type: 'final' },
+		abandoned: { type: 'final' },
 	},
 })
 

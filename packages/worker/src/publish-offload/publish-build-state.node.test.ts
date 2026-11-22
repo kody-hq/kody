@@ -15,3 +15,18 @@ test('publish builds seal before commit, and committed builds may re-finalize or
 	expect(finalStatesOf(publishBuildState).includes('rejected')).toBe(true)
 	expect(canHandle(publishBuildState, 'rejected', 'COMMIT')).toBe(false)
 })
+
+test('only an uploading build may be abandoned, and abandoned is final', () => {
+	expect(canHandle(publishBuildState, 'uploading', 'ABANDON')).toBe(true)
+	for (const status of [
+		'sealed',
+		'committed',
+		'rejected',
+		'abandoned',
+	] as const) {
+		expect(canHandle(publishBuildState, status, 'ABANDON')).toBe(false)
+	}
+	expect(finalStatesOf(publishBuildState).includes('abandoned')).toBe(true)
+	expect(canHandle(publishBuildState, 'abandoned', 'SEAL')).toBe(false)
+	expect(canHandle(publishBuildState, 'abandoned', 'COMMIT')).toBe(false)
+})

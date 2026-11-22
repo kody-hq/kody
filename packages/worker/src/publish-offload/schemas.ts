@@ -6,6 +6,7 @@ export const PublishBuildStatus = Schema.Literals([
 	'sealed',
 	'committed',
 	'rejected',
+	'abandoned',
 ])
 
 /** Fails to compile when the state machine gains or loses a state. */

@@ -8,10 +8,12 @@ import * as Schemas from './schemas.ts'
 import { listAllKeys } from '#worker/effect/r2.ts'
 import { PublishBuildBucket, publishOffloadRuntime } from './services.ts'
 import {
+	abandonPublishBuild,
 	authenticatePublishBuildTicket,
 	getPublishBuild,
 	publishBuildBlobPrefix,
 	publishBuildBlobKey,
+	renewPublishBuildLease,
 	sealPublishBuild,
 	type PublishBuildRow,
 } from './store.ts'
@@ -20,12 +22,15 @@ import { publishBuilderVersion, type PublishBuildDocument } from './types.ts'
 /**
  * Ticket-authenticated publish build upload routes. The ticket from
  * `packagePublishBuildCreate` is the only credential: it can add chunks to,
- * read the status of, and seal one build. Publishing the build still goes
- * through `packagePublishExternalPush` with the publisher's own login.
+ * read the status of, seal, and abandon one build. A chunk upload or status
+ * read renews the ticket's lease (see `renewPublishBuildLease`). Publishing
+ * the build still goes through `packagePublishExternalPush` with the
+ * publisher's own login.
  *
  *   GET  /v1/publish-builds/{id}                 status + uploaded chunks
  *   PUT  /v1/publish-builds/{id}/blobs/{sha256}  one <= 4 MiB chunk
  *   POST /v1/publish-builds/{id}/seal            the build document
+ *   POST /v1/publish-builds/{id}/abandon         stop and drop the upload
  */
 const basePath = '/v1/publish-builds/'
 const sha256Pattern = /^[0-9a-f]{64}$/
@@ -36,7 +41,7 @@ export class PublishBuildRouteNotFound extends Schema.TaggedError<PublishBuildRo
 	{},
 ) {}
 
-/** Uploading or sealing a build that is no longer uploading (409). */
+/** Uploading, sealing or abandoning a build no longer uploading (409). */
 export class PublishBuildNotUploading extends Schema.TaggedError<PublishBuildNotUploading>()(
 	'PublishBuildNotUploading',
 	{ status: Schemas.PublishBuildStatus },
@@ -58,6 +63,7 @@ type ParsedRoute =
 	| { kind: 'status'; buildId: string }
 	| { kind: 'blob'; buildId: string; sha256: string }
 	| { kind: 'seal'; buildId: string }
+	| { kind: 'abandon'; buildId: string }
 
 function parseRoute(method: string, pathname: string): ParsedRoute | null {
 	if (!pathname.startsWith(basePath)) return null
@@ -67,6 +73,9 @@ function parseRoute(method: string, pathname: string): ParsedRoute | null {
 	if (parts.length === 1 && method === 'GET') return { kind: 'status', buildId }
 	if (parts.length === 2 && parts[1] === 'seal' && method === 'POST') {
 		return { kind: 'seal', buildId }
+	}
+	if (parts.length === 2 && parts[1] === 'abandon' && method === 'POST') {
+		return { kind: 'abandon', buildId }
 	}
 	if (
 		parts.length === 3 &&
@@ -219,6 +228,27 @@ const sealBuild = Effect.fn('PublishBuildHttp.seal')(function* (
 	return json({ ok: true, build_id: row.id, status: 'sealed' })
 })
 
+const abandonedResponse = (buildId: string) =>
+	json({ ok: true, build_id: buildId, status: 'abandoned' })
+
+/** Abandoning twice answers the same; a sealed or later build is a 409. */
+const abandonBuild = Effect.fn('PublishBuildHttp.abandon')(function* (
+	row: PublishBuildRow,
+) {
+	if (row.status === 'abandoned') return abandonedResponse(row.id)
+	if (row.status !== 'uploading') {
+		return yield* new PublishBuildNotUploading({ status: row.status })
+	}
+	if (!(yield* abandonPublishBuild(row.id))) {
+		const current = yield* getPublishBuild(row.id)
+		const status = current._tag === 'Some' ? current.value.status : row.status
+		if (status !== 'abandoned') {
+			return yield* new PublishBuildNotUploading({ status })
+		}
+	}
+	return abandonedResponse(row.id)
+})
+
 export const servePublishBuildRoute = Effect.fn('PublishBuildHttp.serve')(
 	function* (request: Request, url: URL) {
 		const route = parseRoute(request.method, url.pathname)
@@ -226,14 +256,17 @@ export const servePublishBuildRoute = Effect.fn('PublishBuildHttp.serve')(
 		const row = yield* authenticatePublishBuildTicket({
 			buildId: route.buildId,
 			ticket: bearer(request),
+			allowAbandoned: route.kind === 'abandon',
 		})
+		if (route.kind === 'abandon') return yield* abandonBuild(row)
 		if (route.kind === 'status') {
+			const expiresAt = yield* renewPublishBuildLease(row)
 			return json({
 				build_id: row.id,
 				commit: row.commit_sha,
 				status: row.status,
 				message: row.message,
-				expires_at: row.expires_at,
+				expires_at: expiresAt,
 				uploaded_chunks: yield* listUploadedChunks(row.id),
 			})
 		}
@@ -241,7 +274,9 @@ export const servePublishBuildRoute = Effect.fn('PublishBuildHttp.serve')(
 			return yield* new PublishBuildNotUploading({ status: row.status })
 		}
 		if (route.kind === 'blob') {
-			return yield* uploadChunk(request, row, route.sha256)
+			const response = yield* uploadChunk(request, row, route.sha256)
+			yield* renewPublishBuildLease(row)
+			return response
 		}
 		return yield* sealBuild(request, row)
 	},

@@ -21,6 +21,8 @@ vi.mock('./store.ts', async (importOriginal) => ({
 			? Effect.succeed(row)
 			: Effect.fail(new PublishBuildTicketInvalid()),
 	getPublishBuild: () => Effect.succeed(Option.some(row)),
+	renewPublishBuildLease: (renewed: { expires_at: string }) =>
+		Effect.succeed(renewed.expires_at),
 	publishBuildBlobKey: (buildId: string, sha: string) =>
 		`publish-builds/${buildId}/blobs/${sha}`,
 	publishBuildBlobPrefix: (buildId: string) =>

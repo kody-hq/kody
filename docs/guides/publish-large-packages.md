@@ -151,7 +151,11 @@ uses a write remote Kody mints for that publish with your CLI login, not the
 checkout's remote URL or a stored git credential, so a clone whose remote token
 has expired still publishes.
 
-Uploads resume: rerunning the same command skips chunks Kody already has.
+Uploads resume: rerunning the same command skips chunks Kody already has. The
+upload ticket stays valid while the upload makes progress: each chunk upload or
+status check renews it for 10 minutes, up to 2 hours after the build started. A
+builder that gives up can `POST /v1/publish-builds/{id}/abandon` with its ticket
+to drop the upload right away.
 
 ## Limits
 

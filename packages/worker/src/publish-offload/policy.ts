@@ -60,8 +60,14 @@ export const publishOffloadLimits = {
 	contextTimeoutMs: 10 * 60 * 1000,
 } as const
 
-/** Per-build upload ticket lifetime. */
-export const publishBuildTicketTtlMs = 30 * 60 * 1000
+/**
+ * Per-build upload ticket lease: each chunk upload or status read renews it
+ * to this long from now. Sealing does not renew it.
+ */
+export const publishBuildLeaseMs = 10 * 60 * 1000
+
+/** A renewed lease never runs past this long after the build started. */
+export const publishBuildMaxLeaseMs = 2 * 60 * 60 * 1000
 
 /** T4: the context's clone token is read-only, one repo, about 5 minutes. */
 export const publishBuildCloneTokenTtlSeconds = 300

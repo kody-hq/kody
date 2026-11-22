@@ -11,8 +11,9 @@ import {
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { publishBuildState } from './publish-build-state.ts'
 import {
+	publishBuildLeaseMs,
+	publishBuildMaxLeaseMs,
 	publishBuildRetentionMs,
-	publishBuildTicketTtlMs,
 	type PublishBuildOrigin,
 } from './policy.ts'
 import * as Schemas from './schemas.ts'
@@ -25,6 +26,7 @@ export type PublishBuildRow = typeof Schemas.PublishBuildRow.Type
 
 const ticketPrefix = 'kpb_'
 const sealGuard = sqlSourcesOf(publishBuildState, 'SEAL', ['uploading'])
+const abandonGuard = sqlSourcesOf(publishBuildState, 'ABANDON', ['uploading'])
 const finishGuard = sqlSourcesOf(publishBuildState, 'COMMIT', [
 	'sealed',
 	'committed',
@@ -85,7 +87,7 @@ export const createPublishBuild = Effect.fn('PublishBuildStore.create')(
 		const id = `pb_${yield* randomToken(12)}`
 		const ticket = `${ticketPrefix}${yield* randomToken()}`
 		const createdAt = new Date(now).toISOString()
-		const expiresAt = new Date(now + publishBuildTicketTtlMs).toISOString()
+		const expiresAt = new Date(now + publishBuildLeaseMs).toISOString()
 		yield* db.run(
 			'publish_builds.create',
 			sql(
@@ -150,14 +152,19 @@ function timingSafeEqualHex(a: string, b: string) {
 }
 
 /**
- * The upload ticket is the build's job token: it can add chunks to and seal
- * this one build, nothing else, and it is useless once the build is sealed
- * or expired. It grants no permission; publishing still needs the
- * publisher's own `package:write`.
+ * The upload ticket is the build's job token: it can add chunks to, seal or
+ * abandon this one build, nothing else, and it is useless once the build is
+ * sealed, abandoned or its lease expired. It grants no permission;
+ * publishing still needs the publisher's own `package:write`.
+ * `allowAbandoned` lets a repeated abandon find its build and answer the same.
  */
 export const authenticatePublishBuildTicket = Effect.fn(
 	'PublishBuildStore.authenticateTicket',
-)(function* (input: { buildId: string; ticket: string | null }) {
+)(function* (input: {
+	buildId: string
+	ticket: string | null
+	allowAbandoned?: boolean
+}) {
 	const ticket = input.ticket
 	if (!ticket?.startsWith(ticketPrefix)) {
 		return yield* new PublishBuildTicketInvalid()
@@ -168,11 +175,45 @@ export const authenticatePublishBuildTicket = Effect.fn(
 	if (!timingSafeEqualHex(yield* digestSha256Hex(ticket), row.ticket_sha256)) {
 		return yield* new PublishBuildTicketInvalid()
 	}
+	if (row.status === 'abandoned') {
+		if (input.allowAbandoned) return row
+		return yield* new PublishBuildTicketInvalid()
+	}
 	if (Date.parse(row.expires_at) <= (yield* Clock.currentTimeMillis)) {
 		return yield* new PublishBuildTicketInvalid()
 	}
 	return row
 })
+
+/**
+ * Renews the upload lease to `publishBuildLeaseMs` from now, capped at
+ * `publishBuildMaxLeaseMs` after the build started. Never shortens a lease.
+ * Returns the lease's expiry.
+ */
+export const renewPublishBuildLease = Effect.fn('PublishBuildStore.renewLease')(
+	function* (row: Pick<PublishBuildRow, 'id' | 'created_at' | 'expires_at'>) {
+		const db = yield* D1
+		const now = yield* Clock.currentTimeMillis
+		const renewed = new Date(
+			Math.min(
+				now + publishBuildLeaseMs,
+				Date.parse(row.created_at) + publishBuildMaxLeaseMs,
+			),
+		).toISOString()
+		if (renewed <= row.expires_at) return row.expires_at
+		yield* db.run(
+			'publish_builds.renew_lease',
+			sql(
+				`UPDATE publish_builds SET expires_at = ?
+			WHERE id = ? AND status != 'abandoned' AND expires_at < ?`,
+				renewed,
+				row.id,
+				renewed,
+			),
+		)
+		return renewed
+	},
+)
 
 /** Stores the document and seals the build; false when it was not uploading. */
 export const sealPublishBuild = Effect.fn('PublishBuildStore.seal')(
@@ -235,6 +276,40 @@ const deletePrefix = Effect.fnUntraced(function* (prefix: string) {
 	} while (cursor)
 })
 
+/**
+ * Abandons an uploading build: the ticket stops working and the lease ends
+ * now, so the expired-build sweep counts its retention from here. Then drops
+ * the uploaded chunks; chunks a failed delete leaves behind go with that
+ * sweep. False when the build was not uploading.
+ */
+export const abandonPublishBuild = Effect.fn('PublishBuildStore.abandon')(
+	function* (buildId: string) {
+		const db = yield* D1
+		const now = yield* nowIso
+		const result = yield* db.run(
+			'publish_builds.abandon',
+			sql(
+				`UPDATE publish_builds
+			SET status = 'abandoned', updated_at = ?, expires_at = ?
+			WHERE id = ? AND status IN ${abandonGuard}`,
+				now,
+				now,
+				buildId,
+			),
+		)
+		if (result.changes === 0) return false
+		yield* deletePrefix(publishBuildBlobPrefix(buildId)).pipe(
+			Effect.catchTag('OutboundCallError', (error) =>
+				Effect.logDebug('publish_build_abandon_delete_failed', {
+					buildId,
+					message: error.message,
+				}),
+			),
+		)
+		return true
+	},
+)
+
 const ExpiredBuildRow = Schema.Struct({
 	id: Schema.String,
 	status: Schemas.PublishBuildStatus,
@@ -244,8 +319,8 @@ const ExpiredBuildRow = Schema.Struct({
  * Drops the chunks of builds whose ticket expired over a day ago (a
  * committed build's targets are already written by then). Committed rows
  * stay for their build origin (11B) with the manifest cleared; every other
- * row goes. Runs a few builds at a time whenever a build starts, so the
- * work tracks how many builds are made.
+ * row (rejected, abandoned, or never sealed) goes. Runs a few builds at a
+ * time whenever a build starts, so the work tracks how many builds are made.
  */
 export const purgeExpiredPublishBuilds = Effect.fn(
 	'PublishBuildStore.purgeExpired',
@@ -426,6 +501,11 @@ export const resolveUploadedPublishBuildForPublish = Effect.fn(
 	if (row.status === 'rejected') {
 		return yield* rejected(
 			row.message ?? 'this build already failed verification.',
+		)
+	}
+	if (row.status === 'abandoned') {
+		return yield* rejected(
+			'the upload was abandoned before it was sealed; start a new build.',
 		)
 	}
 	if (!row.document_sha256) {
