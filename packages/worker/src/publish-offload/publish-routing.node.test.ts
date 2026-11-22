@@ -1,5 +1,6 @@
-import { Effect } from 'effect'
+import { Effect, Layer, ManagedRuntime, Match, Schema } from 'effect'
 import { expect, test, vi } from 'vitest'
+import { runEdge } from '#worker/effect/edge.ts'
 import { mcpFailure } from './edge.ts'
 import type {
 	PublishBindingUnavailable,
@@ -14,33 +15,46 @@ import {
 	type PublishRouteDeps,
 } from './publish-routing.ts'
 
+class ContextOffline extends Schema.TaggedError<ContextOffline>()(
+	'ContextOffline',
+	{ message: Schema.String },
+) {}
+
+const runtime = ManagedRuntime.make(Layer.empty)
+
 /** Runs a route decision the way the `packagePublishExternalPush` edge does. */
 function run(
 	effect: Effect.Effect<
 		PublishRoute,
-		PublishContextFlagsOff | PublishBindingUnavailable | Error
+		PublishContextFlagsOff | PublishBindingUnavailable | ContextOffline
 	>,
 ) {
-	return Effect.runPromise(
-		effect.pipe(
-			Effect.catchTags({
-				PublishContextFlagsOff: (error) =>
-					Effect.sync(() => mcpFailure.PublishContextFlagsOff(error)),
-				PublishBindingUnavailable: (error) =>
-					Effect.sync(() => mcpFailure.PublishBindingUnavailable(error)),
+	return runEdge(
+		runtime,
+		effect,
+		Match.type<
+			PublishContextFlagsOff | PublishBindingUnavailable | ContextOffline
+		>().pipe(
+			Match.tagsExhaustive({
+				PublishContextFlagsOff: mcpFailure.PublishContextFlagsOff,
+				PublishBindingUnavailable: mcpFailure.PublishBindingUnavailable,
+				ContextOffline: (error) => {
+					throw error
+				},
 			}),
 		),
 	)
 }
 
-function deps(overrides: Partial<PublishRouteDeps<Error>> = {}) {
-	const buildOnContext = vi.fn<PublishRouteDeps<Error>['buildOnContext']>(
-		({ context }) =>
-			Effect.succeed({
-				kind: 'context',
-				buildId: 'pb_1',
-				contextName: context ?? 'chain-box',
-			}),
+function deps(overrides: Partial<PublishRouteDeps<ContextOffline>> = {}) {
+	const buildOnContext = vi.fn<
+		PublishRouteDeps<ContextOffline>['buildOnContext']
+	>(({ context }) =>
+		Effect.succeed({
+			kind: 'context',
+			buildId: 'pb_1',
+			contextName: context ?? 'chain-box',
+		}),
 	)
 	const readBoundContext = vi.fn(() => Effect.succeed(null as string | null))
 	return {
@@ -49,7 +63,7 @@ function deps(overrides: Partial<PublishRouteDeps<Error>> = {}) {
 		chainMayUseContexts: vi.fn(() => Effect.succeed(true)),
 		buildOnContext,
 		...overrides,
-	} satisfies PublishRouteDeps<Error>
+	} satisfies PublishRouteDeps<ContextOffline>
 }
 
 test('flags off: cloud, no manifest read, and a named context is refused', async () => {
@@ -134,7 +148,9 @@ test('a bound context that is unavailable fails the publish with the binding err
 		readBoundContext: vi.fn(() => Effect.succeed('bound-box')),
 		buildOnContext: vi.fn(() =>
 			Effect.fail(
-				new Error('bound-box could not take this run (bound-box was offline).'),
+				new ContextOffline({
+					message: 'bound-box could not take this run (bound-box was offline).',
+				}),
 			),
 		),
 	})

@@ -250,6 +250,7 @@ const inspectUploadedModule = Effect.fnUntraced(function* (input: {
 	label: string
 }) {
 	const { source, label } = input
+	// effect-check: allow in-memory parse, no I/O
 	const program: unknown = yield* Effect.tryPromise({
 		try: () => parseModuleSource(source),
 		catch: () => fail(`${label} does not parse as a module.`),

@@ -57,6 +57,7 @@ export const collectLinkedPackageImports = Effect.fn(
 			files: input.sourceFiles,
 			path: input.entryPoint,
 		}) ?? normalizePackageWorkspacePath(input.entryPoint)
+	// effect-check: allow in-memory module graph work, no I/O
 	const reachable = yield* Effect.promise(() =>
 		collectReachableSourceFilePaths({
 			files: input.sourceFiles,
@@ -67,6 +68,7 @@ export const collectLinkedPackageImports = Effect.fn(
 				: {}),
 		}),
 	)
+	// effect-check: allow in-memory module graph work, no I/O
 	const imports = yield* Effect.promise(() =>
 		collectStaticKodyPackageImportsFromFiles(
 			Object.fromEntries(
@@ -151,6 +153,7 @@ const linkDependency = Effect.fnUntraced(function* (input: {
 		sourceId: artifact.sourceId,
 		publishedCommit: artifact.publishedCommit,
 	})
+	// effect-check: allow in-memory module graph work, no I/O
 	const modules = yield* Effect.promise(() =>
 		materializeDependencyArtifactModules({
 			artifactPrefix,
@@ -161,6 +164,7 @@ const linkDependency = Effect.fnUntraced(function* (input: {
 		}),
 	)
 	const mainPath = joinPath(artifactPrefix, artifact.mainModule)
+	// effect-check: allow in-memory module graph work, no I/O
 	const exportNames = yield* Effect.promise(() =>
 		collectModuleExportNames({ files: modules, modulePath: mainPath }),
 	)

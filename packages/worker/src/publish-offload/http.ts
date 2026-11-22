@@ -98,6 +98,7 @@ function bearer(request: Request) {
 const invalid = (message: string) => new PublishBuildInvalidUpload({ message })
 
 const readBody = <A>(read: () => Promise<A>) =>
+	// effect-check: allow reads the inbound request body, not an outbound call
 	Effect.tryPromise({
 		try: read,
 		catch: () => invalid('The request body could not be read.'),

@@ -1,4 +1,4 @@
-import { type Effect, Match } from 'effect'
+import { absurd, type Effect, Match } from 'effect'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { rethrow, runEdge } from '#worker/effect/edge.ts'
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
@@ -142,7 +142,9 @@ export async function getCommittedPublishBuildOrigin(
 		env: Env
 	},
 ) {
-	return await publishOffloadRuntime(input.env).runPromise(
+	return await runEdge(
+		publishOffloadRuntime(input.env),
 		Store.getCommittedPublishBuildOrigin(input),
+		(error) => absurd(error),
 	)
 }

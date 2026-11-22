@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, globSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
@@ -9,7 +9,15 @@ import path from 'node:path'
  *
  * The service's `diagnostics` command does not run on TypeScript 6, so this
  * patches a private copy of `typescript` (never the shared install) and runs
- * its `tsc` on the Effect tsconfig.
+ * its `tsc` on the Effect tsconfig. Any diagnostic it prints, warnings
+ * included, fails the check.
+ *
+ * First it refuses the escape hatches the type checker cannot see in the
+ * publish offload slice: a Promise wrapped without `outbound` (no deadline,
+ * no abort), a nested run instead of `runEdge`, wall-clock time instead of
+ * `Clock`, `JSON.parse` instead of `Schema`, raw console writes instead of
+ * `Effect.log`, and timers instead of `Schedule`. A line that needs one says
+ * why in a `// effect-check: allow <reason>` comment just above it.
  */
 const require = createRequire(import.meta.url)
 const root = path.resolve(import.meta.dirname, '..')
@@ -19,6 +27,53 @@ const version = (dir: string) =>
 	JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).version
 const run = (command: string, args: Array<string>) =>
 	spawnSync(command, args, { cwd: root, stdio: 'inherit' }).status ?? 1
+
+const sliceFiles = globSync(
+	[
+		'packages/worker/src/publish-offload/*.ts',
+		'packages/worker/src/execution-contexts/route-publish-build.ts',
+		'packages/worker/src/mcp/capabilities/packages/publish-build-create.ts',
+	],
+	{ cwd: root },
+).filter(
+	(file) =>
+		!file.endsWith('.test.ts') &&
+		// The builder side and the Promise helpers it shares run outside the Worker.
+		!/\/(builder-entry|builder-workerd-entry|source-tree|module-hashes)\.ts$/.test(
+			file,
+		),
+)
+const refused: ReadonlyArray<readonly [RegExp, string]> = [
+	[
+		/\bEffect\.(tryPromise|promise)\(/,
+		'wrap Promise APIs with outbound() or the D1 and R2 services',
+	],
+	[
+		/\b(Effect|ManagedRuntime)\.run\w*\(|\.runPromise\w*\(/,
+		'leave the slice only through runEdge',
+	],
+	[/\bDate\.now\(|\bnew Date\(\)/, 'read time from Clock'],
+	[/\bJSON\.parse\(/, 'decode with Schema.fromJsonString'],
+	[/\bconsole\.\w+\(/, 'log with Effect.log*'],
+	[/\bset(Timeout|Interval)\(/, 'wait with Effect.sleep or Schedule'],
+]
+const findings: Array<string> = []
+for (const file of sliceFiles) {
+	const lines = readFileSync(path.join(root, file), 'utf8').split('\n')
+	lines.forEach((line, index) => {
+		if (/^\s*(\/\/|\*|\/\*)/.test(line)) return
+		if (/\/\/ effect-check: allow \S/.test(lines[index - 1] ?? '')) return
+		for (const [pattern, fix] of refused) {
+			if (pattern.test(line)) {
+				findings.push(`${file}:${String(index + 1)}: ${fix}: ${line.trim()}`)
+			}
+		}
+	})
+}
+if (findings.length > 0) {
+	console.error(findings.join('\n'))
+	process.exit(1)
+}
 
 if (!existsSync(copy) || version(copy) !== version(source)) {
 	rmSync(copy, { recursive: true, force: true })
@@ -32,11 +87,18 @@ if (!existsSync(copy) || version(copy) !== version(source)) {
 	}
 }
 
-process.exit(
-	run(process.execPath, [
+const tsc = spawnSync(
+	process.execPath,
+	[
 		path.join(copy, 'bin/tsc'),
 		'-p',
 		'packages/worker/tsconfig-effect.json',
 		'--noEmit',
-	]),
+		'--pretty',
+		'false',
+	],
+	{ cwd: root, encoding: 'utf8' },
 )
+const output = `${tsc.stdout}${tsc.stderr}`
+process.stdout.write(output)
+process.exit(tsc.status === 0 && !/\bTS\d+:/.test(output) ? 0 : 1)
