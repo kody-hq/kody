@@ -17,9 +17,18 @@ import type { EntitySourceRow } from '#worker/repo/types.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
+	assertNever,
 	parseJsonText,
 	reportHandledError,
+	retryBudgetFailure,
+	type TransientRetryBudgetExhausted,
 } from '#worker/outbound/typed-failure.ts'
+import {
+	createTransientRetryBudget,
+	type RetrySleep,
+	type TransientRetryBudget,
+	withTransientRetry,
+} from '#worker/outbound/transient-retry.ts'
 import {
 	outboundTimeoutMs,
 	withDeadline,
@@ -59,18 +68,19 @@ async function readModule(input: {
 	bucket: R2Bucket
 	buildId: string
 	entry: PublishBuildModuleEntry
+	retry: TransientRetryBudget
 }) {
 	const parts: Array<Uint8Array> = []
 	let size = 0
+	const label = 'publish_build_blob.get'
 	for (const chunk of input.entry.chunks) {
-		const bytes = await withDeadline(
-			{ label: 'publish_build_blob.get', timeoutMs: outboundTimeoutMs.r2 },
-			async () => {
+		const bytes = await withTransientRetry({ label, budget: input.retry }, () =>
+			withDeadline({ label, timeoutMs: outboundTimeoutMs.r2 }, async () => {
 				const object = await input.bucket.get(
 					publishBuildBlobKey(input.buildId, chunk),
 				)
 				return object ? new Uint8Array(await object.arrayBuffer()) : null
-			},
+			}),
 		)
 		if (!bytes) {
 			throw new PublishBuildVerificationError(
@@ -124,6 +134,7 @@ async function readTargetModules(input: {
 	bucket: R2Bucket
 	buildId: string
 	uploaded: PublishBuildTargetEntry
+	retry: TransientRetryBudget
 }) {
 	const modules: WorkerLoaderModules = {}
 	for (const [path, entry] of Object.entries(input.uploaded.modules)) {
@@ -171,6 +182,25 @@ export function createUploadedTargetBuilders(
 }
 
 /**
+ * Storage kept failing with transient errors past the commit's retry
+ * budget. Not a verification verdict: the build stays sealed so the same
+ * upload can be committed again.
+ */
+function mapPersistUploadedFailure(
+	failure: TransientRetryBudgetExhausted,
+): PersistUploadedPublishBuildResult {
+	switch (failure.kind) {
+		case 'transient_retry_budget_exhausted':
+			return {
+				ok: false,
+				message: `Publish build storage kept failing with transient errors (${failure.label}). The upload is still sealed; retry the publish.`,
+			}
+		default:
+			return assertNever(failure.kind, 'persist uploaded publish failure')
+	}
+}
+
+/**
  * Publish offload commit step, run on the RepoSession that owns the publish:
  * verify the sealed upload against the pushed commit, link the Kody
  * packages it imports (6C), then write every target the same way a rebuild
@@ -192,8 +222,12 @@ export async function persistUploadedPublishBuild(input: {
 		path: string
 		bytes: number
 	}) => Promise<void>
+	/** Backoff sleep for transient storage retries; tests pass a fake. */
+	retrySleep?: RetrySleep
 }): Promise<PersistUploadedPublishBuildResult> {
 	const db = input.env.APP_DB
+	// One budget for this whole commit, shared by every D1 and R2 call.
+	const retry = createTransientRetryBudget(input.retrySleep)
 	const reject = async (message: string) => {
 		try {
 			await finishPublishBuild({
@@ -201,6 +235,7 @@ export async function persistUploadedPublishBuild(input: {
 				buildId: input.buildId,
 				status: 'rejected',
 				message,
+				retry,
 			})
 		} catch (error) {
 			// The publish is refused either way; the row stays sealed until expiry.
@@ -231,11 +266,12 @@ export async function persistUploadedPublishBuild(input: {
 		)
 	}
 	try {
-		const row = await getPublishBuild(db, input.buildId)
+		const row = await getPublishBuild(db, input.buildId, undefined, retry)
 		const document = row
 			? await readPublishBuildDocument({
 					bucket: input.env.REPO_SESSION_BLOBS,
 					row,
+					retry,
 				})
 			: null
 		if (
@@ -311,6 +347,7 @@ export async function persistUploadedPublishBuild(input: {
 				bucket,
 				buildId: input.buildId,
 				uploaded,
+				retry,
 			})
 			endStep('read-modules')
 			const { referencedLinkedImports } = await verifyUploadedTargetModules({
@@ -370,6 +407,7 @@ export async function persistUploadedPublishBuild(input: {
 			db,
 			buildId: input.buildId,
 			status: 'committed',
+			retry,
 		})
 		return {
 			ok: true,
@@ -379,6 +417,8 @@ export async function persistUploadedPublishBuild(input: {
 		if (error instanceof PublishBuildVerificationError) {
 			return await reject(error.message)
 		}
+		const exhausted = retryBudgetFailure(error)
+		if (exhausted) return mapPersistUploadedFailure(exhausted)
 		throw error
 	}
 }

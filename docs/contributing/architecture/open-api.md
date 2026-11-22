@@ -350,6 +350,7 @@ Every error is `{ error: { code, message, details? } }` with
 | 415    | `unsupported_media_type`                                                                                                                                   |
 | 429    | `rate_limited` (edge, `Retry-After`), `entitlement_limit`                                                                                                  |
 | 500    | `capability_error`, `internal_error`                                                                                                                       |
+| 503    | `storage_busy` (`Retry-After`; transient storage errors outlasted the request's retry budget)                                                              |
 
 ## Metering
 

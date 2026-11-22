@@ -5,6 +5,10 @@ import {
 	reportHandledError,
 } from '#worker/outbound/typed-failure.ts'
 import {
+	type TransientRetryBudget,
+	withTransientRetry,
+} from '#worker/outbound/transient-retry.ts'
+import {
 	type DeadlineClock,
 	outboundTimeoutMs,
 	withDeadline,
@@ -159,14 +163,16 @@ export async function getPublishBuild(
 	db: D1Database,
 	buildId: string,
 	clock?: DeadlineClock,
+	retry?: TransientRetryBudget,
 ) {
-	return await withDeadline(
-		{ label: 'publish_builds.get', timeoutMs: outboundTimeoutMs.d1, clock },
-		() =>
+	const label = 'publish_builds.get'
+	return await withTransientRetry({ label, budget: retry }, () =>
+		withDeadline({ label, timeoutMs: outboundTimeoutMs.d1, clock }, () =>
 			db
 				.prepare(`SELECT * FROM publish_builds WHERE id = ?`)
 				.bind(buildId)
 				.first<PublishBuildRow>(),
+		),
 	)
 }
 
@@ -191,9 +197,15 @@ export async function authenticatePublishBuildTicket(input: {
 	ticket: string | null
 	now?: number
 	clock?: DeadlineClock
+	retry?: TransientRetryBudget
 }) {
 	if (!input.ticket?.startsWith(ticketPrefix)) return null
-	const row = await getPublishBuild(input.db, input.buildId, input.clock)
+	const row = await getPublishBuild(
+		input.db,
+		input.buildId,
+		input.clock,
+		input.retry,
+	)
 	if (!row) return null
 	if (!timingSafeEqualHex(await sha256Hex(input.ticket), row.ticket_sha256)) {
 		return null
@@ -208,35 +220,40 @@ export async function sealPublishBuild(input: {
 	buildId: string
 	document: PublishBuildDocument
 	clock?: DeadlineClock
+	retry?: TransientRetryBudget
 }) {
 	const body = JSON.stringify(input.document)
 	const sha256 = await sha256Hex(body)
-	await withDeadline(
-		{
-			label: 'publish_build_document.put',
-			timeoutMs: outboundTimeoutMs.r2,
-			clock: input.clock,
-		},
-		() =>
-			input.bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
-				httpMetadata: { contentType: 'application/json' },
-			}),
+	const putLabel = 'publish_build_document.put'
+	await withTransientRetry({ label: putLabel, budget: input.retry }, () =>
+		withDeadline(
+			{ label: putLabel, timeoutMs: outboundTimeoutMs.r2, clock: input.clock },
+			() =>
+				input.bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
+					httpMetadata: { contentType: 'application/json' },
+				}),
+		),
 	)
-	const result = await withDeadline(
-		{
-			label: 'publish_builds.seal',
-			timeoutMs: outboundTimeoutMs.d1,
-			clock: input.clock,
-		},
+	const sealLabel = 'publish_builds.seal'
+	const result = await withTransientRetry(
+		{ label: sealLabel, budget: input.retry },
 		() =>
-			input.db
-				.prepare(
-					`UPDATE publish_builds
-					SET status = 'sealed', document_sha256 = ?, updated_at = ?
-					WHERE id = ? AND status IN ${sealGuard}`,
-				)
-				.bind(sha256, new Date().toISOString(), input.buildId)
-				.run(),
+			withDeadline(
+				{
+					label: sealLabel,
+					timeoutMs: outboundTimeoutMs.d1,
+					clock: input.clock,
+				},
+				() =>
+					input.db
+						.prepare(
+							`UPDATE publish_builds
+							SET status = 'sealed', document_sha256 = ?, updated_at = ?
+							WHERE id = ? AND status IN ${sealGuard}`,
+						)
+						.bind(sha256, new Date().toISOString(), input.buildId)
+						.run(),
+			),
 	)
 	return (result.meta.changes ?? 0) > 0
 }
@@ -246,11 +263,12 @@ export async function finishPublishBuild(input: {
 	buildId: string
 	status: 'committed' | 'rejected'
 	message?: string | null
+	retry?: TransientRetryBudget
 }) {
 	const now = new Date().toISOString()
-	await withDeadline(
-		{ label: 'publish_builds.finish', timeoutMs: outboundTimeoutMs.d1 },
-		() =>
+	const label = 'publish_builds.finish'
+	await withTransientRetry({ label, budget: input.retry }, () =>
+		withDeadline({ label, timeoutMs: outboundTimeoutMs.d1 }, () =>
 			input.db
 				.prepare(
 					`UPDATE publish_builds
@@ -267,6 +285,7 @@ export async function finishPublishBuild(input: {
 					input.buildId,
 				)
 				.run(),
+		),
 	)
 }
 
@@ -364,17 +383,18 @@ export async function purgeExpiredPublishBuilds(input: {
 export async function readPublishBuildDocument(input: {
 	bucket: R2Bucket
 	row: Pick<PublishBuildRow, 'id' | 'document_sha256'>
+	retry?: TransientRetryBudget
 }) {
 	const sha256 = input.row.document_sha256
 	if (!sha256) return null
-	const text = await withDeadline(
-		{ label: 'publish_build_document.get', timeoutMs: outboundTimeoutMs.r2 },
-		async () => {
+	const label = 'publish_build_document.get'
+	const text = await withTransientRetry({ label, budget: input.retry }, () =>
+		withDeadline({ label, timeoutMs: outboundTimeoutMs.r2 }, async () => {
 			const object = await input.bucket.get(
 				publishBuildDocumentKey(input.row.id, sha256),
 			)
 			return object ? await object.text() : null
-		},
+		}),
 	)
 	if (text === null) return null
 	return JSON.parse(text) as PublishBuildDocument

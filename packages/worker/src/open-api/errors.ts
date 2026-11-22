@@ -130,6 +130,7 @@ const platformApiErrorCodes = [
 	'package_graph_resource_limit',
 	'publish_not_applied',
 	'upgrade_required',
+	'storage_busy',
 	'internal_error',
 ] as const
 

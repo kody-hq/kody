@@ -3,8 +3,16 @@ import {
 	assertNever,
 	deadlineFailure,
 	parseJsonText,
+	retryBudgetFailure,
 	type DeadlineFailure,
+	type TransientRetryBudgetExhausted,
 } from '#worker/outbound/typed-failure.ts'
+import {
+	createTransientRetryBudget,
+	type RetrySleep,
+	type TransientRetryBudget,
+	withTransientRetry,
+} from '#worker/outbound/transient-retry.ts'
 import {
 	type DeadlineClock,
 	outboundTimeoutMs,
@@ -90,6 +98,7 @@ export type PublishBuildRouteFailure =
 	| { kind: 'missing_chunks'; missing: Array<string> }
 	| { kind: 'seal_lost_race' }
 	| DeadlineFailure
+	| TransientRetryBudgetExhausted
 
 /** The ApiError (or the 409 missing-chunks body) for a route failure. */
 export function mapPublishBuildRouteFailure(
@@ -145,6 +154,13 @@ export function mapPublishBuildRouteFailure(
 				message: `Publish build storage did not answer in time (${failure.label}). Retry the request.`,
 				headers: { 'Retry-After': '5' },
 			})
+		case 'transient_retry_budget_exhausted':
+			return new ApiError({
+				status: 503,
+				code: 'storage_busy',
+				message: `Publish build storage kept failing with transient errors (${failure.label}). Retry the request.`,
+				headers: { 'Retry-After': '5' },
+			})
 		default:
 			return assertNever(failure, 'publish build route failure')
 	}
@@ -154,18 +170,17 @@ async function listUploadedChunks(
 	bucket: R2Bucket,
 	buildId: string,
 	clock?: DeadlineClock,
+	retry?: TransientRetryBudget,
 ) {
 	const prefix = publishBuildBlobPrefix(buildId)
 	const chunks: Array<string> = []
+	const label = 'publish_build_blobs.list'
 	let cursor: string | undefined
 	do {
-		const page = await withDeadline(
-			{
-				label: 'publish_build_blobs.list',
-				timeoutMs: outboundTimeoutMs.r2,
-				clock,
-			},
-			() => bucket.list({ prefix, ...(cursor ? { cursor } : {}) }),
+		const page = await withTransientRetry({ label, budget: retry }, () =>
+			withDeadline({ label, timeoutMs: outboundTimeoutMs.r2, clock }, () =>
+				bucket.list({ prefix, ...(cursor ? { cursor } : {}) }),
+			),
 		)
 		for (const object of page.objects)
 			chunks.push(object.key.slice(prefix.length))
@@ -241,14 +256,16 @@ export async function handlePublishBuildRoute(input: {
 	env: Env
 	url: URL
 	clock?: DeadlineClock
+	/** Backoff sleep for transient storage retries; tests pass a fake. */
+	retrySleep?: RetrySleep
 }): Promise<Response> {
 	let outcome: Response | PublishBuildRouteFailure
 	try {
 		outcome = await runPublishBuildRoute(input)
 	} catch (error) {
-		const expired = deadlineFailure(error)
-		if (!expired) throw error
-		outcome = expired
+		const failure = deadlineFailure(error) ?? retryBudgetFailure(error)
+		if (!failure) throw error
+		outcome = failure
 	}
 	if (outcome instanceof Response) return outcome
 	const mapped = mapPublishBuildRouteFailure(outcome)
@@ -261,15 +278,22 @@ async function runPublishBuildRoute(input: {
 	env: Env
 	url: URL
 	clock?: DeadlineClock
+	retrySleep?: RetrySleep
 }): Promise<Response | PublishBuildRouteFailure> {
 	const route = parseRoute(input.request.method, input.url.pathname)
 	if (!route) return { kind: 'route_not_found' }
 	const clock = input.clock
+	// One budget for this whole seal request; the other routes do not retry.
+	const retry =
+		route.kind === 'seal'
+			? createTransientRetryBudget(input.retrySleep)
+			: undefined
 	const row = await authenticatePublishBuildTicket({
 		db: input.env.APP_DB,
 		buildId: route.buildId,
 		ticket: bearer(input.request),
 		clock,
+		retry,
 	})
 	if (!row) return { kind: 'invalid_ticket' }
 	const bucket = input.env.REPO_SESSION_BLOBS
@@ -325,7 +349,9 @@ async function runPublishBuildRoute(input: {
 	if (parsed.kind === 'invalid_json') return { kind: 'invalid_json' }
 	const document = checkSealedDocument(parsed.value, row)
 	if ('kind' in document) return document
-	const uploaded = new Set(await listUploadedChunks(bucket, row.id, clock))
+	const uploaded = new Set(
+		await listUploadedChunks(bucket, row.id, clock, retry),
+	)
 	const missing = [...referencedChunks(document)].filter(
 		(chunk) => !uploaded.has(chunk),
 	)
@@ -336,6 +362,7 @@ async function runPublishBuildRoute(input: {
 		buildId: row.id,
 		document,
 		clock,
+		retry,
 	})
 	// `false` means another request moved the build out of `uploading` first.
 	if (sealed === false) return { kind: 'seal_lost_race' }

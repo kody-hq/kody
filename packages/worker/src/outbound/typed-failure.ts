@@ -1,3 +1,4 @@
+import { isTransientRetryBudgetExhaustedError } from './transient-retry.ts'
 import { isDeadlineExceededError } from './with-deadline.ts'
 
 /**
@@ -26,6 +27,19 @@ export function deadlineFailure(error: unknown): DeadlineFailure | null {
 		label: error.label,
 		timeoutMs: error.timeoutMs,
 	}
+}
+
+export type TransientRetryBudgetExhausted = {
+	kind: 'transient_retry_budget_exhausted'
+	label: string
+}
+
+/** The typed failure for a spent `withTransientRetry` budget, else null. */
+export function retryBudgetFailure(
+	error: unknown,
+): TransientRetryBudgetExhausted | null {
+	if (!isTransientRetryBudgetExhaustedError(error)) return null
+	return { kind: 'transient_retry_budget_exhausted', label: error.label }
 }
 
 /**
