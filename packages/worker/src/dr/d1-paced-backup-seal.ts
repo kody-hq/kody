@@ -258,6 +258,9 @@ async function sealTableArtifacts(input: {
 
 		const dataPartDigests: Array<string> = []
 		const indexPartDigests: Array<string> = []
+		// Copy at least one part per call so a validation pass that uses the
+		// whole budget still seals part 0, and later calls skip validation.
+		let copiedPart = false
 		for (let partIndex = 0; partIndex < dataPointer.partCount; partIndex += 1) {
 			const dataExpected = dataPointer.dataPartDigests[partIndex]
 			const indexExpected = dataPointer.indexPartDigests[partIndex]
@@ -273,7 +276,7 @@ async function sealTableArtifacts(input: {
 				indexPartDigests.push(indexExpected)
 				continue
 			}
-			if (input.outOfBudget()) return false
+			if (copiedPart && input.outOfBudget()) return false
 			// Sequential: verify-before-write one part body at a time (large
 			// APP/AUDIT parts previously spiked when data+index loaded together).
 			const dataPart = await sealVerifiedStagingBytes({
@@ -317,6 +320,7 @@ async function sealTableArtifacts(input: {
 				label: `${input.source.name}.${input.table} index part ${partIndex}`,
 			})
 			indexPartDigests.push(await sha256HexOfBytes(indexPart))
+			copiedPart = true
 		}
 
 		const dataSha256 = await sha256HexOfText(`${dataPartDigests.join('\n')}\n`)

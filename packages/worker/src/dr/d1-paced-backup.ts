@@ -102,10 +102,10 @@ export const d1PacedBackupTickByteBudget = 32 * 1024 * 1024
 
 /**
  * Full-base nights (Sunday weekly bases and forced bases) copy every row
- * instead of a delta, about 1.5x a delta night's tick work. In 2026-11 a full
- * base took about 72 tick-minutes, while 45s ticks every 5 minutes fit only
- * about 62 between 00:00 and the 07:00 DR health check. These ticks run 4x
- * longer and emit 4x the bytes so a full base seals by about 03:00.
+ * instead of a delta, about 1.5x a delta night's tick work, which 45s ticks
+ * every 5 minutes cannot finish before the 07:00 DR health check. 4x longer
+ * ticks with 4x the emitted bytes seal a full base hours before that check.
+ * See docs/contributing/disaster-recovery.md for the measured budget.
  */
 export const d1PacedBackupFullBaseRunTimeBudgetMs =
 	4 * d1PacedBackupRunTimeBudgetMs

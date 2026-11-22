@@ -1646,3 +1646,64 @@ test('a large parted table seal stops between parts on budget and resumes withou
 		expect(objects.get(key)?.bytes).toEqual(bytes)
 	}
 })
+
+test('a parted table seal makes progress when index validation alone uses the whole budget', async () => {
+	const { client, objects } = createMemoryS3()
+	const env = createEnv({ APP_DB: createAppD1(seedWideItems(20)) })
+	await runNightToSeal({ env, client, day })
+	const tier = pacedD1RetentionTierForDay(day)
+	let partCount = 0
+	while (
+		objects.has(pacedD1StagingDataPartKey(day, 'kody', 'items', partCount))
+	)
+		partCount += 1
+	expect(partCount).toBeGreaterThan(4)
+	const sealedManifestKey = pacedD1SealedManifestKey(tier, appId, day)
+	for (let i = 0; i < partCount; i += 1) {
+		objects.delete(pacedD1SealedDataPartKey(tier, appId, day, 'items', i))
+		objects.delete(pacedD1SealedIndexPartKey(tier, appId, day, 'items', i))
+	}
+	objects.delete(pacedD1SealedDataKey(tier, appId, day, 'items'))
+	objects.delete(pacedD1SealedIndexKey(tier, appId, day, 'items'))
+	objects.delete(sealedManifestKey)
+
+	const stagingIndexKeys = new Set(
+		Array.from({ length: partCount }, (_, i) =>
+			pacedD1StagingIndexPartKey(day, 'kody', 'items', i),
+		),
+	)
+	const originalGetBytes = client.getBytes.bind(client)
+	client.getBytes = async (key) => {
+		// Each staging index read costs one simulated second, so validating the
+		// whole index outlasts a 2s budget on its own.
+		if (stagingIndexKeys.has(key)) vi.setSystemTime(Date.now() + 1_000)
+		return originalGetBytes(key)
+	}
+	const source = { binding: 'APP_DB' as const, name: 'kody', id: appId }
+	vi.useFakeTimers({ toFake: ['Date'] })
+	try {
+		let calls = 0
+		let complete = false
+		while (!complete && calls <= partCount) {
+			calls += 1
+			const result = await sealPacedD1SourceNight({
+				s3: client,
+				source,
+				day,
+				startedAtMs: Date.now(),
+				timeBudgetMs: 2_000,
+			})
+			if (calls === 1) {
+				expect(result.complete).toBe(false)
+				expect(
+					objects.has(pacedD1SealedDataPartKey(tier, appId, day, 'items', 0)),
+				).toBe(true)
+			}
+			complete = result.complete
+		}
+		expect(complete).toBe(true)
+		expect(objects.has(sealedManifestKey)).toBe(true)
+	} finally {
+		vi.useRealTimers()
+	}
+})
