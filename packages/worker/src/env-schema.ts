@@ -432,8 +432,8 @@ export const EnvSchema = object({
 	// JSON array of { binding: "APP_DB"|"AUDIT_DB"|"JOBS_DB", name, id:uuid }.
 	// Production commits APP + AUDIT + JOBS (deploy may still expand UUIDs).
 	DR_D1_PACED_SOURCES: optionalNonEmptyStringSchema,
-	// Soft-delete purge lane (Teams P7). Default false: first production
-	// enable is dry-run via adminSoftDeletePurgeRun, then flip to "true".
+	// Soft-delete purge lane (Teams P7). "true" in production; preview and
+	// test keep "false", so the lane only lists candidates there.
 	SOFT_DELETE_PURGE_ENABLED: optionalNonEmptyStringSchema,
 	DR_BACKUP_ACCOUNT_ID: optionalNonEmptyStringSchema,
 	DR_BACKUP_BUCKET_NAME: optionalNonEmptyStringSchema,

@@ -228,11 +228,9 @@ Contract: `packages/shared/src/backup-staging.ts`.
    `JobsHost.readD1PacedRestoreDrillCheckpoint` for the source and phase when
    the RPC itself dies. Graduated production restore and the isolated paced
    drill replay the same sealed paced chains for schema-v3 days; the admin UI
-   REST drill and schema-v1/v2 days use the REST SQL objects.
-   `GET`/`POST /__maintenance/dr-paced-status` (bearer `DR_RESTORE_SECRET`,
-   optional `?day=YYYY-MM-DD`) reports staging/sealed presence per source plus
-   `restoreDrill`: the latest drill run with per-source status, active
-   table/phase, interruption count, and per-table results. `DR_D1_PACED_SOURCES`
+   REST drill and schema-v1/v2 days use the REST SQL objects. The
+   [paced status endpoint](../../packages/worker/src/dr/d1-paced-status.ts)
+   reports backup freshness and the latest restore drill. `DR_D1_PACED_SOURCES`
    commits APP_DB + AUDIT_DB + JOBS_DB (deploy still expands live D1 UUIDs from
    resource bindings).
 2. **Other canonical stores (production worker)** — When
@@ -306,9 +304,8 @@ Contract: `packages/shared/src/backup-staging.ts`.
      replacing it. A per-owner Mailbox or RunLog dump larger than the 16 MiB
      buffer is split the same way, into `mailbox-parts/{owner}/{sha256}.ndjson`
      or `run-log-parts/{owner}/{sha256}.ndjson` entries that carry `part` in the
-     owner index. Mailbox import validates and streams an owner's parts one at a
-     time, holding only ids, references and attachment metadata in memory. No
-     owner dump is skipped for size.
+     owner index. See [Mailbox re-import](#automated-mailbox-re-import) for how
+     recovery reads split dumps.
 3. **Seal** — Control plane verifies staged checksums against
    `staging/{day}/exporter/summary.json`, requires the sealed paced D1 night for
    every `D1_PACED_SOURCES` entry (APP_DB, AUDIT_DB, JOBS_DB) when sealing a new
@@ -693,8 +690,12 @@ its exact storage id.
 `POST /__maintenance/dr-mailbox-import` is the normal recovery path after
 object/class/account loss. It is `DR_RESTORE_SECRET`-gated, verifies the sealed
 full-manifest signature, verifies the mailbox index bytes and SHA-256, and
-verifies each selected owner dump's bytes and SHA-256 before writing that owner.
-Each tick writes parent threads, then messages with attachments through
+verifies each selected owner's dump parts before writing that owner (see the
+[media verifier](../../packages/worker/src/dr/mailbox-import-media.ts) and
+[importer](../../packages/worker/src/dr/mailbox-importer.ts)). It reads and
+parses one part at a time, checks for duplicate IDs and missing references
+across parts, then rereads the parts needed for each write phase. Each tick
+writes parent threads, then messages with attachments through
 `upsertMessageGraph`, then delivery events through `upsertDeliveryEvents`.
 Returned cursors are authenticated and bound to the day, owner selection,
 conflict policy, and drill flag; repeat the same request with `cursor` until

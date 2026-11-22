@@ -29,7 +29,7 @@ import type {
 	AccountIntegrationsLoaderData,
 	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
+import { useCallback, useState, useRef, useMemo } from 'react'
 import { useUndoableAction } from '../components/use-undoable-action.ts'
 import { UndoToast } from '../components/undo-toast.tsx'
 import {
@@ -136,16 +136,18 @@ export function AccountIntegrationsPage({
 	const [holdingOptimisticRemoval, setHoldingOptimisticRemoval] =
 		useState(false)
 	const mounted = useRef(false)
-	useEffect(() => {
-		mounted.current = true
-		return () => {
-			mounted.current = false
-		}
-	}, [])
 	const live = useRef({ integrations, apps })
-	useLayoutEffect(() => {
-		live.current = { integrations, apps }
-	}, [integrations, apps])
+	const trackShell = useCallback(
+		(node: HTMLElement | null) => {
+			if (!node) return
+			live.current = { integrations, apps }
+			mounted.current = true
+			return () => {
+				mounted.current = false
+			}
+		},
+		[integrations, apps],
+	)
 
 	function isHoldingOptimisticRemoval() {
 		return Boolean(undoable.pending) || holdingOptimisticRemoval
@@ -444,6 +446,7 @@ export function AccountIntegrationsPage({
 
 	return (
 		<AccountManagementShell
+			ref={trackShell}
 			layout="list"
 			currentHref={currentHref}
 			busy={false}

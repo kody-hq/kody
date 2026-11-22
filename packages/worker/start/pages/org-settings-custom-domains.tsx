@@ -8,7 +8,7 @@ import {
 	deleteOrganizationDomain,
 } from '#start/server/org-settings-mutations'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { orgDomainMutationOptions } from './org-domain-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
@@ -45,10 +45,12 @@ export function OrgSettingsCustomDomains({
 		text: string
 		tone: 'info' | 'error'
 	} | null>(null)
-	const noticeRef = useRef<HTMLDivElement>(null)
-	useEffect(() => {
-		if (notice) noticeRef.current?.scrollIntoView({ block: 'nearest' })
-	}, [notice])
+	const noticeRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (node && notice) node.scrollIntoView({ block: 'nearest' })
+		},
+		[notice],
+	)
 	const [hostname, setHostname] = useState('')
 	const [bindingKind, setBindingKind] = useState<'org' | 'app'>('org')
 	const [packageId, setPackageId] = useState('')

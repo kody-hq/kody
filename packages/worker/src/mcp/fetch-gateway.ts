@@ -310,9 +310,9 @@ function hasRunContext(props: FetchGatewayProps | undefined) {
 }
 
 /**
- * Every hop the gateway sends (first request, login retry, followed
- * redirect) goes through this fetch, so loopback and private, link-local,
- * or reserved IP literals are refused on each one. `kody dev` mocks skip it.
+ * Check the URL hostname before each explicit fetch by the gateway, including
+ * login retries and redirects it follows itself. This does not inspect DNS
+ * results or redirects followed inside the underlying fetch. Dev mocks skip it.
  */
 function publicHostsOnly(fetcher: typeof fetch): typeof fetch {
 	return async (resource, init) => {

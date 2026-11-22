@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 
-import { test } from 'vitest'
+import { backupR2RetryMaxAttempts } from '@kody-internal/shared/backup-r2-retry.ts'
+import { test, vi } from 'vitest'
 
 import {
 	MemoryBucket,
@@ -12,7 +13,10 @@ import { retryingR2Bucket } from './r2-retry.ts'
 const internalError = () =>
 	new Error('put: We encountered an internal error. Please try again. (10001)')
 
-function flakyBucket(failures: Array<() => Error>) {
+function flakyBucket(
+	failures: Array<() => Error>,
+	options: { baseDelayMs?: number } = { baseDelayMs: 0 },
+) {
 	const memory = new MemoryBucket()
 	let calls = 0
 	const bucket = {
@@ -31,7 +35,7 @@ function flakyBucket(failures: Array<() => Error>) {
 	} as unknown as R2Bucket
 	return {
 		memory,
-		bucket: retryingR2Bucket(bucket, { baseDelayMs: 0 }),
+		bucket: retryingR2Bucket(bucket, options),
 		calls: () => calls,
 	}
 }
@@ -46,20 +50,40 @@ test('a transient R2 10001 is retried and the put then succeeds', async () => {
 
 test('a persistent R2 platform error surfaces as r2-platform-error after the bounded attempts', async () => {
 	const flaky = flakyBucket([
-		internalError,
 		() => new Error('head: Service is temporarily unavailable. (10043)'),
-		internalError,
-		internalError,
+		...Array.from({ length: backupR2RetryMaxAttempts }, () => internalError),
 	])
 	await assert.rejects(flaky.bucket.head('daily/full/k'), (error: unknown) => {
 		assert.ok(backupError('r2-platform-error', true)(error))
 		assert.match(
 			(error as Error).message,
-			/after 3 attempts: put: .*\(10001\)$/,
+			new RegExp(
+				`after ${backupR2RetryMaxAttempts} attempts: put: .*\\(10001\\)$`,
+			),
 		)
 		return true
 	})
-	assert.equal(flaky.calls(), 3)
+	assert.equal(flaky.calls(), backupR2RetryMaxAttempts)
+})
+
+test('the default schedule rides out a multi-second R2 internal-error burst on head', async () => {
+	vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+	try {
+		const flaky = flakyBucket(
+			Array.from({ length: backupR2RetryMaxAttempts - 1 }, () => internalError),
+			{},
+		)
+		await flaky.memory.put('daily/full/k', 'body')
+		const startedAt = Date.now()
+		const head = flaky.bucket.head('daily/full/k')
+		await vi.runAllTimersAsync()
+		assert.equal((await head)?.key, 'daily/full/k')
+		assert.equal(flaky.calls(), backupR2RetryMaxAttempts)
+		// Equal jitter floors the five waits at 125 + 250 + 500 + 1000 + 2000 ms.
+		assert.ok(Date.now() - startedAt >= 3875)
+	} finally {
+		vi.useRealTimers()
+	}
 })
 
 test('non-retryable R2 and logical errors are not retried', async () => {

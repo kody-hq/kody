@@ -27,10 +27,7 @@ import {
 	hoverMq,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	UsernameChoiceField,
-	type UsernameAvailabilityView,
-} from '../components/username-choice-field.tsx'
+import { UsernameChoiceField } from '../components/username-choice-field.tsx'
 import type { AuthStatus } from './login.tsx'
 import { Input } from '../components/input.tsx'
 import { Checkbox } from '../components/choice-controls.tsx'
@@ -145,7 +142,6 @@ export function AuthForm(
 		usernameConfirming: boolean
 		onSignupUsernameInput: (value: string) => void
 		onSignupEmailInput: (value: string) => void
-		onUsernameAvailabilityChange: (view: UsernameAvailabilityView) => void
 		submitLabel: string
 		submitBusyLabel: string
 		onSubmit: (event: FormEvent<HTMLFormElement>) => void
@@ -192,7 +188,6 @@ export function AuthForm(
 				<UsernameChoiceField
 					value={props.signupUsername}
 					onChange={props.onSignupUsernameInput}
-					onAvailabilityChange={props.onUsernameAvailabilityChange}
 					seeds={{ email: props.signupEmail }}
 					autoFocus
 					inputId={`${props.handleId}-username`}

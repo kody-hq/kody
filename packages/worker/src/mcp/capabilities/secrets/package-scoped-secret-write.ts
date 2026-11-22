@@ -11,8 +11,8 @@ import type { StorageContext } from '#mcp/storage.ts'
  * any other context without a package runtime binding) does not surface a
  * misleading `insufficient_scope` for `secret:write` / `secret:create`.
  *
- * Local CapabilityProxy does not attach package secret authority; a
- * client-supplied package id is not trusted as proof of a hosted package run.
+ * Local CapabilityProxy does not attach package runtime authority.
+ * `secretSet` separately supports an explicit, authorized package target.
  */
 export const packageScopedSecretWriteUnavailableMessage =
 	"Package-scoped secret writes need a package. Pass `package_id` (a saved package in this org) to `secretSet`, or run it from that package's own code."

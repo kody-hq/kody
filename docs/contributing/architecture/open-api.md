@@ -46,10 +46,11 @@ sequenceDiagram
   `CF-Connecting-IP` on those routes. `POST /v1/capability-proxy/gateway-fetch`
   also forwards the allowlisted gateway headers (`X-Kody-Gateway-Url`,
   `X-Kody-Gateway-Method`, `X-Kody-Gateway-Package-Id`,
-  `X-Kody-Gateway-Headers`, `x-kody-secret-resolution`) and does not apply the 5
-  MiB buffered-body cap; it still respects the Cloudflare Worker upload limit
-  (~100 MiB Free/Pro) and returns JSON `413 payload_too_large` when
-  `Content-Length` exceeds that limit (see the
+  `X-Kody-Gateway-Headers`, `X-Kody-Gateway-Credentials`, and
+  `x-kody-secret-resolution`) and does not apply the 5 MiB buffered-body cap; it
+  still respects the Cloudflare Worker upload limit (~100 MiB Free/Pro) and
+  returns JSON `413 payload_too_large` when `Content-Length` exceeds that limit
+  (see the
   [CLI streaming gateway-fetch contract](../contracts/cli-streaming-gateway-fetch.md)).
   `POST /v1/packages/check-uploads` carries a whole package tree (up to 24 MiB,
   `Content-Length` required) and never reaches origin: the edge asks origin for
@@ -60,11 +61,12 @@ sequenceDiagram
   throwaway isolate. A body on `POST /v1/packages/check` larger than an
   `{ upload_id }` request is the old synchronous shape: the edge answers
   `426 upgrade_required` with `details.minimum_cli_version` without forwarding
-  it. Objects under `package-runs/` (uploads and stored run results) are deleted
-  when their run ends and by a one-day bucket lifecycle rule. `Cookie` and other
-  `X-Kody-*` headers never reach origin, and origin `Set-Cookie` never reaches
-  the client. CORS allows any origin because auth is bearer-only. It never
-  serves HTML.
+  it. The
+  [check workflow](../../../packages/worker/src/package-runtime/package-check-run.ts)
+  deletes its upload on cleanup. A one-day bucket lifecycle rule expires
+  abandoned uploads and stored run results. `Cookie` and other `X-Kody-*`
+  headers never reach origin, and origin `Set-Cookie` never reaches the client.
+  CORS allows any origin because auth is bearer-only. It never serves HTML.
 - `kody-api-docs` (`packages/api-docs-worker/`) is the interactive docs host on
   `api-docs.kody.codes`. It serves a Scalar shell at `/`, proxies
   `/openapi.json` from the live API, and answers `/health`. DNS and the
@@ -218,6 +220,12 @@ module and does not silently hop to `kody.execute`. See
   unbound runtime path. Token-auth / `--local` package composition uses
   package-graph download + local workerd embedding — not whole-module
   `kody.execute`.
+- On the JSON hop, local runs supply credential picks in top-level
+  `credentials`, including for `kody.gatewayFetch`.
+  [Context runs use lease picks](../../../packages/worker/src/open-api/native-operation-helpers.ts)
+  instead; the proxy rejects a non-null `credentials` field on those runs. See
+  the [streaming fetch contract](../contracts/cli-streaming-gateway-fetch.md)
+  for the equivalent header.
 - Package-graph uses the same static-import scanner and resolution policy as
   cloud ad hoc execute (imports resolve only in the caller's org). Prefer
   published `importable-module` artifacts; unpublished or missing artifacts
@@ -256,14 +264,16 @@ module and does not silently hop to `kody.execute`. See
   strips `Cookie` and non-allowlisted `X-Kody-*` before origin sees the request.
   The streaming hop is the exception: allowlisted `X-Kody-Gateway-*` /
   `x-kody-secret-resolution` headers carry outbound URL, method, package stamp,
-  and headers; the body is the outbound fetch body. Other `X-Kody-*` headers are
-  still stripped.
+  credential picks, and headers; the body is the outbound fetch body. The
+  [edge allowlist](../../../packages/api-worker/src/edge.ts) strips other
+  `X-Kody-*` headers.
 - Order of checks: bearer credential (401), then — for `kody_at_` tokens only —
   `org:execute` via `authorize` (403 `insufficient_scope`). CLI MCP OAuth skips
   the token-scope check (full MCP grant on these routes).
-- Auth: `kody_at_…` with `org:execute`, or a valid `kody login` MCP OAuth access
+- Auth: `kody_at_…` with `org:execute`, a valid `kody login` MCP OAuth access
   token for this origin
-  ([ADR 0055](../decisions/0055-cli-mcp-oauth-local-execute-http.md)).
+  ([ADR 0055](../decisions/0055-cli-mcp-oauth-local-execute-http.md)), or an
+  [execution-context run lease token](../../../packages/worker/src/open-api/native-operation-helpers.ts).
 - Authenticated outbound fetch: `path: ['kody','authenticatedFetch']` with
   `{ providerName, request: { url, method?, headers?, body? } }`. Origin runs
   the same placeholder + fetch-gateway model as cloud execute (and host-side
@@ -304,8 +314,11 @@ module and does not silently hop to `kody.execute`. See
   `credentialClientSign` / `credentialClientCallTool` /
   `credentialClientRefresh`, which return `{ ok: true, value }` or
   `{ ok: false, error: { code, message, retryWith } }`. The CLI sends its
-  `--credential` picks as the call's top-level `credentials` map (code inside
-  local workerd controls only `args`, so it cannot pick by name), and
+  `--credential` picks as the call's top-level `credentials` map. Prefer
+  `{ id }` picks from `credentialList`; the
+  [call map schema](../../../packages/worker/src/credentials/credential-call-map.ts)
+  also accepts legacy name picks with optional scope. Use the top-level map, not
+  the package's `args`, to select credentials.
   `kody.credentialClientCheck({ packageId?, strict? })` checks the map before
   code runs. The session's `features` lists `credential-call-map` when origin
   serves both. Handles bind to the CapabilityProxy token, not a run, and a

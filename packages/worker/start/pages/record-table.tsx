@@ -18,15 +18,15 @@ import {
 	revealDeepLinkedRecord,
 } from './record-deep-link.ts'
 import {
-	useEffect,
+	useCallback,
 	useId,
 	useRef,
-	useLayoutEffect,
 	useMemo,
 	useState,
 	type ReactNode,
 	type MouseEvent,
 } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	colors,
@@ -524,7 +524,7 @@ export function RecordTable(props: RecordTableProps) {
 					rowIndex: item.index,
 				}))
 			: rows.map((row, rowIndex) => ({ row, rowIndex }))
-		useLayoutEffect(() => {
+		useLayoutMeasure(() => {
 			if (!pendingFocus.current) return
 			const link = scrollElement.current?.querySelector<HTMLElement>(
 				`[data-browser-item="${CSS.escape(pendingFocus.current)}"]`,
@@ -533,7 +533,7 @@ export function RecordTable(props: RecordTableProps) {
 				pendingFocus.current = null
 				link.focus({ preventScroll: true })
 			}
-		})
+		}, [renderedRows])
 
 		const selectedId = resolved.selectedId
 		const hasSelection = Boolean(props.dataControls?.selection)
@@ -567,25 +567,27 @@ export function RecordTable(props: RecordTableProps) {
 			(props.recordLoading || props.busy),
 		)
 
-		const sectionRef = useRef<HTMLElement>(null)
-		useEffect(() => {
-			const target = sectionRef.current?.querySelector<HTMLElement>(
-				'[data-record-focus]',
-			)
-			if (
-				documentDeepLinkFocus({
-					// A fragment (such as #fill-placement) owns the landing spot.
-					spaNavigated:
-						document.documentElement.hasAttribute('data-spa-nav') ||
-						window.location.hash !== '',
-					// A create form (`/new`) is not a record a link points at.
-					hasTarget: Boolean(target) && selectedId !== recordTableCreateId,
-				}) &&
-				target
-			) {
-				revealDeepLinkedRecord(target)
-			}
-		}, [selectedId, expandedInTable, orphanedRecord])
+		const sectionRef = useCallback(
+			(section: HTMLElement | null) => {
+				if (!section) return
+				const target = section.querySelector<HTMLElement>('[data-record-focus]')
+				if (
+					documentDeepLinkFocus({
+						// A fragment (such as #fill-placement) owns the landing spot.
+						spaNavigated:
+							document.documentElement.hasAttribute('data-spa-nav') ||
+							window.location.hash !== '',
+						// A create form (`/new`) is not a record a link points at.
+						hasTarget: Boolean(target) && selectedId !== recordTableCreateId,
+					}) &&
+					target
+				) {
+					revealDeepLinkedRecord(target)
+				}
+			},
+			// oxlint-disable-next-line react/exhaustive-deps -- re-check the deep link when the record moves in or out of the table
+			[selectedId, expandedInTable, orphanedRecord],
+		)
 
 		const table = (
 			// oxlint-disable-next-line kody-custom/no-raw-table -- RecordTable owns its responsive card layout, sorting, and row selection.

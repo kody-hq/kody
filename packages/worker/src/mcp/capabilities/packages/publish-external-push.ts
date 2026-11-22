@@ -111,6 +111,7 @@ import {
 	pendingPackageSecretApprovalsSchema,
 } from './shared.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
+import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
 	reportCapabilityProgress,
 	type McpReportProgress,
@@ -783,6 +784,26 @@ async function getPublishedPackageTestHints(input: {
 	}
 }
 
+/**
+ * The publish renames the saved package to the published manifest name, so
+ * links in the result read the row again instead of the pre-publish name.
+ */
+async function readPublishedPackageIdentity(input: {
+	env: Env
+	ownerUserId: OwnerId
+	packageId: string
+	kodyId: string
+	name: string
+}) {
+	const saved = await getSavedPackageById(input.env.APP_DB, {
+		userId: input.ownerUserId,
+		packageId: input.packageId,
+	})
+	return saved
+		? { kodyId: saved.kodyId, name: saved.name }
+		: { kodyId: input.kodyId, name: input.name }
+}
+
 async function resolvePublishedHostedAppUrl(input: {
 	env: Env
 	baseUrl: string
@@ -1212,6 +1233,7 @@ async function runExternalPublishAttempt(input: {
 							publishedCommit,
 						},
 						async () => {
+							const published = await readPublishedPackageIdentity(input)
 							const [testHints, listing] = await Promise.all([
 								getPublishedPackageTestHints({
 									env: input.env,
@@ -1219,7 +1241,7 @@ async function runExternalPublishAttempt(input: {
 									userId: input.ownerUserId,
 									sourceId: input.source.id,
 									packageId: input.packageId,
-									kodyId: input.kodyId,
+									kodyId: published.kodyId,
 									publisherUserId: input.requestedByUserId ?? input.ownerUserId,
 								}),
 								getListingBehindPublishHint({
@@ -1228,7 +1250,7 @@ async function runExternalPublishAttempt(input: {
 									ownerUserId: input.ownerUserId,
 									ownerScope: input.ownerScope,
 									packageId: input.packageId,
-									kodyId: input.kodyId,
+									kodyId: published.kodyId,
 									promotedCommit: publishedCommit,
 								}),
 							])
@@ -1240,7 +1262,7 @@ async function runExternalPublishAttempt(input: {
 									baseUrl: input.baseUrl,
 									ownerScope: input.ownerScope,
 									ownerEmail: input.ownerEmail,
-									name: input.name,
+									name: published.name,
 									hasApp: input.hasApp,
 								}),
 								static_dependents: await getPublishStaticDependents({
@@ -1256,7 +1278,7 @@ async function runExternalPublishAttempt(input: {
 										userId: input.ownerUserId,
 										orgSlug: input.orgSlug,
 										packageId: input.packageId,
-										kodyId: input.kodyId,
+										kodyId: published.kodyId,
 										sourceId: input.source.id,
 									}),
 								held_for_approval: await buildHeldForApprovalPublishNotice({
@@ -1265,7 +1287,7 @@ async function runExternalPublishAttempt(input: {
 									ownerUserId: input.ownerUserId,
 									ownerScope: input.ownerScope,
 									packageId: input.packageId,
-									kodyId: input.kodyId,
+									kodyId: published.kodyId,
 								}),
 								allowed_packages_publish_notice:
 									await getAllowedPackagesPublishNoticeForPublishedPackage({
@@ -1274,8 +1296,8 @@ async function runExternalPublishAttempt(input: {
 										userId: input.ownerUserId,
 										orgSlug: input.orgSlug,
 										packageId: input.packageId,
-										packageDisplayName: input.packageDisplayName,
-										kodyId: input.kodyId,
+										packageDisplayName: published.name,
+										kodyId: published.kodyId,
 										sourceId: input.source.id,
 									}),
 							}
@@ -1476,6 +1498,7 @@ async function runExternalPublishAttempt(input: {
 						publishedCommit: result.published_commit,
 					},
 					async () => {
+						const published = await readPublishedPackageIdentity(input)
 						const enablementTriggers = await resolvePublishEnablementTriggers({
 							env: input.env,
 							baseUrl: input.baseUrl,
@@ -1486,7 +1509,7 @@ async function runExternalPublishAttempt(input: {
 						const testHints = readPackageTestHintsFromManifest({
 							manifest: result.manifest,
 							packageId: input.packageId,
-							kodyId: input.kodyId,
+							kodyId: published.kodyId,
 							enablementTriggers,
 						})
 						const listing = await getListingBehindPublishHint({
@@ -1495,7 +1518,7 @@ async function runExternalPublishAttempt(input: {
 							ownerUserId: input.ownerUserId,
 							ownerScope: input.ownerScope,
 							packageId: input.packageId,
-							kodyId: input.kodyId,
+							kodyId: published.kodyId,
 							promotedCommit: result.published_commit,
 							promotedVersion: readPromotedVersionFromManifest(result.manifest),
 						})
@@ -1507,7 +1530,7 @@ async function runExternalPublishAttempt(input: {
 								baseUrl: input.baseUrl,
 								ownerScope: input.ownerScope,
 								ownerEmail: input.ownerEmail,
-								name: input.name,
+								name: published.name,
 								hasApp: Boolean(testHints?.app),
 							}),
 							static_dependents: await getPublishStaticDependents({
@@ -1524,7 +1547,7 @@ async function runExternalPublishAttempt(input: {
 									userId: input.ownerUserId,
 									orgSlug: input.orgSlug,
 									packageId: input.packageId,
-									kodyId: input.kodyId,
+									kodyId: published.kodyId,
 									sourceId: input.source.id,
 								}),
 							held_for_approval: await buildHeldForApprovalPublishNotice({
@@ -1533,7 +1556,7 @@ async function runExternalPublishAttempt(input: {
 								ownerUserId: input.ownerUserId,
 								ownerScope: input.ownerScope,
 								packageId: input.packageId,
-								kodyId: input.kodyId,
+								kodyId: published.kodyId,
 							}),
 							allowed_packages_publish_notice:
 								result.allowed_packages_publish_notice ??
@@ -1543,8 +1566,8 @@ async function runExternalPublishAttempt(input: {
 									userId: input.ownerUserId,
 									orgSlug: input.orgSlug,
 									packageId: input.packageId,
-									packageDisplayName: input.packageDisplayName,
-									kodyId: input.kodyId,
+									packageDisplayName: published.name,
+									kodyId: published.kodyId,
 									sourceId: input.source.id,
 								})),
 						}
@@ -1633,7 +1656,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including a durable step retry after an earlier attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. The publish always runs as a durable workflow, never in the calling request: this capability returns status dispatched with a workflow_id right away (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags). Poll packageRunResult({ workflow_id }) until its `status` is terminal; the same answer then carries the full publish result. Active and published durable runs still dedupe. A durable run whose publish did not publish (checks_failed, not_fast_forward, locked, approval_required) ends errored with the reason in packageRunResult `last_error`, and like any terminal failure (for example a Durable Object reset because its code was updated) it releases the idempotency key so retrying the same commit starts a fresh attempt. dispatched includes phase_timings.total_ms as time-to-dispatch.',
+			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including a durable step retry after an earlier attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. The publish always runs as a durable workflow, never in the calling request: this capability returns status dispatched with a workflow_id right away (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags). Poll packageRunResult({ workflow_id }) until its `status` is terminal; the same answer then carries the full publish result. Active and published durable runs still dedupe. A durable run whose publish did not publish (checks_failed, not_fast_forward, locked, approval_required) ends errored with the reason in packageRunResult `last_error`, and like any terminal failure (for example a Durable Object reset because its code was updated) retrying the same commit starts a fresh run with a new workflow_id. dispatched includes phase_timings.total_ms as time-to-dispatch.',
 		keywords: ['package', 'publish', 'git', 'artifacts', 'external', 'push'],
 		readOnly: false,
 		idempotent: true,

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Tooltip, type TooltipProps } from './tooltip.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useRef, type ReactNode } from 'react'
 import { useActor } from '@xstate/react'
 import {
 	clipboardFeedbackState,
@@ -107,7 +107,8 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 	const copyState = copyFlow.status === 'copying' ? 'idle' : copyFlow.status
 	const mounted = useRef(false)
 	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-	useEffect(() => {
+	const trackMounted = useCallback((node: HTMLElement | null) => {
+		if (!node) return
 		mounted.current = true
 		return () => {
 			mounted.current = false
@@ -170,6 +171,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 
 	const button = (
 		<Button
+			ref={trackMounted}
 			aria-busy={copyFlow.status === 'copying'}
 			disabled={copyFlow.status === 'copying'}
 			type="button"

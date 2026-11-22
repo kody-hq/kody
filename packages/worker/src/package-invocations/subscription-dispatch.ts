@@ -188,9 +188,9 @@ export type PackageEventDeliveryResult = {
 }
 
 /**
- * Queue-consumer side of package event dispatch: resolve the emitting
- * user's matching subscriptions and invoke each handler with exactly-once
- * idempotency. Throws when subscriber discovery fails or an invocation
+ * Deliver a package event from the queue or the inline fallback. Resolve the
+ * emitting org's matching subscriptions and invoke each handler through the
+ * idempotency ledger. Throws when subscriber discovery fails or an invocation
  * fails before user code ran (both retryable via Queue redelivery); user
  * handler failures are terminal and reported in the returned summary (the
  * idempotency ledger would replay a stored failure on retry anyway).

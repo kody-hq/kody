@@ -5,7 +5,6 @@ import {
 	saveSidebarPreferences,
 } from './sidebar-preferences.tsx'
 import {
-	useEffect,
 	useRef,
 	useState,
 	useSyncExternalStore,
@@ -13,6 +12,7 @@ import {
 	type PointerEvent,
 	type KeyboardEvent,
 } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 type SidebarMode = 'compact' | 'auto' | 'show'
 const key = 'kody.workspace.rail.mode'
 const listeners = new Set<() => void>()
@@ -42,8 +42,12 @@ function read() {
 }
 function subscribe(listener: () => void) {
 	listeners.add(listener)
+	saveSidebarPreferences({ mode: read() })
 	const storage = (event: StorageEvent) => {
-		if (event.key === key) listener()
+		if (event.key === key) {
+			saveSidebarPreferences({ mode: read() })
+			listener()
+		}
 	}
 	window.addEventListener('storage', storage)
 	return () => {
@@ -54,7 +58,6 @@ function subscribe(listener: () => void) {
 export function useWorkspaceRail() {
 	const initial = useSidebarPreferences()
 	const mode = useSyncExternalStore(subscribe, read, () => initial.mode)
-	useEffect(() => saveSidebarPreferences({ mode }), [mode])
 	const responsive = useResponsiveSidebar(
 		mode === 'compact',
 		mode === 'show' ? '(max-width: 599px)' : '(max-width: 1200px)',
@@ -86,7 +89,7 @@ export function useWorkspaceRail() {
 			setPreview(false)
 		}, 300)
 	}
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const keyboard = () => {
 			pointerFocus.current = false
 		}
@@ -101,8 +104,8 @@ export function useWorkspaceRail() {
 			document.removeEventListener('pointerdown', pointer, true)
 		}
 	}, [])
-	useEffect(() => {
-		if (!compact) return
+	useResourceLifetime(() => {
+		if (!compact) return () => {}
 		const outside = () => {
 			if (!pointerInside.current) closeLater()
 		}

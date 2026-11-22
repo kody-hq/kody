@@ -528,8 +528,8 @@ export type MailboxDumpSummary = {
 }
 
 /**
- * Validate a dump one part at a time. Only ids, references and attachment
- * metadata stay in memory, so a large split dump never loads whole.
+ * Validate a dump one part at a time, retaining IDs, references, attachment
+ * metadata, and row counts across parts.
  */
 export async function summarizeMailboxDump(input: {
 	partCount: number

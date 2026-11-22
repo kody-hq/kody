@@ -1,3 +1,8 @@
+import {
+	backupR2RetryBaseDelayMs,
+	backupR2RetryDelayMs,
+	backupR2RetryMaxAttempts,
+} from '@kody-internal/shared/backup-r2-retry.ts'
 import { BackupError } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 
@@ -22,16 +27,13 @@ export type R2RetryOptions = {
 	baseDelayMs?: number
 }
 
-const defaultAttempts = 3
-const defaultBaseDelayMs = 250
-
 async function retryR2PlatformErrors<T>(
 	operation: string,
 	run: () => Promise<T>,
 	options: R2RetryOptions,
 ): Promise<T> {
-	const attempts = options.attempts ?? defaultAttempts
-	const baseDelayMs = options.baseDelayMs ?? defaultBaseDelayMs
+	const attempts = options.attempts ?? backupR2RetryMaxAttempts
+	const baseDelayMs = options.baseDelayMs ?? backupR2RetryBaseDelayMs
 	for (let attempt = 1; ; attempt += 1) {
 		try {
 			return await run()
@@ -44,10 +46,9 @@ async function retryR2PlatformErrors<T>(
 					true,
 				)
 			}
-			// Equal jitter: half fixed, half random, doubling each attempt.
-			const ceiling = baseDelayMs * 2 ** (attempt - 1)
-			const delayMs = ceiling / 2 + Math.random() * (ceiling / 2)
-			await new Promise((resolve) => setTimeout(resolve, delayMs))
+			await new Promise((resolve) =>
+				setTimeout(resolve, backupR2RetryDelayMs(attempt, baseDelayMs)),
+			)
 		}
 	}
 }

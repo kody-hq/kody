@@ -26,7 +26,7 @@ import {
 	mergeCredentialStampIntoManifestFiles,
 	mergeCredentialStampPasses,
 	mergeLegacyCredentialFindings,
-	omitOversizedCredentialStampModules,
+	omitOversizedClientCredentialStampModules,
 	sealCredentialStamp,
 } from '#worker/credentials/credential-stamp.ts'
 import {
@@ -311,8 +311,8 @@ type CredentialTreeViewPlan = {
 }
 
 /**
- * How one tree is scanned. `stamp` is the tree without oversized modules,
- * which the stamp seals; `full` is set only when some were left out, for the
+ * How one tree is scanned. `stamp` is the tree without oversized modules no
+ * server runtime root reaches, which the stamp seals; `full` is set only when some were left out, for the
  * findings that cover every module.
  */
 export type CredentialTreeScanPlan =
@@ -407,14 +407,18 @@ export async function planCredentialTreeScan(
 ): Promise<CredentialTreeScanPlan> {
 	const sizeLimitMessage = await credentialScanSizeLimitFailure(files)
 	if (sizeLimitMessage) return { sizeLimitMessage }
-	const stampFiles = omitOversizedCredentialStampModules(files)
+	const serverPaths = await collectServerRuntimeModulePaths(files)
+	const stampFiles = omitOversizedClientCredentialStampModules(
+		files,
+		serverPaths,
+	)
 	return {
 		stamp: await planCredentialTreeView(
 			stampFiles,
-			[...(await collectServerRuntimeModulePaths(stampFiles))].sort(),
+			[...serverPaths].sort(),
 			maxChunkAstNodes,
 		),
-		// The stamp scan left oversized modules out, so the findings that
+		// The stamp scan left oversized client modules out, so the findings that
 		// cover every module need their own walk of the full tree.
 		full:
 			stampFiles === files
@@ -433,7 +437,12 @@ export async function scanCredentialTreeChunk(
 			? files
 			: { ...files, 'package.json': request.manifest }
 	const viewFiles =
-		request.view === 'stamp' ? omitOversizedCredentialStampModules(tree) : tree
+		request.view === 'stamp'
+			? omitOversizedClientCredentialStampModules(
+					tree,
+					new Set(request.serverPaths),
+				)
+			: tree
 	adoptScannableModulePlan(viewFiles, {
 		modulePaths: request.modulePaths,
 		visit: request.visit,
@@ -549,7 +558,7 @@ export async function buildCredentialPatternCheck(
 				: {},
 		)
 		// The stamp walk already covers every module for these, unless it left
-		// oversized modules out. Then the full view's walk covers the tree.
+		// oversized client modules out. Then the full view's walk covers the tree.
 		const fullChunks = plan.full
 			? await scanView('full', plan.full, manifest)
 			: null

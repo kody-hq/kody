@@ -228,12 +228,14 @@ export async function tryDeliverOrgAuditOutboxPlan(
 			parseOrgAuditOutboxPayload(live.payload_json) ?? plan.payload
 		const delivery = await deliverOrgAuditOutboxPayload(writer.db, payload)
 		if (delivery === 'inserted' || delivery === 'already_exists') {
-			await deleteOrgAuditOutboxRow(writer.appDb, plan.outboxId)
 			// Only the delivery that inserted the row emits, so a retried or
-			// concurrent drain never emits the same change twice.
+			// concurrent drain never emits the same change twice. It emits
+			// before the outbox delete: a retry after a failed delete sees
+			// `already_exists` and would never emit.
 			if (delivery === 'inserted') {
 				await scheduleResourceChangeEvent(writer.env, payload)
 			}
+			await deleteOrgAuditOutboxRow(writer.appDb, plan.outboxId)
 			return true
 		}
 		return false

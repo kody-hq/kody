@@ -189,6 +189,10 @@ production foundation below adds the actual Kody bindings and entry points.
 
 ## Production foundation
 
+Files uses an org-owned catalog, revision storage, and shared authorization
+across the web, MCP, and API. See [live room access](#live-room-access) for the
+WebSocket-specific checks.
+
 `packages/worker/src/files/` adds the org-owned `FileStore` Durable Object. It
 owns the catalog, revision manifests, upload intents, deleted-id tombstones, and
 quota decisions. Immutable content lives in the dedicated `FILE_BLOBS` R2 bucket
@@ -204,11 +208,15 @@ callouts, Mermaid, collapse, contents, links, tables, and file embeds);
 `pagePatch` edits them by stable block id.
 
 The initial bounds are 64 files per org, 64 KiB of UTF-8 text per revision, and
-16 MiB per binary revision. All revisions count against the workspace allowance.
-The included storage quota uses the workspace override, the default in Admin →
+16 MiB per binary revision. Files shows the bytes used by revisions in included
+storage against the effective allowance; external revisions are not counted. The
+included storage quota uses the workspace override, the default in Admin →
 Organizations, or the deployed `FILES_INCLUDED_BYTES` fallback, in that order. A
 zero quota blocks new writes to included storage. Reads, exports, and deletion
-remain available. A connected bucket receives new revisions.
+remain available. A connected bucket receives new revisions; switching does not
+move existing ones.
+[Storage settings](../../../packages/worker/src/files/storage-settings.ts)
+require a current workspace owner with `file:manage_access` and Files enabled.
 
 Writes carry a unique id and expected base revision. Retrying the same id and
 content returns the original revision, conflicting bases return both versions,
@@ -247,13 +255,19 @@ Open `http://localhost:3748/@jane/-/files`, sign in as `jane@example.com` with
 configuration, not a public free-tier commitment. `control-kody` commands can
 use `--origin http://localhost:3748` to avoid another checkout's server.
 
-Next, connect the proven live collaboration protocol and BYO storage through
-that same identity and authorization boundary. Binary uploads and previews are
-supported within the pilot limits. Live CRDT collaboration is still separate
-work.
-
 Workspace pages autosave after a 900 ms pause. Revision history counts toward
-the workspace byte quota, with no separate twenty-revision cutoff.
+the included storage quota when stored there, with no separate twenty-revision
+cutoff.
+
+### Live room access
+
+[`FileRoom`](../../../packages/worker/src/files/room.ts) rechecks access as it
+handles socket traffic. Each access pass shares session checks by session and
+membership and flag lookups by person and org. The next pass starts with fresh
+lookups.
+[`fileCollaborationAccess`](../../../packages/worker/src/files/collaboration-access.ts)
+evaluates file-tree permissions and derives read, write, comment, and
+manage-access decisions.
 
 ### Lazy file previews
 

@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useState, type RefObject } from 'react'
+import type { RefObject } from 'react'
 import { formatForDisplay, useHotkeys } from '@tanstack/react-hotkeys'
 import { colors } from '#universal/styles/tokens.ts'
+import { useHydrated } from '../components/use-hydrated.ts'
 export function WorkspaceViewControls({
 	view,
 	changeView,
@@ -11,8 +12,7 @@ export function WorkspaceViewControls({
 	changeView: (view: 'columns' | 'icons' | 'list' | 'gallery') => void
 	browserRoot: RefObject<HTMLElement | null>
 }) {
-	const [shortcutsReady, setShortcutsReady] = useState(false)
-	useEffect(() => setShortcutsReady(true), [])
+	const shortcutsReady = useHydrated()
 	const hover = colors.borderSubtle
 	const iconButton = {
 		display: 'inline-grid',

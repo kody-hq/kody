@@ -2,9 +2,9 @@ import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
-import { useState, useEffect, useRef, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { useSubmitterScope } from '../use-submitter-scope.ts'
 import type { AccountFormerEmail } from '#universal/loader-data.ts'
 import {
 	requestWebsiteEmailChange,
@@ -17,15 +17,7 @@ export function useAccountEmailClaims(
 	const invalidatePages = usePageInvalidation(mutationResources, {
 		refreshShell: true,
 	})
-	const { actorKey, pageLocation } = useMatchedPageScope()
-	const href = pageLocation.href
-	const scope = useRef<object | null>(null)
-	useEffect(() => {
-		scope.current = {}
-		return () => {
-			scope.current = null
-		}
-	}, [actorKey, href])
+	const captureScope = useSubmitterScope()
 	const lifecycle = {
 		gcTime: 0,
 		onMutate: () => invalidatePages,
@@ -148,13 +140,13 @@ export function useAccountEmailClaims(
 
 				setReleaseFeedback(createUiFeedback(null, 'info'))
 
-				const submittedScope = scope.current
+				const isSubmissionCurrent = captureScope()
 				try {
 					const payload = await releaseMutation.mutateAsync({
 						email: nextEmail,
 						password: releasePassword,
 					})
-					if (!submittedScope || scope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					if (!payload.successful || !payload.ok) {
 						throw new Error(
 							payload?.error || 'Unable to send the release verification.',
@@ -169,7 +161,7 @@ export function useAccountEmailClaims(
 						),
 					)
 				} catch (error) {
-					if (!submittedScope || scope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					setReleaseFeedback(
 						createUiFeedback(
 							error instanceof Error
@@ -213,13 +205,13 @@ export function useAccountEmailClaims(
 
 				setEmailChangeFeedback(createUiFeedback(null, 'info'))
 
-				const submittedScope = scope.current
+				const isSubmissionCurrent = captureScope()
 				try {
 					const payload = await changeMutation.mutateAsync({
 						email: nextEmail,
 						password: emailChangePassword,
 					})
-					if (!submittedScope || scope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					if (!payload.successful || !payload.ok) {
 						throw new Error(
 							payload?.error || 'Unable to send the email change verification.',
@@ -233,7 +225,7 @@ export function useAccountEmailClaims(
 						),
 					)
 				} catch (error) {
-					if (!submittedScope || scope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					setEmailChangeFeedback(
 						createUiFeedback(
 							error instanceof Error

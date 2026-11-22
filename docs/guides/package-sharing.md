@@ -224,6 +224,9 @@ The invitee calls `inviteAccept` with the token, or chooses **Accept** on the
 invite card on their Waiting page (an email invite needs a verified email
 there). Nothing attaches before they accept. Invites expire after 7 days;
 `inviteRevoke` cancels a pending one.
+[Acceptance rechecks the inviter's current authority](../../packages/worker/src/mcp/capabilities/access/invites.ts).
+For a package grant invite, the inviter must still have package manage access or
+org Owner authority.
 
 Use `kind: "membership"` to add someone to the whole **team** org instead (with
 a role and optional teams). Members hold the org-level basics plus what they are

@@ -11,7 +11,8 @@ import {
 	MenuSeparator,
 	MenuTrigger,
 } from './menu.tsx'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { useQuery } from '@tanstack/react-query'
 import { useServerFn } from '@tanstack/react-start'
 import {
@@ -42,12 +43,19 @@ export function DesktopMachinePanel({
 	const contextId = machine?.state?.contextId
 	const commands = useRef(machine?.commands)
 	commands.current = machine?.commands
-	useEffect(() => {
-		if (!contextId) return
-		void commands.current?.('status')
-		const interval = setInterval(() => void commands.current?.('status'), 15000)
-		return () => clearInterval(interval)
-	}, [contextId])
+	useQuery({
+		queryKey: ['desktop-machine-status-poll', contextId],
+		queryFn: async () => {
+			await commands.current?.('status')
+			return true
+		},
+		enabled: Boolean(contextId),
+		refetchInterval: 15000,
+		refetchIntervalInBackground: true,
+		refetchOnWindowFocus: false,
+		retry: false,
+		gcTime: 0,
+	})
 	const orgSlug = machine?.orgSlug ?? null
 	const loadPage = useServerFn(loadExecutionContextsPage)
 	const daemonAction = useServerFn(runExecutionContextDaemonAction)
@@ -95,7 +103,7 @@ export function DesktopMachinePanel({
 	const serverReady = server.isFetched
 	const daemonRef = useRef(daemon)
 	daemonRef.current = daemon
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (!menuCommand || !serverReady) return
 		clearMenuCommand?.()
 		void daemonRef.current(menuCommand)

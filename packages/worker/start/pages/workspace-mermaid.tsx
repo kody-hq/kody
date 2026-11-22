@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import peleScriptUrl from 'pele/global?url'
 
 function diagramDocument(nonce: string, origin: string, scriptUrl: string) {
@@ -50,8 +51,8 @@ export default function WorkspaceMermaid({ source }: { source: string }) {
 			'*',
 		)
 	}, [source])
-	useEffect(() => {
-		const target = frame.current
+	const frameRef = useCallback((target: HTMLIFrameElement | null) => {
+		frame.current = target
 		if (!target) return
 		function resize(event: MessageEvent) {
 			if (
@@ -71,15 +72,18 @@ export default function WorkspaceMermaid({ source }: { source: string }) {
 			location.origin,
 			new URL(peleScriptUrl, location.href).href,
 		)
-		return () => window.removeEventListener('message', resize)
+		return () => {
+			frame.current = null
+			window.removeEventListener('message', resize)
+		}
 	}, [])
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const timer = window.setTimeout(sendSource, 250)
 		return () => window.clearTimeout(timer)
 	}, [sendSource])
 	return (
 		<iframe
-			ref={frame}
+			ref={frameRef}
 			onLoad={sendSource}
 			title="Mermaid diagram"
 			loading="lazy"

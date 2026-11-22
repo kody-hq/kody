@@ -368,7 +368,7 @@ test('publishExternalPush publishes HEAD and rebuilds bundle artifacts per targe
 	expect(publishedFirst).toEqual(
 		expect.objectContaining({
 			phase_timings: allPhaseTimings,
-			hosted_app_url: 'https://user.packages.kody.test/demo-package',
+			hosted_app_url: 'https://demo-package--user.packages.kody.test/',
 			test_hints: {
 				app: expect.stringContaining('package_id'),
 				subscriptions: [
@@ -425,6 +425,43 @@ test('publishExternalPush publishes HEAD and rebuilds bundle artifacts per targe
 		[rebuildCall('commit-new', targets[0])],
 		[rebuildCall('commit-new', targets[1])],
 	])
+})
+
+test('a publish that renames the package links the app at its new name', async () => {
+	setupDefaultMocks({ hasApp: true })
+	const savedPackage = {
+		id: 'package-1',
+		userId: ownerIdFromStored('user-1'),
+		kodyId: 'old-name',
+		name: '@user/old-name',
+		sourceId: 'source-1',
+		hasApp: true,
+	}
+	let renamed = false
+	mockModule.getSavedPackageById.mockImplementation(async () =>
+		renamed
+			? { ...savedPackage, kodyId: 'new-name', name: '@user/new-name' }
+			: savedPackage,
+	)
+	// The publish refreshes the saved package from the new package.json name.
+	mockModule.publishFromExternalRef.mockImplementation(async () => {
+		renamed = true
+		return publishedResult({
+			manifest: {
+				name: '@user/new-name',
+				kody: { app: { entry: './app.ts' } },
+			},
+		})
+	})
+
+	const result = await publish()
+
+	expect(result.status).toBe('published')
+	expect(result).toEqual(
+		expect.objectContaining({
+			hosted_app_url: 'https://new-name--user.packages.kody.test/',
+		}),
+	)
 })
 
 test('publishExternalPush includes listing hint when the public catalog pin lags the promoted commit', async () => {
@@ -504,7 +541,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		status: 'already_published',
 		published_commit: 'commit-old',
 		artifacts_rebuilt: true,
-		hosted_app_url: 'https://user.packages.kody.test/demo-package',
+		hosted_app_url: 'https://demo-package--user.packages.kody.test/',
 		static_dependents: noStaticDependents,
 		pending_secret_package_approvals: null,
 		allowed_packages_publish_notice: null,

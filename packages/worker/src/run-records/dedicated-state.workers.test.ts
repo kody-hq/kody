@@ -27,7 +27,6 @@ import {
 	listPackageRunSuccesses,
 	listRunRecords,
 	listWorkflowProjections,
-	releaseWorkflowProjectionIdempotencyKey,
 	reserveWorkflowProjectionSlot,
 	deleteWorkflowProjectionIfCreating,
 	upsertJobRunObservability,
@@ -228,30 +227,19 @@ async function upgradeFromLegacySchema(
 	)
 }
 
-test('releaseWorkflowProjectionIdempotencyKey frees a dead run for same-key create', async () => {
-	const userId = uniqueUserId('wf-release-key')
+test('same-key projection lookups return the latest run for the key', async () => {
+	const userId = uniqueUserId('wf-latest-key')
 	await upsertWorkflow(userId, 'wf-errored', {
 		idempotencyKey: 'publish-same-commit',
 		status: 'errored',
+		createdAt: '2026-07-30T00:00:00.000Z',
 		completedAt: '2026-07-30T00:01:00.000Z',
 		lastError: 'Durable Object reset because its code was updated.',
 	})
-	expect(
-		await findWorkflowProjectionByIdempotencyKey({
-			env,
-			userId,
-			idempotencyKey: 'publish-same-commit',
-		}),
-	).toMatchObject({ id: 'wf-errored' })
-
-	const released = await releaseWorkflowProjectionIdempotencyKey({
-		env,
-		userId,
-		id: 'wf-errored',
-	})
-	expect(released).toEqual({
-		released: true,
-		previousKey: 'publish-same-commit',
+	await upsertWorkflow(userId, 'wf-rerun', {
+		idempotencyKey: 'publish-same-commit',
+		status: 'running',
+		createdAt: '2026-07-30T00:02:00.000Z',
 	})
 	expect(
 		await findWorkflowProjectionByIdempotencyKey({
@@ -259,20 +247,21 @@ test('releaseWorkflowProjectionIdempotencyKey frees a dead run for same-key crea
 			userId,
 			idempotencyKey: 'publish-same-commit',
 		}),
-	).toBeNull()
+	).toMatchObject({ id: 'wf-rerun', status: 'running' })
+	expect(
+		await findWorkflowProjectionByBindingIdempotencyKey({
+			env,
+			userId,
+			bindingName: dynamicBinding,
+			idempotencyKey: 'publish-same-commit',
+		}),
+	).toMatchObject({ id: 'wf-rerun' })
 	expect(
 		await getWorkflowProjection({ env, userId, id: 'wf-errored' }),
 	).toMatchObject({
-		idempotencyKey: 'released:wf-errored',
+		idempotencyKey: 'publish-same-commit',
 		status: 'errored',
 	})
-	expect(
-		await releaseWorkflowProjectionIdempotencyKey({
-			env,
-			userId,
-			id: 'wf-errored',
-		}),
-	).toEqual({ released: false, previousKey: 'released:wf-errored' })
 })
 
 test('workflow projections track binding name, idempotency, and active counts', async () => {

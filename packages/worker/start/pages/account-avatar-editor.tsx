@@ -8,7 +8,8 @@ import {
 	type AvatarCropState,
 } from '#client/routes/avatar-crop-state.ts'
 import type { CSSObject } from '@emotion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import {
 	clampTransform,
 	coverScale,
@@ -125,7 +126,7 @@ export function AccountAvatarEditor({
 		},
 		[bounds, updateTransform],
 	)
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const generationRef = generation
 		const ownGeneration = ++generationRef.current
 		transitionCrop({
@@ -208,9 +209,9 @@ export function AccountAvatarEditor({
 			document.body.style.overflow = oldOverflow
 		}
 	}, [file, updateTransform, transitionCrop])
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const node = stage.current
-		if (!node || status !== 'ready') return
+		if (!node || status !== 'ready') return () => {}
 		const pointers = new Map<number, { x: number; y: number }>()
 		let distance = 0
 		let last = { x: 0, y: 0 }

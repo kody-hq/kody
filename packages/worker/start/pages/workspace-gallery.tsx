@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import type { FileMetadata } from '#universal/files.ts'
 import { workspaceDirectoryMediaType } from '#universal/workspace-page.ts'
@@ -56,20 +57,21 @@ export function WorkspaceGallery({
 				]),
 			].sort((a, b) => a - b),
 	})
-	useLayoutEffect(() => {
-		if (selectedIndex >= 0)
+	const stripRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			strip.current = node
+			if (!node || selectedIndex < 0) return
 			virtual.scrollToIndex(selectedIndex, { align: 'auto' })
-	}, [selectedIndex, virtual])
-	useLayoutEffect(() => {
-		if (!strip.current || selectedIndex < 0) return
-		const observer = new ResizeObserver(() =>
-			virtual.scrollToIndex(selectedIndex, { align: 'auto' }),
-		)
-		observer.observe(strip.current)
-		return () => observer.disconnect()
-	}, [selectedIndex, virtual])
+			const observer = new ResizeObserver(() =>
+				virtual.scrollToIndex(selectedIndex, { align: 'auto' }),
+			)
+			observer.observe(node)
+			return () => observer.disconnect()
+		},
+		[selectedIndex, virtual],
+	)
 
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		if (!pendingFocus.current) return
 		const item = strip.current?.querySelector<HTMLElement>(
 			`[data-browser-item="${CSS.escape(pendingFocus.current)}"]`,
@@ -78,7 +80,7 @@ export function WorkspaceGallery({
 			pendingFocus.current = null
 			item.focus({ preventScroll: true })
 		}
-	})
+	}, [selectedId, files])
 	function select(file: FileMetadata) {
 		if (requestedSelection.current === file.id) return
 		requestedSelection.current = file.id
@@ -139,7 +141,7 @@ export function WorkspaceGallery({
 					))}
 			</div>
 			<div
-				ref={strip}
+				ref={stripRef}
 				role="group"
 				aria-label="Gallery filmstrip"
 				css={{

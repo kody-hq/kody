@@ -115,10 +115,10 @@ This project uses the following resources:
     the metadata-only listing projection, acknowledges invalid or inactive
     listings, and retries transient lookup, subscription-discovery, or
     package-invocation infrastructure failures. Only first publish enqueues this
-    shape. A republish that moves the pinned commit no longer enqueues
-    `kind: 'fork_upstream_updated'`. The follow pipeline emits
-    `community.fork.upstream_updated` with the same payload. In-flight messages
-    of that kind are acknowledged without fan-out.
+    shape. For a republish that moves the pinned commit, the follow pipeline
+    emits `community.fork.upstream_updated` with the same payload. The consumer
+    acknowledges legacy `kind: 'fork_upstream_updated'` messages without
+    fan-out.
 - Cloudflare Queue for durable package-emitted event dispatch
   - Producer binding: `PACKAGE_EVENTS_DISPATCH_QUEUE`
   - Queue: `kody-package-events-dispatch`
@@ -440,6 +440,12 @@ resolved health-check-only incident. Those writes stay on the status worker so
 origin / `APP_DB` being down cannot block them. When the GitHub secret is unset,
 emit stays skipped and both incident maintenance routes return 503; packages can
 reconcile incident open/resolve from the public `/status.json` snapshot.
+
+Because that emit rides the main origin, the status worker also wakes a Grok Bot
+directly when the optional Worker secrets `STATUS_GROK_BOT_WAKE_URL` and
+`STATUS_GROK_BOT_WAKE_TOKEN` are set (synced from the same-named GitHub Actions
+secrets when present). See `packages/status/readme.md` for the batching, dedupe,
+and daily cap.
 
 ## Optional Cloudflare offerings
 

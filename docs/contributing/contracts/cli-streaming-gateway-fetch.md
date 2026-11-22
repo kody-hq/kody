@@ -29,7 +29,9 @@ Same as other capability-proxy routes:
 
 - `Authorization: Bearer kody_at_…` with `org:execute`, or
 - a valid `kody login` CLI MCP OAuth access token (official CLI CIMD client) as
-  Bearer, full MCP grant, no API-token scope check.
+  Bearer, full MCP grant, no API-token scope check; or
+- an execution-context run lease token, subject to the
+  [context runtime policy](../architecture/execution-contexts.md).
 
 `X-Kody-Gateway-Package-Id`, when present, is a claimed package stamp: origin
 verifies `package:execute` for that id (same as JSON `gatewayFetch`).
@@ -45,18 +47,23 @@ no JSON wrapper, no base64.
 All hop metadata lives in **allowlisted headers**. The edge strips every other
 `X-Kody-*` header and never forwards `Cookie`.
 
-| Header                      | Required                          | Role                                                                                                                                                                                                   |
-| --------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `X-Kody-Gateway-Url`        | yes                               | Absolute outbound URL. May contain literal `{{secret:…}}` / `{{integration-token:…}}` placeholders.                                                                                                    |
-| `X-Kody-Gateway-Method`     | no                                | Outbound method. Default `GET`.                                                                                                                                                                        |
-| `X-Kody-Gateway-Package-Id` | no                                | Claimed package stamp (`package:execute`).                                                                                                                                                             |
-| `X-Kody-Gateway-Headers`    | no                                | JSON object of outbound header name → string value. May include placeholders (for example outbound `Authorization: Bearer {{secret:…}}`). Invalid JSON or non-string values are `400 invalid_request`. |
-| `x-kody-secret-resolution`  | no                                | `on` (default) \| `headers-only` \| `off`. Same control header as hosted fetch; origin strips it before the request leaves.                                                                            |
-| `Content-Type`              | when the outbound request has one | The **outbound** `Content-Type` (`multipart/form-data; boundary=…`, `application/json`, …).                                                                                                            |
-| `Content-Length`            | when the size is known            | Byte length of the raw outbound body. Otherwise use chunked transfer.                                                                                                                                  |
+| Header                       | Required                          | Role                                                                                                                                                                                                   |
+| ---------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `X-Kody-Gateway-Url`         | yes                               | Absolute outbound URL. May contain literal `{{secret:…}}` / `{{integration-token:…}}` placeholders.                                                                                                    |
+| `X-Kody-Gateway-Method`      | no                                | Outbound method. Default `GET`.                                                                                                                                                                        |
+| `X-Kody-Gateway-Package-Id`  | no                                | Claimed package stamp (`package:execute`).                                                                                                                                                             |
+| `X-Kody-Gateway-Headers`     | no                                | JSON object of outbound header name → string value. May include placeholders (for example outbound `Authorization: Bearer {{secret:…}}`). Invalid JSON or non-string values are `400 invalid_request`. |
+| `X-Kody-Gateway-Credentials` | no                                | Local CLI credential picks as a JSON map from credential key to arrays of pinned ID objects, for example `{"demoToken":[{"id":"credential-id"}]}`.                                                     |
+| `x-kody-secret-resolution`   | no                                | `on` (default) \| `headers-only` \| `off`. Same control header as hosted fetch; origin strips it before the request leaves.                                                                            |
+| `Content-Type`               | when the outbound request has one | The **outbound** `Content-Type` (`multipart/form-data; boundary=…`, `application/json`, …).                                                                                                            |
+| `Content-Length`             | when the size is known            | Byte length of the raw outbound body. Otherwise use chunked transfer.                                                                                                                                  |
 
 `Authorization` on this POST is the Kody credential only. Outbound
 `Authorization` belongs in `X-Kody-Gateway-Headers`.
+
+For execution-context runs, origin uses the credential picks on the run lease
+and
+[rejects request-supplied picks](../../../packages/worker/src/open-api/capability-proxy-gateway-fetch-stream.node.test.ts).
 
 Set `Content-Type` on the Open API request to the outbound value. Do not also
 put a conflicting `Content-Type` in `X-Kody-Gateway-Headers`.

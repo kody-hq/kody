@@ -1,7 +1,7 @@
 # Writing tests
 
 Open this when a change might need a test. Flavors and commands live in
-[testing principles](./testing-principles.md).
+[test runners](./test-runners.md).
 
 ## Decide whether the change needs a test
 

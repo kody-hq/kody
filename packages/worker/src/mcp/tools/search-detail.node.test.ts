@@ -406,7 +406,7 @@ test('resolveEntityDetail hostedUrl uses PACKAGE_APP_BASE_URL when configured', 
 	})
 	expect(detail).toMatchObject({
 		type: 'package',
-		hostedUrl: 'https://kentcdodds.kody.run/demo',
+		hostedUrl: 'https://demo--kentcdodds.kody.run/',
 		baseUrl: 'https://heykody.dev',
 		listingAhead: null,
 	})
@@ -435,7 +435,7 @@ test('resolveEntityDetail hostedUrl uses the package name leaf when kodyId lags'
 		username: 'kentcdodds',
 	})
 	expect(detail).toMatchObject({
-		hostedUrl: 'https://kentcdodds.kody.run/demo',
+		hostedUrl: 'https://demo--kentcdodds.kody.run/',
 	})
 })
 

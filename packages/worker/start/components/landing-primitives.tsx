@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { primitiveFeatureHref } from '#universal/primitive-cards.ts'
-import { useEffect, useReducer, useRef, type CSSProperties } from 'react'
+import { useReducer, type CSSProperties } from 'react'
 import { SiteLink } from './site-link.tsx'
 import { docHref } from '#universal/docs-nav.ts'
 import {
@@ -190,13 +190,6 @@ export function LandingPrimitives() {
 		dismissedId: null,
 		openedAt: 0,
 	})
-	const section = useRef<HTMLElement>(null)
-	useEffect(() => {
-		if (!section.current) return
-		const controller = new AbortController()
-		attachLeaderFollow(section.current, controller.signal)
-		return () => controller.abort()
-	}, [])
 	function setOpen(id: LandingPrimitiveId) {
 		dispatch({ type: 'open', id, now: performance.now() })
 	}
@@ -219,7 +212,7 @@ export function LandingPrimitives() {
 			aria-labelledby="primitives-title"
 			className="landing-primitives"
 			data-active={openId ?? undefined}
-			ref={section}
+			ref={attachSectionLeaderFollow}
 		>
 			<h2 id="primitives-title" className="landing-primitives-lead">
 				{landingPrimitivesIntroLead}
@@ -289,4 +282,11 @@ function LandingPrimitiveWord({
 			</SiteLink>
 		</span>
 	)
+}
+
+function attachSectionLeaderFollow(node: HTMLElement | null) {
+	if (!node) return
+	const controller = new AbortController()
+	attachLeaderFollow(node, controller.signal)
+	return () => controller.abort()
 }

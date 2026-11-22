@@ -1,4 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import {
+	useExternalInstanceSync,
+	useResourceLifetime,
+} from './lib/primitives.ts'
 import { useRouteContext } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CommunityForkState } from '#universal/community-public-types.ts'
@@ -57,8 +61,8 @@ function useCommunityForkState(
 		}),
 	)
 	const { refetch } = query
-	useEffect(() => {
-		if (!fork?.loggedIn) return
+	useResourceLifetime(() => {
+		if (!fork?.loggedIn) return () => {}
 		// Back/forward can restore this page from bfcache without a remount.
 		const onPageShow = (event: PageTransitionEvent) => {
 			if (event.persisted) void refetch()
@@ -92,7 +96,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 	// After a lost Start envelope, keep Fork closed until live state or
 	// page reconcile proves the install — never invite a duplicate click.
 	const [holdForkRetry, setHoldForkRetry] = useState(false)
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		const carried = carryOutcome.current
 		carryOutcome.current = null
 		if (carried && carried.org === org) return
@@ -100,6 +104,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		setMessage(null)
 		setOutcome(null)
 		setHoldForkRetry(false)
+		// oxlint-disable-next-line react/exhaustive-deps -- a new listing or actor starts a fresh install state
 	}, [fork?.listingId, actorKey, org])
 
 	function seedForkState(
@@ -165,21 +170,18 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			liveForkState.state === 'adaptation_required')
 			? liveForkState
 			: null
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (!liveDone || fork?.viewerInstall) return
 		const key = `${org ?? 'personal'}:${fork?.listingId}:${liveDone.targetName}:${liveDone.state}`
 		if (reconciledFor.current === key) return
 		reconciledFor.current = key
 		void reconcile()
 	}, [liveDone, fork?.viewerInstall, fork?.listingId, org, reconcile])
-	useEffect(() => {
-		if (
-			liveDone ||
-			fork?.viewerInstall ||
-			liveForkState?.state === 'in_progress'
-		)
-			setHoldForkRetry(false)
-	}, [liveDone, fork?.viewerInstall, liveForkState?.state])
+	if (
+		holdForkRetry &&
+		(liveDone || fork?.viewerInstall || liveForkState?.state === 'in_progress')
+	)
+		setHoldForkRetry(false)
 	const existingFork =
 		fork?.viewerInstall || !liveDone
 			? null

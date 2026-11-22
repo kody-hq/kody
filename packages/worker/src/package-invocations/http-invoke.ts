@@ -76,9 +76,8 @@ export async function invokePackageExport(input: {
 	if (isSealedSecretProviderExport(exportName)) {
 		return buildJsonErrorResponse(sealedSecretProviderExportDeniedResponse())
 	}
-	// External webhook invocations stay keyed-only: providers retry
-	// deliveries, so exactly-once is the point of this surface. Workflow
-	// step retries pass ephemeral: true and run key-less instead.
+	// External invocations require a key for replay handling. Workflow
+	// step retries pass ephemeral: true and run without the ledger.
 	const idempotencyKey = input.ephemeral
 		? null
 		: normalizeNullableString(input.request.idempotencyKey)

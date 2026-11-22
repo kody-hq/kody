@@ -46,6 +46,7 @@
 		"kody-custom/no-nonretryable-error-name": "error",
 		"kody-custom/no-oversized-guide-section": "error",
 		"kody-custom/no-raw-button-style": "error",
+		"kody-custom/no-bare-effect": "error",
 		"kody-custom/no-raw-dialog": "error",
 		"kody-custom/no-raw-overlay": "error",
 		"kody-custom/no-raw-table": "error",
@@ -55,7 +56,12 @@
 		"kody-custom/require-exit-condition-comment": "error",
 		"kody-custom/prefer-loader-data-types": "error",
 		"typescript/no-explicit-any": "error",
-		"react/exhaustive-deps": "error",
+		"react/exhaustive-deps": [
+			"error",
+			{
+				"additionalHooks": "^(useExternalInstanceSync|useResourceLifetime)$"
+			}
+		],
 		"vitest/require-mock-type-parameters": "off",
 		"vitest/no-conditional-expect": "off",
 		"epic-web/prefer-dispose-in-tests": "off",

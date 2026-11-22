@@ -303,8 +303,7 @@ async function realNetworkFetch(input: {
 	signal?: AbortSignal
 }): Promise<MockGatewayFetchResult> {
 	const headers = new Headers(input.request.headers ?? {})
-	// Credentials stay fake on mock — never forward opaque credential handles
-	// or Authorization that would look like a real secret placement.
+	// Strip the internal credential-client handle before network passthrough.
 	headers.delete('x-kody-credential-client')
 	const body =
 		input.request.bodyBase64 != null && input.request.bodyBase64 !== ''

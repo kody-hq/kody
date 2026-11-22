@@ -40,10 +40,7 @@ import {
 	getRecoveryBookmark,
 	restoreToBookmark,
 } from '#worker/dr/do-pitr.ts'
-import {
-	releasedWorkflowProjectionIdempotencyKey,
-	terminalWorkflowStatusValues,
-} from '#worker/package-runtime/workflow-statuses.ts'
+import { terminalWorkflowStatusValues } from '#worker/package-runtime/workflow-statuses.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
 import type { RunLogAdminInsightsSnapshot } from './admin-insights-snapshot.ts'
 import {
@@ -3674,42 +3671,6 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	/**
-	 * Detach a dead terminal projection from its idempotency key so a later
-	 * create with the same key can mint a new run. Active and `complete` rows
-	 * must keep their keys for dedupe/replay; this only rewrites keys that are
-	 * not already released.
-	 */
-	async releaseWorkflowProjectionIdempotencyKey(input: {
-		id: string
-	}): Promise<{ released: boolean; previousKey: string | null }> {
-		const id = input.id.trim()
-		if (!id) {
-			return { released: false, previousKey: null }
-		}
-		const existing = await this.getWorkflowProjection({ id })
-		if (!existing) {
-			return { released: false, previousKey: null }
-		}
-		const previousKey = existing.idempotencyKey
-		if (previousKey.startsWith('released:')) {
-			return { released: false, previousKey }
-		}
-		const releasedKey = releasedWorkflowProjectionIdempotencyKey(id)
-		const now = new Date().toISOString()
-		this.sql.exec(
-			`UPDATE workflow_projections
-			SET idempotency_key = ?, updated_at = ?
-			WHERE id = ?`,
-			releasedKey,
-			now,
-			id,
-		)
-		this.retentionIdleConfirmed = false
-		await this.ensureRetentionAlarm()
-		return { released: true, previousKey }
-	}
-
-	/**
 	 * Live progress of a running workflow (phase and chunk counts). Not a
 	 * status write: `updated_at` and terminal stickiness are untouched.
 	 */
@@ -3752,7 +3713,7 @@ class RunLogBase extends DurableObject<Env> {
 						WHERE idempotency_key = ?
 							AND binding_name = ?
 							AND COALESCE(status, '') != ?
-						ORDER BY created_at ASC
+						ORDER BY created_at DESC
 						LIMIT 1`,
 						trimmedKey,
 						bindingName,
@@ -3765,7 +3726,7 @@ class RunLogBase extends DurableObject<Env> {
 						FROM workflow_projections
 						WHERE idempotency_key = ?
 							AND COALESCE(status, '') != ?
-						ORDER BY created_at ASC
+						ORDER BY created_at DESC
 						LIMIT 1`,
 						trimmedKey,
 						creatingWorkflowProjectionStatus,
@@ -3791,7 +3752,7 @@ class RunLogBase extends DurableObject<Env> {
 				FROM workflow_projections
 				WHERE binding_name = ?
 					AND idempotency_key = ?
-				ORDER BY created_at ASC
+				ORDER BY created_at DESC
 				LIMIT 1`,
 				bindingName,
 				trimmedKey,
@@ -5483,9 +5444,6 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	upsertWorkflowProjection: (
 		input: WorkflowProjectionUpsertInput,
 	) => Promise<{ ok: true }>
-	releaseWorkflowProjectionIdempotencyKey: (input: {
-		id: string
-	}) => Promise<{ released: boolean; previousKey: string | null }>
 	setWorkflowProjectionProgress: (input: {
 		id: string
 		progress: WorkflowProjectionProgress

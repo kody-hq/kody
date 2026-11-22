@@ -9,6 +9,9 @@ const {
 	session,
 	net,
 } = require('electron')
+// Electron's bundled undici reads `performance.markResourceTiming` when its
+// fetch first loads; on linux x64 the global is sometimes not set yet.
+globalThis.performance ??= require('node:perf_hooks').performance
 const { DesktopPresence } = require('./presence.cjs')
 const { isDebInstall, startUpdates, finishQuit } = require('./updates.cjs')
 const { browserLogin } = require('./browser-login.cjs')

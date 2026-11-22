@@ -38,7 +38,12 @@ import {
 } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import { invokePackageExport } from '#worker/package-invocations/service.ts'
 import { sourceRevisionChangedErrorCode } from '#worker/package-invocations/common.ts'
-import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
+import {
+	getEntitySourceByIdForUser,
+	markEntitySourcePendingExternalReconcile,
+} from '#worker/repo/entity-sources.ts'
+import { isPublishConcurrencyCallerMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { packageWorkflowInvocationSource } from './package-invocation-sources.ts'
 import { resolveSavedPackageRef } from '#worker/package-registry/repo.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
@@ -518,8 +523,10 @@ function isNonRetryableError(error: unknown) {
  * use `instanceof`. Passing a custom `name` to `NonRetryableError` silently
  * makes the step retryable, so this always keeps the default name.
  */
-function terminalWorkflowStepError(message: string) {
-	return new NonRetryableError(message)
+function terminalWorkflowStepError(message: string, cause?: unknown) {
+	const error = new NonRetryableError(message)
+	if (cause !== undefined) error.cause = cause
+	return error
 }
 
 function normalizeNonEmptyString(value: string, fieldName: string) {
@@ -1071,7 +1078,7 @@ function buildWorkflowProjectionUpsert(input: {
 /**
  * Package a run belongs to: the package export itself, or the package context
  * an inline run was launched under (for example a durable publish), so
- * `package_id` filters find both after the idempotency key is released.
+ * `package_id` filters find both without parsing the idempotency key.
  */
 function workflowPayloadProvenance(payload: WorkflowPayloadFields) {
 	if (payload.sourceType === 'package') {
@@ -1404,6 +1411,13 @@ export async function createDynamicCallableWorkflow(input: {
 	 * their own published commit.
 	 */
 	enqueuedCommit?: string | null
+	/**
+	 * Id of the latest run for `body.idempotencyKey` that this create replaces
+	 * (a dead terminal run, or a complete one the caller must not replay). The
+	 * new run's id derives from it, so concurrent replacements of one run
+	 * converge on a single successor.
+	 */
+	rerunOf?: string | null
 }): Promise<PackageWorkflowCreateResult> {
 	const env = input.env as Env
 	const workflowBinding = resolveWorkflowEngineBinding(
@@ -1415,6 +1429,10 @@ export async function createDynamicCallableWorkflow(input: {
 		typeof input.body.idempotencyKey === 'string'
 			? input.body.idempotencyKey.trim()
 			: ''
+	const rerunOf = input.rerunOf?.trim() || null
+	if (rerunOf && !idempotencyKeyInput) {
+		throw new Error('rerunOf requires an idempotency key.')
+	}
 	if (idempotencyKeyInput) {
 		const existingRun = await findWorkflowRunByIdempotencyKey({
 			env,
@@ -1422,53 +1440,24 @@ export async function createDynamicCallableWorkflow(input: {
 			idempotencyKey: idempotencyKeyInput,
 			bindingName: dynamicCallableWorkflowsBindingName,
 		})
-		if (existingRun) {
+		if (existingRun && existingRun.id !== rerunOf) {
 			return createWorkflowCreateResultFromRow(existingRun)
 		}
 	}
 	const payload = await resolveWorkflowPayload(input)
-	// An explicit idempotency key must single-flight even before the
-	// RunLog projection row is written. After a key release the deterministic
-	// engine id (and any later successors) stay occupied, so walk the
-	// `:after:<occupiedId>` chain until an unused id is free or a projection
-	// still holds the semantic key.
-	const maxSuccessorGenerations = 16
-	let id = await createDynamicCallableWorkflowInstanceId(payload, {
-		includeRunAt: !idempotencyKeyInput,
-	})
-	let existing = await getExistingWorkflowInstance(workflowBinding, id)
-	if (idempotencyKeyInput) {
-		for (
-			let generation = 0;
-			generation < maxSuccessorGenerations;
-			generation += 1
-		) {
-			const projectionForId = await getWorkflowProjection({
-				env,
-				userId: input.userId,
-				id,
-			})
-			if (projectionForId?.idempotencyKey === idempotencyKeyInput) {
-				break
-			}
-			if (!projectionForId && !existing) {
-				break
-			}
-			if (!projectionForId && existing) {
-				// Engine instance without a projection — reclaim below.
-				break
-			}
-			const occupiedId = existing?.id ?? projectionForId!.id
-			id = await createDynamicCallableWorkflowInstanceId(
-				{
+	// An explicit idempotency key must single-flight even before the RunLog
+	// projection row is written, so its engine id is deterministic: the base
+	// id for a first run, or one derived from the run it replaces.
+	const id = await createDynamicCallableWorkflowInstanceId(
+		rerunOf
+			? {
 					...payload,
-					idempotencyKey: `${idempotencyKeyInput}:after:${occupiedId}`,
-				},
-				{ includeRunAt: false },
-			)
-			existing = await getExistingWorkflowInstance(workflowBinding, id)
-		}
-	}
+					idempotencyKey: `${idempotencyKeyInput}:rerun-of:${rerunOf}`,
+				}
+			: payload,
+		{ includeRunAt: !idempotencyKeyInput },
+	)
+	const existing = await getExistingWorkflowInstance(workflowBinding, id)
 	if (existing) {
 		await projectWorkflowRun({
 			env,
@@ -2238,6 +2227,34 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		)
 	}
 
+	/**
+	 * A publish clears the source's reconcile horizon, so a newer push that is
+	 * not followed by its own publish would wait for the daily backstop. Reopen
+	 * the horizon so the next reconcile tick publishes the newest HEAD.
+	 */
+	private async markPublishSourcePendingReconcile(input: {
+		userId: OwnerId
+		sourceId: string | null | undefined
+	}) {
+		const { userId, sourceId } = input
+		if (!sourceId) return
+		try {
+			await markEntitySourcePendingExternalReconcile(this.env.APP_DB, {
+				id: sourceId,
+				userId,
+				tokenExpiresAt: new Date().toISOString(),
+			})
+		} catch (error) {
+			console.warn(
+				'durable publish reconcile mark failed; newest HEAD may wait for the daily reconcile backstop',
+				{
+					sourceId,
+					error: getErrorMessage(error),
+				},
+			)
+		}
+	}
+
 	private async markRetryableWorkflowRunIgnored(input: {
 		userId: OwnerId
 		runId: string | undefined
@@ -2567,12 +2584,26 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 						? `${errorMessage} Caused by: ${resetMessage}`
 						: errorMessage
 				const message = `Publish workflow: ${state} ${reason}`
-				error =
-					isNonRetryableError(error) ||
-					resetMessage ||
-					isPublishComputeLimitMessage(message)
-						? terminalWorkflowStepError(message)
-						: new Error(message, { cause: error })
+				if (isPublishConcurrencyCallerMessage(errorMessage)) {
+					// A newer push or publish won the race. Retrying the pinned
+					// commit cannot succeed, so fail now as a caller error (off
+					// Sentry, KODY-DZ) and let reconcile publish the newest HEAD.
+					await this.markPublishSourcePendingReconcile({
+						userId: payload.userId,
+						sourceId: payload.packageContext?.sourceId,
+					})
+					error = terminalWorkflowStepError(
+						message,
+						new McpCallerError(errorMessage, { cause: error }),
+					)
+				} else {
+					error =
+						isNonRetryableError(error) ||
+						resetMessage ||
+						isPublishComputeLimitMessage(message)
+							? terminalWorkflowStepError(message)
+							: new Error(message, { cause: error })
+				}
 			}
 			const willRetry = attemptWillRetry(error, stepCtx)
 			await finishRunRecord({

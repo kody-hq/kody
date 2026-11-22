@@ -16,6 +16,13 @@ import {
 	type OpenIncidentSummary,
 } from './email-policy.ts'
 import {
+	composeGrokBotWakePrompt,
+	decideGrokBotWake,
+	defaultGrokBotWakeDailyLimit,
+	sendGrokBotWake,
+	type WakeIncident,
+} from './grok-bot-wake.ts'
+import {
 	applyProbeResult,
 	initialComponentProbeState,
 	type ComponentProbeState,
@@ -104,6 +111,13 @@ export type StatusWorkerEnv = {
 	 * ingest backstop.
 	 */
 	STATUS_INCIDENT_EVENT_SECRET?: string
+	/** Worker secret: Grok Bot wake webhook URL (full HTTPS URL). */
+	STATUS_GROK_BOT_WAKE_URL?: string
+	/** Worker secret: bearer sent as `Authorization` on the wake POST. */
+	STATUS_GROK_BOT_WAKE_TOKEN?: string
+	STATUS_GROK_BOT_ID?: string
+	STATUS_GROK_BOT_NAME?: string
+	STATUS_GROK_BOT_WAKE_DAILY_LIMIT?: string
 }
 
 const sampleRetentionMs = 25 * 60 * 60 * 1000
@@ -174,6 +188,22 @@ export class StatusStore extends DurableObject<StatusWorkerEnv> {
 				day TEXT NOT NULL,
 				subject TEXT NOT NULL,
 				delivered INTEGER NOT NULL
+			)
+		`)
+		this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS bot_wakes (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				kind TEXT NOT NULL,
+				sent_at INTEGER NOT NULL,
+				day TEXT NOT NULL,
+				incident_ids TEXT NOT NULL
+			)
+		`)
+		this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS bot_wake_incidents (
+				incident_id INTEGER PRIMARY KEY,
+				opened_wake_at INTEGER NOT NULL,
+				all_clear_wake_at INTEGER
 			)
 		`)
 		this.ctx.storage.sql.exec(`
@@ -515,6 +545,167 @@ export class StatusStore extends DurableObject<StatusWorkerEnv> {
 			})
 	}
 
+	private listOpenWakeIncidents(): Array<WakeIncident> {
+		return this.ctx.storage.sql
+			.exec<{
+				id: number
+				component: string
+				started_at: number
+				detail: string | null
+			}>(
+				`SELECT id, component, started_at, detail FROM incidents
+				WHERE resolved_at IS NULL ORDER BY started_at ASC, id ASC`,
+			)
+			.toArray()
+			.flatMap((row) => {
+				if (!isStatusComponentId(row.component)) return []
+				return [
+					{
+						id: row.id,
+						component: row.component,
+						startedAt: row.started_at,
+						detail: row.detail,
+					},
+				]
+			})
+	}
+
+	/**
+	 * Decides and records at most one Grok Bot wake per probe tick. The record
+	 * is written before the POST so a slow or failed webhook never resends for
+	 * the same incident ids; the POST itself runs in `waitUntil` so it never
+	 * stalls probes or the alert email.
+	 */
+	private maybeWakeGrokBot(now: number) {
+		const openIncidents = this.listOpenWakeIncidents()
+		const wokenIncidentIds = new Set(
+			this.ctx.storage.sql
+				.exec<{ incident_id: number }>(
+					`SELECT incident_id FROM bot_wake_incidents`,
+				)
+				.toArray()
+				.map((row) => row.incident_id),
+		)
+		const pendingAllClear = this.ctx.storage.sql
+			.exec<{
+				id: number
+				component: string
+				started_at: number
+				resolved_at: number | null
+				detail: string | null
+			}>(
+				`SELECT i.id, i.component, i.started_at, i.resolved_at, i.detail
+				FROM bot_wake_incidents w JOIN incidents i ON i.id = w.incident_id
+				WHERE w.all_clear_wake_at IS NULL AND i.resolved_at IS NOT NULL
+				ORDER BY i.started_at ASC, i.id ASC`,
+			)
+			.toArray()
+			.flatMap((row): Array<WakeIncident> => {
+				if (!isStatusComponentId(row.component)) return []
+				return [
+					{
+						id: row.id,
+						component: row.component,
+						startedAt: row.started_at,
+						resolvedAt: row.resolved_at,
+						detail: row.detail,
+					},
+				]
+			})
+		const day = toDay(now)
+		const wakesSentToday =
+			this.ctx.storage.sql
+				.exec<{ count: number }>(
+					`SELECT COUNT(*) AS count FROM bot_wakes WHERE day = ?`,
+					day,
+				)
+				.toArray()[0]?.count ?? 0
+		const dailyLimitRaw = Number(this.env.STATUS_GROK_BOT_WAKE_DAILY_LIMIT)
+		const dailyLimit =
+			Number.isInteger(dailyLimitRaw) && dailyLimitRaw > 0
+				? dailyLimitRaw
+				: defaultGrokBotWakeDailyLimit
+		const decision = decideGrokBotWake({
+			openIncidents,
+			wokenIncidentIds,
+			pendingAllClear,
+			wakesSentToday,
+			dailyLimit,
+		})
+		if (!decision) {
+			if (wakesSentToday >= dailyLimit) {
+				const fresh = openIncidents.some(
+					(incident) => !wokenIncidentIds.has(incident.id),
+				)
+				if (fresh) {
+					console.warn(
+						'status-grok-bot-wake-capped',
+						JSON.stringify({ wakesSentToday, dailyLimit }),
+					)
+				}
+			}
+			return
+		}
+		const incidentIds = decision.incidents.map((incident) => incident.id)
+		this.ctx.storage.transactionSync(() => {
+			this.ctx.storage.sql.exec(
+				`INSERT INTO bot_wakes (kind, sent_at, day, incident_ids)
+				VALUES (?, ?, ?, ?)`,
+				decision.kind,
+				now,
+				day,
+				JSON.stringify(incidentIds),
+			)
+			for (const id of incidentIds) {
+				if (decision.kind === 'opened') {
+					this.ctx.storage.sql.exec(
+						`INSERT OR IGNORE INTO bot_wake_incidents (incident_id, opened_wake_at)
+						VALUES (?, ?)`,
+						id,
+						now,
+					)
+				} else {
+					this.ctx.storage.sql.exec(
+						`UPDATE bot_wake_incidents SET all_clear_wake_at = ?
+						WHERE incident_id = ?`,
+						now,
+						id,
+					)
+				}
+			}
+		})
+		const prompt = composeGrokBotWakePrompt({
+			decision,
+			openIncidents,
+			statusPageUrl: this.env.STATUS_PAGE_URL,
+			now,
+		})
+		this.ctx.waitUntil(
+			sendGrokBotWake({
+				url: this.env.STATUS_GROK_BOT_WAKE_URL,
+				token: this.env.STATUS_GROK_BOT_WAKE_TOKEN,
+				botId: this.env.STATUS_GROK_BOT_ID,
+				botName: this.env.STATUS_GROK_BOT_NAME,
+				prompt,
+			}).then((result) => {
+				const summary = { kind: decision.kind, incidentIds }
+				if (!result.ok) {
+					console.warn(
+						'status-grok-bot-wake-failed',
+						JSON.stringify({ ...summary, error: result.error }),
+					)
+				} else if (result.skipped) {
+					console.warn(
+						'status-grok-bot-wake-skipped',
+						JSON.stringify({ ...summary, reason: result.reason }),
+					)
+				} else {
+					console.info('status-grok-bot-wake-sent', JSON.stringify(summary))
+				}
+			}),
+		)
+	}
+
 	private async maybeSendAlert(now: number) {
 		const openIncidents = this.listOpenIncidents()
 		const day = toDay(now)
@@ -625,6 +816,15 @@ export class StatusStore extends DurableObject<StatusWorkerEnv> {
 			`DELETE FROM notifications WHERE sent_at < ?`,
 			now - incidentRetentionMs,
 		)
+		this.ctx.storage.sql.exec(
+			`DELETE FROM bot_wakes WHERE sent_at < ?`,
+			now - incidentRetentionMs,
+		)
+		this.ctx.storage.sql.exec(
+			`DELETE FROM bot_wake_incidents WHERE opened_wake_at < ?
+			AND incident_id NOT IN (SELECT id FROM incidents WHERE resolved_at IS NULL)`,
+			now - incidentRetentionMs,
+		)
 	}
 
 	private readProviderIncidents(now: number): Array<ProviderIncident> | null {
@@ -680,6 +880,7 @@ export class StatusStore extends DurableObject<StatusWorkerEnv> {
 		for (const outcome of outcomes) {
 			this.recordOutcome(outcome, now)
 		}
+		this.maybeWakeGrokBot(now)
 		const executeState = await applyExecuteHealthTick({
 			now,
 			...this.readExecuteHealthState(executeLastSuccessAt),

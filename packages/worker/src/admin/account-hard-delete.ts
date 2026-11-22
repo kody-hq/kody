@@ -597,16 +597,14 @@ export async function executeAdminAccountHardDelete(input: {
 			target.stableUserId,
 			target.personalOrgId,
 		)
-		const orgIds = new Set<string>([
-			...softDeleted.deletedOrgIds,
-			...tombstonedSoleOwned,
-			target.personalOrgId,
-		])
-		const ordered = [...orgIds].filter(
-			(orgId) => orgId !== target.personalOrgId,
+		// The personal org purges with the person, after account deletion has
+		// read its billing identity.
+		const orgIds = new Set<string>(
+			[...softDeleted.deletedOrgIds, ...tombstonedSoleOwned].filter(
+				(orgId) => orgId !== target.personalOrgId,
+			),
 		)
-		ordered.push(target.personalOrgId)
-		for (const orgId of ordered) {
+		for (const orgId of orgIds) {
 			await hardPurgeOrgIfPresent(input.env, ownerIdFromStored(orgId))
 		}
 		await hardPurgeSoftDeletedUser({

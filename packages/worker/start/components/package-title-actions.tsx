@@ -8,7 +8,7 @@ import {
 	useContext,
 	useState,
 	useRef,
-	useEffect,
+	useCallback,
 } from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
 import type { ViewerListingInstall } from '#universal/community-public-types.ts'
@@ -404,7 +404,8 @@ function IconControl({
 	const [feedback, setFeedback] = useState<string | null>(null)
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const mounted = useRef(true)
-	useEffect(() => {
+	const trackMounted = useCallback((node: HTMLElement | null) => {
+		if (!node) return
 		mounted.current = true
 		return () => {
 			mounted.current = false
@@ -461,6 +462,7 @@ function IconControl({
 	if (input.href) {
 		return (
 			<Button
+				ref={trackMounted}
 				href={input.href}
 				{...shared}
 				variant={variant}
@@ -473,6 +475,7 @@ function IconControl({
 	}
 	return (
 		<Button
+			ref={trackMounted}
 			type="button"
 			{...shared}
 			variant={variant}
