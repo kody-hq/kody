@@ -76,8 +76,8 @@ const millisecondsPerDay = 24 * 60 * 60 * 1000
 
 /**
  * Inventory of D1 growth-table retention policies. Keep this manifest in sync
- * with the scheduled prune implementation and data-storage.md so future growth
- * tables have an explicit retention story or a documented exemption.
+ * with the scheduled prune implementation and the data-storage contracts so
+ * future growth tables have an explicit retention story or a documented exemption.
  *
  * Explicit policy / alternate_cleanup / durable_forever dispositions also live
  * in `account-retention-dispositions.ts` and must cover the same table set
