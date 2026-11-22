@@ -68,6 +68,7 @@ export async function createOpenApiTestHarness(
 		AUDIT_DB: createAuditTestDb(),
 		COOKIE_SECRET: 'test-cookie-secret',
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
+		SENTRY_ENVIRONMENT: 'test',
 		...userMeter.env,
 		...(oauthAccessToken !== undefined
 			? {
