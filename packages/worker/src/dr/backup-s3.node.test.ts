@@ -1,5 +1,6 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
+import { backupR2RetryMaxAttempts } from '@kody-internal/shared/backup-r2-retry.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import {
 	createDrBackupS3Client,
@@ -210,4 +211,60 @@ test('DR backup S3 client retries a conditional PUT conflict (409) and reports a
 	await expect(client.put('plain.tsv', 'a')).rejects.toThrow(
 		'DR backup PUT failed for plain.tsv: HTTP 409',
 	)
+})
+
+/** Advances fake timers while real msw I/O resolves between retries. */
+async function settleWithFakeTimers(pending: Promise<unknown>) {
+	let settled = false
+	void pending.then(
+		() => (settled = true),
+		() => (settled = true),
+	)
+	const realDeadline = performance.now() + 10_000
+	while (!settled && performance.now() < realDeadline) {
+		await vi.advanceTimersByTimeAsync(50)
+		await new Promise((resolve) => setImmediate(resolve))
+	}
+	expect(settled).toBe(true)
+}
+
+test('DR backup S3 client rides out a multi-second R2 5xx burst on HEAD and still fails on a persistent one', async () => {
+	vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+	try {
+		let burstHeads = 0
+		let downHeads = 0
+		using _server = createMswNodeServer([
+			http.head(`${r2Origin}/backups/staging/day/exporter/summary.json`, () => {
+				burstHeads += 1
+				if (burstHeads <= 4) return new HttpResponse(null, { status: 500 })
+				return new HttpResponse(null, { status: 200, headers: { etag: '"s"' } })
+			}),
+			http.head(`${r2Origin}/backups/down.json`, () => {
+				downHeads += 1
+				return new HttpResponse(null, { status: 500 })
+			}),
+		])
+		const client = createDrBackupS3Client(config)
+
+		const startedAt = Date.now()
+		const burst = client.head('staging/day/exporter/summary.json')
+		await settleWithFakeTimers(burst)
+		await expect(burst).resolves.toEqual({
+			exists: true,
+			status: 200,
+			etag: '"s"',
+		})
+		expect(burstHeads).toBe(5)
+		// Equal jitter floors the four waits at 125 + 250 + 500 + 1000 ms.
+		expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1875)
+
+		const down = client.head('down.json')
+		await settleWithFakeTimers(down)
+		await expect(down).rejects.toThrow(
+			'DR backup HEAD failed for down.json: HTTP 500',
+		)
+		expect(downHeads).toBe(backupR2RetryMaxAttempts)
+	} finally {
+		vi.useRealTimers()
+	}
 })
