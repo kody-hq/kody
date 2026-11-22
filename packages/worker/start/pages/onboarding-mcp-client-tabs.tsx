@@ -404,7 +404,6 @@ export function AgentPickerGrid(props: {
 						<SiteLink
 							href={props.agentHref(id, search)}
 							data-testid={`onboarding-agent-${id}`}
-							resetScroll={false}
 							data-greyed={connectedMark ? 'true' : undefined}
 							data-greyed-reason={connectedMark ? reason : undefined}
 							title={connectedMark ? (title ?? undefined) : undefined}
