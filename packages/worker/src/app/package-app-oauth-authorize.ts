@@ -1,6 +1,7 @@
 import { escapeHtml } from '@kody-internal/shared/escape-html.ts'
 import {
 	buildPackageAppOpenPath,
+	buildPackageAppSubdomainPath,
 	resolveHostedPackageAppUrl,
 } from '@kody-internal/shared/public-urls.ts'
 import { destroyAuthCookie, isSecureRequest } from '#app/auth-session.ts'
@@ -48,7 +49,11 @@ import {
 } from '#universal/package-app-oauth-paths.ts'
 import { isCredentialKind } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
-import { getAppBaseUrl, getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import {
+	getAppBaseUrl,
+	getPackageAppBaseUrl,
+	parsePackageAppRequestHost,
+} from '#worker/app-base-url.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -182,6 +187,11 @@ async function shouldSkipConsent(input: {
  * Ends a sign-in that cannot finish here. Retry starts over on the app host,
  * which mints fresh PKCE state.
  */
+function isOwnerHost(input: { env: Env; url: URL; username: string }) {
+	const host = parsePackageAppRequestHost({ env: input.env, url: input.url })
+	return host?.kind === 'user-subdomain' && host.username === input.username
+}
+
 async function renderPackageAppSignInError(input: {
 	env: Env
 	request: Request
@@ -208,6 +218,15 @@ async function renderPackageAppSignInError(input: {
 	)
 	if (app.origin === retry.origin) {
 		retry.searchParams.set('return_to', app.pathname)
+	} else if (
+		input.kodyId !== input.orgUsername &&
+		isOwnerHost({ env: input.env, url: retry, username: input.orgUsername })
+	) {
+		// The owner host serves this app at its path address, not at `/`.
+		retry.searchParams.set(
+			'return_to',
+			buildPackageAppSubdomainPath({ kodyId: input.kodyId }),
+		)
 	}
 	const href = escapeHtml(retry.toString())
 	const headers = new Headers({
