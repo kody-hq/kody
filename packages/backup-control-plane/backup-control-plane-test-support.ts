@@ -17,7 +17,7 @@ export function backupError(code: string, retryable?: boolean) {
 		(retryable === undefined || error.retryable === retryable)
 }
 
-export function encodeNodeBytesAsBase64(bytes: ArrayBuffer | Uint8Array) {
+function encodeNodeBytesAsBase64(bytes: ArrayBuffer | Uint8Array) {
 	return Buffer.from(
 		bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes,
 	).toString('base64')
