@@ -3,7 +3,7 @@ import { canonicalJsonStringify } from './canonical-json.ts'
 import { isRecord } from './is-record.ts'
 
 export const backupFullManifestSchemaVersion = 3 as const
-/** Schema v1/v2 full manifests restored D1 from the removed REST export. */
+/** Full-manifest schema versions refused as REST-era; never restorable. */
 const restEraSchemaVersions: ReadonlySet<unknown> = new Set([1, 2])
 export const backupFullManifestSignatureAlgorithm = 'Ed25519' as const
 
@@ -21,8 +21,8 @@ export type BackupFullD1Source = {
 }
 
 /**
- * Seals from the REST export era signed informational REST D1 evidence into
- * some schema-v3 payloads. It stays in the signed payload and is never read.
+ * Optional REST D1 fields some schema-v3 payloads carry. They are kept so the
+ * signed payload round-trips byte-for-byte, and are never read.
  */
 type BackupFullManifestRestD1Evidence = {
 	d1ManifestKey?: string
@@ -58,10 +58,7 @@ export type BackupFullManifest = {
 	}
 }
 
-/**
- * Thrown for a schema v1/v2 full manifest: those days restored D1 through the
- * removed REST export reader and are no longer restorable.
- */
+/** Thrown for a REST-era (schema v1/v2) full manifest, which is not restorable. */
 export class RestEraBackupFullManifestError extends Error {
 	readonly schemaVersion: number
 	constructor(schemaVersion: number) {
