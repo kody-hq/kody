@@ -117,6 +117,7 @@ import {
 // The subset of the provider's OAuthHelpers that deletion consumes, kept
 // structural so node tests can pass small stubs as `OAUTH_PROVIDER`.
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { transientD1ItemRetryEnv } from '#worker/d1-item-retry.ts'
 type OAuthHelpersShape = OAuthGrantHelpers & {
 	deleteClient?(clientId: string): Promise<unknown>
 }
@@ -586,7 +587,7 @@ async function auditSkippedRefund(input: {
 	reason: string
 }) {
 	await logAuditEvent({
-		db: auditDatabaseFromEnv(input.env),
+		db: auditDatabaseFromEnv(transientD1ItemRetryEnv(input.env)),
 		category: 'account',
 		action: 'account_deletion_refund_skipped',
 		result: 'failure',
@@ -839,7 +840,7 @@ async function cancelActiveStripeSubscriptions(input: {
 				refunds.push(refunded.refund)
 				if (refunded.created) {
 					await logAuditEvent({
-						db: auditDatabaseFromEnv(input.env),
+						db: auditDatabaseFromEnv(transientD1ItemRetryEnv(input.env)),
 						category: 'account',
 						action: 'account_deletion_refund',
 						result: 'success',
@@ -1682,7 +1683,7 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
  *      TTL-owned omission and does not participate in this gate.
  *   5. Atomically delete user-scoped D1 rows and the user row in one batch.
  */
-export async function deleteUserAccount(input: {
+export async function deleteUserAccount(request: {
 	env: AccountDeletionEnv
 	dbUserId: number
 	/**
@@ -1708,6 +1709,9 @@ export async function deleteUserAccount(input: {
 	 */
 	keepOAuthGrants?: boolean
 }): Promise<AccountDeletionResult> {
+	// D1 runs through an attached purge-item retry, if any. Stripe calls keep
+	// the caller's env unchanged.
+	const input = { ...request, env: transientD1ItemRetryEnv(request.env) }
 	const personUserId = input.personUserId ?? input.mcpUserId
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
 	let marked: {
@@ -1798,7 +1802,7 @@ export async function deleteUserAccount(input: {
 	if (inventory.stripeCustomerId) {
 		try {
 			const billing = await cancelActiveStripeSubscriptions({
-				env: input.env,
+				env: request.env,
 				customerId: inventory.stripeCustomerId,
 				email: inventory.email,
 			})
@@ -2103,7 +2107,7 @@ export async function deleteUserAccount(input: {
 
 	if (inventory.stripeCustomerId) {
 		await deleteStripeCustomer({
-			env: input.env,
+			env: request.env,
 			customerId: inventory.stripeCustomerId,
 			userId: input.mcpUserId,
 			warnings,

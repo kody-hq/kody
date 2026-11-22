@@ -579,13 +579,20 @@ Current retention policies:
   failed deletion writes an `unverified_account_purge_failed` audit row (reason
   `<ErrorClassName>: <first inventory/cleanup warning or message>`, email
   addresses redacted, at most 200 characters) plus a Sentry event when Sentry is
-  configured. Either sink being unavailable is logged and skipped rather than
-  failing the batch, so the durable record can have gaps when `AUDIT_DB` is
-  down; the on-demand capability below is the authoritative read. The admin-only
-  `adminUnverifiedAccountPurgeRun` capability runs one bounded pass on demand
-  (or previews the claim page with `dryRun`) and returns per-account outcomes
-  keyed by stable user id. Social-login accounts are verified at creation and
-  are not in this set.
+  configured. Transient D1 errors (`Network connection lost`,
+  `storage operation exceeded timeout`, `reset because its code was updated`,
+  `D1_ERROR: internal error`) retry each statement up to 3 times after 100, 200
+  and 400 ms, with at most 1,000 ms of backoff per account; that backoff counts
+  toward the run's time budget. An account whose next retry would exceed it
+  fails with `TransientRetryBudgetExhausted`, writes a
+  `purge.retry_budget_exhausted` audit row and a Sentry event instead, and keeps
+  its claim so it retries after the backoff. Either sink being unavailable is
+  logged and skipped rather than failing the batch, so the durable record can
+  have gaps when `AUDIT_DB` is down; the on-demand capability below is the
+  authoritative read. The admin-only `adminUnverifiedAccountPurgeRun` capability
+  runs one bounded pass on demand (or previews the claim page with `dryRun`) and
+  returns per-account outcomes keyed by stable user id. Social-login accounts
+  are verified at creation and are not in this set.
 
 The squashed baseline defines the global time-column indexes these prunes order
 by (`created_at` / `day` / `month` / `started_at` across users); per-user

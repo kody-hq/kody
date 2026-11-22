@@ -322,6 +322,27 @@ export function readD1RetryAttempts(error: unknown): number | null {
 	return null
 }
 
+const d1RetrySettledErrors = new WeakSet<object>()
+
+/**
+ * Mark an error whose retries an inner layer already owned (for example a
+ * per-item retry budget wrapped around a D1 binding). `runD1WithRetry`
+ * rethrows a settled error, or one caused by it, without another attempt.
+ */
+export function markD1RetrySettled<T>(error: T): T {
+	if (error && typeof error === 'object') d1RetrySettledErrors.add(error)
+	return error
+}
+
+function isD1RetrySettled(error: unknown) {
+	return getErrorCauseChain(error).some(
+		(entry) =>
+			entry !== null &&
+			typeof entry === 'object' &&
+			d1RetrySettledErrors.has(entry),
+	)
+}
+
 /**
  * Opt-in per-attempt deadline for `runD1WithRetry`. Idle D1 bindings can hang
  * instead of throwing a retryable platform error; a bounded attempt lets the
@@ -403,6 +424,7 @@ export async function runD1WithRetry<T>(
 				: await withAttemptTimeout(result, attemptTimeoutMs)
 		} catch (error) {
 			lastError = error
+			if (isD1RetrySettled(error)) throw error
 			const retryable =
 				isRetryableD1LockError(error) ||
 				(attemptTimeoutMs !== undefined && isD1AttemptTimeoutError(error))

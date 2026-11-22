@@ -14,11 +14,16 @@
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 
+import * as Sentry from '@sentry/cloudflare'
 import { createActor, createAsyncLogic, toPromise } from 'xstate'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { softDeletePurgeBatchState } from '#worker/orgs/soft-delete-purge-state.ts'
 import { softDeletePurgeCutoffIso } from '#worker/soft-delete/window.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import {
+	TransientD1ItemRetry,
+	type TransientRetryBudgetExhausted,
+} from '#worker/d1-item-retry.ts'
 import { shouldRunRetentionCron } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import {
 	finishLegacyUserDeletion,
@@ -335,6 +340,32 @@ async function claimLegacyUserForPurge(input: {
 	return (claimed.meta.changes ?? 0) === 1
 }
 
+function reportRetryBudgetExhaustedToSentry(input: {
+	candidate: SoftDeletePurgeCandidate
+	error: TransientRetryBudgetExhausted
+}) {
+	try {
+		if (!Sentry.isInitialized()) return
+		if (!Sentry.getClient()?.getOptions().dsn) return
+		Sentry.withScope((scope) => {
+			scope.setLevel('error')
+			scope.setTag('scheduled.lane', 'soft_delete_purge')
+			scope.setContext('soft_delete_purge', {
+				kind: input.candidate.kind,
+				id: input.candidate.id,
+				spentMs: input.error.spentMs,
+				budgetMs: input.error.budgetMs,
+			})
+			Sentry.captureException(input.error)
+		})
+	} catch (sentryError) {
+		console.warn('soft_delete_purge_sentry_failed', {
+			id: input.candidate.id,
+			error: sentryError,
+		})
+	}
+}
+
 export async function pruneSoftDeleted(input: {
 	env: Env
 	now?: Date
@@ -347,6 +378,8 @@ export async function pruneSoftDeleted(input: {
 	 */
 	dryRun?: boolean
 	enableWrites?: boolean
+	clock?: () => number
+	sleep?: (ms: number) => Promise<void>
 }): Promise<SoftDeletePurgeResult> {
 	const now = input.now ?? new Date()
 	const dryRun =
@@ -355,9 +388,34 @@ export async function pruneSoftDeleted(input: {
 			!(input.enableWrites === true || softDeletePurgeWritesEnabled(input.env)))
 	const legacyDryRun = input.dryRun === true
 	const budgetMs = input.timeBudgetMs ?? softDeletePurgeRunTimeBudgetMs
-	const started = Date.now()
+	const clock = input.clock ?? Date.now
+	const sleep =
+		input.sleep ??
+		((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+	const started = clock()
 	const retryBackoffCutoff = cutoffIso(now, softDeletePurgeRetryBackoffMs)
 	const nowIso = now.toISOString()
+	// One retry budget per candidate, shared by its claim and its hard purge
+	// (a person purge includes its personal org).
+	const itemRetries = new WeakMap<
+		SoftDeletePurgeCandidate,
+		TransientD1ItemRetry
+	>()
+	async function runItem<T>(
+		candidate: SoftDeletePurgeCandidate,
+		work: (retry: TransientD1ItemRetry) => Promise<T>,
+	): Promise<T> {
+		let retry = itemRetries.get(candidate)
+		if (!retry) {
+			retry = new TransientD1ItemRetry({ sleep })
+			itemRetries.set(candidate, retry)
+		}
+		try {
+			return await work(retry)
+		} catch (error) {
+			throw retry.failure(error)
+		}
+	}
 	const workflow = softDeletePurgeBatchState.provide({
 		actors: {
 			listCandidates: createAsyncLogic<{
@@ -371,50 +429,57 @@ export async function pruneSoftDeleted(input: {
 						batchSize: input.batchSize,
 					}),
 			}),
-			readClock: createAsyncLogic<number>({ run: async () => Date.now() }),
+			readClock: createAsyncLogic<number>({ run: async () => clock() }),
 			claimCandidate: createAsyncLogic<boolean, SoftDeletePurgeCandidate>({
 				run: ({ input: candidate }) =>
-					candidate.kind === 'org'
-						? claimOrgForPurge({
-								db: input.env.APP_DB,
-								orgId: candidate.id,
-								nowIso,
-								retryBackoffCutoff,
-							})
-						: candidate.legacy
-							? claimLegacyUserForPurge({
-									db: input.env.APP_DB,
-									userId: candidate.id,
+					runItem(candidate, (retry) =>
+						candidate.kind === 'org'
+							? claimOrgForPurge({
+									db: retry.database(input.env.APP_DB),
+									orgId: candidate.id,
 									nowIso,
 									retryBackoffCutoff,
 								})
-							: claimUserForPurge({
-									db: input.env.APP_DB,
-									userId: candidate.id,
-									nowIso,
-									retryBackoffCutoff,
-								}),
+							: candidate.legacy
+								? claimLegacyUserForPurge({
+										db: retry.database(input.env.APP_DB),
+										userId: candidate.id,
+										nowIso,
+										retryBackoffCutoff,
+									})
+								: claimUserForPurge({
+										db: retry.database(input.env.APP_DB),
+										userId: candidate.id,
+										nowIso,
+										retryBackoffCutoff,
+									}),
+					),
 			}),
 			purgeOrg: createAsyncLogic<void, SoftDeletePurgeCandidate>({
 				run: ({ input: candidate }) =>
-					hardPurgeOrg({ env: input.env, orgId: candidate.id }),
+					runItem(candidate, (retry) =>
+						hardPurgeOrg({ env: retry.attach(input.env), orgId: candidate.id }),
+					),
 			}),
 			finishLegacyUser: createAsyncLogic<void, SoftDeletePurgeCandidate>({
-				run: async ({ input: candidate }) => {
-					await finishLegacyUserDeletion({
-						env: input.env,
-						dbUserId: candidate.dbUserId!,
-						stableUserId: candidate.id,
-					})
-				},
+				run: ({ input: candidate }) =>
+					runItem(candidate, async (retry) => {
+						await finishLegacyUserDeletion({
+							env: retry.attach(input.env),
+							dbUserId: candidate.dbUserId!,
+							stableUserId: candidate.id,
+						})
+					}),
 			}),
 			purgeUser: createAsyncLogic<void, SoftDeletePurgeCandidate>({
 				run: ({ input: candidate }) =>
-					hardPurgeSoftDeletedUser({
-						env: input.env,
-						dbUserId: candidate.dbUserId!,
-						stableUserId: candidate.id,
-					}),
+					runItem(candidate, (retry) =>
+						hardPurgeSoftDeletedUser({
+							env: retry.attach(input.env),
+							dbUserId: candidate.dbUserId!,
+							stableUserId: candidate.id,
+						}),
+					),
 			}),
 			recordFailure: createAsyncLogic<
 				string,
@@ -453,6 +518,50 @@ export async function pruneSoftDeleted(input: {
 						createdAt: nowIso,
 					})
 					return message
+				},
+			}),
+			recordRetryBudgetExhausted: createAsyncLogic<
+				string,
+				{
+					candidate: SoftDeletePurgeCandidate
+					error: TransientRetryBudgetExhausted
+				}
+			>({
+				run: async ({ input: { candidate, error } }) => {
+					const lane = candidate.legacy
+						? 'legacy_deletion_finish'
+						: 'soft_delete'
+					const lastError = redactPurgeFailureDetail(
+						error.cause instanceof Error
+							? error.cause.message
+							: String(error.cause),
+					)
+					console.warn(
+						JSON.stringify({
+							message: 'soft_delete_purge_retry_budget_exhausted',
+							kind: candidate.kind,
+							lane,
+							spentMs: error.spentMs,
+							budgetMs: error.budgetMs,
+							lastError,
+						}),
+					)
+					await logOrgAuditEvent({
+						env: input.env,
+						orgId: candidate.id,
+						action: 'purge.retry_budget_exhausted',
+						result: 'failure',
+						detailsJson: JSON.stringify({
+							kind: candidate.kind,
+							lane,
+							spentMs: error.spentMs,
+							budgetMs: error.budgetMs,
+							lastError,
+						}),
+						createdAt: nowIso,
+					})
+					reportRetryBudgetExhaustedToSentry({ candidate, error })
+					return `${error.name}: ${error.message}`
 				},
 			}),
 		},

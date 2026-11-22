@@ -489,10 +489,13 @@ after the restore window is `hardPurgeSoftDeletedUser`
   soft delete: person rows left with `deleting_at` set and `deleted_at` null
   after a cleanup step warned. Those owners asked for a hard deletion and were
   never offered a restore window, so they skip the window and the flag, and keep
-  the lane's claim, six-hour retry backoff, and `user.purge_failed` audit. The
-  lane re-runs `deleteUserAccount` on the fenced row, then purges the personal
-  org graph; storage that is already gone counts as done. The deletion is the
-  same across:
+  the lane's claim, six-hour retry backoff, and `user.purge_failed` audit. Each
+  candidate (an org, or a person with its personal org) retries transient D1
+  errors with the same per-statement backoff and 1,000 ms per-item budget as the
+  unverified-account lane; exhausting it writes `purge.retry_budget_exhausted`
+  to the org audit log, reports to Sentry, and keeps the claim. The lane re-runs
+  `deleteUserAccount` on the fenced row, then purges the personal org graph;
+  storage that is already gone counts as done. The deletion is the same across:
   - the user's active package workflow instances, terminated first so no step
     writes after the purge; if any termination fails, deletion stops before
     purging anything and keeps the account fenced so a retry can still find the

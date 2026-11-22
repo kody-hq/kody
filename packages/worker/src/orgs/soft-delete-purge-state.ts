@@ -3,6 +3,7 @@ import type {
 	SoftDeletePurgeCandidate,
 	SoftDeletePurgeOutcome,
 } from '#worker/orgs/purge.ts'
+import { TransientRetryBudgetExhausted } from '#worker/d1-item-retry.ts'
 
 export type SoftDeletePurgeBatchOutput =
 	| {
@@ -67,6 +68,8 @@ function settle(
  * One soft-delete purge batch. Every live candidate is claimed before its
  * hard purge, the time budget is checked before each claim, and a failed
  * claim or purge is recorded with its failure audit before the next candidate.
+ * A candidate that exhausted its transient D1 retry budget is recorded with
+ * its own audit and keeps its claim.
  */
 export const softDeletePurgeBatchState = setup({
 	schemas: {
@@ -101,6 +104,13 @@ export const softDeletePurgeBatchState = setup({
 			string,
 			{ candidate: SoftDeletePurgeCandidate; error: unknown }
 		>({ run: notProvided }),
+		recordRetryBudgetExhausted: createAsyncLogic<
+			string,
+			{
+				candidate: SoftDeletePurgeCandidate
+				error: TransientRetryBudgetExhausted
+			}
+		>({ run: notProvided }),
 	},
 	guards: {
 		hasNextCandidate: (context: SoftDeletePurgeBatchContext) =>
@@ -117,11 +127,13 @@ export const softDeletePurgeBatchState = setup({
 		missingDbUserId: (candidate: SoftDeletePurgeCandidate) =>
 			candidate.dbUserId == null,
 		claimRefused: (claimed: boolean) => !claimed,
+		retryBudgetExhausted: (error: unknown) =>
+			error instanceof TransientRetryBudgetExhausted,
 	},
 }).createMachine({
 	id: 'soft_delete_purge.batch',
 	description:
-		'Lists candidates, previews dry-run ones, and for each live one checks the budget, claims it, runs the org, legacy-user or user hard purge, and records success or a failure audit before moving on; a failed listing or failure audit fails the run.',
+		'Lists candidates, previews dry-run ones, and for each live one checks the budget, claims it, runs the org, legacy-user or user hard purge, and records success, a failure audit, or a retry-budget-exhausted audit before moving on; a failed listing or failure audit fails the run.',
 	context: ({ input }) => ({
 		...input,
 		candidates: [],
@@ -208,10 +220,17 @@ export const softDeletePurgeBatchState = setup({
 						return { target: 'finishing_legacy_user' }
 					return { target: 'purging_user' }
 				},
-				onError: ({ context, event }) => ({
-					target: 'recording_failure',
-					context: { ...context, failure: event.error },
-				}),
+				onError: ({ context, event, guards }) => {
+					if (guards.retryBudgetExhausted(event.error))
+						return {
+							target: 'recording_retry_budget_exhausted',
+							context: { ...context, failure: event.error },
+						}
+					return {
+						target: 'recording_failure',
+						context: { ...context, failure: event.error },
+					}
+				},
 			},
 		},
 		purging_org: {
@@ -226,10 +245,17 @@ export const softDeletePurgeBatchState = setup({
 						{ purged: context.purged + 1 },
 					),
 				}),
-				onError: ({ context, event }) => ({
-					target: 'recording_failure',
-					context: { ...context, failure: event.error },
-				}),
+				onError: ({ context, event, guards }) => {
+					if (guards.retryBudgetExhausted(event.error))
+						return {
+							target: 'recording_retry_budget_exhausted',
+							context: { ...context, failure: event.error },
+						}
+					return {
+						target: 'recording_failure',
+						context: { ...context, failure: event.error },
+					}
+				},
 			},
 		},
 		finishing_legacy_user: {
@@ -244,10 +270,17 @@ export const softDeletePurgeBatchState = setup({
 						{ purged: context.purged + 1 },
 					),
 				}),
-				onError: ({ context, event }) => ({
-					target: 'recording_failure',
-					context: { ...context, failure: event.error },
-				}),
+				onError: ({ context, event, guards }) => {
+					if (guards.retryBudgetExhausted(event.error))
+						return {
+							target: 'recording_retry_budget_exhausted',
+							context: { ...context, failure: event.error },
+						}
+					return {
+						target: 'recording_failure',
+						context: { ...context, failure: event.error },
+					}
+				},
 			},
 		},
 		purging_user: {
@@ -262,10 +295,17 @@ export const softDeletePurgeBatchState = setup({
 						{ purged: context.purged + 1 },
 					),
 				}),
-				onError: ({ context, event }) => ({
-					target: 'recording_failure',
-					context: { ...context, failure: event.error },
-				}),
+				onError: ({ context, event, guards }) => {
+					if (guards.retryBudgetExhausted(event.error))
+						return {
+							target: 'recording_retry_budget_exhausted',
+							context: { ...context, failure: event.error },
+						}
+					return {
+						target: 'recording_failure',
+						context: { ...context, failure: event.error },
+					}
+				},
 			},
 		},
 		recording_failure: {
@@ -274,6 +314,27 @@ export const softDeletePurgeBatchState = setup({
 				input: ({ context }) => ({
 					candidate: context.candidates[context.index]!,
 					error: context.failure,
+				}),
+				onDone: ({ context, event }) => ({
+					target: 'advancing',
+					context: settle(
+						context,
+						outcome(context.candidates[context.index]!, 'failed', event.output),
+						{ failed: context.failed + 1, failure: undefined },
+					),
+				}),
+				onError: ({ context, event }) => ({
+					target: 'run_failed',
+					context: { ...context, error: event.error },
+				}),
+			},
+		},
+		recording_retry_budget_exhausted: {
+			invoke: {
+				src: 'recordRetryBudgetExhausted',
+				input: ({ context }) => ({
+					candidate: context.candidates[context.index]!,
+					error: context.failure as TransientRetryBudgetExhausted,
 				}),
 				onDone: ({ context, event }) => ({
 					target: 'advancing',
