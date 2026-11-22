@@ -1,3 +1,4 @@
+import type * as SentryCloudflare from '@sentry/cloudflare'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -23,6 +24,16 @@ const finishLegacyUserDeletion = vi.fn(
 
 const hardPurgeSoftDeletedUser = vi.fn()
 
+const sentryScope = { setTag: vi.fn(), setContext: vi.fn() }
+const captureException = vi.fn()
+
+vi.mock('@sentry/cloudflare', async (importOriginal) => ({
+	...(await importOriginal<typeof SentryCloudflare>()),
+	withScope: (callback: (scope: typeof sentryScope) => void) =>
+		callback(sentryScope),
+	captureException: (error: unknown) => captureException(error),
+}))
+
 vi.mock('./hard-purge.ts', () => ({
 	hardPurgeOrg: (input: { env: Env; orgId: string }) => hardPurgeOrg(input),
 	hardPurgeSoftDeletedUser: (input: unknown) => hardPurgeSoftDeletedUser(input),
@@ -38,6 +49,8 @@ const {
 	pruneSoftDeleted,
 	softDeletePurgeWritesEnabled,
 } = await import('./purge.ts')
+
+const { PurgeWebhookFailed } = await import('./purge-webhook.ts')
 
 const now = new Date('2026-10-01T12:00:00.000Z')
 const oldDeletedAt = '2025-08-01T00:00:00.000Z'
@@ -411,4 +424,65 @@ test('failed legacy deletion records the specific cleanup errors without ids', a
 		},
 	])
 	expect(JSON.stringify(logged)).not.toContain('legacy-cleanup-detail')
+})
+
+test('failed purge webhook keeps the org, audits purge.webhook_failed, reports to Sentry, and retries after the fence', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-webhook-down')
+	await seedSoftDeletedOrg(db, 'org-webhook-next')
+	captureException.mockClear()
+	hardPurgeOrg.mockImplementationOnce(async (input) => {
+		throw new PurgeWebhookFailed(
+			{ kind: 'org', id: input.orgId as never },
+			{ status: 500 },
+		)
+	})
+	consoleWarn.mockImplementation(() => {})
+	const failed = await pruneSoftDeleted({ env, now })
+	expect(failed).toMatchObject({ purged: 1, failed: 1 })
+	expect(failed.outcomes).toEqual([
+		expect.objectContaining({
+			id: 'org-webhook-down',
+			outcome: 'webhook_failed',
+			error: 'purge_webhook_failed:org:status_500',
+		}),
+		expect.objectContaining({ id: 'org-webhook-next', outcome: 'purged' }),
+	])
+	const kept = await db
+		.prepare(`SELECT id FROM orgs WHERE id = ?`)
+		.bind('org-webhook-down')
+		.first<{ id: string }>()
+	expect(kept?.id).toBe('org-webhook-down')
+	const audit = await env.AUDIT_DB.prepare(
+		`SELECT action, result, details_json FROM org_audit_events WHERE org_id = ?`,
+	)
+		.bind('org-webhook-down')
+		.all<{ action: string; result: string; details_json: string }>()
+	expect(audit.results).toHaveLength(1)
+	expect(audit.results[0]).toMatchObject({
+		action: 'purge.webhook_failed',
+		result: 'failure',
+	})
+	expect(JSON.parse(audit.results[0]!.details_json)).toEqual({
+		kind: 'org',
+		id: 'org-webhook-down',
+		status: 500,
+	})
+	expect(captureException).toHaveBeenCalledTimes(1)
+	expect(captureException.mock.calls[0]![0]).toBeInstanceOf(PurgeWebhookFailed)
+	expect(sentryScope.setContext).toHaveBeenCalledWith(
+		'purge_webhook',
+		expect.objectContaining({ kind: 'org', status: 500 }),
+	)
+
+	// Inside the six-hour backoff: not picked up again.
+	const soon = new Date(now.getTime() + 60 * 60 * 1000)
+	expect((await pruneSoftDeleted({ env, now: soon })).scanned).toBe(0)
+
+	// After the backoff the next pass retries and purges.
+	const later = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+	const retried = await pruneSoftDeleted({ env, now: later })
+	expect(retried.outcomes).toEqual([
+		expect.objectContaining({ id: 'org-webhook-down', outcome: 'purged' }),
+	])
 })

@@ -3,6 +3,7 @@ import type {
 	SoftDeletePurgeCandidate,
 	SoftDeletePurgeOutcome,
 } from '#worker/orgs/purge.ts'
+import { PurgeWebhookFailed } from '#worker/orgs/purge-webhook.ts'
 
 export type SoftDeletePurgeBatchOutput =
 	| {
@@ -28,6 +29,7 @@ type SoftDeletePurgeBatchContext = {
 	timeBudgetExhausted: boolean
 	outcomes: Array<SoftDeletePurgeOutcome>
 	failure: unknown
+	webhookFailure: PurgeWebhookFailed | null
 	error: unknown
 }
 
@@ -67,6 +69,8 @@ function settle(
  * One soft-delete purge batch. Every live candidate is claimed before its
  * hard purge, the time budget is checked before each claim, and a failed
  * claim or purge is recorded with its failure audit before the next candidate.
+ * A failed purge webhook is its own failure: it records `purge.webhook_failed`
+ * instead, and the candidate keeps its rows and claim fence for a later pass.
  */
 export const softDeletePurgeBatchState = setup({
 	schemas: {
@@ -101,8 +105,14 @@ export const softDeletePurgeBatchState = setup({
 			string,
 			{ candidate: SoftDeletePurgeCandidate; error: unknown }
 		>({ run: notProvided }),
+		recordWebhookFailure: createAsyncLogic<
+			string,
+			{ candidate: SoftDeletePurgeCandidate; error: PurgeWebhookFailed }
+		>({ run: notProvided }),
 	},
 	guards: {
+		isWebhookFailure: (error: unknown): error is PurgeWebhookFailed =>
+			error instanceof PurgeWebhookFailed,
 		hasNextCandidate: (context: SoftDeletePurgeBatchContext) =>
 			context.index < context.candidates.length,
 		isPreviewCandidate: (context: SoftDeletePurgeBatchContext) =>
@@ -121,7 +131,7 @@ export const softDeletePurgeBatchState = setup({
 }).createMachine({
 	id: 'soft_delete_purge.batch',
 	description:
-		'Lists candidates, previews dry-run ones, and for each live one checks the budget, claims it, runs the org, legacy-user or user hard purge, and records success or a failure audit before moving on; a failed listing or failure audit fails the run.',
+		'Lists candidates, previews dry-run ones, and for each live one checks the budget, claims it, runs the org, legacy-user or user hard purge, and records success, a purge webhook failure audit, or a failure audit before moving on; a failed listing or failure audit fails the run.',
 	context: ({ input }) => ({
 		...input,
 		candidates: [],
@@ -132,6 +142,7 @@ export const softDeletePurgeBatchState = setup({
 		timeBudgetExhausted: false,
 		outcomes: [],
 		failure: undefined,
+		webhookFailure: null,
 		error: undefined,
 	}),
 	initial: 'listing',
@@ -226,10 +237,17 @@ export const softDeletePurgeBatchState = setup({
 						{ purged: context.purged + 1 },
 					),
 				}),
-				onError: ({ context, event }) => ({
-					target: 'recording_failure',
-					context: { ...context, failure: event.error },
-				}),
+				onError: ({ context, event, guards }) => {
+					if (guards.isWebhookFailure(event.error))
+						return {
+							target: 'recording_webhook_failure',
+							context: { ...context, webhookFailure: event.error },
+						}
+					return {
+						target: 'recording_failure',
+						context: { ...context, failure: event.error },
+					}
+				},
 			},
 		},
 		finishing_legacy_user: {
@@ -244,10 +262,17 @@ export const softDeletePurgeBatchState = setup({
 						{ purged: context.purged + 1 },
 					),
 				}),
-				onError: ({ context, event }) => ({
-					target: 'recording_failure',
-					context: { ...context, failure: event.error },
-				}),
+				onError: ({ context, event, guards }) => {
+					if (guards.isWebhookFailure(event.error))
+						return {
+							target: 'recording_webhook_failure',
+							context: { ...context, webhookFailure: event.error },
+						}
+					return {
+						target: 'recording_failure',
+						context: { ...context, failure: event.error },
+					}
+				},
 			},
 		},
 		purging_user: {
@@ -262,10 +287,17 @@ export const softDeletePurgeBatchState = setup({
 						{ purged: context.purged + 1 },
 					),
 				}),
-				onError: ({ context, event }) => ({
-					target: 'recording_failure',
-					context: { ...context, failure: event.error },
-				}),
+				onError: ({ context, event, guards }) => {
+					if (guards.isWebhookFailure(event.error))
+						return {
+							target: 'recording_webhook_failure',
+							context: { ...context, webhookFailure: event.error },
+						}
+					return {
+						target: 'recording_failure',
+						context: { ...context, failure: event.error },
+					}
+				},
 			},
 		},
 		recording_failure: {
@@ -281,6 +313,31 @@ export const softDeletePurgeBatchState = setup({
 						context,
 						outcome(context.candidates[context.index]!, 'failed', event.output),
 						{ failed: context.failed + 1, failure: undefined },
+					),
+				}),
+				onError: ({ context, event }) => ({
+					target: 'run_failed',
+					context: { ...context, error: event.error },
+				}),
+			},
+		},
+		recording_webhook_failure: {
+			invoke: {
+				src: 'recordWebhookFailure',
+				input: ({ context }) => ({
+					candidate: context.candidates[context.index]!,
+					error: context.webhookFailure!,
+				}),
+				onDone: ({ context, event }) => ({
+					target: 'advancing',
+					context: settle(
+						context,
+						outcome(
+							context.candidates[context.index]!,
+							'webhook_failed',
+							event.output,
+						),
+						{ failed: context.failed + 1, webhookFailure: null },
 					),
 				}),
 				onError: ({ context, event }) => ({

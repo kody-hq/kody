@@ -34,7 +34,13 @@ const inputSchema = z.object({
 const outcomeSchema = z.object({
 	kind: z.enum(['org', 'user']),
 	id: z.string(),
-	outcome: z.enum(['purged', 'failed', 'skipped_claim', 'would_purge']),
+	outcome: z.enum([
+		'purged',
+		'failed',
+		'webhook_failed',
+		'skipped_claim',
+		'would_purge',
+	]),
 	legacy: z
 		.literal(true)
 		.optional()

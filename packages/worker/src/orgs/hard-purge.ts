@@ -30,6 +30,7 @@ import {
 	type PersonPurgeRow,
 	type PersonPurgeTarget,
 } from './hard-purge-state.ts'
+import { postPurgeWebhooks } from './purge-webhook.ts'
 
 /**
  * How this org relates to a person account for hard-purge policy. A
@@ -126,6 +127,14 @@ export async function hardPurgeOrg(input: {
 					})
 				},
 			}),
+			postPurgeWebhook: createAsyncLogic<void, { orgId: OwnerId }>({
+				run: () =>
+					postPurgeWebhooks({
+						env: input.env,
+						items: [{ kind: 'org', id: input.orgId }],
+						purgedAt: new Date().toISOString(),
+					}),
+			}),
 		},
 	})
 	const output = await toPromise(
@@ -135,6 +144,7 @@ export async function hardPurgeOrg(input: {
 		throw new PersonalOrgHardPurgeBlockedForLiveUserError(input.orgId)
 	if (output.status === 'purges_with_person')
 		throw new PersonalOrgPurgesWithPersonError(input.orgId)
+	if (output.status === 'webhook_failed') throw output.error
 	if (output.status === 'failed') throw output.error
 }
 
@@ -252,6 +262,17 @@ async function purgePerson(input: {
 						mcpUserId: person.storageOwnerId,
 						personUserId: person.personUserId,
 						purgeSoftDeleted: person.mode === 'soft_deleted' ? true : undefined,
+						beforeRowDeletes: () =>
+							postPurgeWebhooks({
+								env,
+								items: [
+									{ kind: 'user', id: person.stableUserId },
+									...(person.personalOrgId
+										? [{ kind: 'org' as const, id: person.personalOrgId }]
+										: []),
+								],
+								purgedAt: new Date().toISOString(),
+							}),
 					})
 					return result.deletedRowCounts.users ?? 0
 				},
@@ -317,6 +338,7 @@ export async function hardPurgeSoftDeletedUser(input: {
 	stableUserId: OwnerId
 }): Promise<void> {
 	const output = await purgePerson({ ...input, mode: 'soft_deleted' })
+	if (output.status === 'webhook_failed') throw output.error
 	if (output.status === 'failed') throw output.error
 }
 
@@ -363,6 +385,7 @@ export async function finishLegacyUserDeletion(input: {
 		throw new Error(
 			`legacy_user_deletion_row_not_removed:${input.stableUserId}`,
 		)
+	if (output.status === 'webhook_failed') throw output.error
 	if (output.status === 'failed') throw output.error
 	return { alreadyGone: false }
 }

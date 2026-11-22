@@ -2,6 +2,7 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { createActor, createAsyncLogic, toPromise } from 'xstate'
 import { expect, test } from 'vitest'
 import type { SoftDeletePurgeCandidate } from './purge.ts'
+import { PurgeWebhookFailed } from './purge-webhook.ts'
 import { softDeletePurgeBatchState } from './soft-delete-purge-state.ts'
 
 function candidate(
@@ -25,6 +26,7 @@ function purge(input: {
 	clock?: Array<number>
 	refuseClaim?: Array<string>
 	failPurge?: Array<string>
+	failWebhook?: Array<string>
 	failAudit?: boolean
 }) {
 	const calls: Array<string> = []
@@ -34,6 +36,8 @@ function purge(input: {
 			run: async ({ input: next }: { input: SoftDeletePurgeCandidate }) => {
 				calls.push(`${name}:${next.id}`)
 				if (input.failPurge?.includes(next.id)) throw new Error('purge failed')
+				if (input.failWebhook?.includes(next.id))
+					throw new PurgeWebhookFailed(next, { status: 502 })
 			},
 		})
 	}
@@ -66,6 +70,20 @@ function purge(input: {
 					return failure.error instanceof Error
 						? failure.error.message
 						: String(failure.error)
+				},
+			}),
+			recordWebhookFailure: createAsyncLogic({
+				run: async ({
+					input: failure,
+				}: {
+					input: {
+						candidate: SoftDeletePurgeCandidate
+						error: PurgeWebhookFailed
+					}
+				}) => {
+					calls.push(`record_webhook_failure:${failure.candidate.id}`)
+					if (input.failAudit) throw new Error('audit failed')
+					return failure.error.message
 				},
 			}),
 		},
@@ -172,6 +190,51 @@ test('a failed failure audit fails the run', async () => {
 	const { output } = purge({
 		candidates: [candidate('user-1'), candidate('user-2')],
 		failPurge: ['user-1'],
+		failAudit: true,
+	})
+	expect(await output).toMatchObject({ status: 'run_failed' })
+})
+
+test('a failed purge webhook is recorded as its own failure and the pass continues', async () => {
+	const { calls, output } = purge({
+		candidates: [
+			candidate('org-1', { kind: 'org', dbUserId: undefined }),
+			candidate('user-1'),
+			candidate('user-2'),
+		],
+		failWebhook: ['org-1', 'user-1'],
+	})
+	const result = await output
+	expect(result).toMatchObject({ status: 'completed', purged: 1, failed: 2 })
+	expect(calls).toEqual([
+		'claim:org-1',
+		'org:org-1',
+		'record_webhook_failure:org-1',
+		'claim:user-1',
+		'user:user-1',
+		'record_webhook_failure:user-1',
+		'claim:user-2',
+		'user:user-2',
+	])
+	expect(result.status === 'completed' && result.outcomes).toEqual([
+		expect.objectContaining({
+			id: 'org-1',
+			outcome: 'webhook_failed',
+			error: 'purge_webhook_failed:org:status_502',
+		}),
+		expect.objectContaining({
+			id: 'user-1',
+			outcome: 'webhook_failed',
+			error: 'purge_webhook_failed:user:status_502',
+		}),
+		expect.objectContaining({ id: 'user-2', outcome: 'purged' }),
+	])
+})
+
+test('a failed purge webhook audit fails the run', async () => {
+	const { output } = purge({
+		candidates: [candidate('user-1')],
+		failWebhook: ['user-1'],
 		failAudit: true,
 	})
 	expect(await output).toMatchObject({ status: 'run_failed' })

@@ -14,6 +14,7 @@
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 
+import * as Sentry from '@sentry/cloudflare'
 import { createActor, createAsyncLogic, toPromise } from 'xstate'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { softDeletePurgeBatchState } from '#worker/orgs/soft-delete-purge-state.ts'
@@ -26,6 +27,7 @@ import {
 	hardPurgeSoftDeletedUser,
 } from '#worker/orgs/hard-purge.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
+import type { PurgeWebhookFailed } from '#worker/orgs/purge-webhook.ts'
 import {
 	purgeFailureDetails,
 	redactPurgeFailureDetail,
@@ -64,6 +66,7 @@ export type SoftDeletePurgeCandidate = {
 export type SoftDeletePurgeOutcomeKind =
 	| 'purged'
 	| 'failed'
+	| 'webhook_failed'
 	| 'skipped_claim'
 	| 'would_purge'
 
@@ -453,6 +456,53 @@ export async function pruneSoftDeleted(input: {
 						createdAt: nowIso,
 					})
 					return message
+				},
+			}),
+			recordWebhookFailure: createAsyncLogic<
+				string,
+				{ candidate: SoftDeletePurgeCandidate; error: PurgeWebhookFailed }
+			>({
+				run: async ({ input: { candidate, error } }) => {
+					const lane = candidate.legacy
+						? 'legacy_deletion_finish'
+						: 'soft_delete'
+					console.warn(
+						JSON.stringify({
+							message: 'soft_delete_purge_webhook_failed',
+							kind: candidate.kind,
+							lane,
+							status: error.status,
+							error: error.message,
+						}),
+					)
+					Sentry.withScope((scope) => {
+						scope.setTag('lane', 'soft_delete_purge')
+						scope.setTag('purge_kind', candidate.kind)
+						scope.setContext('purge_webhook', {
+							kind: candidate.kind,
+							id: candidate.id,
+							failedKind: error.kind,
+							failedId: error.id,
+							status: error.status,
+						})
+						Sentry.captureException(error)
+					})
+					await logOrgAuditEvent({
+						env: input.env,
+						orgId: candidate.id,
+						action: 'purge.webhook_failed',
+						result: 'failure',
+						resourceType: error.kind,
+						resourceId: error.id,
+						detailsJson: JSON.stringify({
+							kind: error.kind,
+							id: error.id,
+							status: error.status,
+							...(candidate.legacy ? { lane } : {}),
+						}),
+						createdAt: nowIso,
+					})
+					return error.message
 				},
 			}),
 		},

@@ -1,5 +1,6 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { createAsyncLogic, setup, types } from 'xstate'
+import { PurgeWebhookFailed } from './purge-webhook.ts'
 
 export type PersonalOrgHardPurgeRelation =
 	| 'soft_deleted_person'
@@ -10,6 +11,7 @@ export type OrgHardPurgeOutput =
 	| { status: 'purged' }
 	| { status: 'blocked_live_person' }
 	| { status: 'purges_with_person' }
+	| { status: 'webhook_failed'; error: PurgeWebhookFailed }
 	| { status: 'failed'; error: unknown }
 
 async function notProvided(): Promise<never> {
@@ -29,12 +31,17 @@ const orgPurgeActors = {
 	}),
 }
 
-type OrgPurgeContext = { orgId: OwnerId; error: unknown }
+type OrgPurgeContext = {
+	orgId: OwnerId
+	webhookFailure: PurgeWebhookFailed | null
+	error: unknown
+}
 
 /**
  * Hard purge of a soft-deleted team org. Personal orgs are refused before any
  * write; a team org wipes pinned connections while its apps exist, deletes
- * out-of-band storage, then its D1 rows, and records `org.purged` last.
+ * out-of-band storage, posts the purge webhook, then deletes its D1 rows, and
+ * records `org.purged` last. A failed webhook keeps every D1 row.
  */
 export const orgHardPurgeState = setup({
 	schemas: {
@@ -51,8 +58,13 @@ export const orgHardPurgeState = setup({
 		purgeOutOfBandSurfaces: createAsyncLogic<void, { orgId: OwnerId }>({
 			run: notProvided,
 		}),
+		postPurgeWebhook: createAsyncLogic<void, { orgId: OwnerId }>({
+			run: notProvided,
+		}),
 	},
 	guards: {
+		isWebhookFailure: (error: unknown): error is PurgeWebhookFailed =>
+			error instanceof PurgeWebhookFailed,
 		ownedByLivePerson: (relation: PersonalOrgHardPurgeRelation) =>
 			relation === 'live_person',
 		ownedBySoftDeletedPerson: (relation: PersonalOrgHardPurgeRelation) =>
@@ -61,8 +73,12 @@ export const orgHardPurgeState = setup({
 }).createMachine({
 	id: 'org_hard_purge.team_org',
 	description:
-		'Refuses personal orgs, then wipes pinned connections, deletes out-of-band storage, deletes D1 rows and the org row, and records org.purged; any failed step stops the purge for a later retry.',
-	context: ({ input }) => ({ orgId: input.orgId, error: undefined }),
+		'Refuses personal orgs, then wipes pinned connections, deletes out-of-band storage, posts the purge webhook, deletes D1 rows and the org row, and records org.purged; a failed webhook or any other failed step stops the purge for a later retry.',
+	context: ({ input }) => ({
+		orgId: input.orgId,
+		webhookFailure: null,
+		error: undefined,
+	}),
 	initial: 'checking_relation',
 	states: {
 		checking_relation: {
@@ -97,11 +113,29 @@ export const orgHardPurgeState = setup({
 			invoke: {
 				src: 'purgeOutOfBandSurfaces',
 				input: ({ context }) => ({ orgId: context.orgId }),
-				onDone: { target: 'deleting_org_data' },
+				onDone: { target: 'posting_purge_webhook' },
 				onError: ({ context, event }) => ({
 					target: 'failed',
 					context: { ...context, error: event.error },
 				}),
+			},
+		},
+		posting_purge_webhook: {
+			invoke: {
+				src: 'postPurgeWebhook',
+				input: ({ context }) => ({ orgId: context.orgId }),
+				onDone: { target: 'deleting_org_data' },
+				onError: ({ context, event, guards }) => {
+					if (guards.isWebhookFailure(event.error))
+						return {
+							target: 'webhook_failed',
+							context: { ...context, webhookFailure: event.error },
+						}
+					return {
+						target: 'failed',
+						context: { ...context, error: event.error },
+					}
+				},
 			},
 		},
 		deleting_org_data: {
@@ -138,6 +172,13 @@ export const orgHardPurgeState = setup({
 			type: 'final',
 			output: { status: 'purges_with_person' as const },
 		},
+		webhook_failed: {
+			type: 'final',
+			output: ({ context }) => ({
+				status: 'webhook_failed' as const,
+				error: context.webhookFailure!,
+			}),
+		},
 		failed: {
 			type: 'final',
 			output: ({ context }) => ({
@@ -165,6 +206,7 @@ export type PersonHardPurgeOutput =
 	| { status: 'already_gone' }
 	| { status: 'not_pending'; reason: LegacyNotPendingReason }
 	| { status: 'row_not_removed' }
+	| { status: 'webhook_failed'; error: PurgeWebhookFailed }
 	| { status: 'failed'; error: unknown }
 
 type PersonPurgeContext = {
@@ -175,6 +217,7 @@ type PersonPurgeContext = {
 	personalOrgId: OwnerId | null
 	deletedUserRows: number
 	notPendingReason: LegacyNotPendingReason
+	webhookFailure: PurgeWebhookFailed | null
 	error: unknown
 }
 
@@ -183,6 +226,7 @@ export type PersonPurgeTarget = {
 	stableUserId: OwnerId
 	storageOwnerId: OwnerId
 	personUserId: string
+	personalOrgId: OwnerId | null
 	mode: PersonPurgeMode
 }
 
@@ -192,6 +236,7 @@ function target(context: PersonPurgeContext): PersonPurgeTarget {
 		stableUserId: context.stableUserId,
 		storageOwnerId: context.person?.storageOwnerId ?? context.stableUserId,
 		personUserId: context.person?.personUserId ?? context.stableUserId,
+		personalOrgId: context.personalOrgId,
 		mode: context.mode,
 	}
 }
@@ -201,7 +246,9 @@ function target(context: PersonPurgeContext): PersonPurgeTarget {
  * its window or an account deletion the pre-soft-delete flow left fenced.
  * Pinned connections go first while the owner's apps exist, account deletion
  * reads billing identity before the personal org rows are deleted, and
- * `user.purged` is recorded last.
+ * `user.purged` is recorded last. Account deletion posts the purge webhook for
+ * the person and its personal org after Stripe and before any D1 row delete;
+ * a failure for either half keeps both halves' rows.
  */
 export const personHardPurgeState = setup({
 	schemas: {
@@ -241,6 +288,8 @@ export const personHardPurgeState = setup({
 		}),
 	},
 	guards: {
+		isWebhookFailure: (error: unknown): error is PurgeWebhookFailed =>
+			error instanceof PurgeWebhookFailed,
 		isLegacy: (context: PersonPurgeContext) => context.mode === 'legacy',
 		hasPersonalOrg: (context: PersonPurgeContext) =>
 			context.personalOrgId !== null,
@@ -258,13 +307,14 @@ export const personHardPurgeState = setup({
 }).createMachine({
 	id: 'org_hard_purge.person',
 	description:
-		'Reads the person (a legacy retry also checks it is still a fenced, non-soft-deleted row and tombstones its personal org), then wipes pinned connections, redacts audit actors, deletes the account, deletes the personal org rows, verifies a legacy row is gone, and records user.purged.',
+		'Reads the person (a legacy retry also checks it is still a fenced, non-soft-deleted row and tombstones its personal org), then wipes pinned connections, redacts audit actors, deletes the account (posting the person and personal org purge webhooks after Stripe and before its row deletes; a failed webhook keeps both halves), deletes the personal org rows, verifies a legacy row is gone, and records user.purged.',
 	context: ({ input }) => ({
 		...input,
 		person: null,
 		personalOrgId: null,
 		deletedUserRows: 0,
 		notPendingReason: 'live',
+		webhookFailure: null,
 		error: undefined,
 	}),
 	initial: 'reading_person',
@@ -376,10 +426,17 @@ export const personHardPurgeState = setup({
 						return { target: 'verifying_row_removed', context: next }
 					return { target: 'auditing_user_purged', context: next }
 				},
-				onError: ({ context, event }) => ({
-					target: 'failed',
-					context: { ...context, error: event.error },
-				}),
+				onError: ({ context, event, guards }) => {
+					if (guards.isWebhookFailure(event.error))
+						return {
+							target: 'webhook_failed',
+							context: { ...context, webhookFailure: event.error },
+						}
+					return {
+						target: 'failed',
+						context: { ...context, error: event.error },
+					}
+				},
 			},
 		},
 		deleting_personal_org_data: {
@@ -458,6 +515,13 @@ export const personHardPurgeState = setup({
 		row_not_removed: {
 			type: 'final',
 			output: { status: 'row_not_removed' as const },
+		},
+		webhook_failed: {
+			type: 'final',
+			output: ({ context }) => ({
+				status: 'webhook_failed' as const,
+				error: context.webhookFailure!,
+			}),
 		},
 		failed: {
 			type: 'final',

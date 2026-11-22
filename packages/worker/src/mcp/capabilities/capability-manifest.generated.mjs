@@ -11033,6 +11033,7 @@ export const capabilityManifest = {
 											"enum": [
 												"purged",
 												"failed",
+												"webhook_failed",
 												"skipped_claim",
 												"would_purge"
 											]
@@ -11067,7 +11068,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type AdminSoftDeletePurgeRunInput = {\n\t/** When true (default), list entities the next purge pass would hard-delete without claiming or deleting. */\n\tdryRun?: boolean\n\t/** Rows to inspect in this pass (1-20, default 5). */\n\tbatchSize?: number\n}",
-					"outputTypeDefinition": "type AdminSoftDeletePurgeRunOutput = {\n\tdryRun: boolean\n\tlegacyDryRun: boolean\n\tscanned: number\n\tpurged: number\n\tfailed: number\n\ttimeBudgetExhausted: boolean\n\toutcomes: Array<{\n\tkind: \"org\" | \"user\"\n\tid: string\n\toutcome: \"purged\" | \"failed\" | \"skipped_claim\" | \"would_purge\"\n\t/** Legacy account deletion (deleting_at set, deleted_at null) finished without the restore window. */\n\tlegacy?: true\n\terror?: string\n}>\n}"
+					"outputTypeDefinition": "type AdminSoftDeletePurgeRunOutput = {\n\tdryRun: boolean\n\tlegacyDryRun: boolean\n\tscanned: number\n\tpurged: number\n\tfailed: number\n\ttimeBudgetExhausted: boolean\n\toutcomes: Array<{\n\tkind: \"org\" | \"user\"\n\tid: string\n\toutcome: \"purged\" | \"failed\" | \"webhook_failed\" | \"skipped_claim\" | \"would_purge\"\n\t/** Legacy account deletion (deleting_at set, deleted_at null) finished without the restore window. */\n\tlegacy?: true\n\terror?: string\n}>\n}"
 				},
 				{
 					"name": "adminPlatformOauthAppSave",
