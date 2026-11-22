@@ -216,13 +216,14 @@ confirmed non-production runtimes; see `packages/worker/src/app-base-url.ts` and
 - `PACKAGE_APP_PATH_MOUNT_CUTOVER_AT` — ISO timestamp from which the path
   address `https://{username}.<apex-host>/{leaf}/...` stops serving apps and
   answers every method with a `308` to the app's own host
-  `https://{leaf}--{username}.<apex-host>/...` (same path and query). From the
-  same moment "Open app" and `hostedUrl` use the app's own host. Hosts owned by
-  a profile package and the reserved `/-/` paths are unaffected, and a pair with
-  no valid host label keeps being served on the path address. Production sets
-  `2026-12-17T20:45:00Z` in both `packages/worker/wrangler.jsonc` and
-  `packages/runtime-worker/wrangler.jsonc`, the date the owner notice promised;
-  unset or unparsable means no cutover. See
+  `https://{leaf}--{username}.<apex-host>/...` (same path and query). "Open app"
+  and `hostedUrl` already use the app's own host before then
+  (`resolveHostedPackageAppUrl`), so only old links reach the path address.
+  Hosts owned by a profile package and the reserved `/-/` paths are unaffected,
+  and a pair with no valid host label keeps being served on the path address.
+  Production sets `2026-12-17T20:45:00Z` in both
+  `packages/worker/wrangler.jsonc` and `packages/runtime-worker/wrangler.jsonc`,
+  the date the owner notice promised; unset or unparsable means no cutover. See
   `packages/worker/src/package-runtime/package-app-path-mount-cutover.ts`.
 - `PACKAGE_APP_LEGACY_HOSTS` — optional comma-separated dual-served package-app
   apex hostnames alongside `PACKAGE_APP_BASE_URL`. Generated runtime zone routes

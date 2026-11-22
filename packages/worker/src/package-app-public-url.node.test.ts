@@ -132,8 +132,8 @@ test('resolvePublicPackageAppLocation falls back to kody.run when only pending h
 			kodyId: 'demo',
 		}),
 	).resolves.toEqual({
-		hostedUrl: 'https://pkg-owner.kody.run/demo',
-		appBasePath: '/demo',
+		hostedUrl: 'https://demo--pkg-owner.kody.run/',
+		appBasePath: '',
 	})
 })
 
@@ -146,8 +146,8 @@ test('resolvePublicPackageAppLocation falls back to kody.run when no custom host
 			kodyId: 'demo',
 		}),
 	).resolves.toEqual({
-		hostedUrl: 'https://pkg-owner.kody.run/demo',
-		appBasePath: '/demo',
+		hostedUrl: 'https://demo--pkg-owner.kody.run/',
+		appBasePath: '',
 	})
 })
 
@@ -171,10 +171,23 @@ test('resolvePackageAppRunLocations gives each run package its served app URL, n
 	).resolves.toEqual({
 		'pkg-demo': { hostedUrl: 'https://app.example.com/', appBasePath: '' },
 		'pkg-plain': {
-			hostedUrl: 'https://pkg-owner.kody.run/plain',
-			appBasePath: '/plain',
+			hostedUrl: 'https://plain--pkg-owner.kody.run/',
+			appBasePath: '',
 		},
 		'pkg-no-app': { hostedUrl: null, appBasePath: null },
 		'pkg-gone': { hostedUrl: null, appBasePath: null },
 	})
+})
+
+test('resolvePublicPackageAppLocation never links the shared owner host path address', async () => {
+	const env = createEnv({ withHostname: 'none' })
+	const location = await resolvePublicPackageAppLocation({
+		env,
+		username: 'pkg-owner',
+		kodyId: 'demo',
+		restPath: '/inbox',
+	})
+	expect(location?.hostedUrl).toBe('https://demo--pkg-owner.kody.run/inbox')
+	expect(location?.hostedUrl).not.toMatch(/^https:\/\/pkg-owner\.kody\.run\//)
+	expect(location?.hostedUrl).not.toContain('/packages/')
 })

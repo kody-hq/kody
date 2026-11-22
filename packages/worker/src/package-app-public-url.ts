@@ -1,13 +1,8 @@
 import {
 	buildPackageAppCustomHostnameUrl,
-	buildPackageAppRootOrigin,
-	buildPackageAppSubdomainPath,
-	isProfilePackage,
-	buildPackageAppSubdomainUrl,
+	resolveHostedPackageAppLocation,
 	resolveHostedPackageAppUrl,
 } from '@kody-internal/shared/public-urls.ts'
-import { isPackageAppPathMountCutOver } from '#worker/package-runtime/package-app-path-mount-cutover.ts'
-import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { lookupVerifiedAppCustomHostnameForPackage } from '#worker/package-app-custom-hostnames/lookup.ts'
 import {
@@ -22,10 +17,10 @@ import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
  *
  * A verified app-level custom hostname wins (both hostname and certificate
  * active; lexicographically smallest when several qualify). Pending hostnames
- * never win. A profile package (`@{slug}/{slug}`) owns the root of the owner's
- * `kody.run` subdomain, and the owner's other apps are then only reachable on
- * their own `{leaf}--{handle}` hosts. After the path-mount cutover every app with a
- * valid host label opens on its own host. Otherwise this is the per-user `kody.run` subdomain. Org-level
+ * never win. Otherwise this is {@link resolveHostedPackageAppLocation}: the
+ * root of the app's own `{leaf}--{handle}` host (the owner's bare host for a
+ * profile package `@{slug}/{slug}`). The shared `{username}.` host path
+ * address is only for a pair with no valid host label. Org-level
  * custom hostnames are session-gated and are not a public origin. Returns null
  * when this deployment serves package apps inline on the app origin (no
  * `PACKAGE_APP_BASE_URL`).
@@ -34,8 +29,8 @@ export type PublicPackageAppLocation = {
 	hostedUrl: string
 	/**
 	 * Origin-relative mount. Empty on an app-level custom hostname (the app
-	 * owns `/`). On a subdomain this is `/{kodyId}` (legacy `/packages/{kodyId}`
-	 * is still served but is not the public shape).
+	 * owns `/`). Only a pair with no valid host label gets `/{kodyId}` on the
+	 * shared owner host.
 	 * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	 */
 	appBasePath: string
@@ -59,38 +54,13 @@ export async function resolvePublicPackageAppLocation(input: {
 			appBasePath: '',
 		}
 	}
-	const rootOrigin =
-		isProfilePackage(input) ||
-		isPackageAppPathMountCutOver({ env: input.env }) ||
-		(await hasProfilePackageApp({ env: input.env, username: input.username }))
-			? buildPackageAppRootOrigin({
-					packageAppOrigin: packageAppBaseUrl,
-					username: input.username,
-					kodyId: input.kodyId,
-				})
-			: null
-	if (rootOrigin) {
-		return {
-			hostedUrl: buildPackageAppCustomHostnameUrl({
-				origin: rootOrigin,
-				restPath: input.restPath,
-			}),
-			appBasePath: '',
-		}
-	}
-	const hostedUrl = buildPackageAppSubdomainUrl({
-		packageAppOrigin: packageAppBaseUrl,
+	return resolveHostedPackageAppLocation({
+		packageAppBaseUrl,
+		appBaseUrl: packageAppBaseUrl,
 		username: input.username,
 		kodyId: input.kodyId,
 		restPath: input.restPath,
 	})
-	return {
-		hostedUrl,
-		appBasePath: buildPackageAppSubdomainPath({
-			kodyId: input.kodyId,
-			restPath: input.restPath,
-		}),
-	}
 }
 
 async function verifiedAppCustomOrigin(input: {

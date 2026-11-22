@@ -368,7 +368,7 @@ test('publishExternalPush publishes HEAD and rebuilds bundle artifacts per targe
 	expect(publishedFirst).toEqual(
 		expect.objectContaining({
 			phase_timings: allPhaseTimings,
-			hosted_app_url: 'https://user.packages.kody.test/demo-package',
+			hosted_app_url: 'https://demo-package--user.packages.kody.test/',
 			test_hints: {
 				app: expect.stringContaining('package_id'),
 				subscriptions: [
@@ -504,7 +504,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		status: 'already_published',
 		published_commit: 'commit-old',
 		artifacts_rebuilt: true,
-		hosted_app_url: 'https://user.packages.kody.test/demo-package',
+		hosted_app_url: 'https://demo-package--user.packages.kody.test/',
 		static_dependents: noStaticDependents,
 		pending_secret_package_approvals: null,
 		allowed_packages_publish_notice: null,

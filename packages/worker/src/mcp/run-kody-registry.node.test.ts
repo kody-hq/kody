@@ -947,8 +947,8 @@ export default async function main() { return null }`,
 		packageContext: { packageId: 'pkg-rooms', kodyId: 'rooms' },
 		packageApps: {
 			'pkg-rooms': {
-				hostedUrl: 'https://kody.kody.run/rooms',
-				appBasePath: '/rooms',
+				hostedUrl: 'https://rooms--kody.kody.run/',
+				appBasePath: '',
 			},
 			'pkg-lib': { hostedUrl: null, appBasePath: null },
 		},
