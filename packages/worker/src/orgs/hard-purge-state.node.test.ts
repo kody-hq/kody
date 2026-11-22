@@ -8,17 +8,18 @@ import {
 	orgHardPurgeState,
 	personHardPurgeState,
 } from './hard-purge-state.ts'
+import { PurgeWebhookFailed } from './purge-webhook.ts'
 
 const orgId = 'org-1' as OwnerId
 const stableUserId = 'person-1' as OwnerId
 
-function recorder(fail?: string) {
+function recorder(fail?: string, failWith?: unknown) {
 	const calls: Array<string> = []
 	function step<T>(name: string, value: T) {
 		return createAsyncLogic({
 			run: async () => {
 				calls.push(name)
-				if (name === fail) throw new Error(`${name} failed`)
+				if (name === fail) throw failWith ?? new Error(`${name} failed`)
 				return value
 			},
 		})
@@ -26,13 +27,18 @@ function recorder(fail?: string) {
 	return { calls, step }
 }
 
-function purgeOrg(relation: PersonalOrgHardPurgeRelation, fail?: string) {
-	const { calls, step } = recorder(fail)
+function purgeOrg(
+	relation: PersonalOrgHardPurgeRelation,
+	fail?: string,
+	failWith?: unknown,
+) {
+	const { calls, step } = recorder(fail, failWith)
 	const machine = orgHardPurgeState.provide({
 		actors: {
 			readPersonalOrgRelation: step('relation', relation),
 			wipePinnedConnections: step('wipe', undefined),
 			purgeOutOfBandSurfaces: step('out_of_band', undefined),
+			postPurgeWebhook: step('webhook', undefined),
 			deleteOrgData: step('delete_rows', undefined),
 			auditOrgPurged: step('audit', undefined),
 		},
@@ -50,9 +56,23 @@ test('a team org wipes pins, then out-of-band storage, then rows, then records o
 		'relation',
 		'wipe',
 		'out_of_band',
+		'webhook',
 		'delete_rows',
 		'audit',
 	])
+})
+
+test('a failed org purge webhook keeps the org rows as its own failure', async () => {
+	const webhookFailure = new PurgeWebhookFailed(
+		{ kind: 'org', id: orgId },
+		{ status: 500 },
+	)
+	const { calls, output } = purgeOrg('none', 'webhook', webhookFailure)
+	expect(await output).toEqual({
+		status: 'webhook_failed',
+		error: webhookFailure,
+	})
+	expect(calls).toEqual(['relation', 'wipe', 'out_of_band', 'webhook'])
 })
 
 test('a personal org is refused before any write', async () => {
@@ -88,8 +108,9 @@ function purgePerson(input: {
 	deletedUserRows?: number
 	rowPresent?: boolean
 	fail?: string
+	failWith?: unknown
 }) {
-	const { calls, step } = recorder(input.fail)
+	const { calls, step } = recorder(input.fail, input.failWith)
 	const machine = personHardPurgeState.provide({
 		actors: {
 			readPerson: step('read', input.row),
@@ -129,6 +150,30 @@ test('a soft-deleted person deletes its account before its personal org rows', a
 		'delete_org_rows',
 		'audit_org',
 		'audit_user',
+	])
+})
+
+test('a failed purge webhook inside account deletion keeps the personal org rows too', async () => {
+	const webhookFailure = new PurgeWebhookFailed(
+		{ kind: 'org', id: orgId },
+		{ cause: new TypeError('fetch failed') },
+	)
+	const { calls, output } = purgePerson({
+		mode: 'soft_deleted',
+		row: person(),
+		fail: 'delete_account',
+		failWith: webhookFailure,
+	})
+	expect(await output).toEqual({
+		status: 'webhook_failed',
+		error: webhookFailure,
+	})
+	expect(calls).toEqual([
+		'read',
+		'resolve_org',
+		'wipe',
+		'redact',
+		'delete_account',
 	])
 })
 
