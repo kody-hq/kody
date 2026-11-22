@@ -208,7 +208,7 @@ function withTransientD1RetryDatabase(
 	})
 }
 
-const transientD1RetryEnvs = new WeakSet<object>()
+const transientD1RetryEnvs = new WeakMap<object, Env>()
 
 /** `env` with `APP_DB` (and `AUDIT_DB` when bound) retrying transient errors. */
 export function withTransientD1RetryEnv<TEnv extends Env>(
@@ -227,8 +227,13 @@ export function withTransientD1RetryEnv<TEnv extends Env>(
 			return Reflect.get(target, property, receiver)
 		},
 	})
-	transientD1RetryEnvs.add(wrapped)
+	transientD1RetryEnvs.set(wrapped, env)
 	return wrapped
+}
+
+/** The env {@link withTransientD1RetryEnv} wrapped, for non-D1 outbound calls. */
+export function withoutTransientD1Retry<TEnv extends Env>(env: TEnv): TEnv {
+	return (transientD1RetryEnvs.get(env) as TEnv | undefined) ?? env
 }
 
 const transientD1RetryScope = new AsyncLocalStorage<TransientD1RetryOptions>()

@@ -14,7 +14,10 @@ import {
 	revokeAllOAuthGrantsBestEffort,
 } from '#worker/oauth-grants.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
-import { withScopedTransientD1Retry } from '#worker/scheduled/transient-d1-retry.ts'
+import {
+	withScopedTransientD1Retry,
+	withoutTransientD1Retry,
+} from '#worker/scheduled/transient-d1-retry.ts'
 import {
 	accountDeletionCreditNoteSubscriptionMetadataKey,
 	cancelSubscription,
@@ -857,7 +860,10 @@ async function cancelActiveStripeSubscriptions(input: {
 }): Promise<{ canceled: number; refunds: Array<AccountDeletionStripeRefund> }> {
 	let subscriptions: Array<StripeSubscription>
 	try {
-		subscriptions = await listSubscriptions(input.env, input.customerId)
+		subscriptions = await listSubscriptions(
+			withoutTransientD1Retry(input.env),
+			input.customerId,
+		)
 	} catch (error) {
 		throw new AccountDeletionBillingError([
 			`Stripe subscriptions could not be listed: ${getErrorMessage(error)}`,
@@ -906,7 +912,10 @@ async function cancelActiveStripeSubscriptions(input: {
 			}
 		}
 		try {
-			await cancelSubscription(input.env, subscription.id)
+			await cancelSubscription(
+				withoutTransientD1Retry(input.env),
+				subscription.id,
+			)
 			canceled += 1
 		} catch (error) {
 			failures.push(
@@ -919,7 +928,10 @@ async function cancelActiveStripeSubscriptions(input: {
 		let stillBillable: Array<StripeSubscription>
 		try {
 			stillBillable = (
-				await listSubscriptions(input.env, input.customerId)
+				await listSubscriptions(
+					withoutTransientD1Retry(input.env),
+					input.customerId,
+				)
 			).filter(
 				(subscription) =>
 					isStripeSubscriptionBillable(subscription) &&
@@ -958,7 +970,7 @@ async function deleteStripeCustomer(input: {
 	warnings: Array<string>
 }) {
 	try {
-		await deleteCustomer(input.env, input.customerId)
+		await deleteCustomer(withoutTransientD1Retry(input.env), input.customerId)
 	} catch (error) {
 		const warning = `Stripe customer cleanup failed during account deletion: ${getErrorMessage(error)}`
 		input.warnings.push(warning)

@@ -10,9 +10,12 @@ import {
 import {
 	TransientRetryBudgetExhausted,
 	createTransientD1RetryBudget,
+	runInTransientD1RetryScope,
 	runWithTransientD1Retry,
 	transientD1ErrorMarkers,
+	withScopedTransientD1Retry,
 	withTransientD1RetryEnv,
+	withoutTransientD1Retry,
 } from './transient-d1-retry.ts'
 
 function failingOperation(failures: number, message = transientD1Message) {
@@ -171,4 +174,21 @@ test('a wrapped env retries transient D1 statements and batches against the real
 	expect(sqlite.prepare(`SELECT name FROM items`).all()).toEqual([
 		{ name: 'after' },
 	])
+})
+
+test('shared helpers wrap env only inside an item scope and hand outbound calls the original env', async () => {
+	const { clock } = createFakeLaneClock()
+	const env = {
+		APP_DB: createD1FromSqlite(new DatabaseSync(':memory:')),
+	} as Env
+
+	expect(withScopedTransientD1Retry(env)).toBe(env)
+	const scoped = await runInTransientD1RetryScope(
+		{ clock, budget: createTransientD1RetryBudget() },
+		async () => withScopedTransientD1Retry(env),
+	)
+	expect(scoped).not.toBe(env)
+	expect(scoped.APP_DB).not.toBe(env.APP_DB)
+	expect(withoutTransientD1Retry(scoped)).toBe(env)
+	expect(withTransientD1RetryEnv(scoped, { clock })).toBe(scoped)
 })
