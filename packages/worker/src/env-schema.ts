@@ -435,6 +435,9 @@ export const EnvSchema = object({
 	// Soft-delete purge lane (Teams P7). "true" in production; preview and
 	// test keep "false", so the lane only lists candidates there.
 	SOFT_DELETE_PURGE_ENABLED: optionalNonEmptyStringSchema,
+	// Optional URL the purge lane POSTs {kind,id,purgedAt} to per org/user
+	// after Stripe and before D1 row deletes. Unset or empty skips the step.
+	PURGE_WEBHOOK_URL: optionalUrlStringSchema,
 	DR_BACKUP_ACCOUNT_ID: optionalNonEmptyStringSchema,
 	DR_BACKUP_BUCKET_NAME: optionalNonEmptyStringSchema,
 	DR_BACKUP_ACCESS_KEY_ID: optionalNonEmptyStringSchema,

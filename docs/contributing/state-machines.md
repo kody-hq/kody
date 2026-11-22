@@ -1158,14 +1158,15 @@ stateDiagram-v2
 
 Lists candidates, previews dry-run ones, and for each live one checks the
 budget, claims it, runs the org, legacy-user or user hard purge, and records
-success or a failure audit before moving on; a failed listing or failure audit
-fails the run.
+success, a purge webhook failure audit, or a failure audit before moving on; a
+failed listing or failure audit fails the run.
 
 Source:
 [`packages/worker/src/orgs/soft-delete-purge-state.ts`](../../packages/worker/src/orgs/soft-delete-purge-state.ts)
 
 States: listing, advancing, checking_budget, claiming, purging_org,
-finishing_legacy_user, purging_user, recording_failure, completed, run_failed
+finishing_legacy_user, purging_user, recording_failure,
+recording_webhook_failure, completed, run_failed
 
 Final states: completed, run_failed
 
@@ -1187,56 +1188,68 @@ stateDiagram-v2
     claiming --> purging_user: xstate.done.actor claimCandidate [Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Otherwise (Is legacy user)]
     claiming --> recording_failure: xstate.error.actor claimCandidate
     purging_org --> advancing: xstate.done.actor purgeOrg
-    purging_org --> recording_failure: xstate.error.actor purgeOrg
+    purging_org --> recording_webhook_failure: xstate.error.actor purgeOrg [Is webhook failure]
+    purging_org --> recording_failure: xstate.error.actor purgeOrg [Otherwise (Is webhook failure)]
     finishing_legacy_user --> advancing: xstate.done.actor finishLegacyUser
-    finishing_legacy_user --> recording_failure: xstate.error.actor finishLegacyUser
+    finishing_legacy_user --> recording_webhook_failure: xstate.error.actor finishLegacyUser [Is webhook failure]
+    finishing_legacy_user --> recording_failure: xstate.error.actor finishLegacyUser [Otherwise (Is webhook failure)]
     purging_user --> advancing: xstate.done.actor purgeUser
-    purging_user --> recording_failure: xstate.error.actor purgeUser
+    purging_user --> recording_webhook_failure: xstate.error.actor purgeUser [Is webhook failure]
+    purging_user --> recording_failure: xstate.error.actor purgeUser [Otherwise (Is webhook failure)]
     recording_failure --> advancing: xstate.done.actor recordFailure
     recording_failure --> run_failed: xstate.error.actor recordFailure
+    recording_webhook_failure --> advancing: xstate.done.actor recordWebhookFailure
+    recording_webhook_failure --> run_failed: xstate.error.actor recordWebhookFailure
     completed --> [*]
     run_failed --> [*]
 ```
 
-| Event                               | From                  | To                    | Guard                                                                                                           |
-| ----------------------------------- | --------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| xstate.done.actor listCandidates    | listing               | advancing             | —                                                                                                               |
-| xstate.error.actor listCandidates   | listing               | run_failed            | —                                                                                                               |
-| always                              | advancing             | completed             | Otherwise (Has next candidate)                                                                                  |
-| always                              | advancing             | advancing             | Has next candidate && Is preview candidate                                                                      |
-| always                              | advancing             | checking_budget       | Has next candidate && Otherwise (Is preview candidate)                                                          |
-| xstate.done.actor readClock         | checking_budget       | completed             | Budget exceeded                                                                                                 |
-| xstate.done.actor readClock         | checking_budget       | claiming              | Otherwise (Budget exceeded)                                                                                     |
-| xstate.error.actor readClock        | checking_budget       | run_failed            | —                                                                                                               |
-| xstate.done.actor claimCandidate    | claiming              | advancing             | Claim refused                                                                                                   |
-| xstate.done.actor claimCandidate    | claiming              | purging_org           | Otherwise (Claim refused) && Is org                                                                             |
-| xstate.done.actor claimCandidate    | claiming              | recording_failure     | Otherwise (Claim refused) && Otherwise (Is org) && Missing db user id                                           |
-| xstate.done.actor claimCandidate    | claiming              | finishing_legacy_user | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Is legacy user             |
-| xstate.done.actor claimCandidate    | claiming              | purging_user          | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Otherwise (Is legacy user) |
-| xstate.error.actor claimCandidate   | claiming              | recording_failure     | —                                                                                                               |
-| xstate.done.actor purgeOrg          | purging_org           | advancing             | —                                                                                                               |
-| xstate.error.actor purgeOrg         | purging_org           | recording_failure     | —                                                                                                               |
-| xstate.done.actor finishLegacyUser  | finishing_legacy_user | advancing             | —                                                                                                               |
-| xstate.error.actor finishLegacyUser | finishing_legacy_user | recording_failure     | —                                                                                                               |
-| xstate.done.actor purgeUser         | purging_user          | advancing             | —                                                                                                               |
-| xstate.error.actor purgeUser        | purging_user          | recording_failure     | —                                                                                                               |
-| xstate.done.actor recordFailure     | recording_failure     | advancing             | —                                                                                                               |
-| xstate.error.actor recordFailure    | recording_failure     | run_failed            | —                                                                                                               |
+| Event                                   | From                      | To                        | Guard                                                                                                           |
+| --------------------------------------- | ------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| xstate.done.actor listCandidates        | listing                   | advancing                 | —                                                                                                               |
+| xstate.error.actor listCandidates       | listing                   | run_failed                | —                                                                                                               |
+| always                                  | advancing                 | completed                 | Otherwise (Has next candidate)                                                                                  |
+| always                                  | advancing                 | advancing                 | Has next candidate && Is preview candidate                                                                      |
+| always                                  | advancing                 | checking_budget           | Has next candidate && Otherwise (Is preview candidate)                                                          |
+| xstate.done.actor readClock             | checking_budget           | completed                 | Budget exceeded                                                                                                 |
+| xstate.done.actor readClock             | checking_budget           | claiming                  | Otherwise (Budget exceeded)                                                                                     |
+| xstate.error.actor readClock            | checking_budget           | run_failed                | —                                                                                                               |
+| xstate.done.actor claimCandidate        | claiming                  | advancing                 | Claim refused                                                                                                   |
+| xstate.done.actor claimCandidate        | claiming                  | purging_org               | Otherwise (Claim refused) && Is org                                                                             |
+| xstate.done.actor claimCandidate        | claiming                  | recording_failure         | Otherwise (Claim refused) && Otherwise (Is org) && Missing db user id                                           |
+| xstate.done.actor claimCandidate        | claiming                  | finishing_legacy_user     | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Is legacy user             |
+| xstate.done.actor claimCandidate        | claiming                  | purging_user              | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Otherwise (Is legacy user) |
+| xstate.error.actor claimCandidate       | claiming                  | recording_failure         | —                                                                                                               |
+| xstate.done.actor purgeOrg              | purging_org               | advancing                 | —                                                                                                               |
+| xstate.error.actor purgeOrg             | purging_org               | recording_webhook_failure | Is webhook failure                                                                                              |
+| xstate.error.actor purgeOrg             | purging_org               | recording_failure         | Otherwise (Is webhook failure)                                                                                  |
+| xstate.done.actor finishLegacyUser      | finishing_legacy_user     | advancing                 | —                                                                                                               |
+| xstate.error.actor finishLegacyUser     | finishing_legacy_user     | recording_webhook_failure | Is webhook failure                                                                                              |
+| xstate.error.actor finishLegacyUser     | finishing_legacy_user     | recording_failure         | Otherwise (Is webhook failure)                                                                                  |
+| xstate.done.actor purgeUser             | purging_user              | advancing                 | —                                                                                                               |
+| xstate.error.actor purgeUser            | purging_user              | recording_webhook_failure | Is webhook failure                                                                                              |
+| xstate.error.actor purgeUser            | purging_user              | recording_failure         | Otherwise (Is webhook failure)                                                                                  |
+| xstate.done.actor recordFailure         | recording_failure         | advancing                 | —                                                                                                               |
+| xstate.error.actor recordFailure        | recording_failure         | run_failed                | —                                                                                                               |
+| xstate.done.actor recordWebhookFailure  | recording_webhook_failure | advancing                 | —                                                                                                               |
+| xstate.error.actor recordWebhookFailure | recording_webhook_failure | run_failed                | —                                                                                                               |
 
 ## org_hard_purge.team_org
 
 Refuses personal orgs, then wipes pinned connections, deletes out-of-band
-storage, deletes D1 rows and the org row, and records org.purged; any failed
-step stops the purge for a later retry.
+storage, posts the purge webhook, deletes D1 rows and the org row, and records
+org.purged; a failed webhook or any other failed step stops the purge for a
+later retry.
 
 Source:
 [`packages/worker/src/orgs/hard-purge-state.ts`](../../packages/worker/src/orgs/hard-purge-state.ts)
 
 States: checking_relation, wiping_pinned_connections, purging_out_of_band,
-deleting_org_data, auditing_org_purged, purged, blocked_live_person,
-purges_with_person, failed
+posting_purge_webhook, deleting_org_data, auditing_org_purged, purged,
+blocked_live_person, purges_with_person, webhook_failed, failed
 
-Final states: purged, blocked_live_person, purges_with_person, failed
+Final states: purged, blocked_live_person, purges_with_person, webhook_failed,
+failed
 
 ```mermaid
 stateDiagram-v2
@@ -1247,8 +1260,11 @@ stateDiagram-v2
     checking_relation --> failed: xstate.error.actor readPersonalOrgRelation
     wiping_pinned_connections --> purging_out_of_band: xstate.done.actor wipePinnedConnections
     wiping_pinned_connections --> failed: xstate.error.actor wipePinnedConnections
-    purging_out_of_band --> deleting_org_data: xstate.done.actor purgeOutOfBandSurfaces
+    purging_out_of_band --> posting_purge_webhook: xstate.done.actor purgeOutOfBandSurfaces
     purging_out_of_band --> failed: xstate.error.actor purgeOutOfBandSurfaces
+    posting_purge_webhook --> deleting_org_data: xstate.done.actor postPurgeWebhook
+    posting_purge_webhook --> webhook_failed: xstate.error.actor postPurgeWebhook [Is webhook failure]
+    posting_purge_webhook --> failed: xstate.error.actor postPurgeWebhook [Otherwise (Is webhook failure)]
     deleting_org_data --> auditing_org_purged: xstate.done.actor deleteOrgData
     deleting_org_data --> failed: xstate.error.actor deleteOrgData
     auditing_org_purged --> purged: xstate.done.actor auditOrgPurged
@@ -1256,6 +1272,7 @@ stateDiagram-v2
     purged --> [*]
     blocked_live_person --> [*]
     purges_with_person --> [*]
+    webhook_failed --> [*]
     failed --> [*]
 ```
 
@@ -1267,8 +1284,11 @@ stateDiagram-v2
 | xstate.error.actor readPersonalOrgRelation | checking_relation         | failed                    | —                                                                            |
 | xstate.done.actor wipePinnedConnections    | wiping_pinned_connections | purging_out_of_band       | —                                                                            |
 | xstate.error.actor wipePinnedConnections   | wiping_pinned_connections | failed                    | —                                                                            |
-| xstate.done.actor purgeOutOfBandSurfaces   | purging_out_of_band       | deleting_org_data         | —                                                                            |
+| xstate.done.actor purgeOutOfBandSurfaces   | purging_out_of_band       | posting_purge_webhook     | —                                                                            |
 | xstate.error.actor purgeOutOfBandSurfaces  | purging_out_of_band       | failed                    | —                                                                            |
+| xstate.done.actor postPurgeWebhook         | posting_purge_webhook     | deleting_org_data         | —                                                                            |
+| xstate.error.actor postPurgeWebhook        | posting_purge_webhook     | webhook_failed            | Is webhook failure                                                           |
+| xstate.error.actor postPurgeWebhook        | posting_purge_webhook     | failed                    | Otherwise (Is webhook failure)                                               |
 | xstate.done.actor deleteOrgData            | deleting_org_data         | auditing_org_purged       | —                                                                            |
 | xstate.error.actor deleteOrgData           | deleting_org_data         | failed                    | —                                                                            |
 | xstate.done.actor auditOrgPurged           | auditing_org_purged       | purged                    | —                                                                            |
@@ -1278,8 +1298,10 @@ stateDiagram-v2
 
 Reads the person (a legacy retry also checks it is still a fenced,
 non-soft-deleted row and tombstones its personal org), then wipes pinned
-connections, redacts audit actors, deletes the account, deletes the personal org
-rows, verifies a legacy row is gone, and records user.purged.
+connections, redacts audit actors, deletes the account (posting the person and
+personal org purge webhooks after Stripe and before its row deletes; a failed
+webhook keeps both halves), deletes the personal org rows, verifies a legacy row
+is gone, and records user.purged.
 
 Source:
 [`packages/worker/src/orgs/hard-purge-state.ts`](../../packages/worker/src/orgs/hard-purge-state.ts)
@@ -1287,9 +1309,11 @@ Source:
 States: reading_person, tombstoning_personal_org, resolving_personal_org,
 wiping_pinned_connections, redacting_audit_actors, deleting_account,
 deleting_personal_org_data, auditing_personal_org_purged, verifying_row_removed,
-auditing_user_purged, purged, already_gone, not_pending, row_not_removed, failed
+auditing_user_purged, purged, already_gone, not_pending, row_not_removed,
+webhook_failed, failed
 
-Final states: purged, already_gone, not_pending, row_not_removed, failed
+Final states: purged, already_gone, not_pending, row_not_removed,
+webhook_failed, failed
 
 ```mermaid
 stateDiagram-v2
@@ -1313,7 +1337,8 @@ stateDiagram-v2
     deleting_account --> deleting_personal_org_data: xstate.done.actor deleteAccount [Has personal org]
     deleting_account --> verifying_row_removed: xstate.done.actor deleteAccount [Otherwise (Has personal org) && Legacy row may remain]
     deleting_account --> auditing_user_purged: xstate.done.actor deleteAccount [Otherwise (Has personal org) && Otherwise (Legacy row may remain)]
-    deleting_account --> failed: xstate.error.actor deleteAccount
+    deleting_account --> webhook_failed: xstate.error.actor deleteAccount [Is webhook failure]
+    deleting_account --> failed: xstate.error.actor deleteAccount [Otherwise (Is webhook failure)]
     deleting_personal_org_data --> auditing_personal_org_purged: xstate.done.actor deleteOrgData
     deleting_personal_org_data --> failed: xstate.error.actor deleteOrgData
     auditing_personal_org_purged --> verifying_row_removed: xstate.done.actor auditOrgPurged [Legacy row may remain]
@@ -1328,6 +1353,7 @@ stateDiagram-v2
     already_gone --> [*]
     not_pending --> [*]
     row_not_removed --> [*]
+    webhook_failed --> [*]
     failed --> [*]
 ```
 
@@ -1352,7 +1378,8 @@ stateDiagram-v2
 | xstate.done.actor deleteAccount          | deleting_account             | deleting_personal_org_data   | Has personal org                                                                                                                              |
 | xstate.done.actor deleteAccount          | deleting_account             | verifying_row_removed        | Otherwise (Has personal org) && Legacy row may remain                                                                                         |
 | xstate.done.actor deleteAccount          | deleting_account             | auditing_user_purged         | Otherwise (Has personal org) && Otherwise (Legacy row may remain)                                                                             |
-| xstate.error.actor deleteAccount         | deleting_account             | failed                       | —                                                                                                                                             |
+| xstate.error.actor deleteAccount         | deleting_account             | webhook_failed               | Is webhook failure                                                                                                                            |
+| xstate.error.actor deleteAccount         | deleting_account             | failed                       | Otherwise (Is webhook failure)                                                                                                                |
 | xstate.done.actor deleteOrgData          | deleting_personal_org_data   | auditing_personal_org_purged | —                                                                                                                                             |
 | xstate.error.actor deleteOrgData         | deleting_personal_org_data   | failed                       | —                                                                                                                                             |
 | xstate.done.actor auditOrgPurged         | auditing_personal_org_purged | verifying_row_removed        | Legacy row may remain                                                                                                                         |

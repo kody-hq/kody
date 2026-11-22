@@ -5,6 +5,7 @@ import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deletion.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { purgePersistedMcpAgentSession } from '#mcp/session-registry.ts'
 import * as stripeClient from '#worker/billing/stripe-client.ts'
 import {
@@ -45,6 +46,7 @@ const {
 } = await import('./hard-purge.ts')
 const { listSoftDeletePurgeCandidates, pruneSoftDeleted } =
 	await import('./purge.ts')
+const { PurgeWebhookFailed } = await import('./purge-webhook.ts')
 
 function createAuditDb() {
 	const auditSqlite = new DatabaseSync(':memory:')
@@ -565,6 +567,231 @@ test('scheduled purge of a personal org and its person in one pass still cancels
 		cancelSubscription.mockRestore()
 		deleteCustomer.mockRestore()
 		refund.restore()
+	}
+})
+
+const purgeWebhookUrl = 'https://hooks.example.test/purge'
+
+function stubPurgeWebhook(statusFor: (body: { kind: string }) => number) {
+	const realFetch = globalThis.fetch
+	const posts: Array<{ kind: string; id: string; purgedAt: string }> = []
+	const spy = vi
+		.spyOn(globalThis, 'fetch')
+		.mockImplementation(async (url, init) => {
+			if (String(url) !== purgeWebhookUrl) return realFetch(url, init)
+			const body = JSON.parse(String(init?.body))
+			posts.push(body)
+			return new Response(null, { status: statusFor(body) })
+		})
+	return { posts, restore: () => spy.mockRestore() }
+}
+
+function spyOnStripeBilling() {
+	const spies = [
+		vi
+			.spyOn(stripeClient, 'listSubscriptions')
+			.mockResolvedValue([stripeSubscription('sub_person', 'active')]),
+		vi.spyOn(stripeClient, 'cancelSubscription').mockResolvedValue(undefined),
+		vi.spyOn(stripeClient, 'deleteCustomer').mockResolvedValue(undefined),
+	]
+	const refund = spyOnStripeRefundClient()
+	return {
+		deleteCustomer: spies[2]!,
+		restore: () => {
+			for (const spy of spies) spy.mockRestore()
+			refund.restore()
+		},
+	}
+}
+
+test('a failed purge webhook for the personal org half keeps both halves of the pair, then a later pass purges both', async () => {
+	const billing = spyOnStripeBilling()
+	let orgStatus = 500
+	const webhook = stubPurgeWebhook((body) =>
+		body.kind === 'org' ? orgStatus : 200,
+	)
+	consoleWarn.mockImplementation(() => {})
+	try {
+		const sqlite = new DatabaseSync(':memory:')
+		applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+		const appDb = createD1FromSqlite(sqlite)
+		const auditDb = createAuditDb()
+		const { personId, kv } = await seedSoftDeletedPersonWithPersonalOrg({
+			appDb,
+			stripeCustomerId: 'cus_person',
+		})
+		const env = createSuccessfulDeletionEnv(appDb, {
+			AUDIT_DB: auditDb,
+			BUNDLE_ARTIFACTS_KV: kv,
+			SOFT_DELETE_PURGE_ENABLED: 'true',
+			PURGE_WEBHOOK_URL: purgeWebhookUrl,
+		})
+		const now = new Date('2026-03-01T00:00:00.000Z')
+
+		const failed = await pruneSoftDeleted({ env, now, dryRun: false })
+
+		expect(failed.outcomes).toEqual([
+			expect.objectContaining({
+				kind: 'user',
+				id: personId,
+				outcome: 'webhook_failed',
+				error: 'purge_webhook_failed:org:status_500',
+			}),
+		])
+		expect(billing.deleteCustomer).toHaveBeenCalledWith(env, 'cus_person')
+		expect(webhook.posts).toEqual([
+			{ kind: 'user', id: personId, purgedAt: expect.any(String) },
+			{ kind: 'org', id: personId, purgedAt: expect.any(String) },
+		])
+		for (const sql of [
+			`SELECT COUNT(*) AS n FROM users WHERE stable_user_id = ?`,
+			`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+			`SELECT COUNT(*) AS n FROM handles WHERE org_id = ?`,
+			`SELECT COUNT(*) AS n FROM org_memberships WHERE org_id = ?`,
+		]) {
+			expect(await countRows(appDb, sql, personId)).toBe(1)
+		}
+		const fence = await appDb
+			.prepare(`SELECT deleting_at FROM users WHERE stable_user_id = ?`)
+			.bind(personId)
+			.first<{ deleting_at: string | null }>()
+		expect(fence?.deleting_at).toBe(now.toISOString())
+		const audit = await auditDb
+			.prepare(
+				`SELECT action, details_json FROM org_audit_events WHERE org_id = ? ORDER BY rowid`,
+			)
+			.bind(personId)
+			.all<{ action: string; details_json: string }>()
+		expect(audit.results.map((row) => row.action)).toEqual([
+			'purge.webhook_failed',
+		])
+		expect(JSON.parse(audit.results[0]!.details_json)).toEqual({
+			kind: 'org',
+			id: personId,
+			status: 500,
+		})
+
+		orgStatus = 200
+		webhook.posts.length = 0
+		const later = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+		const retried = await pruneSoftDeleted({ env, now: later, dryRun: false })
+
+		expect(retried.outcomes).toEqual([
+			expect.objectContaining({
+				kind: 'user',
+				id: personId,
+				outcome: 'purged',
+			}),
+		])
+		expect(webhook.posts.map((post) => post.kind)).toEqual(['user', 'org'])
+		for (const sql of [
+			`SELECT COUNT(*) AS n FROM users WHERE stable_user_id = ?`,
+			`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+			`SELECT COUNT(*) AS n FROM handles WHERE org_id = ?`,
+		]) {
+			expect(await countRows(appDb, sql, personId)).toBe(0)
+		}
+	} finally {
+		webhook.restore()
+		billing.restore()
+	}
+})
+
+test('a failed purge webhook for the user half keeps both halves and never posts the org half', async () => {
+	const billing = spyOnStripeBilling()
+	const webhook = stubPurgeWebhook((body) => (body.kind === 'user' ? 503 : 200))
+	consoleWarn.mockImplementation(() => {})
+	try {
+		const sqlite = new DatabaseSync(':memory:')
+		applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+		const appDb = createD1FromSqlite(sqlite)
+		const { personId, kv } = await seedSoftDeletedPersonWithPersonalOrg({
+			appDb,
+			stripeCustomerId: 'cus_person',
+		})
+		const env = createSuccessfulDeletionEnv(appDb, {
+			AUDIT_DB: createAuditDb(),
+			BUNDLE_ARTIFACTS_KV: kv,
+			SOFT_DELETE_PURGE_ENABLED: 'true',
+			PURGE_WEBHOOK_URL: purgeWebhookUrl,
+		})
+
+		const result = await pruneSoftDeleted({
+			env,
+			now: new Date('2026-03-01T00:00:00.000Z'),
+			dryRun: false,
+		})
+
+		expect(result.outcomes).toEqual([
+			expect.objectContaining({
+				id: personId,
+				outcome: 'webhook_failed',
+				error: 'purge_webhook_failed:user:status_503',
+			}),
+		])
+		expect(webhook.posts.map((post) => post.kind)).toEqual(['user'])
+		expect(
+			await countRows(
+				appDb,
+				`SELECT COUNT(*) AS n FROM users WHERE stable_user_id = ?`,
+				personId,
+			),
+		).toBe(1)
+		expect(
+			await countRows(
+				appDb,
+				`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+				personId,
+			),
+		).toBe(1)
+	} finally {
+		webhook.restore()
+		billing.restore()
+	}
+})
+
+test('hardPurgeOrg keeps a team org when the purge webhook fails and deletes it when it succeeds', async () => {
+	let status = 502
+	const webhook = stubPurgeWebhook(() => status)
+	try {
+		const sqlite = new DatabaseSync(':memory:')
+		applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+		const appDb = createD1FromSqlite(sqlite)
+		const orgId = ownerIdFromStored('org-webhook-purge')
+		await seedTeamOrgGraph({ appDb, orgId, ts: '2026-01-01T00:00:00.000Z' })
+		const env = createSuccessfulDeletionEnv(appDb, {
+			AUDIT_DB: createAuditDb(),
+			PURGE_WEBHOOK_URL: purgeWebhookUrl,
+		})
+
+		const failure = await hardPurgeOrg({ env, orgId }).catch(
+			(error: unknown) => error,
+		)
+		expect(failure).toBeInstanceOf(PurgeWebhookFailed)
+		expect(failure).toMatchObject({ kind: 'org', id: orgId, status: 502 })
+		expect(
+			await countRows(
+				appDb,
+				`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+				orgId,
+			),
+		).toBe(1)
+
+		status = 200
+		await hardPurgeOrg({ env, orgId })
+		expect(webhook.posts).toEqual([
+			{ kind: 'org', id: orgId, purgedAt: expect.any(String) },
+			{ kind: 'org', id: orgId, purgedAt: expect.any(String) },
+		])
+		expect(
+			await countRows(
+				appDb,
+				`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+				orgId,
+			),
+		).toBe(0)
+	} finally {
+		webhook.restore()
 	}
 })
 

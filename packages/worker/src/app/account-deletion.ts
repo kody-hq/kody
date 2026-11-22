@@ -1707,6 +1707,11 @@ export async function deleteUserAccount(input: {
 	 * through the guest alias, so they must survive the deletion.
 	 */
 	keepOAuthGrants?: boolean
+	/**
+	 * Runs after Stripe billing is canceled and the customer deleted, before
+	 * any D1 row is deleted. A throw keeps the rows and the deletion fence.
+	 */
+	beforeRowDeletes?: () => Promise<void>
 }): Promise<AccountDeletionResult> {
 	const personUserId = input.personUserId ?? input.mcpUserId
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
@@ -2109,6 +2114,8 @@ export async function deleteUserAccount(input: {
 			warnings,
 		})
 	}
+
+	await input.beforeRowDeletes?.()
 
 	try {
 		const d1Cleanup = await deleteUserScopedRowsAndUser({
