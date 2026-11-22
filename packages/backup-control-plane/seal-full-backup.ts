@@ -570,6 +570,8 @@ export async function sealFullBackupDay(
 	} catch (error) {
 		if (errorCode(error) !== 'full-manifest-rest-era') throw error
 		// A REST-era day is sealed but not restorable; never reseal or fail it.
+		// Remove when: 2026-12-02, once 2026-11-16 (the last REST-era seal)
+		// leaves the 16-day seal scan.
 		safeLog({
 			event: 'full-backup-already-sealed',
 			status: 'success',
