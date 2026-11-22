@@ -1,4 +1,5 @@
 import { createAsyncLogic, setup, types } from 'xstate'
+import type { PurgeFailureFence } from '#worker/orgs/purge-claim.ts'
 import type {
 	SoftDeletePurgeCandidate,
 	SoftDeletePurgeOutcome,
@@ -28,6 +29,8 @@ type SoftDeletePurgeBatchContext = {
 	timeBudgetExhausted: boolean
 	outcomes: Array<SoftDeletePurgeOutcome>
 	failure: unknown
+	lastFailure: string | undefined
+	attempts: number
 	error: unknown
 }
 
@@ -63,10 +66,27 @@ function settle(
 	}
 }
 
+function settleFailure(
+	context: SoftDeletePurgeBatchContext,
+): SoftDeletePurgeBatchContext {
+	return settle(
+		context,
+		outcome(context.candidates[context.index]!, 'failed', context.lastFailure),
+		{
+			failed: context.failed + 1,
+			failure: undefined,
+			lastFailure: undefined,
+			attempts: 0,
+		},
+	)
+}
+
 /**
  * One soft-delete purge batch. Every live candidate is claimed before its
  * hard purge, the time budget is checked before each claim, and a failed
- * claim or purge is recorded with its failure audit before the next candidate.
+ * claim or purge is recorded with its failure audit, then fenced for 24 hours
+ * with its attempt counted, before the next candidate. The failure that blocks
+ * an item also records `purge.blocked`.
  */
 export const softDeletePurgeBatchState = setup({
 	schemas: {
@@ -101,6 +121,18 @@ export const softDeletePurgeBatchState = setup({
 			string,
 			{ candidate: SoftDeletePurgeCandidate; error: unknown }
 		>({ run: notProvided }),
+		fenceFailure: createAsyncLogic<
+			PurgeFailureFence | null,
+			SoftDeletePurgeCandidate
+		>({ run: notProvided }),
+		recordBlocked: createAsyncLogic<
+			void,
+			{
+				candidate: SoftDeletePurgeCandidate
+				attempts: number
+				lastFailure: string
+			}
+		>({ run: notProvided }),
 	},
 	guards: {
 		hasNextCandidate: (context: SoftDeletePurgeBatchContext) =>
@@ -117,11 +149,12 @@ export const softDeletePurgeBatchState = setup({
 		missingDbUserId: (candidate: SoftDeletePurgeCandidate) =>
 			candidate.dbUserId == null,
 		claimRefused: (claimed: boolean) => !claimed,
+		newlyBlocked: (fence: PurgeFailureFence | null) => fence?.blocked === true,
 	},
 }).createMachine({
 	id: 'soft_delete_purge.batch',
 	description:
-		'Lists candidates, previews dry-run ones, and for each live one checks the budget, claims it, runs the org, legacy-user or user hard purge, and records success or a failure audit before moving on; a failed listing or failure audit fails the run.',
+		'Lists candidates, previews dry-run ones, and for each live one checks the budget, claims it, runs the org, legacy-user or user hard purge, and records success or a failure audit and 24 hour fence (plus a purge.blocked record on the fifth failure) before moving on; a failed listing, failure audit, fence or block record fails the run.',
 	context: ({ input }) => ({
 		...input,
 		candidates: [],
@@ -132,6 +165,8 @@ export const softDeletePurgeBatchState = setup({
 		timeBudgetExhausted: false,
 		outcomes: [],
 		failure: undefined,
+		lastFailure: undefined,
+		attempts: 0,
 		error: undefined,
 	}),
 	initial: 'listing',
@@ -276,12 +311,44 @@ export const softDeletePurgeBatchState = setup({
 					error: context.failure,
 				}),
 				onDone: ({ context, event }) => ({
+					target: 'fencing_failure',
+					context: { ...context, lastFailure: event.output },
+				}),
+				onError: ({ context, event }) => ({
+					target: 'run_failed',
+					context: { ...context, error: event.error },
+				}),
+			},
+		},
+		fencing_failure: {
+			invoke: {
+				src: 'fenceFailure',
+				input: ({ context }) => context.candidates[context.index]!,
+				onDone: ({ context, event, guards }) => {
+					if (guards.newlyBlocked(event.output))
+						return {
+							target: 'recording_blocked',
+							context: { ...context, attempts: event.output!.attempts },
+						}
+					return { target: 'advancing', context: settleFailure(context) }
+				},
+				onError: ({ context, event }) => ({
+					target: 'run_failed',
+					context: { ...context, error: event.error },
+				}),
+			},
+		},
+		recording_blocked: {
+			invoke: {
+				src: 'recordBlocked',
+				input: ({ context }) => ({
+					candidate: context.candidates[context.index]!,
+					attempts: context.attempts,
+					lastFailure: context.lastFailure ?? '',
+				}),
+				onDone: ({ context }) => ({
 					target: 'advancing',
-					context: settle(
-						context,
-						outcome(context.candidates[context.index]!, 'failed', event.output),
-						{ failed: context.failed + 1, failure: undefined },
-					),
+					context: settleFailure(context),
 				}),
 				onError: ({ context, event }) => ({
 					target: 'run_failed',

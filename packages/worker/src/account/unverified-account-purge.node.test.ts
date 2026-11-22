@@ -30,6 +30,10 @@ function daysAgo(days: number) {
 	return new Date(now.getTime() - days * millisecondsPerDay).toISOString()
 }
 
+const afterFailureFence = new Date(
+	now.getTime() + millisecondsPerDay + 60 * 1000,
+)
+
 function minutesAgo(minutes: number) {
 	return new Date(now.getTime() - minutes * 60 * 1000).toISOString()
 }
@@ -118,6 +122,15 @@ function createHarness() {
 			'utf8',
 		),
 	)
+	auditSqlite.exec(
+		readFileSync(
+			new URL(
+				'../../audit-migrations/0002-org-audit-events.sql',
+				import.meta.url,
+			),
+			'utf8',
+		),
+	)
 	const envFor = (appDb: D1Database) =>
 		({
 			...createSuccessfulDeletionEnv(appDb),
@@ -126,10 +139,11 @@ function createHarness() {
 	const env = envFor(db)
 	return {
 		sqlite,
+		auditSqlite,
 		db,
 		env,
 		envFor,
-		run(input: { batchSize?: number; timeBudgetMs?: number } = {}) {
+		run(input: { batchSize?: number; timeBudgetMs?: number; now?: Date } = {}) {
 			return pruneUnverifiedAccounts({ env, now, ...input })
 		},
 		async seed(
@@ -397,8 +411,8 @@ test('a failed deletion is audited with a bounded reason, reported per account, 
 	expect(h.deletingAt('failing')).toBeNull()
 
 	deleteUserAccount.mockClear()
-	expect(await h.run()).toEqual(
-		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(failing, 12)]),
+	expect(await h.run({ now: afterFailureFence })).toEqual(
+		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(failing, 13)]),
 	)
 	expect(h.usernames()).toEqual([])
 })
@@ -462,7 +476,11 @@ test('a Stripe cancellation failure is a pre-cleanup failure: fence released, ac
 	expect(h.deletingAt('billing-failure')).toBeNull()
 
 	deleteUserAccount.mockClear()
-	expect(await h.run()).toMatchObject({ scanned: 1, purged: 1, failed: 0 })
+	expect(await h.run({ now: afterFailureFence })).toMatchObject({
+		scanned: 1,
+		purged: 1,
+		failed: 0,
+	})
 	expect(h.usernames()).toEqual([])
 })
 
@@ -718,4 +736,83 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 		scanned: 1,
 		candidates: [{ stableUserId: fresh.stableUserId, ageDays: 9 }],
 	})
+})
+
+function purgeClaimState(h: ReturnType<typeof createHarness>, id: number) {
+	return h.sqlite
+		.prepare(
+			`SELECT purge_attempts, purge_fence_until, purge_blocked_at FROM users WHERE id = ?`,
+		)
+		.get(id) as {
+		purge_attempts: number
+		purge_fence_until: string | null
+		purge_blocked_at: string | null
+	}
+}
+
+test('a failed claim is fenced for 24 hours and its attempt counted', async () => {
+	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	consoleWarn.mockImplementation(() => {})
+	const h = createHarness()
+	const fenced = await h.seed('fenced-failure', 12)
+	deleteUserAccount.mockImplementationOnce(async () => {
+		throw new Error('simulated deletion failure')
+	})
+
+	expect(await h.run()).toMatchObject({ scanned: 1, purged: 0, failed: 1 })
+	const state = purgeClaimState(h, fenced.id)
+	expect(state.purge_attempts).toBe(1)
+	expect(state.purge_blocked_at).toBeNull()
+	const fenceMs = Date.parse(state.purge_fence_until!) - now.getTime()
+	expect(fenceMs).toBeGreaterThanOrEqual(millisecondsPerDay)
+	expect(fenceMs).toBeLessThan(millisecondsPerDay + 60 * 1000)
+
+	deleteUserAccount.mockClear()
+	expect(
+		await h.run({ now: new Date(now.getTime() + millisecondsPerDay - 60_000) }),
+	).toMatchObject({ scanned: 0, purged: 0, failed: 0 })
+	expect(deleteUserAccount).not.toHaveBeenCalled()
+})
+
+test('the fifth failed claim blocks the account, records purge.blocked once, and it is skipped after', async () => {
+	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	consoleWarn.mockImplementation(() => {})
+	const h = createHarness()
+	const blocked = await h.seed('blocked-failure', 12)
+	deleteUserAccount.mockImplementation(async () => {
+		throw new Error('simulated deletion failure')
+	})
+
+	for (let attempt = 1; attempt <= 5; attempt++) {
+		const passAt = new Date(
+			now.getTime() + (attempt - 1) * (millisecondsPerDay + 60 * 60 * 1000),
+		)
+		expect(await h.run({ now: passAt })).toMatchObject({ failed: 1 })
+		const state = purgeClaimState(h, blocked.id)
+		expect(state.purge_attempts).toBe(attempt)
+		expect(state.purge_blocked_at === null).toBe(attempt < 5)
+	}
+	const audits = () =>
+		h.auditSqlite
+			.prepare(
+				`SELECT org_id, details_json FROM org_audit_events WHERE action = 'purge.blocked'`,
+			)
+			.all() as Array<{ org_id: string; details_json: string }>
+	await vi.waitFor(() => expect(audits()).toHaveLength(1))
+	expect(audits()[0]!.org_id).toBe(blocked.stableUserId)
+	expect(JSON.parse(audits()[0]!.details_json)).toEqual({
+		kind: 'user',
+		id: blocked.stableUserId,
+		attempts: 5,
+		lastFailure: 'Error: simulated deletion failure',
+		lane: 'unverified_account_purge',
+	})
+
+	deleteUserAccount.mockClear()
+	expect(
+		await h.run({ now: new Date(now.getTime() + 30 * millisecondsPerDay) }),
+	).toMatchObject({ scanned: 0, purged: 0, failed: 0 })
+	expect(deleteUserAccount).not.toHaveBeenCalled()
+	expect(audits()).toHaveLength(1)
+	expect(h.usernames()).toEqual(['blocked-failure'])
 })

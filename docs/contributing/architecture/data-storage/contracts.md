@@ -569,14 +569,20 @@ Current retention policies:
   [eligibility predicate](../../../../packages/worker/src/account/unverified-account-purge.ts)
   requires `users.deleted_at IS NULL`, leaving the restore window and hard
   deletion to the soft-delete purge lane. Each run selects a bounded batch of
-  never-attempted rows first, then oldest `created_at`, skipping rows whose
-  `deleting_at` is inside a retry backoff. Before deletion it claims the row
-  atomically (restamping `deleting_at` only while eligibility still holds). Once
-  claimed, verify-email and social-login reclaim refuse the fenced account. A
-  claim-created fence is released only on pre-cleanup failures; a
-  partial-cleanup failure leaves the fence for retry. Outcomes are recorded
-  best-effort: a purge writes an `unverified_account_purged` audit row and a
-  failed deletion writes an `unverified_account_purge_failed` audit row (reason
+  never-attempted rows first, then oldest `created_at`, skipping rows that hold
+  a live claim lease or failure fence (`purge_fence_until`) or are blocked
+  (`purge_blocked_at`). Before deletion it claims the row atomically (restamping
+  `deleting_at` and taking a 15 minute lease only while eligibility still
+  holds). A failure keeps the claim behind a 24 hour fence and increments
+  `purge_attempts`; the fifth failure sets `purge_blocked_at`, writes one
+  `purge.blocked` org audit event, and reports to Sentry once. The soft-delete
+  purge lane uses the same columns on `users` and `orgs` and renews the lease
+  after each completed hard-purge step. Once claimed, verify-email and
+  social-login reclaim refuse the fenced account. A claim-created fence is
+  released only on pre-cleanup failures; a partial-cleanup failure leaves the
+  fence for retry. Outcomes are recorded best-effort: a purge writes an
+  `unverified_account_purged` audit row and a failed deletion writes an
+  `unverified_account_purge_failed` audit row (reason
   `<ErrorClassName>: <first inventory/cleanup warning or message>`, email
   addresses redacted, at most 200 characters) plus a Sentry event when Sentry is
   configured. Either sink being unavailable is logged and skipped rather than
