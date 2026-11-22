@@ -1,5 +1,9 @@
 import type { ScheduledLaneName } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
 
 /**
  * Lanes that must not overlap. A tick whose predecessor still holds the lease
@@ -26,17 +30,24 @@ export async function acquireScheduledLaneLease(
 	const nowIso = input.now.toISOString()
 	const expiresAt = new Date(input.now.getTime() + input.leaseMs).toISOString()
 	const result = await runD1WithRetry(() =>
-		db
-			.prepare(
-				`INSERT INTO scheduled_lane_leases (lane, holder, expires_at)
-				VALUES (?, ?, ?)
-				ON CONFLICT(lane) DO UPDATE SET
-					holder = excluded.holder,
-					expires_at = excluded.expires_at
-				WHERE scheduled_lane_leases.expires_at <= ?`,
-			)
-			.bind(input.lane, input.holder, expiresAt, nowIso)
-			.run(),
+		withDeadline(
+			{
+				label: 'scheduled_lane_lease.acquire',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				db
+					.prepare(
+						`INSERT INTO scheduled_lane_leases (lane, holder, expires_at)
+					VALUES (?, ?, ?)
+					ON CONFLICT(lane) DO UPDATE SET
+						holder = excluded.holder,
+						expires_at = excluded.expires_at
+					WHERE scheduled_lane_leases.expires_at <= ?`,
+					)
+					.bind(input.lane, input.holder, expiresAt, nowIso)
+					.run(),
+		),
 	)
 	return (result.meta.changes ?? 0) > 0
 }
@@ -56,13 +67,17 @@ export async function renewScheduledLaneLease(
 ): Promise<boolean> {
 	const expiresAt = new Date(input.now.getTime() + input.leaseMs).toISOString()
 	const result = await runD1WithRetry(() =>
-		db
-			.prepare(
-				`UPDATE scheduled_lane_leases SET expires_at = ?
-				WHERE lane = ? AND holder = ?`,
-			)
-			.bind(expiresAt, input.lane, input.holder)
-			.run(),
+		withDeadline(
+			{ label: 'scheduled_lane_lease.renew', timeoutMs: outboundTimeoutMs.d1 },
+			() =>
+				db
+					.prepare(
+						`UPDATE scheduled_lane_leases SET expires_at = ?
+					WHERE lane = ? AND holder = ?`,
+					)
+					.bind(expiresAt, input.lane, input.holder)
+					.run(),
+		),
 	)
 	return (result.meta.changes ?? 0) > 0
 }
@@ -72,11 +87,18 @@ export async function releaseScheduledLaneLease(
 	input: { lane: ScheduledLaneName; holder: string },
 ) {
 	await runD1WithRetry(() =>
-		db
-			.prepare(
-				`DELETE FROM scheduled_lane_leases WHERE lane = ? AND holder = ?`,
-			)
-			.bind(input.lane, input.holder)
-			.run(),
+		withDeadline(
+			{
+				label: 'scheduled_lane_lease.release',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				db
+					.prepare(
+						`DELETE FROM scheduled_lane_leases WHERE lane = ? AND holder = ?`,
+					)
+					.bind(input.lane, input.holder)
+					.run(),
+		),
 	)
 }

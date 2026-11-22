@@ -412,3 +412,39 @@ test('failed legacy deletion records the specific cleanup errors without ids', a
 	])
 	expect(JSON.stringify(logged)).not.toContain('legacy-cleanup-detail')
 })
+
+test('a failed purge audit write does not stop the rest of the batch', async () => {
+	const { env, db } = await createEnv(false)
+	await seedUser(db, {
+		id: 51,
+		stableUserId: 'legacy-audit-a',
+		deletingAt: '2026-08-20T00:00:00.000Z',
+		deletedAt: null,
+	})
+	await seedUser(db, {
+		id: 52,
+		stableUserId: 'legacy-audit-b',
+		deletingAt: '2026-08-21T00:00:00.000Z',
+		deletedAt: null,
+	})
+	finishLegacyUserDeletion.mockImplementationOnce(async () => {
+		throw new Error('Artifact repo cleanup failed: upstream 500')
+	})
+	const brokenAudit = {
+		prepare: () => {
+			throw new Error('audit database unavailable')
+		},
+	} as unknown as D1Database
+	consoleWarn.mockImplementation(() => {})
+	const result = await pruneSoftDeleted({
+		env: { ...env, AUDIT_DB: brokenAudit } as Env,
+		now,
+	})
+	expect(result.failed).toBe(1)
+	expect(result.purged).toBe(1)
+	expect(result.outcomes.map((outcome) => outcome.outcome)).toEqual([
+		'failed',
+		'purged',
+	])
+	expect(await userRow(db, 52)).toBeNull()
+})

@@ -72,6 +72,13 @@ import {
 	type ScheduledLaneMessage,
 	type ScheduledLaneName,
 } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
+import {
+	type DeadlineExceededError,
+	isDeadlineExceededError,
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 
 /**
  * Execute one platform scheduled lane in the main worker. The cron trigger
@@ -138,7 +145,13 @@ export async function runScheduledLane(input: {
 		case 'oauth_purge_expired': {
 			const id = input.env.OAUTH_PURGE_COORDINATOR.idFromName('global')
 			const stub = input.env.OAUTH_PURGE_COORDINATOR.get(id)
-			return stub.run({ scheduledAt: input.scheduledAt.getTime() })
+			return withDeadline(
+				{
+					label: 'oauth_purge_expired.coordinator_run',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() => stub.run({ scheduledAt: input.scheduledAt.getTime() }),
+			)
 		}
 		case 'org_audit_outbox':
 			return drainOrgAuditOutbox({
@@ -183,13 +196,13 @@ export async function runScheduledLane(input: {
 			try {
 				await aggregateCreditAttributionDaily(input.env, input.scheduledAt)
 			} catch (error) {
-				console.warn('credit-attribution-aggregation-failed', error)
+				reportLaneError('warn', 'credit-attribution-aggregation-failed', error)
 				Sentry.captureException(error)
 			}
 			try {
 				await aggregateConnectionUsageDaily(input.env, input.scheduledAt)
 			} catch (error) {
-				console.warn('connection-usage-aggregation-failed', error)
+				reportLaneError('warn', 'connection-usage-aggregation-failed', error)
 			}
 			let fleetPackageErrorRate:
 				| { status: 'skipped'; reason: string }
@@ -204,7 +217,7 @@ export async function runScheduledLane(input: {
 						? { status: 'refreshed', elevated: refreshed.elevation !== null }
 						: refreshed
 			} catch (error) {
-				console.warn('fleet-package-error-rate-lane-failed', error)
+				reportLaneError('warn', 'fleet-package-error-rate-lane-failed', error)
 				fleetPackageErrorRate = {
 					status: 'skipped',
 					reason: 'query_failed',
@@ -220,7 +233,7 @@ export async function runScheduledLane(input: {
 						now: input.scheduledAt,
 					})
 			} catch (error) {
-				console.warn('package-owner-error-spike-lane-failed', error)
+				reportLaneError('warn', 'package-owner-error-spike-lane-failed', error)
 				packageOwnerErrorSpike = {
 					status: 'skipped',
 					reason: 'query_failed',
@@ -234,7 +247,11 @@ export async function runScheduledLane(input: {
 				})
 				runLogSnapshot = { status: 'ok' }
 			} catch (error) {
-				console.warn('admin-insights-run-log-snapshot-lane-failed', error)
+				reportLaneError(
+					'warn',
+					'admin-insights-run-log-snapshot-lane-failed',
+					error,
+				)
 				runLogSnapshot = { status: 'failed' }
 			}
 			// Credits debit only right after a successful recompute, so they
@@ -248,7 +265,7 @@ export async function runScheduledLane(input: {
 					now: input.scheduledAt,
 				})
 			} catch (error) {
-				console.warn('credit-debits-lane-failed', error)
+				reportLaneError('warn', 'credit-debits-lane-failed', error)
 				creditDebits = { status: 'failed' }
 			}
 			return {
@@ -282,7 +299,7 @@ export async function runScheduledLane(input: {
 					now: input.scheduledAt,
 				})
 			} catch (error) {
-				console.warn('webhook-auth-regression-lane-failed', error)
+				reportLaneError('warn', 'webhook-auth-regression-lane-failed', error)
 				webhookAuthRegressions = { status: 'failed' }
 			}
 			if (authDenials.status === 'rejected') throw authDenials.reason
@@ -308,7 +325,7 @@ export async function runScheduledLane(input: {
 					now: input.scheduledAt,
 				})
 			} catch (error) {
-				console.warn('user-entitlement-warning-emails-failed', error)
+				reportLaneError('warn', 'user-entitlement-warning-emails-failed', error)
 				userWarnings = { status: 'failed' }
 			}
 			let errorRateEmails:
@@ -320,7 +337,7 @@ export async function runScheduledLane(input: {
 					now: input.scheduledAt,
 				})
 			} catch (error) {
-				console.warn('user-error-rate-emails-failed', error)
+				reportLaneError('warn', 'user-error-rate-emails-failed', error)
 				errorRateEmails = { status: 'failed' }
 			}
 			let usageCampaign:
@@ -332,7 +349,7 @@ export async function runScheduledLane(input: {
 					now: input.scheduledAt,
 				})
 			} catch (error) {
-				console.warn('user-usage-campaign-emails-failed', error)
+				reportLaneError('warn', 'user-usage-campaign-emails-failed', error)
 				usageCampaign = { status: 'failed' }
 			}
 			const ops = await emitFleetEntitlementCrossingEvents({
@@ -348,7 +365,7 @@ export async function runScheduledLane(input: {
 					now: input.scheduledAt,
 				})
 			} catch (error) {
-				console.warn('kit-subscriber-sync-failed', error)
+				reportLaneError('warn', 'kit-subscriber-sync-failed', error)
 				return { status: 'failed' }
 			}
 		}
@@ -399,6 +416,69 @@ export async function runScheduledLane(input: {
 	}
 }
 
+export type ScheduledLaneFailure =
+	| { kind: 'd1_lock_contention'; error: unknown }
+	| { kind: 'deadline_exceeded'; error: DeadlineExceededError }
+	| { kind: 'unexpected'; error: unknown }
+
+export function classifyScheduledLaneFailure(
+	error: unknown,
+): ScheduledLaneFailure {
+	if (isRetryableD1LockError(error))
+		return { kind: 'd1_lock_contention', error }
+	if (isDeadlineExceededError(error))
+		return { kind: 'deadline_exceeded', error }
+	return { kind: 'unexpected', error }
+}
+
+/** Decides the lane outcome and its logging and Sentry reporting. */
+export function mapScheduledLaneFailure(
+	failure: ScheduledLaneFailure,
+	message: ScheduledLaneMessage,
+): 'd1_lock_contention' | 'failed' {
+	switch (failure.kind) {
+		case 'd1_lock_contention':
+			reportLaneError(
+				'warn',
+				`scheduled_lane_d1_lock_contention lane=${message.lane}`,
+				failure.error,
+			)
+			return 'd1_lock_contention'
+		case 'deadline_exceeded':
+		case 'unexpected':
+			reportScheduledLaneFailure(failure.error, message)
+			return 'failed'
+		default:
+			return assertNever(failure, 'scheduled lane failure')
+	}
+}
+
+function reportScheduledLaneFailure(
+	error: unknown,
+	message: ScheduledLaneMessage,
+) {
+	reportLaneError('error', `scheduled_lane_failed lane=${message.lane}`, error)
+	Sentry.withScope((scope) => {
+		scope.setTag('scheduled.lane', message.lane)
+		scope.setContext('scheduled', {
+			lane: message.lane,
+			scheduledTime: new Date(message.scheduledTime).toISOString(),
+			cron: message.cron,
+		})
+		if (message.lane === pacedRestoreDrillLane) {
+			applyPacedRestoreDrillSentryScope(scope, {
+				kind:
+					error instanceof D1PacedRestoreDrillError
+						? error.kind
+						: classifyPacedRestoreDrillFailure(error),
+				checkpoint:
+					error instanceof D1PacedRestoreDrillError ? error.checkpoint : null,
+			})
+		}
+		Sentry.captureException(error)
+	})
+}
+
 export async function runScheduledLaneWithFailureIsolation(input: {
 	env: Env
 	message: ScheduledLaneMessage
@@ -417,7 +497,7 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 				now: new Date(),
 			})
 			if (!acquired) {
-				console.warn('scheduled_lane_skipped_overlap', {
+				reportLaneError('warn', 'scheduled_lane_skipped_overlap', {
 					lane,
 					scheduledTime: scheduledAt.toISOString(),
 				})
@@ -428,34 +508,10 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 		await runScheduledLane({ env: input.env, lane, scheduledAt })
 		return 'completed'
 	} catch (error) {
-		if (isRetryableD1LockError(error)) {
-			console.warn(
-				`scheduled_lane_d1_lock_contention lane=${input.message.lane}`,
-				error,
-			)
-			return 'd1_lock_contention'
-		}
-		console.error(`scheduled_lane_failed lane=${input.message.lane}`, error)
-		Sentry.withScope((scope) => {
-			scope.setTag('scheduled.lane', input.message.lane)
-			scope.setContext('scheduled', {
-				lane: input.message.lane,
-				scheduledTime: scheduledAt.toISOString(),
-				cron: input.message.cron,
-			})
-			if (input.message.lane === pacedRestoreDrillLane) {
-				applyPacedRestoreDrillSentryScope(scope, {
-					kind:
-						error instanceof D1PacedRestoreDrillError
-							? error.kind
-							: classifyPacedRestoreDrillFailure(error),
-					checkpoint:
-						error instanceof D1PacedRestoreDrillError ? error.checkpoint : null,
-				})
-			}
-			Sentry.captureException(error)
-		})
-		return 'failed'
+		return mapScheduledLaneFailure(
+			classifyScheduledLaneFailure(error),
+			input.message,
+		)
 	} finally {
 		if (leaseHolder !== null) {
 			try {
@@ -465,7 +521,7 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 				})
 			} catch (releaseError) {
 				// The lease expires on its own; the next tick after it lapses runs.
-				console.warn('scheduled_lane_lease_release_failed', {
+				reportLaneError('warn', 'scheduled_lane_lease_release_failed', {
 					lane,
 					error: releaseError,
 				})

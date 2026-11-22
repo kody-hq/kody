@@ -20,6 +20,10 @@ import {
 	optionalOrgAuditWriter,
 	redactOrgAuditActorIdsForDeletedUser,
 } from './org-audit.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
 
 /**
  * How this org relates to a person account for hard-purge policy. A
@@ -58,17 +62,24 @@ async function personalOrgHardPurgeRelation(
 	orgId: OwnerId,
 ): Promise<PersonalOrgHardPurgeRelation> {
 	const row = await runD1WithRetry(() =>
-		db
-			.prepare(
-				`SELECT deleted_at, deleting_at FROM users
+		withDeadline(
+			{
+				label: 'hard_purge.personalOrgHardPurgeRelation',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				db
+					.prepare(
+						`SELECT deleted_at, deleting_at FROM users
 				 WHERE (
 				 	(personal_org_id IS NOT NULL AND TRIM(personal_org_id) != '' AND personal_org_id = ?)
 				 	OR ((personal_org_id IS NULL OR TRIM(personal_org_id) = '') AND stable_user_id = ?)
 				 )
 				 LIMIT 1`,
-			)
-			.bind(orgId, orgId)
-			.first<{ deleted_at: string | null; deleting_at: string | null }>(),
+					)
+					.bind(orgId, orgId)
+					.first<{ deleted_at: string | null; deleting_at: string | null }>(),
+		),
 	)
 	if (!row) return 'none'
 	return row.deleted_at || row.deleting_at
@@ -126,14 +137,21 @@ async function deleteOrgRows(input: {
 		})
 		const { sql, params } = buildUserScopedDeleteOrUpdateSql(match)
 		await runD1WithRetry(() =>
-			db
-				.prepare(sql)
-				.bind(...params)
-				.run(),
+			withDeadline(
+				{ label: 'hard_purge.deleteOrgRows', timeoutMs: outboundTimeoutMs.d1 },
+				() =>
+					db
+						.prepare(sql)
+						.bind(...params)
+						.run(),
+			),
 		)
 	}
 	const orgDelete = await runD1WithRetry(() =>
-		db.prepare(`DELETE FROM orgs WHERE id = ?`).bind(input.orgId).run(),
+		withDeadline(
+			{ label: 'hard_purge.deleteOrgRows_2', timeoutMs: outboundTimeoutMs.d1 },
+			() => db.prepare(`DELETE FROM orgs WHERE id = ?`).bind(input.orgId).run(),
+		),
 	)
 	if ((orgDelete.meta.changes ?? 0) === 0) {
 		throw new Error(`org_purge_missing_row:${input.orgId}`)
@@ -192,10 +210,16 @@ async function softDeletedOrgId(
 	orgId: OwnerId,
 ): Promise<OwnerId | null> {
 	const row = await runD1WithRetry(() =>
-		db
-			.prepare(`SELECT id FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`)
-			.bind(orgId)
-			.first<{ id: string }>(),
+		withDeadline(
+			{ label: 'hard_purge.softDeletedOrgId', timeoutMs: outboundTimeoutMs.d1 },
+			() =>
+				db
+					.prepare(
+						`SELECT id FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`,
+					)
+					.bind(orgId)
+					.first<{ id: string }>(),
+		),
 	)
 	return row ? orgId : null
 }
@@ -206,11 +230,18 @@ export async function hardPurgeSoftDeletedUser(input: {
 	stableUserId: OwnerId
 }): Promise<void> {
 	const personalOrgRow = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`SELECT personal_org_id, stable_user_id FROM users WHERE id = ?`,
-		)
-			.bind(input.dbUserId)
-			.first<{ personal_org_id: string | null; stable_user_id: string }>(),
+		withDeadline(
+			{
+				label: 'hard_purge.hardPurgeSoftDeletedUser',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.env.APP_DB.prepare(
+					`SELECT personal_org_id, stable_user_id FROM users WHERE id = ?`,
+				)
+					.bind(input.dbUserId)
+					.first<{ personal_org_id: string | null; stable_user_id: string }>(),
+		),
 	)
 	const storageOwnerId = personalOrgRow
 		? personalOrgIdFromUserRow(personalOrgRow)
@@ -270,17 +301,24 @@ export async function finishLegacyUserDeletion(input: {
 	stableUserId: OwnerId
 }): Promise<{ alreadyGone: boolean }> {
 	const row = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
+		withDeadline(
+			{
+				label: 'hard_purge.finishLegacyUserDeletion',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.env.APP_DB.prepare(
+					`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
 			 FROM users WHERE id = ?`,
-		)
-			.bind(input.dbUserId)
-			.first<{
-				personal_org_id: string | null
-				stable_user_id: string
-				deleted_at: string | null
-				deleting_at: string | null
-			}>(),
+				)
+					.bind(input.dbUserId)
+					.first<{
+						personal_org_id: string | null
+						stable_user_id: string
+						deleted_at: string | null
+						deleting_at: string | null
+					}>(),
+		),
 	)
 	if (!row) return { alreadyGone: true }
 	if (row.stable_user_id !== input.stableUserId) {
@@ -305,11 +343,18 @@ export async function finishLegacyUserDeletion(input: {
 	// person and then fails on the org, the org lane can still purge it.
 	const deletingAt = row.deleting_at
 	await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
-		)
-			.bind(deletingAt, storageOwnerId)
-			.run(),
+		withDeadline(
+			{
+				label: 'hard_purge.finishLegacyUserDeletion_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.env.APP_DB.prepare(
+					`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+				)
+					.bind(deletingAt, storageOwnerId)
+					.run(),
+		),
 	)
 	const result = await purgePersonAndPersonalOrg({
 		env: input.env,
@@ -321,9 +366,18 @@ export async function finishLegacyUserDeletion(input: {
 	})
 	if ((result.deletedRowCounts.users ?? 0) === 0) {
 		const stillThere = await runD1WithRetry(() =>
-			input.env.APP_DB.prepare(`SELECT 1 AS present FROM users WHERE id = ?`)
-				.bind(input.dbUserId)
-				.first<{ present: number }>(),
+			withDeadline(
+				{
+					label: 'hard_purge.finishLegacyUserDeletion_3',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					input.env.APP_DB.prepare(
+						`SELECT 1 AS present FROM users WHERE id = ?`,
+					)
+						.bind(input.dbUserId)
+						.first<{ present: number }>(),
+			),
 		)
 		if (stillThere) {
 			throw new Error(

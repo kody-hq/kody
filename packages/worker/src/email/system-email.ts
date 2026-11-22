@@ -22,6 +22,11 @@ import {
 	systemInboundDedupeTombstoneStatements,
 	systemInboundProvider,
 } from './system-inbound-dedupe.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 
 export { systemEmailOwnerId }
 
@@ -218,9 +223,15 @@ export async function consumeSystemEmailDailyReceive(input: {
 }) {
 	const now = input.now ?? new Date()
 	const limit = input.limit ?? systemEmailLimits.maxReceivesPerDay
-	const row = await input.db
-		.prepare(
-			`INSERT INTO system_email_daily_counters (
+	const row = await withDeadline(
+		{
+			label: 'system_email.consumeSystemEmailDailyReceive',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`INSERT INTO system_email_daily_counters (
 				local_part, day, count, updated_at
 			) VALUES (?, ?, 1, ?)
 			ON CONFLICT(local_part, day) DO UPDATE SET
@@ -228,9 +239,10 @@ export async function consumeSystemEmailDailyReceive(input: {
 				updated_at = excluded.updated_at
 			WHERE count < ?
 			RETURNING count`,
-		)
-		.bind(input.localPart, systemEmailDayKey(now), now.toISOString(), limit)
-		.first<{ count: number }>()
+				)
+				.bind(input.localPart, systemEmailDayKey(now), now.toISOString(), limit)
+				.first<{ count: number }>(),
+	)
 	return row ? Number(row.count) : null
 }
 
@@ -246,16 +258,23 @@ export async function refundSystemEmailDailyReceive(input: {
 	now?: Date
 }): Promise<void> {
 	const now = input.now ?? new Date()
-	await input.db
-		.prepare(
-			`UPDATE system_email_daily_counters
+	await withDeadline(
+		{
+			label: 'system_email.refundSystemEmailDailyReceive',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE system_email_daily_counters
 			SET count = MAX(0, count - 1),
 				updated_at = ?
 			WHERE local_part = ?
 				AND day = ?`,
-		)
-		.bind(now.toISOString(), input.localPart, systemEmailDayKey(now))
-		.run()
+				)
+				.bind(now.toISOString(), input.localPart, systemEmailDayKey(now))
+				.run(),
+	)
 }
 
 /**
@@ -275,9 +294,15 @@ export async function consumeSystemEmailDailySend(input: {
 }) {
 	const now = input.now ?? new Date()
 	const limit = input.limit ?? systemEmailLimits.maxSendsPerDay
-	const row = await input.db
-		.prepare(
-			`INSERT INTO system_email_daily_counters (
+	const row = await withDeadline(
+		{
+			label: 'system_email.consumeSystemEmailDailySend',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`INSERT INTO system_email_daily_counters (
 				local_part, day, count, updated_at
 			) VALUES (?, ?, 1, ?)
 			ON CONFLICT(local_part, day) DO UPDATE SET
@@ -285,14 +310,15 @@ export async function consumeSystemEmailDailySend(input: {
 				updated_at = excluded.updated_at
 			WHERE count < ?
 			RETURNING count`,
-		)
-		.bind(
-			systemEmailSendCounterKey(input.localPart),
-			systemEmailDayKey(now),
-			now.toISOString(),
-			limit,
-		)
-		.first<{ count: number }>()
+				)
+				.bind(
+					systemEmailSendCounterKey(input.localPart),
+					systemEmailDayKey(now),
+					now.toISOString(),
+					limit,
+				)
+				.first<{ count: number }>(),
+	)
 	return row ? Number(row.count) : null
 }
 
@@ -307,33 +333,53 @@ export async function refundSystemEmailDailySend(input: {
 	now?: Date
 }): Promise<void> {
 	const now = input.now ?? new Date()
-	await input.db
-		.prepare(
-			`UPDATE system_email_daily_counters
+	await withDeadline(
+		{
+			label: 'system_email.refundSystemEmailDailySend',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE system_email_daily_counters
 			SET count = MAX(0, count - 1),
 				updated_at = ?
 			WHERE local_part = ?
 				AND day = ?`,
-		)
-		.bind(
-			now.toISOString(),
-			systemEmailSendCounterKey(input.localPart),
-			systemEmailDayKey(now),
-		)
-		.run()
+				)
+				.bind(
+					now.toISOString(),
+					systemEmailSendCounterKey(input.localPart),
+					systemEmailDayKey(now),
+				)
+				.run(),
+	)
 }
 
 export async function countStoredSystemEmailMessages(input: {
 	db: D1Database
 }) {
-	await assertSystemEmailGraphAuthority(input.db)
-	const row = await input.db
-		.prepare(
-			`SELECT COUNT(*) AS count
+	await withDeadline(
+		{
+			label: 'system_email.assertSystemEmailGraphAuthority',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() => assertSystemEmailGraphAuthority(input.db),
+	)
+	const row = await withDeadline(
+		{
+			label: 'system_email.countStoredSystemEmailMessages',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT COUNT(*) AS count
 			FROM system_email_messages
 			WHERE direction = 'inbound'`,
-		)
-		.first<{ count: number }>()
+				)
+				.first<{ count: number }>(),
+	)
 	return Number(row?.count ?? 0)
 }
 
@@ -354,7 +400,13 @@ async function listSystemEmailMessages(input: {
 	offset?: number
 	limit: number
 }) {
-	await assertSystemEmailGraphAuthority(input.db)
+	await withDeadline(
+		{
+			label: 'system_email.assertSystemEmailGraphAuthority',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() => assertSystemEmailGraphAuthority(input.db),
+	)
 	const where = [`direction = 'inbound'`]
 	const bindings: Array<string | number> = []
 	if (input.before) {
@@ -370,16 +422,23 @@ async function listSystemEmailMessages(input: {
 		)
 	}
 	const offset = input.offset ?? 0
-	const result = await input.db
-		.prepare(
-			`SELECT id, created_at
+	const result = await withDeadline(
+		{
+			label: 'system_email.listSystemEmailMessages',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT id, created_at
 			FROM system_email_messages
 			WHERE ${where.join(' AND ')}
 			ORDER BY created_at DESC, id DESC
 			LIMIT ? OFFSET ?`,
-		)
-		.bind(...bindings, input.limit, offset)
-		.all<{ id: string; created_at: string }>()
+				)
+				.bind(...bindings, input.limit, offset)
+				.all<{ id: string; created_at: string }>(),
+	)
 	return result.results ?? []
 }
 
@@ -388,7 +447,13 @@ async function deleteSystemEmailMessagesByIds(input: {
 	blobs: R2Bucket
 	messageIds: ReadonlyArray<string>
 }) {
-	await assertSystemEmailGraphAuthority(input.db)
+	await withDeadline(
+		{
+			label: 'system_email.assertSystemEmailGraphAuthority',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() => assertSystemEmailGraphAuthority(input.db),
+	)
 	const result = {
 		deletedMessages: 0,
 		deletedRawMimeBlobs: 0,
@@ -405,24 +470,38 @@ async function deleteSystemEmailMessagesByIds(input: {
 			index + systemEmailDeleteIdsMaxParameters,
 		)
 		const chunkPlaceholders = messageIds.map(() => '?').join(', ')
-		const { results } = await input.db
-			.prepare(
-				`SELECT id, raw_mime_key
+		const { results } = await withDeadline(
+			{
+				label: 'system_email.deleteSystemEmailMessagesByIds',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT id, raw_mime_key
 				FROM system_email_messages
 				WHERE id IN (${chunkPlaceholders})`,
-			)
-			.bind(...messageIds)
-			.all<{ id: string; raw_mime_key: string | null }>()
+					)
+					.bind(...messageIds)
+					.all<{ id: string; raw_mime_key: string | null }>(),
+		)
 		const blobRows = results ?? []
-		const attachmentRows = await input.db
-			.prepare(
-				`SELECT storage_key
+		const attachmentRows = await withDeadline(
+			{
+				label: 'system_email.deleteSystemEmailMessagesByIds_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT storage_key
 				FROM system_email_attachments
 				WHERE message_id IN (${chunkPlaceholders})
 					AND storage_key IS NOT NULL`,
-			)
-			.bind(...messageIds)
-			.all<{ storage_key: string }>()
+					)
+					.bind(...messageIds)
+					.all<{ storage_key: string }>(),
+		)
 		const attachmentBlobKeys = (attachmentRows.results ?? []).map(
 			(row) => row.storage_key,
 		)
@@ -439,7 +518,13 @@ async function deleteSystemEmailMessagesByIds(input: {
 				...attachmentBlobKeys,
 			]
 			try {
-				await input.blobs.delete(blobKeys)
+				await withDeadline(
+					{
+						label: 'system_email.deleteSystemEmailMessagesByIds',
+						timeoutMs: outboundTimeoutMs.r2,
+					},
+					() => input.blobs.delete(blobKeys),
+				)
 				result.deletedRawMimeBlobs += blobRows.filter(
 					(row) => row.raw_mime_key !== null,
 				).length
@@ -447,44 +532,58 @@ async function deleteSystemEmailMessagesByIds(input: {
 			} catch (error) {
 				result.blobDeleteErrors += blobRows.length
 				deletableIds = messageIds.filter((id) => !blobRowIds.has(id))
-				console.warn('system-email-raw-mime-blob-delete-failed', error)
+				mapSystemEmailRetentionFailure({ kind: 'blob_delete_failed', error })
 			}
 		}
 		if (deletableIds.length === 0) continue
 		const placeholders = deletableIds.map(() => '?').join(', ')
-		const tombstones = await systemInboundDedupeTombstoneStatements({
-			db: input.db,
-			messageIds: deletableIds,
-		})
-		const deletes = await commitSystemEmailAuthorityBatch({
-			db: input.db,
-			statements: [
-				...tombstones,
-				input.db
-					.prepare(
-						`DELETE FROM system_email_attachments
+		const tombstones = await withDeadline(
+			{
+				label: 'system_email.systemInboundDedupeTombstoneStatements',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				systemInboundDedupeTombstoneStatements({
+					db: input.db,
+					messageIds: deletableIds,
+				}),
+		)
+		const deletes = await withDeadline(
+			{
+				label: 'system_email.commitSystemEmailAuthorityBatch',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				commitSystemEmailAuthorityBatch({
+					db: input.db,
+					statements: [
+						...tombstones,
+						input.db
+							.prepare(
+								`DELETE FROM system_email_attachments
 						WHERE message_id IN (${placeholders})`,
-					)
-					.bind(...deletableIds),
-				input.db
-					.prepare(
-						`DELETE FROM system_email_delivery_events
+							)
+							.bind(...deletableIds),
+						input.db
+							.prepare(
+								`DELETE FROM system_email_delivery_events
 						WHERE message_id IN (${placeholders})
 							OR (
 								provider = '${systemInboundProvider}'
 								AND json_extract(detail_json, '$.messageId')
 									IN (${placeholders})
 							)`,
-					)
-					.bind(...deletableIds, ...deletableIds),
-				input.db
-					.prepare(
-						`DELETE FROM system_email_messages
+							)
+							.bind(...deletableIds, ...deletableIds),
+						input.db
+							.prepare(
+								`DELETE FROM system_email_messages
 						WHERE id IN (${placeholders})`,
-					)
-					.bind(...deletableIds),
-			],
-		})
+							)
+							.bind(...deletableIds),
+					],
+				}),
+		)
 		result.deletedMessages += Number(
 			deletes[tombstones.length + 2]?.meta.changes ?? 0,
 		)
@@ -508,6 +607,29 @@ export type SystemEmailRetentionResult = {
 	warnings: Array<'authority-row-delete-skipped'>
 }
 
+export type SystemEmailRetentionFailure = {
+	kind: 'blob_delete_failed'
+	error: unknown
+}
+
+/**
+ * The rows whose blobs failed to delete stay for the next pass, so a blob
+ * delete failure is counted and reported but does not fail retention.
+ */
+function mapSystemEmailRetentionFailure(failure: SystemEmailRetentionFailure) {
+	switch (failure.kind) {
+		case 'blob_delete_failed':
+			reportLaneError(
+				'warn',
+				'system-email-raw-mime-blob-delete-failed',
+				failure.error,
+			)
+			return
+		default:
+			return assertNever(failure.kind, 'system email retention failure')
+	}
+}
+
 export async function pruneSystemEmailRetention(input: {
 	db: D1Database
 	/** EMAIL_BLOBS bucket; raw-MIME blobs are deleted before their rows. */
@@ -515,7 +637,13 @@ export async function pruneSystemEmailRetention(input: {
 	now?: Date
 	timeBudgetMs?: number
 }) {
-	await assertSystemEmailGraphAuthority(input.db)
+	await withDeadline(
+		{
+			label: 'system_email.assertSystemEmailGraphAuthority',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() => assertSystemEmailGraphAuthority(input.db),
+	)
 	const now = input.now ?? new Date()
 	const timeBudgetMs = input.timeBudgetMs ?? systemEmailPruneTimeBudgetMs
 	const deadlineMs = Date.now() + timeBudgetMs
@@ -594,31 +722,45 @@ export async function pruneSystemEmailRetention(input: {
 
 	let deletedEventsInBatch = 0
 	do {
-		const eventRows = await input.db
-			.prepare(
-				`SELECT id
+		const eventRows = await withDeadline(
+			{
+				label: 'system_email.pruneSystemEmailRetention',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT id
 				FROM system_email_delivery_events
 				WHERE created_at < ?
 				ORDER BY created_at ASC, id ASC
 				LIMIT ?`,
-			)
-			.bind(cutoffIso, systemEmailDeleteIdsMaxParameters)
-			.all<{ id: string }>()
+					)
+					.bind(cutoffIso, systemEmailDeleteIdsMaxParameters)
+					.all<{ id: string }>(),
+		)
 		const eventIds = (eventRows.results ?? []).map((row) => row.id)
 		deletedEventsInBatch = eventIds.length
 		if (eventIds.length > 0) {
 			const placeholders = eventIds.map(() => '?').join(', ')
-			const deletes = await commitSystemEmailAuthorityBatch({
-				db: input.db,
-				statements: [
-					input.db
-						.prepare(
-							`DELETE FROM system_email_delivery_events
+			const deletes = await withDeadline(
+				{
+					label: 'system_email.commitSystemEmailAuthorityBatch',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					commitSystemEmailAuthorityBatch({
+						db: input.db,
+						statements: [
+							input.db
+								.prepare(
+									`DELETE FROM system_email_delivery_events
 							WHERE id IN (${placeholders})`,
-						)
-						.bind(...eventIds),
-				],
-			})
+								)
+								.bind(...eventIds),
+						],
+					}),
+			)
 			deletedEventsInBatch = Number(deletes[0]?.meta.changes ?? 0)
 		}
 		result.deletedDeliveryEvents += deletedEventsInBatch
@@ -627,10 +769,17 @@ export async function pruneSystemEmailRetention(input: {
 		Date.now() < deadlineMs
 	)
 
-	const counterDelete = await input.db
-		.prepare(`DELETE FROM system_email_daily_counters WHERE day < ?`)
-		.bind(cutoffDay)
-		.run()
+	const counterDelete = await withDeadline(
+		{
+			label: 'system_email.pruneSystemEmailRetention_2',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(`DELETE FROM system_email_daily_counters WHERE day < ?`)
+				.bind(cutoffDay)
+				.run(),
+	)
 	result.deletedCounters = counterDelete.meta.changes ?? 0
 	let deletedInBatch = 0
 	do {
@@ -657,9 +806,15 @@ export async function pruneSystemEmailRetention(input: {
 	)
 
 	if (Date.now() < deadlineMs) {
-		const threadRows = await input.db
-			.prepare(
-				`SELECT id FROM system_email_threads
+		const threadRows = await withDeadline(
+			{
+				label: 'system_email.pruneSystemEmailRetention_3',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT id FROM system_email_threads
 				WHERE NOT EXISTS (
 						SELECT 1 FROM system_email_messages
 						WHERE system_email_messages.thread_id =
@@ -667,23 +822,31 @@ export async function pruneSystemEmailRetention(input: {
 					)
 				ORDER BY created_at ASC, id ASC
 				LIMIT ?`,
-			)
-			.bind(systemEmailDeleteIdsMaxParameters)
-			.all<{ id: string }>()
+					)
+					.bind(systemEmailDeleteIdsMaxParameters)
+					.all<{ id: string }>(),
+		)
 		const threadIds = (threadRows.results ?? []).map((row) => row.id)
 		if (threadIds.length === 0) return result
 		const placeholders = threadIds.map(() => '?').join(', ')
-		const deletes = await commitSystemEmailAuthorityBatch({
-			db: input.db,
-			statements: [
-				input.db
-					.prepare(
-						`DELETE FROM system_email_threads
+		const deletes = await withDeadline(
+			{
+				label: 'system_email.commitSystemEmailAuthorityBatch',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				commitSystemEmailAuthorityBatch({
+					db: input.db,
+					statements: [
+						input.db
+							.prepare(
+								`DELETE FROM system_email_threads
 						WHERE id IN (${placeholders})`,
-					)
-					.bind(...threadIds),
-			],
-		})
+							)
+							.bind(...threadIds),
+					],
+				}),
+		)
 		result.deletedThreads += Number(deletes[0]?.meta.changes ?? 0)
 	}
 

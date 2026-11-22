@@ -24,10 +24,15 @@ import {
 	hardPurgeSoftDeletedUser,
 } from '#worker/orgs/hard-purge.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
+import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 import {
 	purgeFailureDetails,
 	redactPurgeFailureDetail,
 } from '#worker/orgs/purge-failure-details.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
 
 export { shouldRunRetentionCron as shouldRunSoftDeletePurgeCron }
 
@@ -89,6 +94,84 @@ export type SoftDeletePurgeResult = {
 	outcomes: Array<SoftDeletePurgeOutcome>
 }
 
+export type SoftDeletePurgeFailure =
+	| {
+			kind: 'candidate_failed'
+			candidate: SoftDeletePurgeCandidate
+			message: string
+			cleanupErrors: Array<string>
+	  }
+	| {
+			kind: 'audit_failed'
+			candidate: SoftDeletePurgeCandidate
+			error: unknown
+	  }
+
+/**
+ * Reports one failed candidate: a warning plus a `*.purge_failed` audit row.
+ * An audit write failure is reported and does not stop the batch.
+ */
+async function mapSoftDeletePurgeFailure(
+	failure: SoftDeletePurgeFailure,
+	context: { env: Env; nowIso: string },
+): Promise<void> {
+	const { candidate } = failure
+	const lane = candidate.legacy ? 'legacy_deletion_finish' : 'soft_delete'
+	switch (failure.kind) {
+		case 'candidate_failed': {
+			const { message, cleanupErrors } = failure
+			reportLaneError(
+				'warn',
+				JSON.stringify({
+					message: 'soft_delete_purge_candidate_failed',
+					kind: candidate.kind,
+					lane,
+					error: message,
+					cleanupErrors,
+				}),
+			)
+			try {
+				await logOrgAuditEvent({
+					env: context.env,
+					orgId: candidate.id,
+					action:
+						candidate.kind === 'org' ? 'org.purge_failed' : 'user.purge_failed',
+					result: 'failure',
+					detailsJson: JSON.stringify({
+						error: message,
+						...(candidate.legacy ? { lane } : {}),
+						...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
+					}),
+					createdAt: context.nowIso,
+				})
+			} catch (error) {
+				await mapSoftDeletePurgeFailure(
+					{ kind: 'audit_failed', candidate, error },
+					context,
+				)
+			}
+			return
+		}
+		case 'audit_failed':
+			reportLaneError(
+				'warn',
+				JSON.stringify({
+					message: 'soft_delete_purge_failure_audit_failed',
+					kind: candidate.kind,
+					lane,
+					error: redactPurgeFailureDetail(
+						failure.error instanceof Error
+							? failure.error.message
+							: String(failure.error),
+					),
+				}),
+			)
+			return
+		default:
+			return assertNever(failure, 'soft delete purge failure')
+	}
+}
+
 function ageDays(deletedAt: string, now: Date) {
 	const deletedMs = Date.parse(deletedAt)
 	if (!Number.isFinite(deletedMs)) return 0
@@ -110,9 +193,15 @@ async function listOrgCandidates(input: {
 	batchSize: number
 }) {
 	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`SELECT id, deleted_at
+		withDeadline(
+			{
+				label: 'soft_delete_purge.listOrgCandidates',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT id, deleted_at
 				 FROM orgs
 				 WHERE deleted_at IS NOT NULL
 				   AND datetime(deleted_at) < datetime(?)
@@ -127,9 +216,10 @@ async function listOrgCandidates(input: {
 				   )
 				 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 				 LIMIT ?`,
-			)
-			.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
-			.all<{ id: OwnerId; deleted_at: string }>(),
+					)
+					.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
+					.all<{ id: OwnerId; deleted_at: string }>(),
+		),
 	)
 	return results ?? []
 }
@@ -141,18 +231,25 @@ async function listUserCandidates(input: {
 	batchSize: number
 }) {
 	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`SELECT id AS db_user_id, stable_user_id AS id, deleted_at
+		withDeadline(
+			{
+				label: 'soft_delete_purge.listUserCandidates',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT id AS db_user_id, stable_user_id AS id, deleted_at
 				 FROM users
 				 WHERE deleted_at IS NOT NULL
 				   AND datetime(deleted_at) < datetime(?)
 				   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
 				 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 				 LIMIT ?`,
-			)
-			.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
-			.all<{ db_user_id: number; id: OwnerId; deleted_at: string }>(),
+					)
+					.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
+					.all<{ db_user_id: number; id: OwnerId; deleted_at: string }>(),
+		),
 	)
 	return results ?? []
 }
@@ -165,18 +262,25 @@ async function listLegacyUserCandidates(input: {
 	// The backoff on `deleting_at` also keeps this lane off deletions that are
 	// in flight right now (account deletion stamps the fence when it starts).
 	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`SELECT id AS db_user_id, stable_user_id AS id, deleting_at
+		withDeadline(
+			{
+				label: 'soft_delete_purge.listLegacyUserCandidates',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT id AS db_user_id, stable_user_id AS id, deleting_at
 				 FROM users
 				 WHERE deleted_at IS NULL
 				   AND deleting_at IS NOT NULL
 				   AND datetime(deleting_at) < datetime(?)
 				 ORDER BY datetime(deleting_at) ASC, id ASC
 				 LIMIT ?`,
-			)
-			.bind(input.retryBackoffCutoff, input.batchSize)
-			.all<{ db_user_id: number; id: OwnerId; deleting_at: string }>(),
+					)
+					.bind(input.retryBackoffCutoff, input.batchSize)
+					.all<{ db_user_id: number; id: OwnerId; deleting_at: string }>(),
+		),
 	)
 	return results ?? []
 }
@@ -243,29 +347,48 @@ async function claimOrgForPurge(input: {
 	retryBackoffCutoff: string
 }): Promise<boolean> {
 	const created = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE orgs
+		withDeadline(
+			{
+				label: 'soft_delete_purge.claimOrgForPurge',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE orgs
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE id = ?
 				   AND deleted_at IS NOT NULL
 				   AND deleting_at IS NULL`,
-			)
-			.bind(input.nowIso, input.nowIso, input.orgId)
-			.run(),
+					)
+					.bind(input.nowIso, input.nowIso, input.orgId)
+					.run(),
+		),
 	)
 	if ((created.meta.changes ?? 0) === 1) return true
 	const restamped = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE orgs
+		withDeadline(
+			{
+				label: 'soft_delete_purge.claimOrgForPurge_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE orgs
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE id = ?
 				   AND deleted_at IS NOT NULL
 				   AND datetime(deleting_at) < datetime(?)`,
-			)
-			.bind(input.nowIso, input.nowIso, input.orgId, input.retryBackoffCutoff)
-			.run(),
+					)
+					.bind(
+						input.nowIso,
+						input.nowIso,
+						input.orgId,
+						input.retryBackoffCutoff,
+					)
+					.run(),
+		),
 	)
 	return (restamped.meta.changes ?? 0) === 1
 }
@@ -277,29 +400,48 @@ async function claimUserForPurge(input: {
 	retryBackoffCutoff: string
 }): Promise<boolean> {
 	const created = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
+		withDeadline(
+			{
+				label: 'soft_delete_purge.claimUserForPurge',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE users
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NOT NULL
 				   AND deleting_at IS NULL`,
-			)
-			.bind(input.nowIso, input.nowIso, input.userId)
-			.run(),
+					)
+					.bind(input.nowIso, input.nowIso, input.userId)
+					.run(),
+		),
 	)
 	if ((created.meta.changes ?? 0) === 1) return true
 	const restamped = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
+		withDeadline(
+			{
+				label: 'soft_delete_purge.claimUserForPurge_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE users
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NOT NULL
 				   AND datetime(deleting_at) < datetime(?)`,
-			)
-			.bind(input.nowIso, input.nowIso, input.userId, input.retryBackoffCutoff)
-			.run(),
+					)
+					.bind(
+						input.nowIso,
+						input.nowIso,
+						input.userId,
+						input.retryBackoffCutoff,
+					)
+					.run(),
+		),
 	)
 	return (restamped.meta.changes ?? 0) === 1
 }
@@ -318,17 +460,29 @@ async function claimLegacyUserForPurge(input: {
 	retryBackoffCutoff: string
 }): Promise<boolean> {
 	const claimed = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
+		withDeadline(
+			{
+				label: 'soft_delete_purge.claimLegacyUserForPurge',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE users
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NULL
 				   AND deleting_at IS NOT NULL
 				   AND datetime(deleting_at) < datetime(?)`,
-			)
-			.bind(input.nowIso, input.nowIso, input.userId, input.retryBackoffCutoff)
-			.run(),
+					)
+					.bind(
+						input.nowIso,
+						input.nowIso,
+						input.userId,
+						input.retryBackoffCutoff,
+					)
+					.run(),
+		),
 	)
 	return (claimed.meta.changes ?? 0) === 1
 }
@@ -451,17 +605,12 @@ export async function pruneSoftDeleted(input: {
 			const message = redactPurgeFailureDetail(
 				error instanceof Error ? error.message : String(error),
 			)
-			const cleanupErrors = purgeFailureDetails(error)
-			const lane = candidate.legacy ? 'legacy_deletion_finish' : 'soft_delete'
-			console.warn(
-				JSON.stringify({
-					message: 'soft_delete_purge_candidate_failed',
-					kind: candidate.kind,
-					lane,
-					error: message,
-					cleanupErrors,
-				}),
-			)
+			const failure: SoftDeletePurgeFailure = {
+				kind: 'candidate_failed',
+				candidate,
+				message,
+				cleanupErrors: purgeFailureDetails(error),
+			}
 			outcomes.push({
 				kind: candidate.kind,
 				id: candidate.id,
@@ -470,19 +619,7 @@ export async function pruneSoftDeleted(input: {
 				...legacyFlag(candidate),
 				error: message,
 			})
-			await logOrgAuditEvent({
-				env: input.env,
-				orgId: candidate.id,
-				action:
-					candidate.kind === 'org' ? 'org.purge_failed' : 'user.purge_failed',
-				result: 'failure',
-				detailsJson: JSON.stringify({
-					error: message,
-					...(candidate.legacy ? { lane } : {}),
-					...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
-				}),
-				createdAt: nowIso,
-			})
+			await mapSoftDeletePurgeFailure(failure, { env: input.env, nowIso })
 		}
 	}
 

@@ -95,6 +95,27 @@ does not trip it. When the condition already holds, delete the path.
 `tools/oxlint/require-exit-condition-comment.node.test.ts` runs the linter on a
 fixture.
 
+The scheduled cleanup and purge lanes have three rules in `lane-safety.js`,
+turned on as errors for the files in the lane override in
+`tools/oxlint/oxlint-rules.json`. Widen them by adding paths to that `files`
+list.
+
+- `kody-custom/require-outbound-deadline`: D1, KV, R2, `fetch`, `*Rpc`
+  factories, and Durable Object stub calls must sit inside
+  `withDeadline({ label, timeoutMs }, (signal) => ...)` from
+  `#worker/outbound/with-deadline.ts`. Pick a `timeoutMs` from
+  `outboundTimeoutMs`; there is no default.
+- `kody-custom/no-floating-lane-promise`: a promise is awaited, returned, or
+  handed to `waitUntil`. `void promise` is reported.
+- `kody-custom/no-swallowed-lane-error`: a `catch` or `.catch` handler rethrows,
+  returns a `{ kind }` failure, calls the lane mapper (`map...Failure`), records
+  into `warnings` / `failures` / `record...Error`, or calls `reportLaneError`
+  from `#worker/scheduled/lane-failure.ts`.
+
+The rules are syntactic: a deliberate exception takes an
+`oxlint-disable-next-line` with the reason after `--`.
+`tools/oxlint/lane-safety.node.test.ts` runs the linter on fixtures.
+
 `react/exhaustive-deps` runs at error. Read values an effect should not react to
 through `useEffectEvent`. Unused disable directives are errors
 (`reportUnusedDisableDirectives` in `.oxlintrc.json`), so a directive goes away

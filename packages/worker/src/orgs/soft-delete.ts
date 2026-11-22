@@ -54,6 +54,11 @@ import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
 import { revokeOAuthGrantsForOrg } from '#worker/orgs/offboarding.ts'
 import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 
 export { AccountDeletionWritersActiveError }
 
@@ -103,20 +108,34 @@ async function claimSoftDeleteGeneration(input: {
 	missingError: string
 	stamp: (deletedAt: string) => Promise<number>
 }): Promise<{ deletedAt: string; resumed: boolean }> {
-	const existing = await input.db
-		.prepare(input.selectSql)
-		.bind(input.id)
-		.first<{ deleted_at: string | null }>()
+	const existing = await withDeadline(
+		{
+			label: 'soft_delete.claimSoftDeleteGeneration',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(input.selectSql)
+				.bind(input.id)
+				.first<{ deleted_at: string | null }>(),
+	)
 	if (!existing) throw new Error(input.missingError)
 	if (existing.deleted_at) {
 		return { deletedAt: existing.deleted_at, resumed: true }
 	}
 	const changes = await input.stamp(input.nowIso)
 	if (changes > 0) return { deletedAt: input.nowIso, resumed: false }
-	const again = await input.db
-		.prepare(input.selectSql)
-		.bind(input.id)
-		.first<{ deleted_at: string | null }>()
+	const again = await withDeadline(
+		{
+			label: 'soft_delete.claimSoftDeleteGeneration_2',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(input.selectSql)
+				.bind(input.id)
+				.first<{ deleted_at: string | null }>(),
+	)
 	if (!again?.deleted_at) throw new Error(input.missingError)
 	return { deletedAt: again.deleted_at, resumed: true }
 }
@@ -128,14 +147,21 @@ async function softDeleteOrgOwnedAppRows(input: {
 }): Promise<number> {
 	let total = 0
 	for (const table of orgOwnedUserIdSoftDeleteTables) {
-		const result = await input.appDb
-			.prepare(
-				`UPDATE ${table}
+		const result = await withDeadline(
+			{
+				label: 'soft_delete.softDeleteOrgOwnedAppRows',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.appDb
+					.prepare(
+						`UPDATE ${table}
 				 SET deleted_at = ?
 				 WHERE user_id = ? AND deleted_at IS NULL`,
-			)
-			.bind(input.deletedAt, input.orgId)
-			.run()
+					)
+					.bind(input.deletedAt, input.orgId)
+					.run(),
+		)
 		total += result.meta.changes ?? 0
 	}
 	for (const table of [
@@ -144,52 +170,80 @@ async function softDeleteOrgOwnedAppRows(input: {
 		'grants',
 		'org_user_budgets',
 	] as const) {
-		const result = await input.appDb
-			.prepare(
-				`UPDATE ${table}
+		const result = await withDeadline(
+			{
+				label: 'soft_delete.softDeleteOrgOwnedAppRows_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.appDb
+					.prepare(
+						`UPDATE ${table}
 				 SET deleted_at = ?
 				 WHERE org_id = ? AND deleted_at IS NULL`,
-			)
-			.bind(input.deletedAt, input.orgId)
-			.run()
+					)
+					.bind(input.deletedAt, input.orgId)
+					.run(),
+		)
 		total += result.meta.changes ?? 0
 	}
-	const teamMembers = await input.appDb
-		.prepare(
-			`UPDATE team_members
+	const teamMembers = await withDeadline(
+		{
+			label: 'soft_delete.softDeleteOrgOwnedAppRows_3',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.appDb
+				.prepare(
+					`UPDATE team_members
 			 SET deleted_at = ?
 			 WHERE deleted_at IS NULL
 			   AND team_id IN (SELECT id FROM teams WHERE org_id = ?)`,
-		)
-		.bind(input.deletedAt, input.orgId)
-		.run()
+				)
+				.bind(input.deletedAt, input.orgId)
+				.run(),
+	)
 	total += teamMembers.meta.changes ?? 0
-	const listings = await input.appDb
-		.prepare(
-			`UPDATE community_listings
+	const listings = await withDeadline(
+		{
+			label: 'soft_delete.softDeleteOrgOwnedAppRows_4',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.appDb
+				.prepare(
+					`UPDATE community_listings
 			 SET deleted_at = ?
 			 WHERE owner_user_id = ? AND deleted_at IS NULL`,
-		)
-		.bind(input.deletedAt, input.orgId)
-		.run()
+				)
+				.bind(input.deletedAt, input.orgId)
+				.run(),
+	)
 	total += listings.meta.changes ?? 0
 	for (const {
 		child,
 		parent,
 		parentKey,
 	} of orgOwnedBucketChildSoftDeleteTables) {
-		const children = await input.appDb
-			.prepare(
-				`UPDATE ${child}
+		const children = await withDeadline(
+			{
+				label: 'soft_delete.softDeleteOrgOwnedAppRows_5',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.appDb
+					.prepare(
+						`UPDATE ${child}
 				 SET deleted_at = ?
 				 WHERE deleted_at IS NULL
 				   AND ${parentKey} IN (
 				     SELECT id FROM ${parent}
 				     WHERE user_id = ? AND deleted_at = ?
 				   )`,
-			)
-			.bind(input.deletedAt, input.orgId, input.deletedAt)
-			.run()
+					)
+					.bind(input.deletedAt, input.orgId, input.deletedAt)
+					.run(),
+		)
 		total += children.meta.changes ?? 0
 	}
 	return total
@@ -202,66 +256,101 @@ async function restoreOrgOwnedAppRows(input: {
 }): Promise<number> {
 	let total = 0
 	for (const table of orgOwnedUserIdRestoreTables) {
-		const result = await input.appDb
-			.prepare(
-				`UPDATE ${table}
+		const result = await withDeadline(
+			{
+				label: 'soft_delete.restoreOrgOwnedAppRows',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.appDb
+					.prepare(
+						`UPDATE ${table}
 				 SET deleted_at = NULL, deleting_at = NULL
 				 WHERE user_id = ? AND deleted_at = ?`,
-			)
-			.bind(input.orgId, input.deletedAt)
-			.run()
+					)
+					.bind(input.orgId, input.deletedAt)
+					.run(),
+		)
 		total += result.meta.changes ?? 0
 	}
 	for (const table of ['teams', 'grants', 'org_user_budgets'] as const) {
-		const result = await input.appDb
-			.prepare(
-				`UPDATE ${table}
+		const result = await withDeadline(
+			{
+				label: 'soft_delete.restoreOrgOwnedAppRows_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.appDb
+					.prepare(
+						`UPDATE ${table}
 				 SET deleted_at = NULL
 				 WHERE org_id = ? AND deleted_at = ?`,
-			)
-			.bind(input.orgId, input.deletedAt)
-			.run()
+					)
+					.bind(input.orgId, input.deletedAt)
+					.run(),
+		)
 		total += result.meta.changes ?? 0
 	}
-	const teamMembers = await input.appDb
-		.prepare(
-			`UPDATE team_members
+	const teamMembers = await withDeadline(
+		{
+			label: 'soft_delete.restoreOrgOwnedAppRows_3',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.appDb
+				.prepare(
+					`UPDATE team_members
 			 SET deleted_at = NULL
 			 WHERE deleted_at = ?
 			   AND team_id IN (SELECT id FROM teams WHERE org_id = ?)
 			   AND user_id IN (
 			     SELECT stable_user_id FROM users WHERE deleted_at IS NULL
 			   )`,
-		)
-		.bind(input.deletedAt, input.orgId)
-		.run()
+				)
+				.bind(input.deletedAt, input.orgId)
+				.run(),
+	)
 	total += teamMembers.meta.changes ?? 0
-	const listings = await input.appDb
-		.prepare(
-			`UPDATE community_listings
+	const listings = await withDeadline(
+		{
+			label: 'soft_delete.restoreOrgOwnedAppRows_4',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.appDb
+				.prepare(
+					`UPDATE community_listings
 			 SET deleted_at = NULL, deleting_at = NULL
 			 WHERE owner_user_id = ? AND deleted_at = ?`,
-		)
-		.bind(input.orgId, input.deletedAt)
-		.run()
+				)
+				.bind(input.orgId, input.deletedAt)
+				.run(),
+	)
 	total += listings.meta.changes ?? 0
 	for (const {
 		child,
 		parent,
 		parentKey,
 	} of orgOwnedBucketChildSoftDeleteTables) {
-		const children = await input.appDb
-			.prepare(
-				`UPDATE ${child}
+		const children = await withDeadline(
+			{
+				label: 'soft_delete.restoreOrgOwnedAppRows_5',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.appDb
+					.prepare(
+						`UPDATE ${child}
 				 SET deleted_at = NULL, deleting_at = NULL
 				 WHERE deleted_at = ?
 				   AND ${parentKey} IN (
 				     SELECT id FROM ${parent}
 				     WHERE user_id = ? AND deleted_at IS NULL
 				   )`,
-			)
-			.bind(input.deletedAt, input.orgId)
-			.run()
+					)
+					.bind(input.deletedAt, input.orgId)
+					.run(),
+		)
 		total += children.meta.changes ?? 0
 	}
 	return total
@@ -276,10 +365,14 @@ export async function softDeleteOrg(input: {
 }): Promise<SoftDeleteOrgResult> {
 	const appDb = input.env.APP_DB
 	const nowIso = (input.now ?? new Date()).toISOString()
-	const already = await appDb
-		.prepare(`SELECT deleted_at FROM orgs WHERE id = ?`)
-		.bind(input.orgId)
-		.first<{ deleted_at: string | null }>()
+	const already = await withDeadline(
+		{ label: 'soft_delete.softDeleteOrg', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			appDb
+				.prepare(`SELECT deleted_at FROM orgs WHERE id = ?`)
+				.bind(input.orgId)
+				.first<{ deleted_at: string | null }>(),
+	)
 	if (!already) throw new Error('org_not_found_or_already_deleted')
 
 	// Refuse a new soft-delete while a live person still owns this as their
@@ -328,25 +421,29 @@ export async function softDeleteOrg(input: {
 		// Memberships share the org's batch so a later failing step can never
 		// leave live members (or Owners) on a tombstoned org.
 		stamp: async (stampAt) => {
-			const [orgUpdate] = await appDb.batch([
-				appDb
-					.prepare(
-						`UPDATE orgs
+			const [orgUpdate] = await withDeadline(
+				{ label: 'soft_delete.batch', timeoutMs: outboundTimeoutMs.d1 },
+				() =>
+					appDb.batch([
+						appDb
+							.prepare(
+								`UPDATE orgs
 						 SET deleted_at = ?, updated_at = ?
 						 WHERE id = ? AND deleted_at IS NULL`,
-					)
-					.bind(stampAt, stampAt, input.orgId),
-				appDb
-					.prepare(
-						`UPDATE org_memberships
+							)
+							.bind(stampAt, stampAt, input.orgId),
+						appDb
+							.prepare(
+								`UPDATE org_memberships
 						 SET deleted_at = ?
 						 WHERE org_id = ? AND deleted_at IS NULL
 						   AND EXISTS (
 						     SELECT 1 FROM orgs WHERE id = ? AND deleted_at = ?
 						   )`,
-					)
-					.bind(stampAt, input.orgId, input.orgId, stampAt),
-			])
+							)
+							.bind(stampAt, input.orgId, input.orgId, stampAt),
+					]),
+			)
 			return orgUpdate?.meta.changes ?? 0
 		},
 	})
@@ -356,34 +453,46 @@ export async function softDeleteOrg(input: {
 	// member offboarding). Soft-delete also tombstones api_tokens; restore never
 	// clears those tombstones. After deleted_at is set, leave write fences in
 	// place even if a later step fails — fail closed for OwnerId writes.
-	await appDb
-		.prepare(
-			`UPDATE api_tokens
+	await withDeadline(
+		{ label: 'soft_delete.softDeleteOrg_2', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			appDb
+				.prepare(
+					`UPDATE api_tokens
 			 SET revoked_at = ?, updated_at = ?, deleted_at = ?
 			 WHERE COALESCE(org_id, user_id) = ?
 			   AND deleted_at IS NULL`,
-		)
-		.bind(deletedAt, deletedAt, deletedAt, input.orgId)
-		.run()
-	await appDb
-		.prepare(
-			`DELETE FROM cli_credential_bootstrap_codes
+				)
+				.bind(deletedAt, deletedAt, deletedAt, input.orgId)
+				.run(),
+	)
+	await withDeadline(
+		{ label: 'soft_delete.softDeleteOrg_3', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			appDb
+				.prepare(
+					`DELETE FROM cli_credential_bootstrap_codes
 			 WHERE COALESCE(org_id, user_id) = ?`,
-		)
-		.bind(input.orgId)
-		.run()
+				)
+				.bind(input.orgId)
+				.run(),
+	)
 
 	const oauthHelpers = (await resolveOAuthHelpers(input.env)) as
 		| OAuthGrantHelpers
 		| undefined
 	if (oauthHelpers) {
-		const members = await appDb
-			.prepare(
-				`SELECT user_id FROM org_memberships
+		const members = await withDeadline(
+			{ label: 'soft_delete.softDeleteOrg_4', timeoutMs: outboundTimeoutMs.d1 },
+			() =>
+				appDb
+					.prepare(
+						`SELECT user_id FROM org_memberships
 				 WHERE org_id = ? AND (deleted_at IS NULL OR deleted_at = ?)`,
-			)
-			.bind(input.orgId, deletedAt)
-			.all<{ user_id: string }>()
+					)
+					.bind(input.orgId, deletedAt)
+					.all<{ user_id: string }>(),
+		)
 		for (const member of members.results ?? []) {
 			await revokeOAuthGrantsForOrg({
 				helpers: oauthHelpers,
@@ -476,9 +585,15 @@ export async function assertActorCanRestoreSoftDeletedOrg(input: {
 	orgId: OwnerId
 	actorUserId: string
 }): Promise<{ deletedAt: string }> {
-	const row = await input.db
-		.prepare(
-			`SELECT o.deleted_at AS deleted_at
+	const row = await withDeadline(
+		{
+			label: 'soft_delete.assertActorCanRestoreSoftDeletedOrg',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT o.deleted_at AS deleted_at
 			 FROM orgs o
 			 INNER JOIN org_memberships m
 			   ON m.org_id = o.id
@@ -486,9 +601,10 @@ export async function assertActorCanRestoreSoftDeletedOrg(input: {
 			  ${restoreOwnerMembershipJoinSql}
 			 WHERE o.id = ?
 			   AND o.deleted_at IS NOT NULL`,
-		)
-		.bind(input.actorUserId, input.orgId)
-		.first<{ deleted_at: string }>()
+				)
+				.bind(input.actorUserId, input.orgId)
+				.first<{ deleted_at: string }>(),
+	)
 	if (!row?.deleted_at) {
 		throw new Error('org_restore_forbidden')
 	}
@@ -515,9 +631,15 @@ export async function listRestorableOrganizationsForPerson(input: {
 }): Promise<Array<RestorableOrganization>> {
 	const now = input.now ?? new Date()
 	const cutoff = softDeletePurgeCutoffIso(now)
-	const rows = await input.db
-		.prepare(
-			`SELECT o.id AS org_id,
+	const rows = await withDeadline(
+		{
+			label: 'soft_delete.listRestorableOrganizationsForPerson',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT o.id AS org_id,
 			        o.slug AS slug,
 			        o.display_name AS display_name,
 			        o.deleted_at AS deleted_at,
@@ -535,15 +657,16 @@ export async function listRestorableOrganizationsForPerson(input: {
 			        OR u.personal_org_id = o.id
 			   )
 			 ORDER BY o.deleted_at DESC, o.slug ASC`,
-		)
-		.bind(input.actorUserId, cutoff)
-		.all<{
-			org_id: string
-			slug: string
-			display_name: string | null
-			deleted_at: string
-			avatar_key: string | null
-		}>()
+				)
+				.bind(input.actorUserId, cutoff)
+				.all<{
+					org_id: string
+					slug: string
+					display_name: string | null
+					deleted_at: string
+					avatar_key: string | null
+				}>(),
+	)
 	return (rows.results ?? []).map((row) => ({
 		orgId: ownerIdFromStored(row.org_id),
 		slug: row.slug,
@@ -566,9 +689,15 @@ export async function loadRestorableOrganizationBySlugForPerson(input: {
 }): Promise<RestorableOrganization | null> {
 	const now = input.now ?? new Date()
 	const cutoff = softDeletePurgeCutoffIso(now)
-	const row = await input.db
-		.prepare(
-			`SELECT o.id AS org_id,
+	const row = await withDeadline(
+		{
+			label: 'soft_delete.loadRestorableOrganizationBySlugForPerson',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT o.id AS org_id,
 			        o.slug AS slug,
 			        o.display_name AS display_name,
 			        o.deleted_at AS deleted_at,
@@ -587,15 +716,16 @@ export async function loadRestorableOrganizationBySlugForPerson(input: {
 			        OR u.personal_org_id = o.id
 			   )
 			 LIMIT 1`,
-		)
-		.bind(input.actorUserId, input.slug, cutoff)
-		.first<{
-			org_id: string
-			slug: string
-			display_name: string | null
-			deleted_at: string
-			avatar_key: string | null
-		}>()
+				)
+				.bind(input.actorUserId, input.slug, cutoff)
+				.first<{
+					org_id: string
+					slug: string
+					display_name: string | null
+					deleted_at: string
+					avatar_key: string | null
+				}>(),
+	)
 	if (!row) return null
 	return {
 		orgId: ownerIdFromStored(row.org_id),
@@ -618,18 +748,25 @@ async function assertRestoreKeepsOwnersUnderFreeOrgCap(input: {
 	orgId: string
 	deletedAt: string
 }) {
-	const owners = await input.db
-		.prepare(
-			`SELECT m.user_id AS user_id, h.handle AS handle
+	const owners = await withDeadline(
+		{
+			label: 'soft_delete.assertRestoreKeepsOwnersUnderFreeOrgCap',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT m.user_id AS user_id, h.handle AS handle
 			 FROM org_memberships m
 			 INNER JOIN users u ON u.stable_user_id = m.user_id AND u.deleted_at IS NULL
 			 LEFT JOIN handles h ON h.user_id = m.user_id
 			 WHERE m.org_id = ?
 			   AND m.role = 'owner'
 			   AND (m.deleted_at = ? OR m.deleted_at IS NULL)`,
-		)
-		.bind(input.orgId, input.deletedAt)
-		.all<{ user_id: string; handle: string | null }>()
+				)
+				.bind(input.orgId, input.deletedAt)
+				.all<{ user_id: string; handle: string | null }>(),
+	)
 	for (const owner of owners.results ?? []) {
 		const count = await countLiveFreeOwnedOrgs(input.db, owner.user_id)
 		if (count >= MAX_FREE_ORGS_PER_USER) {
@@ -676,19 +813,23 @@ export async function restoreOrg(input: {
 }) {
 	const now = input.now ?? new Date()
 	const appDb = input.env.APP_DB
-	const row = await appDb
-		.prepare(
-			`SELECT deleted_at, plan, stripe_plan, stripe_customer_id, slug
+	const row = await withDeadline(
+		{ label: 'soft_delete.restoreOrg', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			appDb
+				.prepare(
+					`SELECT deleted_at, plan, stripe_plan, stripe_customer_id, slug
 			 FROM orgs WHERE id = ?`,
-		)
-		.bind(input.orgId)
-		.first<{
-			deleted_at: string | null
-			plan: string
-			stripe_plan: string | null
-			stripe_customer_id: string | null
-			slug: string
-		}>()
+				)
+				.bind(input.orgId)
+				.first<{
+					deleted_at: string | null
+					plan: string
+					stripe_plan: string | null
+					stripe_customer_id: string | null
+					slug: string
+				}>(),
+	)
 	if (!row?.deleted_at) {
 		throw new Error('org_not_deleted')
 	}
@@ -716,24 +857,27 @@ export async function restoreOrg(input: {
 	// are revived: a member who soft-deleted their own account must not regain
 	// access on org restore. The same statement bumps access_epoch: cached auth
 	// decisions from before the soft-delete must not match the revived org.
-	const [orgUpdate, memberships] = await appDb.batch([
-		appDb
-			.prepare(
-				`UPDATE orgs
+	const [orgUpdate, memberships] = await withDeadline(
+		{ label: 'soft_delete.batch', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			appDb.batch([
+				appDb
+					.prepare(
+						`UPDATE orgs
 				 SET deleted_at = NULL, deleting_at = NULL, updated_at = ?,
 				     access_epoch = access_epoch + 1
 				 WHERE id = ? AND deleted_at = ?
 				   AND slug NOT LIKE '~released-%'${freeOrg ? freeOrgCapRestoreGuardSql : ''}`,
-			)
-			.bind(
-				restoredAt,
-				input.orgId,
-				deletedAt,
-				...(freeOrg ? [MAX_FREE_ORGS_PER_USER] : []),
-			),
-		appDb
-			.prepare(
-				`UPDATE org_memberships
+					)
+					.bind(
+						restoredAt,
+						input.orgId,
+						deletedAt,
+						...(freeOrg ? [MAX_FREE_ORGS_PER_USER] : []),
+					),
+				appDb
+					.prepare(
+						`UPDATE org_memberships
 				 SET deleted_at = NULL
 				 WHERE org_id = ?
 				   AND deleted_at = ?
@@ -741,9 +885,10 @@ export async function restoreOrg(input: {
 				   AND user_id IN (
 				     SELECT stable_user_id FROM users WHERE deleted_at IS NULL
 				   )`,
-			)
-			.bind(input.orgId, deletedAt, input.orgId),
-	])
+					)
+					.bind(input.orgId, deletedAt, input.orgId),
+			]),
+	)
 	if ((orgUpdate?.meta.changes ?? 0) === 0) {
 		// Either another restore won, or a concurrent restore for one of the
 		// Owners went live first and the guard refused this one.
@@ -791,15 +936,24 @@ export async function restoreOrg(input: {
 	})
 
 	if (row.stripe_customer_id) {
+		const customerId = row.stripe_customer_id
 		try {
-			await refreshStripePlanForOrg({
-				env: input.env,
-				orgId: input.orgId,
-				customerId: row.stripe_customer_id,
-				now,
-			})
+			await withDeadline(
+				{
+					label: 'soft_delete.refreshStripePlanForOrg',
+					timeoutMs: outboundTimeoutMs.http,
+				},
+				() =>
+					refreshStripePlanForOrg({
+						env: input.env,
+						orgId: input.orgId,
+						customerId,
+						now,
+					}),
+			)
 		} catch (error) {
-			console.warn('org-restore-stripe-refresh-failed', {
+			mapSoftDeleteFailure({
+				kind: 'restore_stripe_refresh_failed',
 				orgId: input.orgId,
 				error,
 			})
@@ -818,37 +972,58 @@ export async function assertUserDeleteNotBlockedAsSoleOwner(input: {
 	db: D1Database
 	userId: OwnerId
 }) {
-	const memberships = await input.db
-		.prepare(
-			`SELECT m.org_id AS org_id, m.role AS role, o.slug AS slug
+	const memberships = await withDeadline(
+		{
+			label: 'soft_delete.assertUserDeleteNotBlockedAsSoleOwner',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT m.org_id AS org_id, m.role AS role, o.slug AS slug
 			 FROM org_memberships m
 			 INNER JOIN orgs o ON o.id = m.org_id
 			 WHERE m.user_id = ?
 			   AND m.deleted_at IS NULL
 			   AND o.deleted_at IS NULL`,
-		)
-		.bind(input.userId)
-		.all<{ org_id: OwnerId; role: string; slug: string }>()
+				)
+				.bind(input.userId)
+				.all<{ org_id: OwnerId; role: string; slug: string }>(),
+	)
 
 	const blockers: Array<{ orgId: OwnerId; orgSlug: string }> = []
 	for (const membership of memberships.results ?? []) {
 		if (membership.role !== 'owner') continue
-		const others = await input.db
-			.prepare(
-				`SELECT COUNT(*) AS count FROM org_memberships
+		const others = await withDeadline(
+			{
+				label: 'soft_delete.assertUserDeleteNotBlockedAsSoleOwner_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT COUNT(*) AS count FROM org_memberships
 				 WHERE org_id = ? AND user_id != ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(membership.org_id, input.userId)
-			.first<{ count: number }>()
+					)
+					.bind(membership.org_id, input.userId)
+					.first<{ count: number }>(),
+		)
 		const otherMemberCount = Number(others?.count ?? 0)
 		if (otherMemberCount === 0) continue
-		const otherOwners = await input.db
-			.prepare(
-				`SELECT COUNT(*) AS count FROM org_memberships
+		const otherOwners = await withDeadline(
+			{
+				label: 'soft_delete.assertUserDeleteNotBlockedAsSoleOwner_3',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT COUNT(*) AS count FROM org_memberships
 				 WHERE org_id = ? AND role = 'owner' AND user_id != ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(membership.org_id, input.userId)
-			.first<{ count: number }>()
+					)
+					.bind(membership.org_id, input.userId)
+					.first<{ count: number }>(),
+		)
 		if (Number(otherOwners?.count ?? 0) === 0) {
 			blockers.push({
 				orgId: membership.org_id,
@@ -887,12 +1062,19 @@ export async function softDeleteUserAccount(input: {
 	const appDb = input.env.APP_DB
 	// `userId` is the person (`stable_user_id`). Org-keyed audit/billing use
 	// `users.personal_org_id` when it differs (#3053 phase 2).
-	const personRow = await appDb
-		.prepare(
-			`SELECT stable_user_id, personal_org_id FROM users WHERE stable_user_id = ?`,
-		)
-		.bind(input.userId)
-		.first<{ stable_user_id: string; personal_org_id: string | null }>()
+	const personRow = await withDeadline(
+		{
+			label: 'soft_delete.softDeleteUserAccount',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			appDb
+				.prepare(
+					`SELECT stable_user_id, personal_org_id FROM users WHERE stable_user_id = ?`,
+				)
+				.bind(input.userId)
+				.first<{ stable_user_id: string; personal_org_id: string | null }>(),
+	)
 	const personalOrgId = personRow
 		? personalOrgIdFromUserRow(personRow)
 		: ownerIdFromStored(input.userId as string)
@@ -903,14 +1085,21 @@ export async function softDeleteUserAccount(input: {
 		nowIso: (input.now ?? new Date()).toISOString(),
 		missingError: 'user_not_found_or_already_deleted',
 		stamp: async (stampAt) => {
-			const userUpdate = await appDb
-				.prepare(
-					`UPDATE users
+			const userUpdate = await withDeadline(
+				{
+					label: 'soft_delete.softDeleteUserAccount_2',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					appDb
+						.prepare(
+							`UPDATE users
 					 SET deleted_at = ?, updated_at = ?
 					 WHERE stable_user_id = ? AND deleted_at IS NULL`,
-				)
-				.bind(stampAt, stampAt, input.userId)
-				.run()
+						)
+						.bind(stampAt, stampAt, input.userId)
+						.run(),
+			)
 			return userUpdate.meta.changes ?? 0
 		},
 	})
@@ -921,9 +1110,15 @@ export async function softDeleteUserAccount(input: {
 	// stays on the offboard path unless the org itself was tombstoned then.
 	// Otherwise a later departure of the remaining members would make a retry
 	// delete their org.
-	const soleMemberOrgs = await appDb
-		.prepare(
-			`SELECT m.org_id AS org_id
+	const soleMemberOrgs = await withDeadline(
+		{
+			label: 'soft_delete.softDeleteUserAccount_3',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			appDb
+				.prepare(
+					`SELECT m.org_id AS org_id
 			 FROM org_memberships m
 			 INNER JOIN orgs o ON o.id = m.org_id
 			 WHERE m.user_id = ?
@@ -943,9 +1138,10 @@ export async function softDeleteUserAccount(input: {
 			       AND (m.deleted_at IS NULL OR m.deleted_at = ?)
 			     )
 			   )`,
-		)
-		.bind(input.userId, input.userId, deletedAt, deletedAt)
-		.all<{ org_id: OwnerId }>()
+				)
+				.bind(input.userId, input.userId, deletedAt, deletedAt)
+				.all<{ org_id: OwnerId }>(),
+	)
 
 	const deletedOrgIds: Array<string> = []
 	const soleOrgIds = new Set<string>()
@@ -961,13 +1157,20 @@ export async function softDeleteUserAccount(input: {
 		deletedOrgIds.push(row.org_id)
 	}
 
-	const otherMemberships = await appDb
-		.prepare(
-			`SELECT org_id FROM org_memberships
+	const otherMemberships = await withDeadline(
+		{
+			label: 'soft_delete.softDeleteUserAccount_4',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			appDb
+				.prepare(
+					`SELECT org_id FROM org_memberships
 			 WHERE user_id = ? AND (deleted_at IS NULL OR deleted_at = ?)`,
-		)
-		.bind(input.userId, deletedAt)
-		.all<{ org_id: OwnerId }>()
+				)
+				.bind(input.userId, deletedAt)
+				.all<{ org_id: OwnerId }>(),
+	)
 	for (const row of otherMemberships.results ?? []) {
 		if (soleOrgIds.has(row.org_id)) continue
 		await onMemberSoftRemoved({
@@ -1022,11 +1225,18 @@ export async function restoreUserAccount(input: {
 }) {
 	const now = input.now ?? new Date()
 	const restoredAt = now.toISOString()
-	const userRow = await input.env.APP_DB.prepare(
-		`SELECT deleted_at, email FROM users WHERE stable_user_id = ?`,
+	const userRow = await withDeadline(
+		{
+			label: 'soft_delete.restoreUserAccount',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.env.APP_DB.prepare(
+				`SELECT deleted_at, email FROM users WHERE stable_user_id = ?`,
+			)
+				.bind(input.userId)
+				.first<{ deleted_at: string | null; email: string }>(),
 	)
-		.bind(input.userId)
-		.first<{ deleted_at: string | null; email: string }>()
 	if (!userRow?.deleted_at) {
 		throw new Error('user_not_deleted')
 	}
@@ -1040,25 +1250,39 @@ export async function restoreUserAccount(input: {
 	}
 	const deletedAt = userRow.deleted_at
 
-	const userUpdate = await input.env.APP_DB.prepare(
-		`UPDATE users
+	const userUpdate = await withDeadline(
+		{
+			label: 'soft_delete.restoreUserAccount_2',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.env.APP_DB.prepare(
+				`UPDATE users
 		 SET deleted_at = NULL, deleting_at = NULL, updated_at = ?
 		 WHERE stable_user_id = ? AND deleted_at = ?
 		   AND email NOT LIKE '%@released.kody.invalid'`,
+			)
+				.bind(restoredAt, input.userId, deletedAt)
+				.run(),
 	)
-		.bind(restoredAt, input.userId, deletedAt)
-		.run()
 	if ((userUpdate.meta.changes ?? 0) === 0) {
 		throw new Error('user_restore_race')
 	}
 
-	const deletedOrgs = await input.env.APP_DB.prepare(
-		`SELECT o.id FROM orgs o
+	const deletedOrgs = await withDeadline(
+		{
+			label: 'soft_delete.restoreUserAccount_3',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.env.APP_DB.prepare(
+				`SELECT o.id FROM orgs o
 		 INNER JOIN org_memberships m ON m.org_id = o.id
 		 WHERE o.deleted_at = ? AND m.user_id = ? AND m.deleted_at = ?`,
+			)
+				.bind(deletedAt, input.userId, deletedAt)
+				.all<{ id: OwnerId }>(),
 	)
-		.bind(deletedAt, input.userId, deletedAt)
-		.all<{ id: OwnerId }>()
 	const restoredOrgIds: Array<string> = []
 	for (const row of deletedOrgs.results ?? []) {
 		await restoreOrg({
@@ -1108,21 +1332,55 @@ export async function restoreResourceRow(input: {
 	const table =
 		resourceRestoreTableByType[input.resourceType.trim().toLowerCase()]
 	if (!table) return { restored: false }
-	const org = await input.env.APP_DB.prepare(
-		`SELECT deleted_at FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`,
+	const org = await withDeadline(
+		{
+			label: 'soft_delete.restoreResourceRow',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.env.APP_DB.prepare(
+				`SELECT deleted_at FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`,
+			)
+				.bind(input.orgId)
+				.first<{ deleted_at: string }>(),
 	)
-		.bind(input.orgId)
-		.first<{ deleted_at: string }>()
 	if (!org?.deleted_at) return { restored: false }
 	if (!isWithinSoftDeleteRestoreWindow(org.deleted_at, input.now)) {
 		throw new OrgRestoreWindowExpiredError()
 	}
-	const result = await input.env.APP_DB.prepare(
-		`UPDATE ${table}
+	const result = await withDeadline(
+		{
+			label: 'soft_delete.restoreResourceRow_2',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.env.APP_DB.prepare(
+				`UPDATE ${table}
 		 SET deleted_at = NULL
 		 WHERE user_id = ? AND id = ? AND deleted_at = ?`,
+			)
+				.bind(input.orgId, input.resourceId, org.deleted_at)
+				.run(),
 	)
-		.bind(input.orgId, input.resourceId, org.deleted_at)
-		.run()
 	return { restored: (result.meta.changes ?? 0) > 0 }
+}
+
+export type SoftDeleteFailure = {
+	kind: 'restore_stripe_refresh_failed'
+	orgId: OwnerId
+	error: unknown
+}
+
+/** The restore already committed; a stale Stripe plan is refreshed on the next sync. */
+function mapSoftDeleteFailure(failure: SoftDeleteFailure) {
+	switch (failure.kind) {
+		case 'restore_stripe_refresh_failed':
+			reportLaneError('warn', 'org-restore-stripe-refresh-failed', {
+				orgId: failure.orgId,
+				error: failure.error,
+			})
+			return
+		default:
+			return assertNever(failure.kind, 'soft delete failure')
+	}
 }

@@ -19,9 +19,32 @@ import {
 	replaceInboundDueOwnerHint,
 } from './inbound-due-owners.ts'
 import { mailboxRpc } from './mailbox-client.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 
 const reconciliationUserBatchSize = 25
 const reconciliationTimeBudgetMs = 10_000
+
+export type InboundReconcileFailure =
+	| { kind: 'owner_reconcile_failed'; userId: OwnerId; error: unknown }
+	| { kind: 'owner_defer_failed'; userId: OwnerId; error: unknown }
+
+/** Decides counting, deferral, and reporting for a failed owner. */
+export function mapInboundReconcileFailure(failure: InboundReconcileFailure) {
+	switch (failure.kind) {
+		case 'owner_reconcile_failed':
+			return { errors: 1, defer: failure.userId !== systemEmailOwnerId }
+		case 'owner_defer_failed':
+			// The owner stays due and is retried next run; the reconcile failure
+			// itself is already reported.
+			return { errors: 0, defer: false }
+		default:
+			return assertNever(failure, 'inbound reconcile failure')
+	}
+}
 
 export async function sweepStaleInboundDeliveries(input: {
 	env: Pick<
@@ -56,13 +79,23 @@ export async function sweepStaleInboundDeliveries(input: {
 
 	// Thin coordination rows discover only owner Mailboxes that reported due
 	// work. Runtime is independent of total account fleet size.
-	const userRows = await listDueInboundOwners({
-		db: input.env.APP_DB,
-		now,
-		limit: reconciliationUserBatchSize,
-	})
-	const systemDue = await input.env.APP_DB.prepare(
-		`WITH due_work(due_at) AS (
+	const userRows = await withDeadline(
+		{
+			label: 'inbound_reconcile.list_due_owners',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			listDueInboundOwners({
+				db: input.env.APP_DB,
+				now,
+				limit: reconciliationUserBatchSize,
+			}),
+	)
+	const systemDue = await withDeadline(
+		{ label: 'inbound_reconcile.system_due', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			input.env.APP_DB.prepare(
+				`WITH due_work(due_at) AS (
 			SELECT created_at
 			FROM system_email_delivery_events
 			WHERE
@@ -130,21 +163,22 @@ export async function sweepStaleInboundDeliveries(input: {
 		SELECT ? AS user_id, MIN(due_at) AS due_at
 		FROM due_work
 		HAVING COUNT(*) > 0`,
+			)
+				.bind(
+					cutoff,
+					now.toISOString(),
+					effectLeaseExpiredBefore,
+					effectLeaseExpiredBefore,
+					now.toISOString(),
+					now.toISOString(),
+					now.toISOString(),
+					effectLeaseExpiredBefore,
+					now.toISOString(),
+					effectLeaseExpiredBefore,
+					systemEmailOwnerId,
+				)
+				.first<{ user_id: OwnerId; due_at: string }>(),
 	)
-		.bind(
-			cutoff,
-			now.toISOString(),
-			effectLeaseExpiredBefore,
-			effectLeaseExpiredBefore,
-			now.toISOString(),
-			now.toISOString(),
-			now.toISOString(),
-			effectLeaseExpiredBefore,
-			now.toISOString(),
-			effectLeaseExpiredBefore,
-			systemEmailOwnerId,
-		)
-		.first<{ user_id: OwnerId; due_at: string }>()
 	const dueOwners = [
 		...userRows.map((row) => ({
 			user_id: row.userId,
@@ -194,15 +228,21 @@ export async function sweepStaleInboundDeliveries(input: {
 				})
 				return { result, pruned, effectResult }
 			}
-			const { result, pruned, effectResult } =
-				userId === systemEmailOwnerId
-					? await reconcileUser()
-					: await withAccountWriteLease({
-							db: input.env.APP_DB,
-							stableUserId: userId,
-							env: input.env,
-							write: reconcileUser,
-						})
+			const { result, pruned, effectResult } = await withDeadline(
+				{
+					label: 'inbound_reconcile.reconcile_owner',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() =>
+					userId === systemEmailOwnerId
+						? reconcileUser()
+						: withAccountWriteLease({
+								db: input.env.APP_DB,
+								stableUserId: userId,
+								env: input.env,
+								write: reconcileUser,
+							}),
+			)
 			recovered += result.recovered
 			cleaned += result.cleaned
 			pointersPruned += pruned
@@ -210,34 +250,71 @@ export async function sweepStaleInboundDeliveries(input: {
 			errors += effectResult.errors
 			usersProcessed += 1
 			if (userId !== systemEmailOwnerId) {
-				const hint = await mailboxRpc({
-					env: input.env,
-					userId,
-				}).getInboundDueWorkHint({
-					ownerId: userId,
-					now: now.toISOString(),
-				})
-				await replaceInboundDueOwnerHint({
-					db: input.env.APP_DB,
-					userId,
-					dueAt: hint.dueAt,
-					reason: 'scheduled-refresh',
-					now,
-				})
+				const hint = await withDeadline(
+					{
+						label: 'inbound_reconcile.due_work_hint',
+						timeoutMs: outboundTimeoutMs.durableObject,
+					},
+					() =>
+						mailboxRpc({
+							env: input.env,
+							userId,
+						}).getInboundDueWorkHint({
+							ownerId: userId,
+							now: now.toISOString(),
+						}),
+				)
+				await withDeadline(
+					{
+						label: 'inbound_reconcile.replace_due_hint',
+						timeoutMs: outboundTimeoutMs.d1,
+					},
+					() =>
+						replaceInboundDueOwnerHint({
+							db: input.env.APP_DB,
+							userId,
+							dueAt: hint.dueAt,
+							reason: 'scheduled-refresh',
+							now,
+						}),
+				)
 			}
 			if (result.budgetExhausted) break
 		} catch (error) {
-			errors += 1
+			const failure = mapInboundReconcileFailure({
+				kind: 'owner_reconcile_failed',
+				userId,
+				error,
+			})
+			errors += failure.errors
 			usersProcessed += 1
-			if (userId !== systemEmailOwnerId) {
-				await deferInboundDueOwner({
-					db: input.env.APP_DB,
-					userId,
-					error,
-					now,
-				}).catch(() => undefined)
+			if (failure.defer) {
+				await withDeadline(
+					{
+						label: 'inbound_reconcile.defer_owner',
+						timeoutMs: outboundTimeoutMs.d1,
+					},
+					() =>
+						deferInboundDueOwner({
+							db: input.env.APP_DB,
+							userId,
+							error,
+							now,
+						}),
+				).catch((deferError: unknown) =>
+					mapInboundReconcileFailure({
+						kind: 'owner_defer_failed',
+						userId,
+						error: deferError,
+					}),
+				)
 			}
-			console.warn('inbound-email-user-reconciliation-failed', userId, error)
+			reportLaneError(
+				'warn',
+				'inbound-email-user-reconciliation-failed',
+				userId,
+				error,
+			)
 		}
 	}
 

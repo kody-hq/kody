@@ -117,6 +117,11 @@ import {
 // The subset of the provider's OAuthHelpers that deletion consumes, kept
 // structural so node tests can pass small stubs as `OAUTH_PROVIDER`.
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { reportLaneError } from '#worker/scheduled/lane-failure.ts'
 type OAuthHelpersShape = OAuthGrantHelpers & {
 	deleteClient?(clientId: string): Promise<unknown>
 }
@@ -285,11 +290,16 @@ async function listUserVectorSourceRowIds(
 ): Promise<Array<string>> {
 	switch (source.kind) {
 		case 'app_db': {
-			const rows = await env.APP_DB.prepare(
-				`SELECT id FROM ${source.table} WHERE user_id = ?`,
+			const rows = await withDeadline(
+				{
+					label: 'account_deletion.listUserVectorSourceRowIds',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					env.APP_DB.prepare(`SELECT id FROM ${source.table} WHERE user_id = ?`)
+						.bind(userId)
+						.all<{ id: string }>(),
 			)
-				.bind(userId)
-				.all<{ id: string }>()
 			return (rows.results ?? []).map((row) => row.id)
 		}
 		case 'jobs_rpc': {
@@ -324,14 +334,21 @@ async function listUserVectorIds(env: Env, userId: OwnerId) {
 
 async function getUserBillingIdentity(env: Env, dbUserId: number) {
 	// Look up by primary key during deletion/purge; do not require a live row.
-	const row = await env.APP_DB.prepare(
-		`SELECT o.stripe_customer_id, u.email
+	const row = await withDeadline(
+		{
+			label: 'account_deletion.getUserBillingIdentity',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			env.APP_DB.prepare(
+				`SELECT o.stripe_customer_id, u.email
 		 FROM users u
 		 LEFT JOIN orgs o ON o.id = COALESCE(NULLIF(TRIM(u.personal_org_id), ''), u.stable_user_id)
 		 WHERE u.id = ?`,
+			)
+				.bind(dbUserId)
+				.first<{ stripe_customer_id: string | null; email: string | null }>(),
 	)
-		.bind(dbUserId)
-		.first<{ stripe_customer_id: string | null; email: string | null }>()
 	return {
 		stripeCustomerId: row?.stripe_customer_id?.trim() || null,
 		email: row?.email?.trim() || null,
@@ -346,13 +363,24 @@ async function listUserStorageIds(env: Env, userId: OwnerId) {
 }
 
 async function listUserSourceSnapshots(env: Env, userId: OwnerId) {
-	const sourceRows = await env.APP_DB.prepare(
-		`SELECT id, published_commit, repo_id
+	const sourceRows = await withDeadline(
+		{
+			label: 'account_deletion.listUserSourceSnapshots',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			env.APP_DB.prepare(
+				`SELECT id, published_commit, repo_id
 		FROM entity_sources
 		WHERE user_id = ?`,
+			)
+				.bind(userId)
+				.all<{
+					id: string
+					published_commit: string | null
+					repo_id: string
+				}>(),
 	)
-		.bind(userId)
-		.all<{ id: string; published_commit: string | null; repo_id: string }>()
 	return (sourceRows.results ?? []).map((row) => ({
 		sourceId: row.id,
 		publishedCommit: row.published_commit,
@@ -361,18 +389,25 @@ async function listUserSourceSnapshots(env: Env, userId: OwnerId) {
 }
 
 async function listUserSavedPackages(env: Env, userId: OwnerId) {
-	const rows = await env.APP_DB.prepare(
-		`SELECT id, kody_id, source_id, has_app
+	const rows = await withDeadline(
+		{
+			label: 'account_deletion.listUserSavedPackages',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			env.APP_DB.prepare(
+				`SELECT id, kody_id, source_id, has_app
 		FROM saved_packages
 		WHERE user_id = ?`,
+			)
+				.bind(userId)
+				.all<{
+					id: string
+					kody_id: string
+					source_id: string
+					has_app: number | string | boolean
+				}>(),
 	)
-		.bind(userId)
-		.all<{
-			id: string
-			kody_id: string
-			source_id: string
-			has_app: number | string | boolean
-		}>()
 	return (rows.results ?? []).map((row) => ({
 		id: row.id,
 		kodyId: row.kody_id,
@@ -393,13 +428,20 @@ async function listUserRepoSessions(env: Env, userId: OwnerId) {
 }
 
 async function listUserMcpServers(env: Env, userId: OwnerId) {
-	const rows = await env.APP_DB.prepare(
-		`SELECT id
+	const rows = await withDeadline(
+		{
+			label: 'account_deletion.listUserMcpServers',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			env.APP_DB.prepare(
+				`SELECT id
 		FROM mcp_server_settings
 		WHERE user_id = ?`,
+			)
+				.bind(userId)
+				.all<{ id: string }>(),
 	)
-		.bind(userId)
-		.all<{ id: string }>()
 	return (rows.results ?? []).map((row) => ({ id: row.id }))
 }
 
@@ -409,11 +451,18 @@ async function listUserBundleKvKeys(input: {
 	sourceSnapshots: ReadonlyArray<UserSourceSnapshot>
 	communityListings: ReadonlyArray<AccountCommunityListingSnapshot>
 }) {
-	const published = await input.env.APP_DB.prepare(
-		`SELECT kv_key FROM published_bundle_artifacts WHERE user_id = ?`,
+	const published = await withDeadline(
+		{
+			label: 'account_deletion.listUserBundleKvKeys',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.env.APP_DB.prepare(
+				`SELECT kv_key FROM published_bundle_artifacts WHERE user_id = ?`,
+			)
+				.bind(input.userId)
+				.all<{ kv_key: string }>(),
 	)
-		.bind(input.userId)
-		.all<{ kv_key: string }>()
 	return uniqueStrings([
 		...(published.results ?? []).map((row) => row.kv_key),
 		...input.sourceSnapshots.flatMap((source) =>
@@ -752,9 +801,15 @@ async function appendEarlierAccountDeletionRefunds(input: {
 }) {
 	let creditNotes: Array<StripeCreditNote>
 	try {
-		creditNotes = await listCreditNotesForCustomer(input.env, input.customerId)
+		creditNotes = await withDeadline(
+			{
+				label: 'account_deletion.listCreditNotesForCustomer',
+				timeoutMs: outboundTimeoutMs.http,
+			},
+			() => listCreditNotesForCustomer(input.env, input.customerId),
+		)
 	} catch (error) {
-		console.warn('account_deletion_refund_report_incomplete', {
+		reportLaneError('warn', 'account_deletion_refund_report_incomplete', {
 			error: getErrorMessage(error),
 		})
 		return
@@ -922,12 +977,18 @@ async function clearStorageRunners(input: {
 	let cleared = 0
 	for (const storageId of input.storageIds) {
 		try {
-			const stub = storageRunnerRpc({
-				env: input.env,
-				userId: input.userId,
-				storageId,
-			})
-			await stub.clearStorage()
+			await withDeadline(
+				{
+					label: 'account_deletion.clear_storage',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() =>
+					storageRunnerRpc({
+						env: input.env,
+						userId: input.userId,
+						storageId,
+					}).clearStorage(),
+			)
 			cleared += 1
 		} catch (error) {
 			const message = getErrorMessage(error)
@@ -991,7 +1052,13 @@ async function purgeUserMeter(input: {
 			)
 			return 0
 		}
-		await userMeterRpc({ env: input.env, userId: input.userId }).purge()
+		await withDeadline(
+			{
+				label: 'account_deletion.userMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() => userMeterRpc({ env: input.env, userId: input.userId }).purge(),
+		)
 		return 1
 	} catch (error) {
 		const message = getErrorMessage(error)
@@ -1006,10 +1073,17 @@ async function purgeStripePlanRefresh(input: {
 	warnings: Array<string>
 }): Promise<number> {
 	try {
-		const result = await purgeStripePlanRefreshForUser({
-			env: input.env,
-			userId: input.userId,
-		})
+		const result = await withDeadline(
+			{
+				label: 'account_deletion.purgeStripePlanRefreshForUser',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				purgeStripePlanRefreshForUser({
+					env: input.env,
+					userId: input.userId,
+				}),
+		)
 		if (!result.purged) {
 			input.warnings.push(
 				'STRIPE_PLAN_REFRESH binding was unavailable; the user Stripe refresh alarm was not purged.',
@@ -1029,9 +1103,16 @@ async function purgeMailbox(input: {
 	warnings: Array<string>
 }): Promise<number> {
 	try {
-		await mailboxRpc({ env: input.env, userId: input.userId }).purge({
-			ownerId: input.userId,
-		})
+		await withDeadline(
+			{
+				label: 'account_deletion.mailboxRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				mailboxRpc({ env: input.env, userId: input.userId }).purge({
+					ownerId: input.userId,
+				}),
+		)
 		return 1
 	} catch (error) {
 		const message = getErrorMessage(error)
@@ -1072,10 +1153,17 @@ async function purgeRepoSessions(input: {
 	let purged = 0
 	for (const session of input.sessions) {
 		try {
-			await repoSessionRpc(input.env, session.id).purgeSession({
-				sessionId: session.id,
-				userId: input.userId,
-			})
+			await withDeadline(
+				{
+					label: 'account_deletion.repoSessionRpc',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() =>
+					repoSessionRpc(input.env, session.id).purgeSession({
+						sessionId: session.id,
+						userId: input.userId,
+					}),
+			)
 			purged += 1
 		} catch (error) {
 			const message = getErrorMessage(error)
@@ -1093,10 +1181,17 @@ async function purgeRepoSessionIndex(input: {
 	warnings: Array<string>
 }): Promise<number> {
 	try {
-		await repoSessionIndexRpc({
-			env: input.env,
-			userId: input.userId,
-		}).purge({ ownerId: input.userId })
+		await withDeadline(
+			{
+				label: 'account_deletion.repoSessionIndexRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				repoSessionIndexRpc({
+					env: input.env,
+					userId: input.userId,
+				}).purge({ ownerId: input.userId }),
+		)
 		return 1
 	} catch (error) {
 		const message = getErrorMessage(error)
@@ -1126,7 +1221,13 @@ async function purgeMcpClientHub(input: {
 		) as unknown as {
 			purgeForAccountDeletion: () => Promise<void>
 		}
-		await stub.purgeForAccountDeletion()
+		await withDeadline(
+			{
+				label: 'account_deletion.purgeForAccountDeletion',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() => stub.purgeForAccountDeletion(),
+		)
 		return 1
 	} catch (error) {
 		const message = getErrorMessage(error)
@@ -1158,7 +1259,13 @@ async function purgeMcpAgentSessions(input: {
 			) as unknown as {
 				purgeForAccountDeletion: (payload: { userId: OwnerId }) => Promise<void>
 			}
-			await stub.purgeForAccountDeletion({ userId: input.userId })
+			await withDeadline(
+				{
+					label: 'account_deletion.purgeForAccountDeletion',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() => stub.purgeForAccountDeletion({ userId: input.userId }),
+			)
 			purged += 1
 		} catch (error) {
 			input.warnings.push(
@@ -1178,14 +1285,21 @@ async function purgePackageRealtimeSessions(input: {
 	let purged = 0
 	for (const savedPackage of input.packages.filter((pkg) => pkg.hasApp)) {
 		try {
-			await packageRealtimeSessionRpc({
-				env: input.env,
-				userId: input.userId,
-				packageId: savedPackage.id,
-				kodyId: savedPackage.kodyId,
-				sourceId: savedPackage.sourceId,
-				baseUrl: 'https://account-deletion.invalid',
-			}).purge()
+			await withDeadline(
+				{
+					label: 'account_deletion.packageRealtimeSessionRpc',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() =>
+					packageRealtimeSessionRpc({
+						env: input.env,
+						userId: input.userId,
+						packageId: savedPackage.id,
+						kodyId: savedPackage.kodyId,
+						sourceId: savedPackage.sourceId,
+						baseUrl: 'https://account-deletion.invalid',
+					}).purge(),
+			)
 			purged += 1
 		} catch (error) {
 			const message = getErrorMessage(error)
@@ -1233,7 +1347,10 @@ async function deleteKvKeys(input: {
 	let deleted = 0
 	for (const key of input.keys) {
 		try {
-			await input.kv.delete(key)
+			await withDeadline(
+				{ label: 'account_deletion.delete', timeoutMs: outboundTimeoutMs.kv },
+				() => input.kv.delete(key),
+			)
 			deleted += 1
 		} catch (error) {
 			const message = getErrorMessage(error)
@@ -1253,7 +1370,10 @@ async function deleteR2Objects(input: {
 	let complete = true
 	for (const key of input.keys) {
 		try {
-			await input.blobs.delete(key)
+			await withDeadline(
+				{ label: 'account_deletion.delete', timeoutMs: outboundTimeoutMs.r2 },
+				() => input.blobs.delete(key),
+			)
 			deleted += 1
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
@@ -1325,10 +1445,14 @@ async function listKvKeysByPrefix(input: {
 		let cursor: string | undefined
 		do {
 			try {
-				const result = await input.kv.list({
-					prefix,
-					cursor,
-				})
+				const result = await withDeadline(
+					{ label: 'account_deletion.list', timeoutMs: outboundTimeoutMs.kv },
+					() =>
+						input.kv.list({
+							prefix,
+							cursor,
+						}),
+				)
 				for (const key of result.keys) {
 					keys.add(key.name)
 				}
@@ -1414,10 +1538,14 @@ async function deleteUserScopedRowsAndUser(input: {
 			? `DELETE FROM users WHERE id = ? AND deleted_at IS NOT NULL`
 			: `DELETE FROM users WHERE id = ?${andLiveDeletedAtSql()}`,
 	).bind(input.dbUserId)
-	const results = await input.env.APP_DB.batch([
-		...operations.map((operation) => operation.statement),
-		userStatement,
-	])
+	const results = await withDeadline(
+		{ label: 'account_deletion.batch', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			input.env.APP_DB.batch([
+				...operations.map((operation) => operation.statement),
+				userStatement,
+			]),
+	)
 	for (const [index, operation] of operations.entries()) {
 		const changes = results[index]?.meta.changes
 		if (operation.match.mutation.kind === 'delete') {
@@ -1506,7 +1634,13 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
 
 	if (input.env.FILE_STORE) {
 		try {
-			await fileStoreRpc(input.env, input.ownerId).purge(input.ownerId)
+			await withDeadline(
+				{
+					label: 'account_deletion.fileStoreRpc',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() => fileStoreRpc(input.env, input.ownerId).purge(input.ownerId),
+			)
 			result.clearedDurableObjects.fileStores = 1
 		} catch (error) {
 			warnings.push(`File store purge failed: ${getErrorMessage(error)}`)
@@ -1561,12 +1695,18 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
 		userId: input.ownerId,
 		warnings,
 	})
-	result.clearedDurableObjects.stripePlanRefreshes =
-		await purgeStripePlanRefresh({
-			env: input.env,
-			userId: input.ownerId,
-			warnings,
-		})
+	result.clearedDurableObjects.stripePlanRefreshes = await withDeadline(
+		{
+			label: 'account_deletion.purgeStripePlanRefresh',
+			timeoutMs: outboundTimeoutMs.durableObject,
+		},
+		() =>
+			purgeStripePlanRefresh({
+				env: input.env,
+				userId: input.ownerId,
+				warnings,
+			}),
+	)
 
 	if (input.env.BUNDLE_ARTIFACTS_KV) {
 		const sourceSnapshotKeys = await listKvKeysByPrefix({
@@ -1717,13 +1857,20 @@ export async function deleteUserAccount(input: {
 		deletingAt: string
 	}
 	if (purgeSoftDeleted) {
-		const tombstone = await input.env.APP_DB.prepare(
-			`SELECT deleting_at
+		const tombstone = await withDeadline(
+			{
+				label: 'account_deletion.deleteUserAccount',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.env.APP_DB.prepare(
+					`SELECT deleting_at
 			 FROM users
 			 WHERE id = ? AND deleted_at IS NOT NULL`,
+				)
+					.bind(input.dbUserId)
+					.first<{ deleting_at: string | null }>(),
 		)
-			.bind(input.dbUserId)
-			.first<{ deleting_at: string | null }>()
 		if (!tombstone) {
 			throw new Error(
 				`Account ${input.mcpUserId} is not soft-deleted for purge.`,
@@ -1796,12 +1943,20 @@ export async function deleteUserAccount(input: {
 	// subscription is canceled the account (and its portal access) must survive
 	// so the customer is not billed for an account that no longer exists.
 	if (inventory.stripeCustomerId) {
+		const customerId = inventory.stripeCustomerId
 		try {
-			const billing = await cancelActiveStripeSubscriptions({
-				env: input.env,
-				customerId: inventory.stripeCustomerId,
-				email: inventory.email,
-			})
+			const billing = await withDeadline(
+				{
+					label: 'account_deletion.cancelActiveStripeSubscriptions',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() =>
+					cancelActiveStripeSubscriptions({
+						env: input.env,
+						customerId,
+						email: inventory.email,
+					}),
+			)
 			result.stripeRefunds = billing.refunds
 		} catch (error) {
 			if (error instanceof AccountDeletionBillingError) {
@@ -1853,7 +2008,13 @@ export async function deleteUserAccount(input: {
 
 	if (input.env.FILE_STORE) {
 		try {
-			await fileStoreRpc(input.env, input.mcpUserId).purge(input.mcpUserId)
+			await withDeadline(
+				{
+					label: 'account_deletion.fileStoreRpc',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() => fileStoreRpc(input.env, input.mcpUserId).purge(input.mcpUserId),
+			)
 			result.clearedDurableObjects.fileStores = 1
 		} catch (error) {
 			warnings.push(`File store purge failed: ${getErrorMessage(error)}`)
@@ -1908,12 +2069,18 @@ export async function deleteUserAccount(input: {
 		userId: input.mcpUserId,
 		warnings,
 	})
-	result.clearedDurableObjects.stripePlanRefreshes =
-		await purgeStripePlanRefresh({
-			env: input.env,
-			userId: input.mcpUserId,
-			warnings,
-		})
+	result.clearedDurableObjects.stripePlanRefreshes = await withDeadline(
+		{
+			label: 'account_deletion.purgeStripePlanRefresh',
+			timeoutMs: outboundTimeoutMs.durableObject,
+		},
+		() =>
+			purgeStripePlanRefresh({
+				env: input.env,
+				userId: input.mcpUserId,
+				warnings,
+			}),
+	)
 	if (input.env.BUNDLE_ARTIFACTS_KV) {
 		const sourceSnapshotKeys = await listKvKeysByPrefix({
 			kv: input.env.BUNDLE_ARTIFACTS_KV,
@@ -1993,18 +2160,22 @@ export async function deleteUserAccount(input: {
 		}
 	}
 
-	const discordConnection = await input.env.APP_DB.prepare(
-		`SELECT provider_id FROM oauth_connections
+	const discordConnection = await withDeadline(
+		{
+			label: 'account_deletion.deleteUserAccount_2',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.env.APP_DB.prepare(
+				`SELECT provider_id FROM oauth_connections
 		 WHERE user_id = ? AND provider_name = 'discord'`,
-	)
-		.bind(input.dbUserId)
-		.first<{ provider_id: string }>()
-		.catch((error) => {
-			warnings.push(
-				`Discord connection lookup failed: ${getErrorMessage(error)}`,
 			)
-			return null
-		})
+				.bind(input.dbUserId)
+				.first<{ provider_id: string }>(),
+	).catch((error) => {
+		warnings.push(`Discord connection lookup failed: ${getErrorMessage(error)}`)
+		return null
+	})
 	if (discordConnection?.provider_id) {
 		const discordRoleCleanup = await maybeRemoveDiscordGuildRoles({
 			env: input.env,
@@ -2102,12 +2273,20 @@ export async function deleteUserAccount(input: {
 	}
 
 	if (inventory.stripeCustomerId) {
-		await deleteStripeCustomer({
-			env: input.env,
-			customerId: inventory.stripeCustomerId,
-			userId: input.mcpUserId,
-			warnings,
-		})
+		const customerId = inventory.stripeCustomerId
+		await withDeadline(
+			{
+				label: 'account_deletion.deleteStripeCustomer',
+				timeoutMs: outboundTimeoutMs.http,
+			},
+			() =>
+				deleteStripeCustomer({
+					env: input.env,
+					customerId,
+					userId: input.mcpUserId,
+					warnings,
+				}),
+		)
 	}
 
 	try {
@@ -2137,15 +2316,26 @@ export async function deleteUserAccount(input: {
 	// The D1 user row is gone. Drop the UserMeter tombstone `purge()` restored
 	// so the purged object keeps no state for this stable id.
 	try {
-		await clearUserMeterDeletionTombstone({
-			env: input.env,
-			stableUserId: input.mcpUserId,
-		})
+		await withDeadline(
+			{
+				label: 'account_deletion.clearUserMeterDeletionTombstone',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				clearUserMeterDeletionTombstone({
+					env: input.env,
+					stableUserId: input.mcpUserId,
+				}),
+		)
 	} catch (error) {
-		console.error('account_deletion_user_meter_tombstone_clear_failed', {
-			userId: input.mcpUserId,
-			error,
-		})
+		reportLaneError(
+			'error',
+			'account_deletion_user_meter_tombstone_clear_failed',
+			{
+				userId: input.mcpUserId,
+				error,
+			},
+		)
 	}
 
 	return result

@@ -1,4 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
 
 const oauthPurgeBatchSize = 50
 const oauthPurgeKeyConcurrency = 8
@@ -188,6 +192,7 @@ function isClientMetadataUrl(clientId: string) {
 	try {
 		const url = new URL(clientId)
 		return url.protocol === 'https:' && url.pathname !== '/'
+		// oxlint-disable-next-line kody-custom/no-swallowed-lane-error -- an unparseable client id is simply not a metadata URL.
 	} catch {
 		return false
 	}
@@ -209,10 +214,16 @@ export async function listOAuthPurgePage(
 	options: { prefix: string; cursor?: string },
 ) {
 	try {
-		return await kv.list({ ...options, limit: oauthPurgeBatchSize })
+		return await withDeadline(
+			{ label: 'oauth_purge.list', timeoutMs: outboundTimeoutMs.kv },
+			() => kv.list({ ...options, limit: oauthPurgeBatchSize }),
+		)
 	} catch (error) {
 		if (!options.cursor || !isInvalidOAuthPurgeCursorError(error)) throw error
-		return kv.list({ prefix: options.prefix, limit: oauthPurgeBatchSize })
+		return withDeadline(
+			{ label: 'oauth_purge.list', timeoutMs: outboundTimeoutMs.kv },
+			() => kv.list({ prefix: options.prefix, limit: oauthPurgeBatchSize }),
+		)
 	}
 }
 
@@ -283,9 +294,10 @@ async function scanGrantPage(
 	const clientExists = (clientId: string) => {
 		let exists = clients.get(clientId)
 		if (!exists) {
-			exists = kv
-				.get(`client:${clientId}`, { type: 'json' })
-				.then((client) => client !== null)
+			exists = withDeadline(
+				{ label: 'oauth_purge.get_client', timeoutMs: outboundTimeoutMs.kv },
+				() => kv.get(`client:${clientId}`, { type: 'json' }),
+			).then((client) => client !== null)
 			clients.set(clientId, exists)
 		}
 		return exists
@@ -295,7 +307,10 @@ async function scanGrantPage(
 		unscannedKeys,
 		budget,
 		async (grantKey) => {
-			const grant = await kv.get(grantKey, { type: 'json' })
+			const grant = await withDeadline(
+				{ label: 'oauth_purge.get', timeoutMs: outboundTimeoutMs.kv },
+				() => kv.get(grantKey, { type: 'json' }),
+			)
 			if (!isGrantRecord(grant)) return undefined
 			const shouldPurge =
 				(typeof grant.expiresAt === 'number' && now >= grant.expiresAt) ||
@@ -346,7 +361,11 @@ async function revokeNextPendingGrant(
 	const deleted = await processKeysWithinBudget(
 		tokenPage.unscannedKeys,
 		budget,
-		(key) => kv.delete(key),
+		(key) =>
+			withDeadline(
+				{ label: 'oauth_purge.delete', timeoutMs: outboundTimeoutMs.kv },
+				() => kv.delete(key),
+			),
 	)
 	tokenPage.unscannedKeys = tokenPage.unscannedKeys.slice(deleted.length)
 	if (tokenPage.unscannedKeys.length > 0) {
@@ -360,7 +379,10 @@ async function revokeNextPendingGrant(
 	if (!budget.hasTime()) {
 		return { grantsPurged: 0, tokensPurged: deleted.length }
 	}
-	await kv.delete(pending.grantKey)
+	await withDeadline(
+		{ label: 'oauth_purge.delete', timeoutMs: outboundTimeoutMs.kv },
+		() => kv.delete(pending.grantKey),
+	)
 	continuation.pendingGrantPage?.revocations.shift()
 	return { grantsPurged: 1, tokensPurged: deleted.length }
 }
@@ -419,7 +441,10 @@ async function purgeTokenPhase(
 	const grantExists = (grantKey: string) => {
 		let exists = grants.get(grantKey)
 		if (!exists) {
-			exists = kv.get(grantKey).then((grant) => grant !== null)
+			exists = withDeadline(
+				{ label: 'oauth_purge.get', timeoutMs: outboundTimeoutMs.kv },
+				() => kv.get(grantKey),
+			).then((grant) => grant !== null)
 			grants.set(grantKey, exists)
 		}
 		return exists
@@ -429,12 +454,18 @@ async function purgeTokenPhase(
 		page.unscannedKeys,
 		budget,
 		async (tokenKey) => {
-			const token = await kv.get(tokenKey, { type: 'json' })
+			const token = await withDeadline(
+				{ label: 'oauth_purge.get', timeoutMs: outboundTimeoutMs.kv },
+				() => kv.get(tokenKey, { type: 'json' }),
+			)
 			if (!isTokenRecord(token)) return false
 			if (await grantExists(`grant:${token.userId}:${token.grantId}`)) {
 				return false
 			}
-			await kv.delete(tokenKey)
+			await withDeadline(
+				{ label: 'oauth_purge.delete', timeoutMs: outboundTimeoutMs.kv },
+				() => kv.delete(tokenKey),
+			)
 			return true
 		},
 	)
@@ -463,13 +494,19 @@ async function continueOAuthPurge(
 ): Promise<OAuthPurgeResult> {
 	const budget = startRunBudget()
 	const continuation = parseContinuation(
-		await storage.get(oauthPurgeContinuationStorageKey),
+		await withDeadline(
+			{ label: 'oauth_purge.get', timeoutMs: outboundTimeoutMs.durableObject },
+			() => storage.get(oauthPurgeContinuationStorageKey),
+		),
 	)
 	const result =
 		continuation.nextPhase === 'grants'
 			? await purgeGrantPhase(kv, continuation, now, budget)
 			: await purgeTokenPhase(kv, continuation, budget)
-	await storage.put(oauthPurgeContinuationStorageKey, continuation)
+	await withDeadline(
+		{ label: 'oauth_purge.put', timeoutMs: outboundTimeoutMs.durableObject },
+		() => storage.put(oauthPurgeContinuationStorageKey, continuation),
+	)
 	return result
 }
 
@@ -494,6 +531,9 @@ export class OAuthPurgeCoordinator extends DurableObject<Env> {
 				Math.floor(input.scheduledAt / 1000),
 			),
 		)
+		// The caller observes `result`; this copy only keeps the queue moving
+		// after a failed run.
+		// oxlint-disable-next-line kody-custom/no-swallowed-lane-error -- rejection is delivered to the caller through `result`.
 		this.#previousRun = result.catch(() => {})
 		return result
 	}

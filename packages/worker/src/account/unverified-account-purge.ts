@@ -23,6 +23,11 @@ import {
 	AccountDeletionInventoryError,
 	deleteUserAccount,
 } from '#app/account-deletion.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 
 export { shouldRunRetentionCron as shouldRunUnverifiedAccountPurgeCron }
 
@@ -221,10 +226,48 @@ function reportPurgeFailureToSentry(input: {
 			Sentry.captureException(redactedErrorForReporting(input.error))
 		})
 	} catch (sentryError) {
-		console.warn('unverified_account_purge_sentry_failed', {
+		reportLaneError('warn', 'unverified_account_purge_sentry_failed', {
 			userId: input.userId,
 			error: sentryError,
 		})
+	}
+}
+
+export type UnverifiedAccountPurgeFailure =
+	/** Deletion refused before any cleanup ran: release a fence this pass created. */
+	| { kind: 'pre_cleanup_failed'; userId: OwnerId; error: unknown }
+	/** Cleanup started: keep the fence so the retry backoff restamps it. */
+	| { kind: 'cleanup_failed'; userId: OwnerId; error: unknown }
+	| { kind: 'release_failed'; userId: OwnerId; error: unknown }
+	| { kind: 'audit_failed'; userId: OwnerId; error: unknown }
+
+/**
+ * Account failures record a failed outcome, an audit row, and a Sentry event
+ * (done by the caller). Release and audit failures are only reported: they
+ * must not abort the rest of the batch.
+ */
+export function mapUnverifiedAccountPurgeFailure(
+	failure: UnverifiedAccountPurgeFailure,
+): { releaseClaim: boolean } {
+	switch (failure.kind) {
+		case 'pre_cleanup_failed':
+			return { releaseClaim: true }
+		case 'cleanup_failed':
+			return { releaseClaim: false }
+		case 'release_failed':
+			reportLaneError('warn', 'unverified_account_purge_release_failed', {
+				userId: failure.userId,
+				error: failure.error,
+			})
+			return { releaseClaim: false }
+		case 'audit_failed':
+			reportLaneError('warn', 'unverified_account_purge_audit_failed', {
+				userId: failure.userId,
+				error: failure.error,
+			})
+			return { releaseClaim: false }
+		default:
+			return assertNever(failure, 'unverified account purge failure')
 	}
 }
 
@@ -252,16 +295,23 @@ async function listUnverifiedAccountsPage(input: {
 }) {
 	const conditions = unverifiedAccountSqlConditions().join('\n			AND ')
 	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`SELECT id, stable_user_id, personal_org_id, email, created_at
+		withDeadline(
+			{
+				label: 'unverified_account_purge.listUnverifiedAccountsPage',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT id, stable_user_id, personal_org_id, email, created_at
 				FROM users
 				WHERE ${conditions}
 				ORDER BY (deleting_at IS NULL) DESC, datetime(created_at) ASC, id ASC
 				LIMIT ?`,
-			)
-			.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
-			.all<UnverifiedAccountRow>(),
+					)
+					.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
+					.all<UnverifiedAccountRow>(),
+		),
 	)
 	return results ?? []
 }
@@ -275,32 +325,51 @@ async function claimUnverifiedAccountForPurge(input: {
 	const deletingAt = utcSqliteTimestamp(input.now)
 	const eligibility = unverifiedPersonEligibilitySql.join('\n					AND ')
 	const createdResult = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
+		withDeadline(
+			{
+				label: 'unverified_account_purge.claimUnverifiedAccountForPurge',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE users
 				SET deleting_at = ?, updated_at = ?
 				WHERE id = ?
 					AND ${eligibility}
 					AND deleting_at IS NULL`,
-			)
-			.bind(deletingAt, deletingAt, input.dbUserId)
-			.run(),
+					)
+					.bind(deletingAt, deletingAt, input.dbUserId)
+					.run(),
+		),
 	)
 	if ((createdResult.meta.changes ?? 0) === 1) {
 		await invalidatePackageAppOwnerCacheForDbUserId(input.db, input.dbUserId)
 		return { claimed: true, created: true, deletingAt }
 	}
 	const restampedResult = await runD1WithRetry(() =>
-		input.db
-			.prepare(
-				`UPDATE users
+		withDeadline(
+			{
+				label: 'unverified_account_purge.claimUnverifiedAccountForPurge_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE users
 				SET deleting_at = ?, updated_at = ?
 				WHERE id = ?
 					AND ${eligibility}
 					AND datetime(deleting_at) < datetime(?)`,
-			)
-			.bind(deletingAt, deletingAt, input.dbUserId, input.retryBackoffCutoff)
-			.run(),
+					)
+					.bind(
+						deletingAt,
+						deletingAt,
+						input.dbUserId,
+						input.retryBackoffCutoff,
+					)
+					.run(),
+		),
 	)
 	if ((restampedResult.meta.changes ?? 0) === 1) {
 		await invalidatePackageAppOwnerCacheForDbUserId(input.db, input.dbUserId)
@@ -402,7 +471,8 @@ export async function pruneUnverifiedAccounts(input: {
 					reason: `unverified_for_${accountAgeDays}_days`,
 				})
 			} catch (error) {
-				console.warn('unverified_account_purge_audit_failed', {
+				mapUnverifiedAccountPurgeFailure({
+					kind: 'audit_failed',
 					userId: account.stable_user_id,
 					error,
 				})
@@ -414,18 +484,33 @@ export async function pruneUnverifiedAccounts(input: {
 				outcome: 'purged',
 			})
 		} catch (error) {
-			if (claim.created && isPreCleanupDeletionFailure(error)) {
+			const failure = mapUnverifiedAccountPurgeFailure({
+				kind: isPreCleanupDeletionFailure(error)
+					? 'pre_cleanup_failed'
+					: 'cleanup_failed',
+				userId: account.stable_user_id,
+				error,
+			})
+			if (claim.created && failure.releaseClaim) {
 				// A failed release leaves the fence in place; the retry backoff
 				// restamps it later, so it must not abort the rest of the batch.
 				try {
-					await abortAccountDeleting({
-						db: input.env.APP_DB,
-						dbUserId: account.id,
-						env: input.env,
-						expectedDeletingAt: claim.deletingAt,
-					})
+					await withDeadline(
+						{
+							label: 'unverified_account_purge.release_claim',
+							timeoutMs: outboundTimeoutMs.durableObject,
+						},
+						() =>
+							abortAccountDeleting({
+								db: input.env.APP_DB,
+								dbUserId: account.id,
+								env: input.env,
+								expectedDeletingAt: claim.deletingAt,
+							}),
+					)
 				} catch (releaseError) {
-					console.warn('unverified_account_purge_release_failed', {
+					mapUnverifiedAccountPurgeFailure({
+						kind: 'release_failed',
 						userId: account.stable_user_id,
 						error: releaseError,
 					})
@@ -441,7 +526,7 @@ export async function pruneUnverifiedAccounts(input: {
 				error: reason,
 				warnings: [...warnings],
 			})
-			console.warn('unverified_account_purge_failed', {
+			reportLaneError('warn', 'unverified_account_purge_failed', {
 				userId: account.stable_user_id,
 				warnings,
 				error: reason,
@@ -459,7 +544,8 @@ export async function pruneUnverifiedAccounts(input: {
 					reason,
 				})
 			} catch (auditError) {
-				console.warn('unverified_account_purge_audit_failed', {
+				mapUnverifiedAccountPurgeFailure({
+					kind: 'audit_failed',
 					userId: account.stable_user_id,
 					error: auditError,
 				})

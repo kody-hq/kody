@@ -1,5 +1,10 @@
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { isResourceChangeAuditAction } from '#worker/resource-events/projection.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 
 /**
  * What caused a change: the package whose run made it, and how many resource
@@ -153,6 +158,7 @@ export function parseOrgAuditOutboxPayload(
 			return null
 		}
 		return parsed
+		// oxlint-disable-next-line kody-custom/no-swallowed-lane-error -- malformed JSON is the documented null result; callers map it to invalid_payload.
 	} catch {
 		return null
 	}
@@ -165,47 +171,68 @@ export async function deliverOrgAuditOutboxPayload(
 	payload: OrgAuditOutboxPayload,
 ): Promise<OrgAuditOutboxDeliveryResult> {
 	const insert = await runD1WithRetry(() =>
-		auditDb
-			.prepare(
-				`INSERT OR IGNORE INTO org_audit_events (
+		withDeadline(
+			{
+				label: 'org_audit_outbox.deliverOrgAuditOutboxPayload',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				auditDb
+					.prepare(
+						`INSERT OR IGNORE INTO org_audit_events (
 					id, org_id, actor_user_id, actor_username, credential_kind,
 					credential_id, action, resource_type, resource_id, target_user_id,
 					result, details_json, ip_hash, created_at
 				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			)
-			.bind(
-				payload.id,
-				payload.orgId,
-				payload.actorUserId,
-				payload.actorUsername,
-				payload.credentialKind,
-				payload.credentialId,
-				payload.action,
-				payload.resourceType,
-				payload.resourceId,
-				payload.targetUserId,
-				payload.result,
-				payload.detailsJson,
-				payload.ipHash,
-				payload.createdAt,
-			)
-			.run(),
+					)
+					.bind(
+						payload.id,
+						payload.orgId,
+						payload.actorUserId,
+						payload.actorUsername,
+						payload.credentialKind,
+						payload.credentialId,
+						payload.action,
+						payload.resourceType,
+						payload.resourceId,
+						payload.targetUserId,
+						payload.result,
+						payload.detailsJson,
+						payload.ipHash,
+						payload.createdAt,
+					)
+					.run(),
+		),
 	)
 	if ((insert.meta?.changes ?? 0) > 0) return 'inserted'
-	const existing = await auditDb
-		.prepare(`SELECT 1 AS ok FROM org_audit_events WHERE id = ?`)
-		.bind(payload.id)
-		.first<{ ok: number }>()
+	const existing = await withDeadline(
+		{
+			label: 'org_audit_outbox.lookup_delivered',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			auditDb
+				.prepare(`SELECT 1 AS ok FROM org_audit_events WHERE id = ?`)
+				.bind(payload.id)
+				.first<{ ok: number }>(),
+	)
 	if (existing?.ok) return 'already_exists'
 	throw new Error(`org_audit_outbox_delivery_failed:${payload.id}`)
 }
 
 async function deleteOrgAuditOutboxRow(appDb: D1Database, outboxId: string) {
 	await runD1WithRetry(() =>
-		appDb
-			.prepare(`DELETE FROM org_audit_outbox WHERE id = ?`)
-			.bind(outboxId)
-			.run(),
+		withDeadline(
+			{
+				label: 'org_audit_outbox.deleteOrgAuditOutboxRow',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				appDb
+					.prepare(`DELETE FROM org_audit_outbox WHERE id = ?`)
+					.bind(outboxId)
+					.run(),
+		),
 	)
 }
 
@@ -219,10 +246,14 @@ export async function tryDeliverOrgAuditOutboxPlan(
 	plan: OrgAuditOutboxPlan,
 ): Promise<boolean> {
 	try {
-		const live = await writer.appDb
-			.prepare(`SELECT payload_json FROM org_audit_outbox WHERE id = ?`)
-			.bind(plan.outboxId)
-			.first<{ payload_json: string }>()
+		const live = await withDeadline(
+			{ label: 'org_audit_outbox.read_live', timeoutMs: outboundTimeoutMs.d1 },
+			() =>
+				writer.appDb
+					.prepare(`SELECT payload_json FROM org_audit_outbox WHERE id = ?`)
+					.bind(plan.outboxId)
+					.first<{ payload_json: string }>(),
+		)
 		if (!live) return true
 		const payload =
 			parseOrgAuditOutboxPayload(live.payload_json) ?? plan.payload
@@ -237,8 +268,12 @@ export async function tryDeliverOrgAuditOutboxPlan(
 			return true
 		}
 		return false
-	} catch {
-		return false
+	} catch (error) {
+		return mapOrgAuditOutboxFailure({
+			kind: 'delivery_failed',
+			outboxId: plan.outboxId,
+			error,
+		}).delivered
 	}
 }
 
@@ -253,13 +288,11 @@ async function scheduleResourceChangeEvent(
 ) {
 	if (!env || payload.result !== 'success') return
 	if (!isResourceChangeAuditAction(payload.action)) return
-	const logFailure = (error: unknown) => {
-		console.error('resource-change-event-failed', {
-			action: payload.action,
-			auditId: payload.id,
-			error,
-		})
-	}
+	const failureDetails = (error: unknown) => ({
+		action: payload.action,
+		auditId: payload.id,
+		error,
+	})
 	try {
 		// Loaded lazily so plain Node tools that import the audit outbox (the
 		// CLI OpenAPI generator) do not need the Workers runtime.
@@ -269,10 +302,20 @@ async function scheduleResourceChangeEvent(
 				.then(({ dispatchResourceChangeEvent }) =>
 					dispatchResourceChangeEvent({ env, payload }),
 				)
-				.catch(logFailure),
+				.catch((error: unknown) =>
+					reportLaneError(
+						'error',
+						'resource-change-event-failed',
+						failureDetails(error),
+					),
+				),
 		)
 	} catch (error) {
-		logFailure(error)
+		reportLaneError(
+			'error',
+			'resource-change-event-failed',
+			failureDetails(error),
+		)
 	}
 }
 
@@ -281,14 +324,21 @@ export async function redactOrgAuditOutboxActorIdsForDeletedUser(input: {
 	userId: string
 }) {
 	await runD1WithRetry(() =>
-		input.appDb
-			.prepare(
-				`UPDATE org_audit_outbox
+		withDeadline(
+			{
+				label: 'org_audit_outbox.redactOrgAuditOutboxActorIdsForDeletedUser',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.appDb
+					.prepare(
+						`UPDATE org_audit_outbox
 				 SET payload_json = json_set(payload_json, '$.actorUserId', 'deleted-user')
 				 WHERE json_extract(payload_json, '$.actorUserId') = ?`,
-			)
-			.bind(input.userId)
-			.run(),
+					)
+					.bind(input.userId)
+					.run(),
+		),
 	)
 }
 
@@ -298,7 +348,13 @@ export async function enqueueOrgAuditOutbox(
 ): Promise<OrgAuditOutboxPlan> {
 	const plan = planOrgAuditOutbox(writer, event)
 	await runD1WithRetry(() =>
-		orgAuditOutboxInsertStatement(writer.appDb, plan).run(),
+		withDeadline(
+			{
+				label: 'org_audit_outbox.enqueueOrgAuditOutbox',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() => orgAuditOutboxInsertStatement(writer.appDb, plan).run(),
+		),
 	)
 	return plan
 }
@@ -308,6 +364,29 @@ export async function commitOrgAuditOutbox(
 	plan: OrgAuditOutboxPlan,
 ) {
 	await tryDeliverOrgAuditOutboxPlan(writer, plan)
+}
+
+export type OrgAuditOutboxFailure =
+	| { kind: 'invalid_payload'; outboxId: string }
+	| { kind: 'delivery_failed'; outboxId: string; error: unknown }
+
+/**
+ * Both kinds leave the row for a later drain and count as a drain error. A
+ * delivery failure is not logged: AUDIT_DB being down is the expected retry
+ * case and the drain result already reports the error count.
+ */
+export function mapOrgAuditOutboxFailure(failure: OrgAuditOutboxFailure) {
+	switch (failure.kind) {
+		case 'invalid_payload':
+			reportLaneError('error', 'org_audit_outbox_invalid_payload', {
+				id: failure.outboxId,
+			})
+			return { delivered: false, errors: 1 }
+		case 'delivery_failed':
+			return { delivered: false, errors: 1 }
+		default:
+			return assertNever(failure, 'org audit outbox failure')
+	}
 }
 
 const drainBatchSize = 50
@@ -354,32 +433,39 @@ export async function drainOrgAuditOutbox(input: {
 	}
 
 	while ((input.clock ?? Date.now)() < deadline) {
-		const rows: { results: Array<OutboxDrainRow> } = cursor
-			? await input.env.APP_DB.prepare(
-					`SELECT id, payload_json, created_at
+		const page = cursor
+		const rows: { results: Array<OutboxDrainRow> } = await withDeadline(
+			{ label: 'org_audit_outbox.drain_page', timeoutMs: outboundTimeoutMs.d1 },
+			() =>
+				page
+					? input.env.APP_DB.prepare(
+							`SELECT id, payload_json, created_at
 					 FROM org_audit_outbox
 					 WHERE (created_at > ? OR (created_at = ? AND id > ?))
 					 ORDER BY created_at ASC, id ASC
 					 LIMIT ?`,
-				)
-					.bind(cursor.createdAt, cursor.createdAt, cursor.id, batchLimit)
-					.all<OutboxDrainRow>()
-			: await input.env.APP_DB.prepare(
-					`SELECT id, payload_json, created_at
+						)
+							.bind(page.createdAt, page.createdAt, page.id, batchLimit)
+							.all<OutboxDrainRow>()
+					: input.env.APP_DB.prepare(
+							`SELECT id, payload_json, created_at
 					 FROM org_audit_outbox
 					 ORDER BY created_at ASC, id ASC
 					 LIMIT ?`,
-				)
-					.bind(batchLimit)
-					.all<OutboxDrainRow>()
+						)
+							.bind(batchLimit)
+							.all<OutboxDrainRow>(),
+		)
 		if (rows.results.length === 0) break
 		for (const row of rows.results) {
 			if ((input.clock ?? Date.now)() >= deadline) break
 			cursor = { createdAt: row.created_at, id: row.id }
 			const payload = parseOrgAuditOutboxPayload(row.payload_json)
 			if (!payload) {
-				errors += 1
-				console.error('org_audit_outbox_invalid_payload', { id: row.id })
+				errors += mapOrgAuditOutboxFailure({
+					kind: 'invalid_payload',
+					outboxId: row.id,
+				}).errors
 				continue
 			}
 			const ok = await tryDeliverOrgAuditOutboxPlan(writer, {
@@ -395,9 +481,16 @@ export async function drainOrgAuditOutbox(input: {
 		if (rows.results.length < batchLimit) break
 	}
 
-	const remaining = await input.env.APP_DB.prepare(
-		`SELECT COUNT(*) AS count FROM org_audit_outbox`,
-	).first<{ count: number }>()
+	const remaining = await withDeadline(
+		{
+			label: 'org_audit_outbox.count_remaining',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.env.APP_DB.prepare(
+				`SELECT COUNT(*) AS count FROM org_audit_outbox`,
+			).first<{ count: number }>(),
+	)
 	return {
 		status: 'ok' as const,
 		delivered,

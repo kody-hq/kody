@@ -29,6 +29,11 @@ import {
 } from '#worker/package-runtime/linked-artifact-store.ts'
 import { hasActiveRepoSessionForSource } from '#worker/repo/repo-sessions.ts'
 import type { RepoSessionIndexEnv } from '#worker/repo/repo-session-index-client.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 
 type RetentionPolicy = {
 	table: string
@@ -230,10 +235,14 @@ async function selectIds(input: {
 }): Promise<Array<IdValue>> {
 	const column = input.column ?? 'id'
 	const { results } = await runD1WithRetry(() =>
-		input.db
-			.prepare(input.sql)
-			.bind(...input.bindings)
-			.all<Record<string, unknown>>(),
+		withDeadline(
+			{ label: 'retention.selectIds', timeoutMs: outboundTimeoutMs.d1 },
+			() =>
+				input.db
+					.prepare(input.sql)
+					.bind(...input.bindings)
+					.all<Record<string, unknown>>(),
+		),
 	)
 	return (results ?? []).map((row) => row[column] as IdValue)
 }
@@ -276,13 +285,17 @@ async function deleteByIds(input: {
 	) {
 		const ids = input.ids.slice(index, index + retentionDeleteIdsMaxParameters)
 		const result = await runD1WithRetry(() =>
-			input.db
-				.prepare(
-					`DELETE FROM ${input.table}
+			withDeadline(
+				{ label: 'retention.deleteByIds', timeoutMs: outboundTimeoutMs.d1 },
+				() =>
+					input.db
+						.prepare(
+							`DELETE FROM ${input.table}
 				WHERE ${input.idColumn} IN (${placeholders(ids)})`,
-				)
-				.bind(...ids)
-				.run(),
+						)
+						.bind(...ids)
+						.run(),
+			),
 		)
 		deleted += result.meta.changes ?? 0
 	}
@@ -306,8 +319,14 @@ async function deletePublishedBundleArtifactRowIfStillStale(input: {
 		return 0
 	}
 	const result = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`DELETE FROM published_bundle_artifacts
+		withDeadline(
+			{
+				label: 'retention.deletePublishedBundleArtifactRowIfStillStale',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.env.APP_DB.prepare(
+					`DELETE FROM published_bundle_artifacts
 			WHERE id = ?
 				AND kv_key = ?
 				AND created_at < ?
@@ -328,9 +347,10 @@ async function deletePublishedBundleArtifactRowIfStillStale(input: {
 						AND listing.pinned_commit = published_bundle_artifacts.published_commit
 						AND listing.status = 'active'
 				)`,
-		)
-			.bind(input.id, input.kvKey, input.cutoff)
-			.run(),
+				)
+					.bind(input.id, input.kvKey, input.cutoff)
+					.run(),
+		),
 	)
 	return result.meta.changes ?? 0
 }
@@ -385,19 +405,81 @@ export async function prunePlatformFeedbackForRetention(input: {
 	for (let index = 0; index < ids.length; index += chunkSize) {
 		const chunk = ids.slice(index, index + chunkSize)
 		const result = await runD1WithRetry(() =>
-			input.db
-				.prepare(
-					`DELETE FROM platform_feedback
+			withDeadline(
+				{
+					label: 'retention.prunePlatformFeedbackForRetention',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					input.db
+						.prepare(
+							`DELETE FROM platform_feedback
 					WHERE id IN (${placeholders(chunk)})
 						AND status IN ('resolved', 'dismissed')
 						AND updated_at < ?`,
-				)
-				.bind(...chunk, cutoff)
-				.run(),
+						)
+						.bind(...chunk, cutoff)
+						.run(),
+			),
 		)
 		deleted += result.meta.changes ?? 0
 	}
 	return { selected: ids.length, deleted }
+}
+
+export type RetentionKvFailure =
+	| {
+			kind: 'bundle_kv_delete_failed'
+			id: string
+			kvKey: string
+			error: unknown
+	  }
+	| {
+			kind: 'linked_artifact_kv_delete_failed'
+			sourceId: string
+			publishedCommit: string
+			error: unknown
+	  }
+	| {
+			kind: 'snapshot_kv_delete_failed'
+			sourceId: string
+			publishedCommit: string
+			kvKey: string
+			error: unknown
+	  }
+
+/**
+ * A KV delete failure is counted and reported, and the pass moves on: the
+ * D1 row is already gone, so the orphaned key only costs storage.
+ * Returns how many kvDeleteErrors to add.
+ */
+export function mapRetentionKvFailure(failure: RetentionKvFailure): number {
+	switch (failure.kind) {
+		case 'bundle_kv_delete_failed':
+			reportLaneError('warn', 'retention-published-bundle-kv-delete-failed', {
+				id: failure.id,
+				kvKey: failure.kvKey,
+				error: failure.error,
+			})
+			return 1
+		case 'linked_artifact_kv_delete_failed':
+			reportLaneError('warn', 'retention-linked-artifact-kv-delete-failed', {
+				sourceId: failure.sourceId,
+				publishedCommit: failure.publishedCommit,
+				error: failure.error,
+			})
+			return 1
+		case 'snapshot_kv_delete_failed':
+			reportLaneError('warn', 'retention-source-snapshot-kv-delete-failed', {
+				sourceId: failure.sourceId,
+				publishedCommit: failure.publishedCommit,
+				kvKey: failure.kvKey,
+				error: failure.error,
+			})
+			return 1
+		default:
+			return assertNever(failure, 'retention KV failure')
+	}
 }
 
 export async function prunePublishedBundleArtifactsForRetention(input: {
@@ -411,8 +493,14 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 	)
 	const batchSize = input.batchSize ?? publishedBundleArtifactRetentionBatchSize
 	const { results } = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`SELECT artifact.id, artifact.kv_key, artifact.source_id, artifact.user_id, artifact.published_commit
+		withDeadline(
+			{
+				label: 'retention.prunePublishedBundleArtifactsForRetention',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.env.APP_DB.prepare(
+					`SELECT artifact.id, artifact.kv_key, artifact.source_id, artifact.user_id, artifact.published_commit
 		FROM published_bundle_artifacts AS artifact
 		WHERE artifact.created_at < ?
 			AND NOT EXISTS (
@@ -433,15 +521,16 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 					AND listing.status = 'active'
 			)
 		ORDER BY artifact.created_at ASC, artifact.id ASC LIMIT ?`,
-		)
-			.bind(cutoff, batchSize)
-			.all<{
-				id: string
-				kv_key: string
-				source_id: string
-				user_id: OwnerId
-				published_commit: string
-			}>(),
+				)
+					.bind(cutoff, batchSize)
+					.all<{
+						id: string
+						kv_key: string
+						source_id: string
+						user_id: OwnerId
+						published_commit: string
+					}>(),
+		),
 	)
 	const rows = results ?? []
 	let deletedRows = 0
@@ -468,11 +557,17 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 			publishedCommit: row.published_commit,
 		})
 		try {
-			await input.env.BUNDLE_ARTIFACTS_KV.delete(row.kv_key)
+			await withDeadline(
+				{
+					label: 'retention.delete_bundle_kv',
+					timeoutMs: outboundTimeoutMs.kv,
+				},
+				() => input.env.BUNDLE_ARTIFACTS_KV.delete(row.kv_key),
+			)
 			deletedKvKeys += 1
 		} catch (error) {
-			kvDeleteErrors += 1
-			console.warn('retention-published-bundle-kv-delete-failed', {
+			kvDeleteErrors += mapRetentionKvFailure({
+				kind: 'bundle_kv_delete_failed',
 				id: row.id,
 				kvKey: row.kv_key,
 				error,
@@ -488,24 +583,37 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 			// A newer artifact of this commit may remain and still reads its
 			// linked modules, so they go only with the commit's last artifact.
 			const remaining = await runD1WithRetry(() =>
-				input.env.APP_DB.prepare(
-					`SELECT 1 FROM published_bundle_artifacts
+				withDeadline(
+					{
+						label: 'retention.prunePublishedBundleArtifactsForRetention_2',
+						timeoutMs: outboundTimeoutMs.d1,
+					},
+					() =>
+						input.env.APP_DB.prepare(
+							`SELECT 1 FROM published_bundle_artifacts
 					WHERE source_id = ? AND published_commit = ? LIMIT 1`,
-				)
-					.bind(pair.sourceId, pair.publishedCommit)
-					.first(),
+						)
+							.bind(pair.sourceId, pair.publishedCommit)
+							.first(),
+				),
 			)
 			if (!remaining) {
-				deletedSnapshotKvKeys += await deleteLinkedArtifactGroups({
-					kv: input.env.BUNDLE_ARTIFACTS_KV,
-					prefix: linkedArtifactCommitKvPrefix(pair),
-				})
+				deletedSnapshotKvKeys += await withDeadline(
+					{
+						label: 'retention.delete_linked_artifact_kv',
+						timeoutMs: outboundTimeoutMs.kv,
+					},
+					() =>
+						deleteLinkedArtifactGroups({
+							kv: input.env.BUNDLE_ARTIFACTS_KV,
+							prefix: linkedArtifactCommitKvPrefix(pair),
+						}),
+				)
 			}
 		} catch (error) {
-			kvDeleteErrors += 1
-			console.warn('retention-linked-artifact-kv-delete-failed', {
-				sourceId: pair.sourceId,
-				publishedCommit: pair.publishedCommit,
+			kvDeleteErrors += mapRetentionKvFailure({
+				kind: 'linked_artifact_kv_delete_failed',
+				...pair,
 				error,
 			})
 		}
@@ -516,13 +624,18 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 			buildPublishedCredentialStampKvKey(pair),
 		]) {
 			try {
-				await input.env.BUNDLE_ARTIFACTS_KV.delete(kvKey)
+				await withDeadline(
+					{
+						label: 'retention.delete_snapshot_kv',
+						timeoutMs: outboundTimeoutMs.kv,
+					},
+					() => input.env.BUNDLE_ARTIFACTS_KV.delete(kvKey),
+				)
 				deletedSnapshotKvKeys += 1
 			} catch (error) {
-				kvDeleteErrors += 1
-				console.warn('retention-source-snapshot-kv-delete-failed', {
-					sourceId: pair.sourceId,
-					publishedCommit: pair.publishedCommit,
+				kvDeleteErrors += mapRetentionKvFailure({
+					kind: 'snapshot_kv_delete_failed',
+					...pair,
 					kvKey,
 					error,
 				})

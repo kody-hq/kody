@@ -27,6 +27,10 @@ import {
 } from './write-lease-timing.ts'
 import { runWithTransientDurableObjectResetRetry } from '#worker/durable-object-reset-retry.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
 
 export class AccountDeletionInProgressError extends Error {
 	constructor() {
@@ -158,11 +162,15 @@ async function runUserMeterRpc<T>(input: {
 }) {
 	return await runWithTransientDurableObjectResetRetry({
 		operation: async () =>
-			await input.operation(
-				userMeterRpc({
-					env: input.env,
-					userId: input.stableUserId,
-				}),
+			await withDeadline(
+				{
+					label: 'deletion_state.user_meter_rpc',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() =>
+					input.operation(
+						userMeterRpc({ env: input.env, userId: input.stableUserId }),
+					),
 			),
 	})
 }
@@ -178,42 +186,56 @@ async function insertOrVerifyDoRepairAudit(input: {
 	reason: string
 	now: string
 }) {
-	const inserted = await input.db
-		.prepare(
-			`INSERT OR IGNORE INTO account_write_lease_repairs (
+	const inserted = await withDeadline(
+		{
+			label: 'deletion_state.insertOrVerifyDoRepairAudit',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`INSERT OR IGNORE INTO account_write_lease_repairs (
 				id, target_user_id, lease_token, lease_holder,
 				lease_acquired_at, repaired_by_user_id, reason, created_at
 			)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		)
-		.bind(
-			input.repairId,
-			input.stableUserId,
-			input.token,
-			input.holder,
-			input.acquiredAt,
-			input.repairedByUserId,
-			input.reason,
-			input.now,
-		)
-		.run()
+				)
+				.bind(
+					input.repairId,
+					input.stableUserId,
+					input.token,
+					input.holder,
+					input.acquiredAt,
+					input.repairedByUserId,
+					input.reason,
+					input.now,
+				)
+				.run(),
+	)
 	if ((inserted.meta.changes ?? 0) === 1) return
-	const existing = await input.db
-		.prepare(
-			`SELECT target_user_id, lease_token, lease_holder, lease_acquired_at,
+	const existing = await withDeadline(
+		{
+			label: 'deletion_state.insertOrVerifyDoRepairAudit_2',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT target_user_id, lease_token, lease_holder, lease_acquired_at,
 				repaired_by_user_id, reason
 			FROM account_write_lease_repairs
 			WHERE id = ?`,
-		)
-		.bind(input.repairId)
-		.first<{
-			target_user_id: string
-			lease_token: string
-			lease_holder: string
-			lease_acquired_at: string
-			repaired_by_user_id: string
-			reason: string
-		}>()
+				)
+				.bind(input.repairId)
+				.first<{
+					target_user_id: string
+					lease_token: string
+					lease_holder: string
+					lease_acquired_at: string
+					repaired_by_user_id: string
+					reason: string
+				}>(),
+	)
 	if (
 		!existing ||
 		existing.target_user_id !== input.stableUserId ||
@@ -235,9 +257,15 @@ async function findMatchingRepairAudit(input: {
 	repairedByUserId: string
 	reason: string
 }) {
-	return await input.db
-		.prepare(
-			`SELECT id
+	return await withDeadline(
+		{
+			label: 'deletion_state.findMatchingRepairAudit',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT id
 			FROM account_write_lease_repairs
 			WHERE target_user_id = ?
 				AND lease_token = ?
@@ -246,15 +274,16 @@ async function findMatchingRepairAudit(input: {
 				AND reason = ?
 			ORDER BY created_at DESC, id DESC
 			LIMIT 1`,
-		)
-		.bind(
-			input.stableUserId,
-			input.token,
-			input.expectedAcquiredAt,
-			input.repairedByUserId,
-			input.reason,
-		)
-		.first<{ id: string }>()
+				)
+				.bind(
+					input.stableUserId,
+					input.token,
+					input.expectedAcquiredAt,
+					input.repairedByUserId,
+					input.reason,
+				)
+				.first<{ id: string }>(),
+	)
 }
 
 export type MarkAccountDeletingResult = {
@@ -277,23 +306,37 @@ export async function markAccountDeleting(input: {
 	// invocation created (`WHERE deleting_at IS NULL`) so a concurrent or
 	// retrying delete cannot wipe another attempt's fence.
 	const now = utcSqliteTimestamp(input.now ?? new Date())
-	const createResult = await input.db
-		.prepare(
-			`UPDATE users
+	const createResult = await withDeadline(
+		{
+			label: 'deletion_state.markAccountDeleting',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE users
 			SET deleting_at = ?, updated_at = ?
 			WHERE id = ? AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
-		)
-		.bind(now, now, input.dbUserId)
-		.run()
+				)
+				.bind(now, now, input.dbUserId)
+				.run(),
+	)
 	const created = (createResult.meta.changes ?? 0) === 1
-	const userRow = await input.db
-		.prepare(
-			`SELECT stable_user_id, deleting_at
+	const userRow = await withDeadline(
+		{
+			label: 'deletion_state.markAccountDeleting_2',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT stable_user_id, deleting_at
 			FROM users
 			WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.dbUserId)
-		.first<{ stable_user_id: OwnerId; deleting_at: string | null }>()
+				)
+				.bind(input.dbUserId)
+				.first<{ stable_user_id: OwnerId; deleting_at: string | null }>(),
+	)
 	const stableUserId = userRow?.stable_user_id
 	const deletingAt = userRow?.deleting_at
 	if (!stableUserId || !deletingAt) {
@@ -304,11 +347,18 @@ export async function markAccountDeleting(input: {
 	invalidatePackageAppOwnerCache({ stableUserId })
 	try {
 		const env = requireUserMeterEnv(input.env)
-		const marked = await runUserMeterRpc({
-			env,
-			stableUserId,
-			operation: async (meter) => await meter.markDeleting({ deletingAt }),
-		})
+		const marked = await withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env,
+					stableUserId,
+					operation: async (meter) => await meter.markDeleting({ deletingAt }),
+				}),
+		)
 		return {
 			leaseCount: marked.leaseCount,
 			blockingLeases: marked.blockingLeases ?? [],
@@ -317,14 +367,21 @@ export async function markAccountDeleting(input: {
 		}
 	} catch (error) {
 		if (created) {
-			await input.db
-				.prepare(
-					`UPDATE users
+			await withDeadline(
+				{
+					label: 'deletion_state.markAccountDeleting_3',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					input.db
+						.prepare(
+							`UPDATE users
 					SET deleting_at = NULL, updated_at = ?
 					WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(now, input.dbUserId, now)
-				.run()
+						)
+						.bind(now, input.dbUserId, now)
+						.run(),
+			)
 			invalidatePackageAppOwnerCache({ stableUserId })
 		}
 		throw error
@@ -348,32 +405,53 @@ export async function abortAccountDeleting(input: {
 	 */
 	expectedDeletingAt?: string
 }) {
-	const userRow = await input.db
-		.prepare(
-			`SELECT stable_user_id
+	const userRow = await withDeadline(
+		{
+			label: 'deletion_state.abortAccountDeleting',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT stable_user_id
 			FROM users
 			WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.dbUserId)
-		.first<{ stable_user_id: OwnerId }>()
+				)
+				.bind(input.dbUserId)
+				.first<{ stable_user_id: OwnerId }>(),
+	)
 	const now = utcSqliteTimestamp(input.now ?? new Date())
 	const result = input.expectedDeletingAt
-		? await input.db
-				.prepare(
-					`UPDATE users
+		? await withDeadline(
+				{
+					label: 'deletion_state.abortAccountDeleting_2',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					input.db
+						.prepare(
+							`UPDATE users
 					SET deleting_at = NULL, updated_at = ?
 					WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(now, input.dbUserId, input.expectedDeletingAt)
-				.run()
-		: await input.db
-				.prepare(
-					`UPDATE users
+						)
+						.bind(now, input.dbUserId, input.expectedDeletingAt)
+						.run(),
+			)
+		: await withDeadline(
+				{
+					label: 'deletion_state.abortAccountDeleting_3',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					input.db
+						.prepare(
+							`UPDATE users
 					SET deleting_at = NULL, updated_at = ?
 					WHERE id = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(now, input.dbUserId)
-				.run()
+						)
+						.bind(now, input.dbUserId)
+						.run(),
+			)
 	if (!input.expectedDeletingAt && (result.meta.changes ?? 0) !== 1) {
 		throw new Error('Account deletion fence could not be cleared.')
 	}
@@ -382,16 +460,23 @@ export async function abortAccountDeleting(input: {
 		throw new Error('Account deletion fence could not be cleared.')
 	}
 	const env = requireUserMeterEnv(input.env)
-	await runUserMeterRpc({
-		env,
-		stableUserId,
-		operation: async (meter) =>
-			await meter.clearDeleting(
-				input.expectedDeletingAt
-					? { expectedDeletingAt: input.expectedDeletingAt }
-					: undefined,
-			),
-	})
+	await withDeadline(
+		{
+			label: 'deletion_state.runUserMeterRpc',
+			timeoutMs: outboundTimeoutMs.durableObject,
+		},
+		() =>
+			runUserMeterRpc({
+				env,
+				stableUserId,
+				operation: async (meter) =>
+					await meter.clearDeleting(
+						input.expectedDeletingAt
+							? { expectedDeletingAt: input.expectedDeletingAt }
+							: undefined,
+					),
+			}),
+	)
 	invalidatePackageAppOwnerCache({ stableUserId })
 }
 
@@ -409,11 +494,18 @@ export async function clearUserMeterDeletionTombstone(input: {
 	if (!userMeterNamespace(input.env)) {
 		return { cleared: false }
 	}
-	return await runUserMeterRpc({
-		env: input.env,
-		stableUserId: input.stableUserId,
-		operation: async (meter) => await meter.clearDeleting(),
-	})
+	return await withDeadline(
+		{
+			label: 'deletion_state.runUserMeterRpc',
+			timeoutMs: outboundTimeoutMs.durableObject,
+		},
+		() =>
+			runUserMeterRpc({
+				env: input.env,
+				stableUserId: input.stableUserId,
+				operation: async (meter) => await meter.clearDeleting(),
+			}),
+	)
 }
 
 /**
@@ -426,14 +518,21 @@ export async function abortAccountDeletingByStableUserId(input: {
 	now?: Date
 	env: UserMeterEnv
 }) {
-	const userRow = await input.db
-		.prepare(
-			`SELECT id
+	const userRow = await withDeadline(
+		{
+			label: 'deletion_state.abortAccountDeletingByStableUserId',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT id
 			FROM users
 			WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.stableUserId)
-		.first<{ id: number }>()
+				)
+				.bind(input.stableUserId)
+				.first<{ id: number }>(),
+	)
 	if (!userRow) {
 		throw new Error('User not found.')
 	}
@@ -467,23 +566,37 @@ export async function markOrgDeleting(input: {
 	env: UserMeterEnv
 }): Promise<MarkOrgDeletingResult> {
 	const now = utcSqliteTimestamp(input.now ?? new Date())
-	const createResult = await input.db
-		.prepare(
-			`UPDATE orgs
+	const createResult = await withDeadline(
+		{
+			label: 'deletion_state.markOrgDeleting',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE orgs
 			SET deleting_at = ?, updated_at = ?
 			WHERE id = ? AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
-		)
-		.bind(now, now, input.orgId)
-		.run()
+				)
+				.bind(now, now, input.orgId)
+				.run(),
+	)
 	const created = (createResult.meta.changes ?? 0) === 1
-	const orgRow = await input.db
-		.prepare(
-			`SELECT deleting_at
+	const orgRow = await withDeadline(
+		{
+			label: 'deletion_state.markOrgDeleting_2',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT deleting_at
 			FROM orgs
 			WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.orgId)
-		.first<{ deleting_at: string | null }>()
+				)
+				.bind(input.orgId)
+				.first<{ deleting_at: string | null }>(),
+	)
 	const deletingAt = orgRow?.deleting_at
 	if (!deletingAt) {
 		throw new Error('Organization could not be marked for deletion.')
@@ -492,11 +605,18 @@ export async function markOrgDeleting(input: {
 	invalidatePackageAppOwnerCache({ stableUserId: input.orgId })
 	try {
 		const env = requireUserMeterEnv(input.env)
-		const marked = await runUserMeterRpc({
-			env,
-			stableUserId: input.orgId,
-			operation: async (meter) => await meter.markDeleting({ deletingAt }),
-		})
+		const marked = await withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env,
+					stableUserId: input.orgId,
+					operation: async (meter) => await meter.markDeleting({ deletingAt }),
+				}),
+		)
 		return {
 			leaseCount: marked.leaseCount,
 			blockingLeases: marked.blockingLeases ?? [],
@@ -505,14 +625,21 @@ export async function markOrgDeleting(input: {
 		}
 	} catch (error) {
 		if (created) {
-			await input.db
-				.prepare(
-					`UPDATE orgs
+			await withDeadline(
+				{
+					label: 'deletion_state.markOrgDeleting_3',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					input.db
+						.prepare(
+							`UPDATE orgs
 					SET deleting_at = NULL, updated_at = ?
 					WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(now, input.orgId, deletingAt)
-				.run()
+						)
+						.bind(now, input.orgId, deletingAt)
+						.run(),
+			)
 			invalidatePackageAppOwnerCache({ stableUserId: input.orgId })
 		}
 		throw error
@@ -531,35 +658,56 @@ export async function abortOrgDeleting(input: {
 }) {
 	const now = utcSqliteTimestamp(input.now ?? new Date())
 	if (input.expectedDeletingAt) {
-		await input.db
-			.prepare(
-				`UPDATE orgs
+		await withDeadline(
+			{
+				label: 'deletion_state.abortOrgDeleting',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE orgs
 				SET deleting_at = NULL, updated_at = ?
 				WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(now, input.orgId, input.expectedDeletingAt)
-			.run()
+					)
+					.bind(now, input.orgId, input.expectedDeletingAt)
+					.run(),
+		)
 	} else {
-		await input.db
-			.prepare(
-				`UPDATE orgs
+		await withDeadline(
+			{
+				label: 'deletion_state.abortOrgDeleting_2',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`UPDATE orgs
 				SET deleting_at = NULL, updated_at = ?
 				WHERE id = ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(now, input.orgId)
-			.run()
+					)
+					.bind(now, input.orgId)
+					.run(),
+		)
 	}
 	const env = requireUserMeterEnv(input.env)
-	await runUserMeterRpc({
-		env,
-		stableUserId: input.orgId,
-		operation: async (meter) =>
-			await meter.clearDeleting(
-				input.expectedDeletingAt
-					? { expectedDeletingAt: input.expectedDeletingAt }
-					: undefined,
-			),
-	})
+	await withDeadline(
+		{
+			label: 'deletion_state.runUserMeterRpc',
+			timeoutMs: outboundTimeoutMs.durableObject,
+		},
+		() =>
+			runUserMeterRpc({
+				env,
+				stableUserId: input.orgId,
+				operation: async (meter) =>
+					await meter.clearDeleting(
+						input.expectedDeletingAt
+							? { expectedDeletingAt: input.expectedDeletingAt }
+							: undefined,
+					),
+			}),
+	)
 	invalidatePackageAppOwnerCache({ stableUserId: input.orgId })
 }
 
@@ -630,13 +778,20 @@ export async function assertAccountWritableDb(
 		const personalOrgId = row.personal_org_id?.trim() || row.stable_user_id
 		if (!org && personalOrgId !== stableUserId && !orgsTableMissing) {
 			org =
-				(await db
-					.prepare(`SELECT deleting_at, deleted_at FROM orgs WHERE id = ?`)
-					.bind(personalOrgId)
-					.first<{
-						deleting_at: string | null
-						deleted_at: string | null
-					}>()) ?? null
+				(await withDeadline(
+					{
+						label: 'deletion_state.assertAccountWritableDb',
+						timeoutMs: outboundTimeoutMs.d1,
+					},
+					() =>
+						db
+							.prepare(`SELECT deleting_at, deleted_at FROM orgs WHERE id = ?`)
+							.bind(personalOrgId)
+							.first<{
+								deleting_at: string | null
+								deleted_at: string | null
+							}>(),
+				)) ?? null
 		}
 		if (org && (org.deleted_at || org.deleting_at)) {
 			throw new AccountDeletionInProgressError()
@@ -670,29 +825,43 @@ async function assertAccountWritableAfterLeftoverTombstoneClear(input: {
 }) {
 	// Lease / meter keys are OwnerIds (personal org id). Resolve the person by
 	// stable_user_id or personal_org_id so distinct signup orgs restore the fence.
-	const row = await input.db
-		.prepare(
-			`SELECT deleting_at, personal_org_id, stable_user_id
+	const row = await withDeadline(
+		{
+			label: 'deletion_state.assertAccountWritableAfterLeftoverTombstoneClear',
+			timeoutMs: outboundTimeoutMs.d1,
+		},
+		() =>
+			input.db
+				.prepare(
+					`SELECT deleting_at, personal_org_id, stable_user_id
 			 FROM users
 			 WHERE (stable_user_id = ? OR personal_org_id = ?)
 			   ${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.stableUserId, input.stableUserId)
-		.first<{
-			deleting_at: string | null
-			personal_org_id: string | null
-			stable_user_id: string
-		}>()
+				)
+				.bind(input.stableUserId, input.stableUserId)
+				.first<{
+					deleting_at: string | null
+					personal_org_id: string | null
+					stable_user_id: string
+				}>(),
+	)
 	const deletingAt = row?.deleting_at
 	if (deletingAt) {
 		const meterOwnerId = ownerIdFromStored(
 			row.personal_org_id?.trim() || row.stable_user_id,
 		)
-		await runUserMeterRpc({
-			env: input.env,
-			stableUserId: meterOwnerId,
-			operation: async (meter) => await meter.markDeleting({ deletingAt }),
-		})
+		await withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env: input.env,
+					stableUserId: meterOwnerId,
+					operation: async (meter) => await meter.markDeleting({ deletingAt }),
+				}),
+		)
 		throw new AccountDeletionInProgressError()
 	}
 	await assertAccountWritableDb(input.db, input.stableUserId)
@@ -767,16 +936,23 @@ async function acquireDoAccountWriteLeaseAndWrite<T>(input: {
 		acquiredAt: utcSqliteTimestamp(),
 	}
 	const acquire = async () =>
-		await runUserMeterRpc({
-			env: input.env,
-			stableUserId: lease.stableUserId,
-			operation: async (meter) =>
-				await meter.acquireWriteLease({
-					token: lease.token,
-					holder: lease.holder,
-					acquiredAt: lease.acquiredAt,
+		await withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env: input.env,
+					stableUserId: lease.stableUserId,
+					operation: async (meter) =>
+						await meter.acquireWriteLease({
+							token: lease.token,
+							holder: lease.holder,
+							acquiredAt: lease.acquiredAt,
+						}),
 				}),
-		})
+		)
 	let acquired = await acquire()
 	if (!acquired.acquired) {
 		// Live D1 + meter tombstone is a leftover fence (completed deletion
@@ -803,21 +979,36 @@ async function acquireDoAccountWriteLeaseAndWrite<T>(input: {
 	// Releasing reports whether the lease row was still there, so one DO round
 	// trip both proves the lease was held for the whole write and releases it.
 	const release = async () =>
-		await runUserMeterRpc({
-			env: input.env,
-			stableUserId: lease.stableUserId,
-			operation: async (meter) =>
-				await meter.releaseWriteLease({ token: lease.token }),
-		})
+		await withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env: input.env,
+					stableUserId: lease.stableUserId,
+					operation: async (meter) =>
+						await meter.releaseWriteLease({ token: lease.token }),
+				}),
+		)
 	// Without renewal the lease lapses, which is how a killed writer stops
 	// blocking deletion. A failed renewal is retried on the next beat.
 	const heartbeat = setInterval(() => {
-		void runUserMeterRpc({
-			env: input.env,
-			stableUserId: lease.stableUserId,
-			operation: async (meter) =>
-				await meter.renewWriteLease({ token: lease.token }),
-		}).then(
+		// oxlint-disable-next-line kody-custom/no-floating-lane-promise -- timer callback with no waitUntil; both outcomes are handled below.
+		void withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env: input.env,
+					stableUserId: lease.stableUserId,
+					operation: async (meter) =>
+						await meter.renewWriteLease({ token: lease.token }),
+				}),
+		).then(
 			(renewed) => {
 				if (renewed.renewed) return
 				// A deletion dropped the lease. The write in flight fails at
@@ -825,6 +1016,7 @@ async function acquireDoAccountWriteLeaseAndWrite<T>(input: {
 				clearInterval(heartbeat)
 				input.frame.active = false
 			},
+			// oxlint-disable-next-line kody-custom/no-swallowed-lane-error -- a failed renewal is retried on the next beat.
 			() => {},
 		)
 	}, accountWriteLeaseHeartbeatMs)
@@ -852,15 +1044,22 @@ export async function listActiveAccountWriteLeases(
 	const leases: Array<ListedAccountWriteLease> = []
 	let startAfter: string | null = null
 	for (;;) {
-		const page = await runUserMeterRpc({
-			env: requiredEnv,
-			stableUserId,
-			operation: async (meter) =>
-				await meter.listWriteLeases({
-					pageSize: 500,
-					startAfter,
+		const page = await withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env: requiredEnv,
+					stableUserId,
+					operation: async (meter) =>
+						await meter.listWriteLeases({
+							pageSize: 500,
+							startAfter,
+						}),
 				}),
-		})
+		)
 		for (const lease of page.leases) {
 			leases.push({
 				token: lease.token,
@@ -888,15 +1087,22 @@ export async function repairAccountWriteLease(input: {
 	}
 	const reason = input.reason.trim()
 	const env = requireUserMeterEnv(input.env)
-	const prepared = await runUserMeterRpc({
-		env,
-		stableUserId: input.stableUserId,
-		operation: async (meter) =>
-			await meter.prepareWriteLeaseRepair({
-				token: input.token,
-				expectedAcquiredAt: input.expectedAcquiredAt,
+	const prepared = await withDeadline(
+		{
+			label: 'deletion_state.runUserMeterRpc',
+			timeoutMs: outboundTimeoutMs.durableObject,
+		},
+		() =>
+			runUserMeterRpc({
+				env,
+				stableUserId: input.stableUserId,
+				operation: async (meter) =>
+					await meter.prepareWriteLeaseRepair({
+						token: input.token,
+						expectedAcquiredAt: input.expectedAcquiredAt,
+					}),
 			}),
-	})
+	)
 	if (prepared.prepared) {
 		const now = utcSqliteTimestamp()
 		await insertOrVerifyDoRepairAudit({
@@ -911,16 +1117,23 @@ export async function repairAccountWriteLease(input: {
 			now,
 		})
 		// Finalize DO lease; fail closed on transport errors (audit row persists for retry).
-		await runUserMeterRpc({
-			env,
-			stableUserId: input.stableUserId,
-			operation: async (meter) =>
-				await meter.finalizeWriteLeaseRepair({
-					token: prepared.token,
-					repairId: prepared.repairId,
-					expectedAcquiredAt: prepared.acquiredAt,
+		await withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env,
+					stableUserId: input.stableUserId,
+					operation: async (meter) =>
+						await meter.finalizeWriteLeaseRepair({
+							token: prepared.token,
+							repairId: prepared.repairId,
+							expectedAcquiredAt: prepared.acquiredAt,
+						}),
 				}),
-		})
+		)
 		return { repaired: true as const, repairId: prepared.repairId }
 	}
 	// Lost-finalize retry: matching audit + absent DO lease → already repaired.
@@ -933,14 +1146,21 @@ export async function repairAccountWriteLease(input: {
 		reason,
 	})
 	if (existingAudit) {
-		const stillHeld = await runUserMeterRpc({
-			env,
-			stableUserId: input.stableUserId,
-			operation: async (meter) =>
-				await meter.assertWriteLeaseHeld({
-					token: input.token,
+		const stillHeld = await withDeadline(
+			{
+				label: 'deletion_state.runUserMeterRpc',
+				timeoutMs: outboundTimeoutMs.durableObject,
+			},
+			() =>
+				runUserMeterRpc({
+					env,
+					stableUserId: input.stableUserId,
+					operation: async (meter) =>
+						await meter.assertWriteLeaseHeld({
+							token: input.token,
+						}),
 				}),
-		})
+		)
 		if (!stillHeld.held) {
 			return { repaired: true as const, repairId: existingAudit.id }
 		}
