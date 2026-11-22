@@ -8,8 +8,9 @@ import type { DrBackupS3Client } from '#worker/dr/backup-s3.ts'
 const lane = 'dr_d1_paced_backup'
 
 /**
- * A tick budget is 45s; the lease outlives it so a tick killed mid-run frees
- * the lane before the next 5 minute cron tick, and every write extends it.
+ * Every write extends the lease, so it only has to outlive the gap between
+ * writes. A tick killed mid-run (45s budget, 180s on full-base nights) frees
+ * the lane before the next 5 minute cron tick.
  */
 export const d1PacedBackupLeaseMs = 2 * 60_000
 

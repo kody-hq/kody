@@ -2,6 +2,7 @@ import { parsePacedD1PartsPointer } from '@kody-internal/shared/backup-d1-paced-
 import {
 	pacedD1BackupSchemaVersion,
 	pacedD1ForceFullBaseRequestKey,
+	pacedD1ForcesFullBase,
 	type PacedD1NightManifest,
 	type PacedD1ProgressCursor,
 	pacedD1RetentionTierForDay,
@@ -98,6 +99,25 @@ export const d1PacedBackupPartMaxBytes = 4 * 1024 * 1024
  * `d1PacedBackupPartMaxBytes` on page boundaries.
  */
 export const d1PacedBackupTickByteBudget = 32 * 1024 * 1024
+
+/**
+ * Full-base nights (Sunday weekly bases and forced bases) copy every row
+ * instead of a delta, about 1.5x a delta night's tick work. In 2026-11 a full
+ * base took about 72 tick-minutes, while 45s ticks every 5 minutes fit only
+ * about 62 between 00:00 and the 07:00 DR health check. These ticks run 4x
+ * longer and emit 4x the bytes so a full base seals by about 03:00.
+ */
+export const d1PacedBackupFullBaseRunTimeBudgetMs =
+	4 * d1PacedBackupRunTimeBudgetMs
+export const d1PacedBackupFullBaseTickByteBudget =
+	4 * d1PacedBackupTickByteBudget
+
+async function pacedD1NightIsFullBase(s3: DrBackupS3Client, day: string) {
+	return (
+		pacedD1ForcesFullBase(day) ||
+		(await s3.head(pacedD1ForceFullBaseRequestKey(day))).exists
+	)
+}
 
 const utf8Encoder = new TextEncoder()
 
@@ -872,7 +892,7 @@ async function workSourceTick(input: {
 	timeBudgetMs: number
 	walkerOpts?: Partial<PacedD1WalkerOptions>
 	partMaxBytes?: number
-	tickByteBudget?: number
+	tickByteBudget: number
 }): Promise<{
 	timeBudgetExhausted: boolean
 	tablesCompleted: number
@@ -1020,7 +1040,7 @@ async function workSourceTick(input: {
 		let tickBytesFlushed = 0
 		let stopForByteBudget = false
 		const partMaxBytes = input.partMaxBytes ?? d1PacedBackupPartMaxBytes
-		const tickByteBudget = input.tickByteBudget ?? d1PacedBackupTickByteBudget
+		const tickByteBudget = input.tickByteBudget
 
 		const flushBufferedPart = async (
 			cursor: {
@@ -1349,7 +1369,17 @@ export async function runD1PacedBackupTick(input: {
 			}
 		}
 
-		const timeBudgetMs = input.timeBudgetMs ?? d1PacedBackupRunTimeBudgetMs
+		const fullBaseNight = await pacedD1NightIsFullBase(s3, day)
+		const timeBudgetMs =
+			input.timeBudgetMs ??
+			(fullBaseNight
+				? d1PacedBackupFullBaseRunTimeBudgetMs
+				: d1PacedBackupRunTimeBudgetMs)
+		const tickByteBudget =
+			input.tickByteBudget ??
+			(fullBaseNight
+				? d1PacedBackupFullBaseTickByteBudget
+				: d1PacedBackupTickByteBudget)
 		const startedAtMs = Date.now()
 
 		// Cheap exit when every bound source already finished and sealed tonight.
@@ -1427,7 +1457,7 @@ export async function runD1PacedBackupTick(input: {
 				timeBudgetMs,
 				walkerOpts: input.walkerOpts,
 				partMaxBytes: input.partMaxBytes,
-				tickByteBudget: input.tickByteBudget,
+				tickByteBudget,
 			})
 			sourcesWorked += 1
 			tablesCompleted += result.tablesCompleted

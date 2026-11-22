@@ -26,6 +26,7 @@ import {
 } from '#worker/dr/backup-s3.ts'
 import {
 	d1PacedBackupPartMaxBytes,
+	d1PacedBackupRunTimeBudgetMs,
 	d1PacedBackupTickByteBudget,
 	parseD1PacedSources,
 	resolvePacedD1Binding,
@@ -1472,4 +1473,176 @@ test('a force-full-base request only accepts today or tomorrow', async () => {
 		new Date('2026-10-23T15:00:00.000Z'),
 	)
 	expect(response.status).toBe(400)
+})
+
+const sunday = '2026-10-25'
+
+function seedNarrowItems(rowCount: number) {
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(
+		`CREATE TABLE items (id TEXT PRIMARY KEY NOT NULL, body TEXT NOT NULL);`,
+	)
+	const insert = sqlite.prepare(`INSERT INTO items (id, body) VALUES (?, ?)`)
+	sqlite.exec('BEGIN')
+	for (let i = 1; i <= rowCount; i += 1) insert.run(`i${i}`, 'b')
+	sqlite.exec('COMMIT')
+	return sqlite
+}
+
+/**
+ * Replays a Sunday on the 5 minute cron from 00:00 to the 07:00 DR health
+ * check, charging simulated D1 time per page. A tick still running at a cron
+ * mark holds the lane, so that mark does no work. Returns UTC HH:MM seal times.
+ */
+async function replaySundayToHealthCheck(input: {
+	rowsPerSource: number
+	pageMs: number
+	budgets?: { timeBudgetMs: number; tickByteBudget: number }
+}) {
+	const { client } = createMemoryS3()
+	const sources = [
+		{ binding: 'APP_DB', name: 'kody', id: appId },
+		{ binding: 'AUDIT_DB', name: 'kody-audit', id: auditId },
+		{ binding: 'JOBS_DB', name: 'kody-jobs', id: jobsId },
+	]
+	const env = createEnv({
+		DR_D1_PACED_SOURCES: sourcesJson(sources),
+		APP_DB: createAppD1(seedNarrowItems(input.rowsPerSource)),
+		AUDIT_DB: createD1FromSqlite(seedNarrowItems(input.rowsPerSource)),
+		JOBS_DB: createD1FromSqlite(seedNarrowItems(input.rowsPerSource)),
+	})
+	const tier = pacedD1RetentionTierForDay(sunday)
+	const healthCheckMs = Date.parse(`${sunday}T07:00:00.000Z`)
+	const sealedAt = new Map<string, string>()
+	vi.useFakeTimers({ toFake: ['Date'] })
+	try {
+		let mark = Date.parse(`${sunday}T00:00:00.000Z`)
+		vi.setSystemTime(mark)
+		for (; mark < healthCheckMs; mark += 5 * 60_000) {
+			if (sealedAt.size === sources.length) break
+			if (Date.now() > mark) continue
+			vi.setSystemTime(mark)
+			await runD1PacedBackupTick({
+				env,
+				now: new Date(mark),
+				s3: client,
+				...input.budgets,
+				walkerOpts: {
+					minPage: 20,
+					maxPage: 20,
+					minGapMs: 0,
+					sleep: async () => {},
+					onPage: () => {
+						vi.setSystemTime(Date.now() + input.pageMs)
+					},
+				},
+			})
+			for (const source of sources) {
+				if (sealedAt.has(source.name)) continue
+				const sealed = await client.head(
+					pacedD1SealedManifestKey(tier, source.id, sunday),
+				)
+				if (sealed.exists) {
+					sealedAt.set(source.name, new Date().toISOString().slice(11, 16))
+				}
+			}
+		}
+	} finally {
+		vi.useRealTimers()
+	}
+	return sealedAt
+}
+
+test('a Sunday base too big for 45s ticks still seals all three sources before the 07:00 health check', async () => {
+	// 1,800 pages at 3s each is 90 tick-minutes, more than the ~63 that 45s
+	// ticks every 5 minutes fit before 07:00 (the 2026-11-22 overrun shape).
+	const night = { rowsPerSource: 12_000, pageMs: 3_000 }
+	const weekdaySized = await replaySundayToHealthCheck({
+		...night,
+		budgets: {
+			timeBudgetMs: d1PacedBackupRunTimeBudgetMs,
+			tickByteBudget: d1PacedBackupTickByteBudget,
+		},
+	})
+	expect(weekdaySized.size).toBeLessThan(3)
+
+	const sealedAt = await replaySundayToHealthCheck(night)
+	expect([...sealedAt.keys()].sort()).toEqual([
+		'kody',
+		'kody-audit',
+		'kody-jobs',
+	])
+	// Headroom: done before 04:00, three hours ahead of the health check.
+	for (const time of sealedAt.values()) expect(time < '04:00').toBe(true)
+}, 60_000)
+
+test('a large parted table seal stops between parts on budget and resumes without recopying', async () => {
+	const { client, objects } = createMemoryS3()
+	const env = createEnv({ APP_DB: createAppD1(seedWideItems(20)) })
+	await runNightToSeal({ env, client, day })
+	const tier = pacedD1RetentionTierForDay(day)
+	let partCount = 0
+	while (
+		objects.has(pacedD1StagingDataPartKey(day, 'kody', 'items', partCount))
+	)
+		partCount += 1
+	expect(partCount).toBeGreaterThan(4)
+	const partKeys = Array.from({ length: partCount }, (_, i) => [
+		pacedD1SealedDataPartKey(tier, appId, day, 'items', i),
+		pacedD1SealedIndexPartKey(tier, appId, day, 'items', i),
+	])
+	const sealedManifestKey = pacedD1SealedManifestKey(tier, appId, day)
+	const tipKeys = [
+		pacedD1SealedDataKey(tier, appId, day, 'items'),
+		pacedD1SealedIndexKey(tier, appId, day, 'items'),
+	]
+	const sealedBodies = new Map(
+		partKeys.flat().map((key) => [key, objects.get(key)!.bytes]),
+	)
+	for (const key of [...partKeys.flat(), ...tipKeys, sealedManifestKey]) {
+		objects.delete(key)
+	}
+
+	const putKeys: Array<string> = []
+	const originalPut = client.put.bind(client)
+	client.put = async (key, body, options) => {
+		putKeys.push(key)
+		const result = await originalPut(key, body, options)
+		// Each sealed part pair costs one simulated second.
+		if (partKeys.some(([, indexKey]) => indexKey === key)) {
+			vi.setSystemTime(Date.now() + 1_000)
+		}
+		return result
+	}
+	const source = { binding: 'APP_DB' as const, name: 'kody', id: appId }
+	vi.useFakeTimers({ toFake: ['Date'] })
+	try {
+		const stalled = await sealPacedD1SourceNight({
+			s3: client,
+			source,
+			day,
+			startedAtMs: Date.now(),
+			timeBudgetMs: 2_500,
+		})
+		expect(stalled.complete).toBe(false)
+		expect(partKeys.map(([dataKey]) => objects.has(dataKey!))).toEqual(
+			Array.from({ length: partCount }, (_, i) => i < 3),
+		)
+		for (const key of [...tipKeys, sealedManifestKey]) {
+			expect(objects.has(key)).toBe(false)
+		}
+	} finally {
+		vi.useRealTimers()
+	}
+
+	putKeys.length = 0
+	const finished = await sealPacedD1SourceNight({ s3: client, source, day })
+	expect(finished.complete).toBe(true)
+	expect(putKeys).not.toContain(partKeys[0]![0])
+	expect(putKeys).not.toContain(partKeys[2]![1])
+	expect(putKeys).toContain(partKeys[3]![0])
+	expect(putKeys).toContain(sealedManifestKey)
+	for (const [key, bytes] of sealedBodies) {
+		expect(objects.get(key)?.bytes).toEqual(bytes)
+	}
 })

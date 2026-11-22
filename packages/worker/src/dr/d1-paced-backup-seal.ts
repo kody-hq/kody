@@ -149,7 +149,8 @@ async function sealTableArtifacts(input: {
 	table: string
 	dataSha256: string
 	indexSha256: string
-}): Promise<void> {
+	outOfBudget: () => boolean
+}): Promise<boolean> {
 	const stagingDataKey = pacedD1StagingDataKey(
 		input.day,
 		input.source.name,
@@ -207,9 +208,39 @@ async function sealTableArtifacts(input: {
 			)
 		}
 
+		const sealedPartsExist = async (partIndex: number) => {
+			const [data, index] = await Promise.all([
+				input.s3.head(
+					pacedD1SealedDataPartKey(
+						input.tier,
+						input.source.id,
+						input.day,
+						input.table,
+						partIndex,
+					),
+				),
+				input.s3.head(
+					pacedD1SealedIndexPartKey(
+						input.tier,
+						input.source.id,
+						input.day,
+						input.table,
+						partIndex,
+					),
+				),
+			])
+			return data.exists && index.exists
+		}
+
 		// Whole index first: a table whose index repeats a rowid must not leave
-		// any immutable sealed object behind.
-		for (let partIndex = 0; partIndex < dataPointer.partCount; partIndex += 1) {
+		// any immutable sealed object behind. A sealed part 0 means an earlier
+		// tick already passed this check and started copying.
+		const resuming = dataPointer.partCount > 0 && (await sealedPartsExist(0))
+		for (
+			let partIndex = 0;
+			!resuming && partIndex < dataPointer.partCount;
+			partIndex += 1
+		) {
 			const indexPart = await readStagingBytes({
 				s3: input.s3,
 				stagingKey: pacedD1StagingIndexPartKey(
@@ -235,6 +266,14 @@ async function sealTableArtifacts(input: {
 					`paced D1 parts pointer missing digest for ${input.source.name}.${input.table} part ${partIndex}`,
 				)
 			}
+			// Sealed parts are immutable and were verified against these digests
+			// before they were written, so a resumed seal skips them.
+			if (resuming && (await sealedPartsExist(partIndex))) {
+				dataPartDigests.push(dataExpected)
+				indexPartDigests.push(indexExpected)
+				continue
+			}
+			if (input.outOfBudget()) return false
 			// Sequential: verify-before-write one part body at a time (large
 			// APP/AUDIT parts previously spiked when data+index loaded together).
 			const dataPart = await sealVerifiedStagingBytes({
@@ -304,7 +343,7 @@ async function sealTableArtifacts(input: {
 				'application/json',
 			),
 		])
-		return
+		return true
 	}
 
 	assertIndexBodyAscending(stagingIndexText.text, assertAscending)
@@ -328,6 +367,7 @@ async function sealTableArtifacts(input: {
 		expectedSha: input.indexSha256,
 		label: `${input.source.name}.${input.table} index`,
 	})
+	return true
 }
 
 export type SealPacedD1SourceNightResult = {
@@ -348,7 +388,9 @@ export type SealPacedD1SourceNightResult = {
  * sealed data+index tip keys already exist are skipped so a budgeted resume
  * does not re-verify prior work. Table copies can span ticks — pass
  * `timeBudgetMs` so catch-up does not OOM/timeout while sealing a large APP
- * night; the sealed manifest is written only when every table has been copied.
+ * night. A parted table can also stop between parts and resume next tick, so
+ * one large table never needs a tick longer than the budget; the sealed
+ * manifest is written only when every table has been copied.
  */
 export async function sealPacedD1SourceNight(input: {
 	s3: DrBackupS3Client
@@ -397,6 +439,18 @@ export async function sealPacedD1SourceNight(input: {
 		)
 	}
 
+	const outOfBudget = () =>
+		timeBudgetMs !== undefined && Date.now() - startedAtMs >= timeBudgetMs
+	const incomplete = (tablesSealed: number) => ({
+		day: input.day,
+		databaseName: input.source.name,
+		databaseId: input.source.id,
+		tier,
+		manifestKey: sealedManifestKey,
+		alreadySealed: existingSealed.exists,
+		tablesSealed,
+		complete: false,
+	})
 	let tablesSealed = 0
 	for (const [table, tableManifest] of Object.entries(manifest.tables)) {
 		// Skip tip-complete tables before the budget check so a mid-night
@@ -413,22 +467,8 @@ export async function sealPacedD1SourceNight(input: {
 			tablesSealed += 1
 			continue
 		}
-		if (
-			timeBudgetMs !== undefined &&
-			Date.now() - startedAtMs >= timeBudgetMs
-		) {
-			return {
-				day: input.day,
-				databaseName: input.source.name,
-				databaseId: input.source.id,
-				tier,
-				manifestKey: sealedManifestKey,
-				alreadySealed: existingSealed.exists,
-				tablesSealed,
-				complete: false,
-			}
-		}
-		await sealTableArtifacts({
+		if (outOfBudget()) return incomplete(tablesSealed)
+		const tableSealed = await sealTableArtifacts({
 			s3: input.s3,
 			source: input.source,
 			day: input.day,
@@ -436,7 +476,9 @@ export async function sealPacedD1SourceNight(input: {
 			table,
 			dataSha256: tableManifest.dataSha256,
 			indexSha256: tableManifest.indexSha256,
+			outOfBudget,
 		})
+		if (!tableSealed) return incomplete(tablesSealed)
 		tablesSealed += 1
 	}
 
