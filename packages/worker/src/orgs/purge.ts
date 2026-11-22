@@ -26,6 +26,14 @@ import {
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
 import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
 import {
+	type LaneClock,
+	type TransientRetryBudgetExhausted,
+	createTransientD1RetryBudget,
+	reportTransientRetryBudgetExhaustedToSentry,
+	systemLaneClock,
+	withTransientD1RetryEnv,
+} from '#worker/scheduled/transient-d1-retry.ts'
+import {
 	purgeFailureDetails,
 	redactPurgeFailureDetail,
 } from '#worker/orgs/purge-failure-details.ts'
@@ -102,6 +110,12 @@ export type SoftDeletePurgeFailure =
 			cleanupErrors: Array<string>
 	  }
 	| {
+			/** Transient D1 backoff hit the item budget: keep the claim for the fence. */
+			kind: 'retry_budget_exhausted'
+			candidate: SoftDeletePurgeCandidate
+			error: TransientRetryBudgetExhausted
+	  }
+	| {
 			kind: 'audit_failed'
 			candidate: SoftDeletePurgeCandidate
 			error: unknown
@@ -147,6 +161,49 @@ async function mapSoftDeletePurgeFailure(
 			} catch (error) {
 				await mapSoftDeletePurgeFailure(
 					{ kind: 'audit_failed', candidate, error },
+					context,
+				)
+			}
+			return
+		}
+		case 'retry_budget_exhausted': {
+			const { error } = failure
+			reportLaneError(
+				'warn',
+				JSON.stringify({
+					message: 'soft_delete_purge_retry_budget_exhausted',
+					kind: candidate.kind,
+					lane,
+					label: error.label,
+					spentMs: error.spentMs,
+					budgetMs: error.budgetMs,
+				}),
+			)
+			reportTransientRetryBudgetExhaustedToSentry({
+				lane: 'soft_delete_purge',
+				itemKind: candidate.kind,
+				itemId: candidate.id,
+				error,
+			})
+			try {
+				await logOrgAuditEvent({
+					env: context.env,
+					orgId: candidate.id,
+					action: 'purge.retry_budget_exhausted',
+					result: 'failure',
+					detailsJson: JSON.stringify({
+						kind: candidate.kind,
+						lane,
+						label: error.label,
+						spentMs: error.spentMs,
+						budgetMs: error.budgetMs,
+						nextDelayMs: error.nextDelayMs,
+					}),
+					createdAt: context.nowIso,
+				})
+			} catch (auditError) {
+				await mapSoftDeletePurgeFailure(
+					{ kind: 'audit_failed', candidate, error: auditError },
 					context,
 				)
 			}
@@ -499,7 +556,10 @@ export async function pruneSoftDeleted(input: {
 	 */
 	dryRun?: boolean
 	enableWrites?: boolean
+	/** Pass-budget time source; transient D1 backoff sleeps through it. */
+	clock?: LaneClock
 }): Promise<SoftDeletePurgeResult> {
+	const clock = input.clock ?? systemLaneClock
 	const now = input.now ?? new Date()
 	const dryRun =
 		input.dryRun === true ||
@@ -507,9 +567,9 @@ export async function pruneSoftDeleted(input: {
 			!(input.enableWrites === true || softDeletePurgeWritesEnabled(input.env)))
 	const legacyDryRun = input.dryRun === true
 	const budgetMs = input.timeBudgetMs ?? softDeletePurgeRunTimeBudgetMs
-	const started = Date.now()
+	const started = clock.now()
 	const preview = await listSoftDeletePurgeCandidates({
-		env: input.env,
+		env: withTransientD1RetryEnv(input.env, { clock }),
 		now,
 		batchSize: input.batchSize,
 	})
@@ -535,28 +595,33 @@ export async function pruneSoftDeleted(input: {
 			})
 			continue
 		}
-		if (Date.now() - started > budgetMs) {
+		if (clock.now() - started > budgetMs) {
 			timeBudgetExhausted = true
 			break
 		}
+		const retryBudget = createTransientD1RetryBudget()
+		const itemEnv = withTransientD1RetryEnv(input.env, {
+			clock,
+			budget: retryBudget,
+		})
 		try {
 			const claimed =
 				candidate.kind === 'org'
 					? await claimOrgForPurge({
-							db: input.env.APP_DB,
+							db: itemEnv.APP_DB,
 							orgId: candidate.id,
 							nowIso,
 							retryBackoffCutoff,
 						})
 					: candidate.legacy
 						? await claimLegacyUserForPurge({
-								db: input.env.APP_DB,
+								db: itemEnv.APP_DB,
 								userId: candidate.id,
 								nowIso,
 								retryBackoffCutoff,
 							})
 						: await claimUserForPurge({
-								db: input.env.APP_DB,
+								db: itemEnv.APP_DB,
 								userId: candidate.id,
 								nowIso,
 								retryBackoffCutoff,
@@ -572,13 +637,13 @@ export async function pruneSoftDeleted(input: {
 				continue
 			}
 			if (candidate.kind === 'org') {
-				await hardPurgeOrg({ env: input.env, orgId: candidate.id })
+				await hardPurgeOrg({ env: itemEnv, orgId: candidate.id })
 			} else if (candidate.legacy) {
 				if (candidate.dbUserId == null) {
 					throw new Error(`user_purge_missing_db_id:${candidate.id}`)
 				}
 				await finishLegacyUserDeletion({
-					env: input.env,
+					env: itemEnv,
 					dbUserId: candidate.dbUserId,
 					stableUserId: candidate.id,
 				})
@@ -587,7 +652,7 @@ export async function pruneSoftDeleted(input: {
 					throw new Error(`user_purge_missing_db_id:${candidate.id}`)
 				}
 				await hardPurgeSoftDeletedUser({
-					env: input.env,
+					env: itemEnv,
 					dbUserId: candidate.dbUserId,
 					stableUserId: candidate.id,
 				})
@@ -602,15 +667,22 @@ export async function pruneSoftDeleted(input: {
 			})
 		} catch (error) {
 			failed += 1
+			const exhausted = retryBudget.exhausted
 			const message = redactPurgeFailureDetail(
-				error instanceof Error ? error.message : String(error),
+				exhausted
+					? exhausted.message
+					: error instanceof Error
+						? error.message
+						: String(error),
 			)
-			const failure: SoftDeletePurgeFailure = {
-				kind: 'candidate_failed',
-				candidate,
-				message,
-				cleanupErrors: purgeFailureDetails(error),
-			}
+			const failure: SoftDeletePurgeFailure = exhausted
+				? { kind: 'retry_budget_exhausted', candidate, error: exhausted }
+				: {
+						kind: 'candidate_failed',
+						candidate,
+						message,
+						cleanupErrors: purgeFailureDetails(error),
+					}
 			outcomes.push({
 				kind: candidate.kind,
 				id: candidate.id,

@@ -72,7 +72,12 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   account cannot become eligible again. A claim-created fence is released only
   on pre-cleanup failures (active writers or inventory); a partial-cleanup
   failure leaves the fence for retry. Never-attempted rows are processed before
-  retries, and in-backoff fences are skipped.
+  retries, and in-backoff fences are skipped. This lane and `soft_delete_purge`
+  retry transient D1 errors
+  (`packages/worker/src/scheduled/transient-d1-retry.ts`) up to three times per
+  statement or batch with 100/200/400 ms backoff, capped at 1,000 ms of backoff
+  per item. An item that hits the cap fails as `TransientRetryBudgetExhausted`,
+  audits `purge.retry_budget_exhausted`, and keeps its fence.
 - `orgs` (`0086-teams-orgs-tables.sql`, `0087-teams-soft-delete-columns.sql`,
   `0088-teams-actor-columns.sql`, `0089-teams-orgs-backfill.sql`): one row per
   org. Personal orgs reuse `users.stable_user_id` as `orgs.id`. Billing,

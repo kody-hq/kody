@@ -322,6 +322,23 @@ export function readD1RetryAttempts(error: unknown): number | null {
 	return null
 }
 
+const d1RetryHandledErrors = new WeakSet<object>()
+
+/**
+ * Marks an error whose retries a caller-specific policy already spent, so an
+ * enclosing `runD1WithRetry` rethrows it instead of retrying it again.
+ */
+export function markD1RetryHandled<T>(error: T): T {
+	if (error && typeof error === 'object') d1RetryHandledErrors.add(error)
+	return error
+}
+
+function isD1RetryHandled(error: unknown) {
+	return Boolean(
+		error && typeof error === 'object' && d1RetryHandledErrors.has(error),
+	)
+}
+
 /**
  * Opt-in per-attempt deadline for `runD1WithRetry`. Idle D1 bindings can hang
  * instead of throwing a retryable platform error; a bounded attempt lets the
@@ -404,8 +421,9 @@ export async function runD1WithRetry<T>(
 		} catch (error) {
 			lastError = error
 			const retryable =
-				isRetryableD1LockError(error) ||
-				(attemptTimeoutMs !== undefined && isD1AttemptTimeoutError(error))
+				!isD1RetryHandled(error) &&
+				(isRetryableD1LockError(error) ||
+					(attemptTimeoutMs !== undefined && isD1AttemptTimeoutError(error)))
 			if (!retryable || attempt === maxAttempts) {
 				if (retryable && error && typeof error === 'object') {
 					d1RetryAttemptsByError.set(error, attempt)

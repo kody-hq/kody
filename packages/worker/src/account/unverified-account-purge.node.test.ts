@@ -22,6 +22,12 @@ import {
 } from './unverified-account-purge.ts'
 import { listSoftDeletePurgeCandidates } from '#worker/orgs/purge.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import {
+	createFakeLaneClock,
+	withD1Faults,
+} from '#worker/test-support/transient-d1-faults.ts'
+import * as Sentry from '@sentry/cloudflare'
+import { TransientRetryBudgetExhausted } from '#worker/scheduled/transient-d1-retry.ts'
 
 const now = new Date('2026-09-02T12:00:00.000Z')
 const millisecondsPerDay = 24 * 60 * 60 * 1000
@@ -718,4 +724,181 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 		scanned: 1,
 		candidates: [{ stableUserId: fresh.stableUserId, ageDays: 9 }],
 	})
+})
+
+function accountClaimFault(user: SeededUser, failures: number) {
+	return {
+		target: 'statement',
+		failures,
+		match: (query: string, params: ReadonlyArray<unknown>) =>
+			query.startsWith('UPDATE users') &&
+			query.includes('AND deleting_at IS NULL') &&
+			params[2] === user.id,
+	} as const
+}
+
+function accountDeletionBatchFault(
+	user: SeededUser,
+	failures: number,
+	message?: string,
+) {
+	return {
+		target: 'batch',
+		failures,
+		message,
+		match: (query: string, params: ReadonlyArray<unknown>) =>
+			query.startsWith('DELETE FROM users WHERE id = ?') &&
+			params[0] === user.id,
+	} as const
+}
+
+test('a transient D1 error in the account deletion batch is retried with backoff and the account is purged', async () => {
+	const h = createHarness()
+	const user = await h.seed('transient-batch', 8)
+	const batchFault = accountDeletionBatchFault(user, 2)
+	const faults = withD1Faults(h.db, [batchFault])
+	const { clock, sleeps } = createFakeLaneClock()
+
+	expect(
+		await pruneUnverifiedAccounts({ env: h.envFor(faults.db), now, clock }),
+	).toEqual(runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(user, 8)]))
+	expect(faults.attempts(batchFault)).toBe(3)
+	expect(sleeps).toEqual([100, 200])
+	expect(h.usernames()).toEqual([])
+	expect(h.auditRows()).toEqual([purgedAudit(user)])
+})
+
+test('a permanent D1 error in the account deletion batch is not retried', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const h = createHarness()
+	const user = await h.seed('permanent-batch', 8)
+	const batchFault = accountDeletionBatchFault(
+		user,
+		1,
+		'D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT',
+	)
+	const faults = withD1Faults(h.db, [batchFault])
+	const { clock, sleeps } = createFakeLaneClock()
+
+	const result = await pruneUnverifiedAccounts({
+		env: h.envFor(faults.db),
+		now,
+		clock,
+	})
+
+	expect(result).toMatchObject({ purged: 0, failed: 1 })
+	expect(faults.attempts(batchFault)).toBe(1)
+	expect(sleeps).toEqual([])
+	expect(h.usernames()).toEqual(['permanent-batch'])
+	expect(h.auditRows()).toEqual([failedAudit(user, result.outcomes[0]?.error)])
+})
+
+test('an account whose transient retries exceed the item budget fails as retry_budget_exhausted, keeps its fence, and the next account still purges', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const isInitialized = vi.spyOn(Sentry, 'isInitialized').mockReturnValue(true)
+	const getClient = vi.spyOn(Sentry, 'getClient').mockReturnValue({
+		getOptions: () => ({ dsn: 'https://public@sentry.example/1' }),
+	} as ReturnType<typeof Sentry.getClient>)
+	const captureException = vi.spyOn(Sentry, 'captureException')
+	const h = createHarness()
+	const exhausted = await h.seed('budget-exhausted', 12)
+	const healthy = await h.seed('budget-healthy', 10)
+	const batchFault = accountDeletionBatchFault(
+		exhausted,
+		Number.POSITIVE_INFINITY,
+	)
+	const faults = withD1Faults(h.db, [
+		accountClaimFault(exhausted, 3),
+		batchFault,
+	])
+	const { clock, sleeps } = createFakeLaneClock()
+	const reason =
+		'TransientRetryBudgetExhausted: Transient D1 retry budget exhausted: APP_DB.batch needed 400 ms more backoff after 1000 of 1000 ms'
+
+	expect(
+		await pruneUnverifiedAccounts({ env: h.envFor(faults.db), now, clock }),
+	).toEqual(
+		runResult({ scanned: 2, purged: 1, failed: 1 }, [
+			failed(exhausted, 12, reason),
+			purged(healthy, 10),
+		]),
+	)
+	// Claim: 100 + 200 + 400. Batch: 100 + 200, then 400 would pass 1,000.
+	expect(sleeps).toEqual([100, 200, 400, 100, 200])
+	expect(faults.attempts(batchFault)).toBe(3)
+	expect(h.usernames()).toEqual(['budget-exhausted'])
+	expect(h.deletingAt('budget-exhausted')).not.toBeNull()
+	expect(h.auditRows()).toEqual([
+		{
+			category: 'account',
+			action: 'purge.retry_budget_exhausted',
+			result: 'failure',
+			email_hash: emailHash(exhausted.email),
+			reason,
+		},
+		purgedAudit(healthy),
+	])
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'unverified_account_purge_retry_budget_exhausted',
+		{ userId: exhausted.stableUserId, warnings: [], error: reason },
+	)
+	expect(captureException).toHaveBeenCalledExactlyOnceWith(
+		expect.any(TransientRetryBudgetExhausted),
+	)
+	captureException.mockRestore()
+	getClient.mockRestore()
+	isInitialized.mockRestore()
+})
+
+test('the retry budget is per account: two accounts can each spend the full 1,000 ms in one pass', async () => {
+	const h = createHarness()
+	const first = await h.seed('slow-first', 12)
+	const second = await h.seed('slow-second', 10)
+	const faults = withD1Faults(h.db, [
+		accountClaimFault(first, 3),
+		accountDeletionBatchFault(first, 2),
+		accountClaimFault(second, 3),
+		accountDeletionBatchFault(second, 2),
+	])
+	const { clock, sleeps, elapsedMs } = createFakeLaneClock()
+
+	expect(
+		await pruneUnverifiedAccounts({ env: h.envFor(faults.db), now, clock }),
+	).toEqual(
+		runResult({ scanned: 2, purged: 2, failed: 0 }, [
+			purged(first, 12),
+			purged(second, 10),
+		]),
+	)
+	expect(sleeps).toEqual([100, 200, 400, 100, 200, 100, 200, 400, 100, 200])
+	expect(elapsedMs()).toBe(2_000)
+	expect(h.usernames()).toEqual([])
+})
+
+test('retry backoff counts toward the unverified purge pass time budget', async () => {
+	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const h = createHarness()
+	const first = await h.seed('backoff-first', 12)
+	await h.seed('backoff-waits', 10)
+	const faults = withD1Faults(h.db, [accountDeletionBatchFault(first, 3)])
+	const { clock, sleeps } = createFakeLaneClock()
+
+	expect(
+		await pruneUnverifiedAccounts({
+			env: h.envFor(faults.db),
+			now,
+			clock,
+			timeBudgetMs: 600,
+		}),
+	).toEqual({
+		scanned: 2,
+		purged: 1,
+		failed: 0,
+		timeBudgetExhausted: true,
+		outcomes: [purged(first, 12)],
+	})
+	expect(sleeps).toEqual([100, 200, 400])
+	expect(deleteUserAccount).toHaveBeenCalledTimes(1)
+	expect(h.usernames()).toEqual(['backoff-waits'])
+	expect(h.deletingAt('backoff-waits')).toBeNull()
 })
