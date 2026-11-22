@@ -22,18 +22,10 @@ import { test, vi } from 'vitest'
 import {
 	MemoryBucket,
 	environment,
-	manifest,
-	putSqlStatsFixture,
-	signedManifest,
 	putPacedSeal,
 } from './backup-control-plane-test-support.ts'
-import {
-	BackupError,
-	backupPayload,
-	objectKeyForBookmark,
-} from './backup-policy.ts'
+import { BackupError } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
-import { putImmutableManifest } from './immutable-storage.ts'
 import { createR2CallBudget } from './r2-call-budget.ts'
 import {
 	readFullManifest,
@@ -89,42 +81,6 @@ async function putBody(bucket: MemoryBucket, objectKey: string, body: string) {
 	return { objectKey, bytes: body.length, sha256: sha256Text(body) }
 }
 
-async function putD1DayManifest(
-	bucket: MemoryBucket,
-	env: BackupEnvironment,
-	day: string,
-	sqlBody: string,
-) {
-	const payload = backupPayload(env, new Date(`${day}T12:00:00.000Z`))
-	const sqlKey = objectKeyForBookmark(payload.objectPrefix, 'bookmark-1')
-	await bucket.put(sqlKey, sqlBody)
-	const template = manifest({
-		bytes: sqlBody.length,
-		sha256: sha256Text(sqlBody),
-		r2Etag: createHash('md5').update(sqlBody).digest('hex'),
-	})
-	await putImmutableManifest(
-		bucket as unknown as R2Bucket,
-		payload.manifestKey,
-		signedManifest({
-			...template.payload,
-			source: {
-				...template.payload.source,
-				databaseId: env.SOURCE_DATABASE_ID,
-				databaseName: env.SOURCE_DATABASE_NAME,
-			},
-			export: {
-				bookmark: 'bookmark-1',
-				scheduledAt: `${day}T02:15:00.000Z`,
-				startedAt: `${day}T02:15:01.000Z`,
-				completedAt: `${day}T02:16:00.000Z`,
-			},
-			sql: { ...template.payload.sql, objectKey: sqlKey },
-		}),
-	)
-	return { sqlKey, manifestKey: payload.manifestKey }
-}
-
 async function seedCompleteDay(
 	bucket: MemoryBucket,
 	day = '2026-07-22',
@@ -135,12 +91,6 @@ async function seedCompleteDay(
 		bucket,
 		{ id: env.SOURCE_DATABASE_ID, name: env.SOURCE_DATABASE_NAME },
 		day,
-	)
-	const { sqlKey } = await putD1DayManifest(
-		bucket,
-		env,
-		day,
-		'CREATE TABLE t(id INTEGER);\n',
 	)
 	const ownerId = ownerIdFromStored('user-owner-1')
 	const index = (entries: Array<unknown>) =>
@@ -228,7 +178,6 @@ async function seedCompleteDay(
 	return {
 		env,
 		day,
-		sqlKey,
 		seal: (time = '04:00') =>
 			sealFullBackupDay(env, day, new Date(`${day}T${time}:00.000Z`)),
 		sealedManifest: () =>
@@ -327,7 +276,6 @@ test('sealFullBackupDay resumes a locked partial day without re-getting dump bod
 	bucket.enableLockPolicy()
 	const day = '2026-09-04'
 	const seeded = await seedCompleteDay(bucket, day)
-	await putSqlStatsFixture(bucket, day, seeded.sqlKey)
 
 	const sealedKeys = sealedDumpKeys(day)
 	await bucket.put(sealedKeys.storage, dumpBodies.storage)

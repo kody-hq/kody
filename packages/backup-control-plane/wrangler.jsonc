@@ -64,11 +64,6 @@
 		// Non-secret provenance. The matching PKCS#8 private key is a Worker secret.
 		"BACKUP_MANIFEST_SIGNING_KEY_ID": "kody-dr-2026-07",
 		"BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64": "MCowBQYDK2VwAyEA3jqjPcGTzWefE5PGyRBdUQKAEj7FFGtFIz+223sbt9A=",
-		// SHA-256 of the JSON array of sorted migration filenames at the
-		// deployment commit; recompute when adding a migration (recipe in
-		// docs/contributing/disaster-recovery.md).
-		"TRUSTED_RESTORE_BASELINE_ID": "kody-migration-set-2026-07",
-		"TRUSTED_RESTORE_BASELINE_SHA256": "63d10bfc5a672b33a610287ebd3ee5036ee5e719ee8271c1a32f4a44a524a2d7",
 		"ACCESS_TEAM_DOMAIN": "kentcdodds.cloudflareaccess.com",
 		"ACCESS_APP_AUD": "769c70e393e2652f5878af99333322184a35cc3aef53376344f8753805e42a76",
 		"ACCESS_ALLOWED_EMAIL": "me@kentcdodds.com",

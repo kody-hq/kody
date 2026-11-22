@@ -624,8 +624,7 @@ Non-secret vars:
   `SOURCE_DATABASE_ID`). The full seal requires each source's sealed paced night
   and records it under `d1Paced`.
 - `BACKUP_MANIFEST_SIGNING_KEY_ID`,
-  `BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64`,
-  `TRUSTED_RESTORE_BASELINE_ID`, `TRUSTED_RESTORE_BASELINE_SHA256`.
+  `BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64`.
 - `ACCESS_TEAM_DOMAIN`, `ACCESS_APP_AUD`, `ACCESS_ALLOWED_EMAIL` — Zero Trust
   Access JWT verification (policy pinned to the solo operator email).
 - `DRILL_ACCOUNT_ID` — isolated account for UI restore drills (must differ from

@@ -1,9 +1,4 @@
-import type {
-	BackupEnvironment,
-	LogRecord,
-	RetentionTier,
-	ScheduledBackupPayload,
-} from './backup-types.ts'
+import type { BackupEnvironment, LogRecord } from './backup-types.ts'
 
 const CLOUDFLARE_ID_PATTERN =
 	/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i
@@ -177,39 +172,6 @@ export function configuredSourceDatabases(
 	return parseSourceDatabasesJson(env.SOURCE_DATABASES)
 }
 
-export type DeclaredD1Source = {
-	databaseId: string
-	databaseName: string
-	manifestKey: string
-	manifestSha256: string
-}
-
-export function declaredSourceDatabases(
-	env: BackupEnvironment,
-	declared?: Array<DeclaredD1Source>,
-): Array<SourceDatabase> {
-	if (declared === undefined || declared.length === 0) {
-		return [primarySourceDatabase(env)]
-	}
-	const configured = configuredSourceDatabases(env)
-	const sources: Array<SourceDatabase> = []
-	for (const entry of declared) {
-		const match = configured.find(
-			(source) =>
-				source.id.toLowerCase() === entry.databaseId.toLowerCase() &&
-				source.name === entry.databaseName,
-		)
-		if (match === undefined) {
-			throw new BackupError(
-				'restore-d1-source-not-configured',
-				`sealed D1 source ${entry.databaseName} (${entry.databaseId}) is not configured`,
-			)
-		}
-		sources.push(match)
-	}
-	return sources
-}
-
 export function absentConfiguredSourceNote(source: SourceDatabase): string {
 	if (source.name === 'kody-jobs') {
 		return 'JOBS_DB: not present in this backup day'
@@ -268,36 +230,6 @@ export function resolveSourceDatabase(
 		)
 	}
 	return match
-}
-
-export function sourceDatabaseFromObjectPrefix(
-	env: BackupEnvironment,
-	objectPrefix: string,
-	day: string,
-	tier: RetentionTier,
-): SourceDatabase {
-	const expectedStart = `${tier}/d1/`
-	const expectedEnd = `/${day}`
-	if (
-		!objectPrefix.startsWith(expectedStart) ||
-		!objectPrefix.endsWith(expectedEnd)
-	) {
-		throw new BackupError(
-			'invalid-workflow-payload',
-			'workflow payload objectPrefix did not match the scheduled day',
-		)
-	}
-	const databaseId = objectPrefix.slice(
-		expectedStart.length,
-		objectPrefix.length - expectedEnd.length,
-	)
-	if (databaseId.includes('/')) {
-		throw new BackupError(
-			'invalid-workflow-payload',
-			'workflow payload objectPrefix is not a configured source database',
-		)
-	}
-	return resolveSourceDatabase(env, databaseId)
 }
 
 export function assertConfiguredIdentity(env: BackupEnvironment): void {
@@ -373,64 +305,6 @@ export function assertRemoteDatabaseIdentity(
 
 export function utcDay(date: Date): string {
 	return date.toISOString().slice(0, 10)
-}
-
-function retentionTier(day: string): RetentionTier {
-	const date = new Date(`${day}T00:00:00.000Z`)
-	if (Number.isNaN(date.valueOf())) {
-		throw new BackupError('invalid-day', 'scheduled day is invalid')
-	}
-	// Sunday UTC is the weekly retention boundary.
-	return date.getUTCDay() === 0 ? 'weekly' : 'daily'
-}
-
-export function backupPayload(
-	env: BackupEnvironment,
-	scheduledAt: Date,
-	source: SourceDatabase = primarySourceDatabase(env),
-): ScheduledBackupPayload {
-	const resolved = resolveSourceDatabase(env, source.id)
-	if (source.name !== resolved.name) {
-		throw new BackupError(
-			'source-identity-mismatch',
-			'Cloudflare D1 identity did not match the configured UUID and name',
-		)
-	}
-	const day = utcDay(scheduledAt)
-	const tier = retentionTier(day)
-	const prefix = `${tier}/d1/${resolved.id}/${day}`
-	return {
-		kind: 'scheduled',
-		scheduledAt: scheduledAt.toISOString(),
-		day,
-		objectPrefix: prefix,
-		manifestKey: `${prefix}/manifest.json`,
-		retentionTier: tier,
-	}
-}
-
-export function objectKeyForBookmark(
-	objectPrefix: string,
-	bookmark: string,
-): string {
-	if (
-		!/^[A-Za-z0-9._:-]{1,256}$/.test(bookmark) ||
-		bookmark === '.' ||
-		bookmark === '..'
-	) {
-		throw new BackupError(
-			'unsafe-export-bookmark',
-			'D1 export bookmark cannot be safely mapped to an object key',
-		)
-	}
-	const encoded = [...new TextEncoder().encode(bookmark)]
-		.map((byte) => byte.toString(16).padStart(2, '0'))
-		.join('')
-	return `${objectPrefix}/backup-${encoded}.sql`
-}
-
-export function workflowInstanceId(databaseId: string, day: string): string {
-	return `d1-backup-${databaseId}-${day}`
 }
 
 export function safeLog(

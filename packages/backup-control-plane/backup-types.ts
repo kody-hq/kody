@@ -1,9 +1,5 @@
 import type { BackupExportPhase } from './backup-export-state.ts'
 
-export { type BackupManifest } from '@kody-internal/shared/backup-manifest.ts'
-
-export type RetentionTier = 'daily' | 'weekly'
-
 export interface BackupEnvironment {
 	BACKUP_BUCKET: R2Bucket
 	RESTORE_WORKFLOW: Workflow
@@ -26,8 +22,6 @@ export interface BackupEnvironment {
 	BACKUP_MANIFEST_SIGNING_KEY_ID: string
 	BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64: string
 	BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64: string
-	TRUSTED_RESTORE_BASELINE_ID: string
-	TRUSTED_RESTORE_BASELINE_SHA256: string
 	ACCESS_TEAM_DOMAIN: string
 	ACCESS_APP_AUD: string
 	ACCESS_ALLOWED_EMAIL: string
@@ -38,15 +32,6 @@ export interface BackupEnvironment {
 	DR_RESTORE_SECRET?: string
 	/** Bearer for agent seal enqueue/status on `/__maintenance/dr-seal` only. */
 	DR_OPS_SECRET?: string
-}
-
-export interface ScheduledBackupPayload {
-	kind: 'scheduled'
-	scheduledAt: string
-	day: string
-	objectPrefix: string
-	manifestKey: string
-	retentionTier: RetentionTier
 }
 
 export interface ExportReady {
@@ -66,29 +51,6 @@ interface ExportLost {
 }
 
 export type ExportState = ExportReady | ExportPending | ExportLost
-
-/**
- * Statement-length statistics for one exported SQL object, measured while
- * streaming during upload. `oversizedStatementCount > 0` means the object is
- * not restorable through the D1 import API (statement too long:
- * SQLITE_TOOBIG); the condition is persisted next to the object before the
- * Workflow fails without writing a day manifest.
- */
-export interface SqlStatementStats {
-	maxStatementBytes: number
-	oversizedStatementCount: number
-	/** The import statement-length limit the stats were measured against. */
-	limit: number
-}
-
-export interface StoredBackup {
-	bytes: number
-	sha256: string
-	r2Etag: string
-	alreadyExisted: boolean
-	/** Absent only on step results cached by pre-stats deployments. */
-	sqlStatementStats?: SqlStatementStats
-}
 
 export interface LogRecord {
 	event:

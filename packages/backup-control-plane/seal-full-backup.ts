@@ -1,5 +1,6 @@
 import {
 	parseBackupFullManifest,
+	RestEraBackupFullManifestError,
 	serializeBackupFullManifest,
 	type BackupFullD1Source,
 	type BackupFullFileRef,
@@ -345,7 +346,10 @@ export async function readFullManifest(
 	if (object === null) return null
 	try {
 		return parseBackupFullManifest(await object.json<unknown>())
-	} catch {
+	} catch (error) {
+		if (error instanceof RestEraBackupFullManifestError) {
+			throw new BackupError('full-manifest-rest-era', error.message)
+		}
 		throw new BackupError(
 			'full-manifest-corrupt',
 			'full backup manifest JSON is corrupt',

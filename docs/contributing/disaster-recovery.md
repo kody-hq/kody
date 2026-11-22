@@ -155,40 +155,43 @@ which is account-scoped; the two gateways are independent.
 
 Contract: `packages/shared/src/backup-staging.ts`.
 
-| Prefix                                      | Mutability       | Contents                                                                                                            |
-| ------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `daily/d1/...`, `weekly/d1/...`             | Immutable        | Legacy signed D1 SQL + schema-v2 manifests from the removed REST export; read-only, for restoring schema-v1/v2 days |
-| `staging/{day}/d1-paced/{databaseName}/...` | Mutable          | Paced D1 night walk (progress, table TSV, parts, night manifest)                                                    |
-| `daily/d1-paced/{databaseId}/{day}/...`     | Immutable        | Sealed weekday paced nights                                                                                         |
-| `weekly/d1-paced/{databaseId}/{day}/...`    | Immutable        | Sealed Sunday UTC paced full bases                                                                                  |
-| `staging/{day}/...`                         | Mutable          | Production exporter cursor progress, chunked phase output, indexes, NDJSON dumps, `exporter/summary.json`           |
-| `daily/full/{day}/...`                      | Immutable        | Sealed copy of staged indexes/dumps + Ed25519 full-backup manifest                                                  |
-| `blobs/sha256/{hash}`                       | Immutable        | Deduplicated email MIME, community assets, published source snapshots                                               |
-| `escrow/`                                   | Operator-managed | Sealed `SECRET_STORE_KEY` blob (`escrow/secret-store-key.v1.json`)                                                  |
+| Prefix                                      | Mutability       | Contents                                                                                                  |
+| ------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
+| `daily/d1/...`, `weekly/d1/...`             | Immutable        | REST-era D1 SQL + manifests from the removed export; not restorable, expire under lifecycle               |
+| `staging/{day}/d1-paced/{databaseName}/...` | Mutable          | Paced D1 night walk (progress, table TSV, parts, night manifest)                                          |
+| `daily/d1-paced/{databaseId}/{day}/...`     | Immutable        | Sealed weekday paced nights                                                                               |
+| `weekly/d1-paced/{databaseId}/{day}/...`    | Immutable        | Sealed Sunday UTC paced full bases                                                                        |
+| `staging/{day}/...`                         | Mutable          | Production exporter cursor progress, chunked phase output, indexes, NDJSON dumps, `exporter/summary.json` |
+| `daily/full/{day}/...`                      | Immutable        | Sealed copy of staged indexes/dumps + Ed25519 full-backup manifest                                        |
+| `blobs/sha256/{hash}`                       | Immutable        | Deduplicated email MIME, community assets, published source snapshots                                     |
+| `escrow/`                                   | Operator-managed | Sealed `SECRET_STORE_KEY` blob (`escrow/secret-store-key.v1.json`)                                        |
 
 ### Capture lanes
 
-1. **D1 (legacy REST export, removed)** — Until #4306 the control plane exported
-   APP_DB and JOBS_DB nightly through the Cloudflare D1 export API into
+1. **D1 (REST export, removed)** — Until #4306 the control plane exported APP_DB
+   and JOBS_DB nightly through the Cloudflare D1 export API into
    `<tier>/d1/<database-uuid>/<day>/` with signed schema-v2 manifests. That
    export lane, its cron, Workflow, freshness check, and `restExport` flag are
-   gone; the paced walk below is the only D1 backup. The REST objects already
-   written stay immutable and restorable: graduated restore of a schema-v1/v2
-   full manifest still reads them through the read-only legacy REST reader in
-   `production-restore.ts`. Weekly REST objects are retained about 400 days, so
-   that reader can be deleted after about December 2027, once no retained full
-   manifest is older than schema v3. `SOURCE_DATABASES` (`{ id, name }` entries)
-   lists the D1 databases graduated restore may target; `SOURCE_DATABASE_ID` /
-   `SOURCE_DATABASE_NAME` remain the primary APP_DB identity. Gates:
-   `ENABLE_PRODUCTION_D1_BACKUPS` and `BACKUP_BENCHMARK_APPROVED` must both be
-   exactly `"true"` for the seal cron to run. The production `kody-jobs` UUID is
-   resolved by name in `tools/ci/jobs-worker-resources.ts`
-   (`jobs_d1_database_id`). **D1 paced walk (production worker)** — When
-   `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the same DR S3 credentials are
-   set, the production worker walks APP_DB, AUDIT_DB, and JOBS_DB page-by-page
-   (`packages/worker/src/dr/d1-paced-backup.ts`) in the same nightly window as
-   non-D1 staging. Staging lives under `staging/{day}/d1-paced/{databaseName}/`.
-   Completed nights seal to `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
+   gone; the paced walk below is the only D1 backup. The read-only REST restore
+   reader was removed on 2026-11-22, so schema-v3 paced days are the only
+   restorable format: restore rejects a schema-v1/v2 full manifest with
+   `restore-rest-era-day`, naming the day. The REST objects already written are
+   not converted, modified, or manually deleted; they expire under R2 lifecycle
+   (`daily/` about 35 days, so the last REST-era daily full manifest,
+   2026-11-16, ages out in late December 2026; `weekly/d1/` about 400 days, with
+   no weekly full manifest to restore them through). `SOURCE_DATABASES`
+   (`{ id, name }` entries) lists the D1 databases graduated restore may target;
+   `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` remain the primary APP_DB
+   identity. Gates: `ENABLE_PRODUCTION_D1_BACKUPS` and
+   `BACKUP_BENCHMARK_APPROVED` must both be exactly `"true"` for the seal cron
+   to run. The production `kody-jobs` UUID is resolved by name in
+   `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`). **D1 paced walk
+   (production worker)** — When `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the
+   same DR S3 credentials are set, the production worker walks APP_DB, AUDIT_DB,
+   and JOBS_DB page-by-page (`packages/worker/src/dr/d1-paced-backup.ts`) in the
+   same nightly window as non-D1 staging. Staging lives under
+   `staging/{day}/d1-paced/{databaseName}/`. Completed nights seal to
+   `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
    `weekly/d1-paced/{databaseId}/{day}/` (Sunday UTC full bases). Tick writers
    flush TSV parts at 4 MiB on page boundaries. Each table walk stops after 32
    MiB emitted so the next tick can resume; see
@@ -223,8 +226,7 @@ Contract: `packages/shared/src/backup-staging.ts`.
    never folds into a generic (possibly ignored) OOM issue; the jobs worker asks
    `JobsHost.readD1PacedRestoreDrillCheckpoint` for the source and phase when
    the RPC itself dies. Graduated production restore and the isolated paced
-   drill replay the same sealed paced chains for schema-v3 days; graduated
-   restore of schema-v1/v2 days reads the retained REST SQL objects. The
+   drill replay the same sealed paced chains for schema-v3 days. The
    [paced status endpoint](../../packages/worker/src/dr/d1-paced-status.ts)
    reports backup freshness and the latest restore drill. `DR_D1_PACED_SOURCES`
    commits APP_DB + AUDIT_DB + JOBS_DB (deploy still expands live D1 UUIDs from
@@ -311,18 +313,18 @@ Contract: `packages/shared/src/backup-staging.ts`.
    D1 source of truth. A missing or unparseable paced night returns
    `paced-d1-seal-missing` or `paced-d1-seal-corrupt` with the source name. New
    seals carry no REST D1 fields (`d1ManifestKey`, `d1ManifestSha256`,
-   `d1Sources`); those appear only on full manifests sealed while the REST
-   export lane existed. Graduated production restore of a schema-v3 day replays
-   each sealed paced chain into its source database, one workflow step per unit,
-   then re-hashes every restored row and fails with
-   `restore-paced-verify-mismatch` when a count or checksum differs from the
-   sealed tip manifest. A paced source without a sealed manifest is refused
-   before the safety export (`restore-paced-seal-missing`). REST evidence on a
-   v3 day is never imported. Historical schema-v1 and schema-v2 days keep their
-   required REST fields and restore through the legacy REST reader.
-   Already-sealed days short-circuit before source checks. The hourly `:45` cron
-   attempts to seal the last sixteen complete days synchronously. The UI seal
-   action enqueues workflow `kody-production-seal-day` for that day and returns
+   `d1Sources`); some schema-v3 manifests sealed while the REST export lane
+   existed still carry them as signed, never-read evidence. Graduated production
+   restore of a schema-v3 day replays each sealed paced chain into its source
+   database, one workflow step per unit, then re-hashes every restored row and
+   fails with `restore-paced-verify-mismatch` when a count or checksum differs
+   from the sealed tip manifest. A paced source without a sealed manifest is
+   refused before the safety export (`restore-paced-seal-missing`). REST
+   evidence on a v3 day is never imported. Schema-v1 and schema-v2 days are
+   refused before any production call (`restore-rest-era-day`). Already-sealed
+   days short-circuit before source checks. The hourly `:45` cron attempts to
+   seal the last sixteen complete days synchronously. The UI seal action
+   enqueues workflow `kody-production-seal-day` for that day and returns
    immediately.
 
 ### Restore-safe row sizes
@@ -339,18 +341,6 @@ rows were bounded.
   package-invocation replay caches are dropped when oversized, and stored email
   bodies are truncated (raw MIME in R2 stays canonical). Large payloads belong
   in durable storage.
-- The control plane measures statement lengths while streaming every export and
-  writes `<objectKey>.stats.json` beside the SQL. A nonzero
-  `oversizedStatementCount` logs `backup-unrestorable-statements` (failure
-  status): the backup completes, but treat that day as unrestorable via the
-  import API and fix the offending write path.
-
-`TRUSTED_RESTORE_BASELINE_SHA256` is the SHA-256 of the JSON array of sorted
-migration filenames at the deployment commit; recompute when adding a migration:
-
-```sh
-node -e "const fs=require('node:fs'),{createHash}=require('node:crypto');console.log(createHash('sha256').update(JSON.stringify(fs.readdirSync('packages/worker/migrations').filter(f=>f.endsWith('.sql')).sort())).digest('hex'))"
-```
 
 ### Derived and accepted-loss stores
 
@@ -397,11 +387,9 @@ Restore rebuilds the derived stores below; do not treat them as recovery media:
 - **`AUDIT_DB`** — the separate D1 database containing hashed security audit
   events with 180-day retention is included in the paced D1 walk
   (`DR_D1_PACED_SOURCES`) and restored from it by graduated production restore
-  on schema-v3 days. It is not on the REST SQL / admin UI drill path.
-  Cross-account REST export of AUDIT_DB remains out of scope: paced sealed
-  nights are the backup lane for this evidence. Scheduled job definitions live
-  in `JOBS_DB` (`kody-jobs`) and are part of the nightly D1 export; APP_DB does
-  not store them.
+  on schema-v3 days. Paced sealed nights are the backup lane for this evidence.
+  Scheduled job definitions live in `JOBS_DB` (`kody-jobs`) and are part of the
+  nightly D1 export; APP_DB does not store them.
 
 ### Honest gaps
 
@@ -851,9 +839,8 @@ keep the default of 5.
 
 Page yourself on paced freshness or watchdog Sentry issues, seal failures
 (`paced-d1-seal-missing`, `paced-d1-seal-corrupt`), paced drill failures, or
-unexpected disablement of the enable gates. Older REST-era days with
-unrestorable statements keep their immutable media unchanged; graduated restore
-refuses them through the SQL stats gate until they age out.
+unexpected disablement of the enable gates. REST-era days are not restorable;
+their immutable media stays unchanged until it ages out.
 
 ## Maintenance mode (edge)
 
@@ -1042,9 +1029,7 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
   self-retention), invocation idempotency ledger, and workflow projections;
   never-pruned job observability and activation state are backed up
 - Backup of UserMeter (reconciliation/restart is the accepted recovery path)
-- REST SQL restore of `AUDIT_DB` for schema v1/v2 days (those days restore
-  APP_DB and JOBS_DB from REST SQL only; schema-v3 days restore all three paced
-  sources)
+- Restore of REST-era (schema v1/v2) days; the reader was removed on 2026-11-22
 - Plaintext `SECRET_STORE_KEY` or other credentials inside backup media
 
 ## Provider references
