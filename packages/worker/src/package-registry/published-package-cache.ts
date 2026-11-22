@@ -167,6 +167,7 @@ export class PromiseLruCache<T> {
 	constructor(input?: {
 		ttlMs?: number
 		limit?: number
+		/** `Infinity` never takes over a slow owner, only a rejected one. */
 		inFlightWaitMs?: number
 		/**
 		 * Bound retained bytes, not just entries. Settled values are sized with
@@ -354,11 +355,13 @@ export class PromiseLruCache<T> {
 						: this.waitForInFlight(current, input, { retried: true })
 				next.then(resolve, reject)
 			}
-			const timer = setTimeout(() => {
-				if (done) return
-				done = true
-				takeOver()
-			}, this.inFlightWaitMs)
+			const timer = Number.isFinite(this.inFlightWaitMs)
+				? setTimeout(() => {
+						if (done) return
+						done = true
+						takeOver()
+					}, this.inFlightWaitMs)
+				: undefined
 			entry.pending.then(
 				(value) => {
 					if (done) return

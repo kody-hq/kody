@@ -25,8 +25,16 @@ type SearchIndexDebtRow = {
 	embedText: string
 }
 
-/** Coalesce concurrent schedules for the same package in one isolate. */
-const inFlightReconciles = new PromiseLruCache<void>({ retainSettled: false })
+/**
+ * Coalesce concurrent schedules for the same package in one isolate. A slow
+ * reconcile is never raced: a second one could clear newer debt and then be
+ * overwritten by the slow one's older vector. The owner loops to the newest
+ * generation, and a rejected (ended) owner is still taken over.
+ */
+const inFlightReconciles = new PromiseLruCache<void>({
+	retainSettled: false,
+	inFlightWaitMs: Number.POSITIVE_INFINITY,
+})
 
 export async function markSavedPackageSearchIndexDebt(input: {
 	db: D1Database
