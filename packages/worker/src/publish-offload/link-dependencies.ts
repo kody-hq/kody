@@ -14,6 +14,7 @@ import {
 	materializeDependencyArtifactModules,
 } from '#worker/package-runtime/module-graph-artifacts.ts'
 import { resolveCurrentDynamicPackageArtifact } from '#worker/package-runtime/module-graph-hydration.ts'
+import { withDeadline } from '#worker/outbound/with-deadline.ts'
 import { runtimeModulePath } from '#worker/package-runtime/module-graph-path-basics.ts'
 import {
 	createRelativeImportSpecifier,
@@ -33,6 +34,7 @@ import {
 import { collectStaticKodyPackageImportsFromFiles } from '#worker/package-runtime/static-kody-imports.ts'
 import { normalizePackageWorkspacePath } from '#worker/package-registry/manifest.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import { publishBuildLinkedArtifactDeadlineMs } from './policy.ts'
 import { PublishBuildVerificationError } from './verify.ts'
 import { workerLoaderModulesByteSize } from './module-hashes.ts'
 
@@ -97,12 +99,19 @@ async function linkDependency(input: {
 	onArtifact?: (artifact: { path: string; bytes: number }) => Promise<void>
 }): Promise<LinkedDependency> {
 	const { placeholder, specifier } = input
-	const artifact = await resolveCurrentDynamicPackageArtifact({
-		env: input.env,
-		baseUrl: input.baseUrl,
-		userId: input.userId,
-		specifier,
-	})
+	const artifact = await withDeadline(
+		{
+			label: 'publish_build.linked_artifact',
+			timeoutMs: publishBuildLinkedArtifactDeadlineMs,
+		},
+		() =>
+			resolveCurrentDynamicPackageArtifact({
+				env: input.env,
+				baseUrl: input.baseUrl,
+				userId: input.userId,
+				specifier,
+			}),
+	)
 	const packageId = artifact.packageContext?.packageId
 	if (!packageId) {
 		throw new Error(

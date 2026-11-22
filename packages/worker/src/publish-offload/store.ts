@@ -1,5 +1,14 @@
 import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { McpCallerError } from '#worker/mcp/caller-error.ts'
+import {
+	assertNever,
+	reportHandledError,
+} from '#worker/outbound/typed-failure.ts'
+import {
+	type DeadlineClock,
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { sha256Hex } from './module-hashes.ts'
 import { publishBuildState } from './publish-build-state.ts'
@@ -85,37 +94,47 @@ export async function createPublishBuild(input: {
 	contextId?: string | null
 	contextName?: string | null
 	now?: number
+	clock?: DeadlineClock
 }) {
 	const now = input.now ?? Date.now()
 	const id = `pb_${randomToken(12)}`
 	const ticket = `${ticketPrefix}${randomToken()}`
 	const nowIso = new Date(now).toISOString()
 	const expiresAt = new Date(now + publishBuildTicketTtlMs).toISOString()
-	await input.db
-		.prepare(
-			`INSERT INTO publish_builds (
+	const ticketSha256 = await sha256Hex(ticket)
+	await withDeadline(
+		{
+			label: 'publish_builds.insert',
+			timeoutMs: outboundTimeoutMs.d1,
+			clock: input.clock,
+		},
+		() =>
+			input.db
+				.prepare(
+					`INSERT INTO publish_builds (
 				id, package_id, source_id, owner_user_id, requester_user_id, org_id,
 				commit_sha, origin, context_id, context_name, ticket_sha256, status,
 				created_at, updated_at, expires_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', ?, ?, ?)`,
-		)
-		.bind(
-			id,
-			input.packageId,
-			input.sourceId,
-			input.ownerUserId,
-			input.requesterUserId,
-			input.orgId,
-			input.commit,
-			input.origin,
-			input.contextId ?? null,
-			input.contextName ?? null,
-			await sha256Hex(ticket),
-			nowIso,
-			nowIso,
-			expiresAt,
-		)
-		.run()
+				)
+				.bind(
+					id,
+					input.packageId,
+					input.sourceId,
+					input.ownerUserId,
+					input.requesterUserId,
+					input.orgId,
+					input.commit,
+					input.origin,
+					input.contextId ?? null,
+					input.contextName ?? null,
+					ticketSha256,
+					nowIso,
+					nowIso,
+					expiresAt,
+				)
+				.run(),
+	)
 	return { buildId: id, ticket, expiresAt }
 }
 
@@ -124,17 +143,31 @@ export async function discardUnstartedPublishBuild(
 	db: D1Database,
 	buildId: string,
 ) {
-	await db
-		.prepare(`DELETE FROM publish_builds WHERE id = ? AND status = 'uploading'`)
-		.bind(buildId)
-		.run()
+	await withDeadline(
+		{ label: 'publish_builds.discard', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			db
+				.prepare(
+					`DELETE FROM publish_builds WHERE id = ? AND status = 'uploading'`,
+				)
+				.bind(buildId)
+				.run(),
+	)
 }
 
-export async function getPublishBuild(db: D1Database, buildId: string) {
-	return await db
-		.prepare(`SELECT * FROM publish_builds WHERE id = ?`)
-		.bind(buildId)
-		.first<PublishBuildRow>()
+export async function getPublishBuild(
+	db: D1Database,
+	buildId: string,
+	clock?: DeadlineClock,
+) {
+	return await withDeadline(
+		{ label: 'publish_builds.get', timeoutMs: outboundTimeoutMs.d1, clock },
+		() =>
+			db
+				.prepare(`SELECT * FROM publish_builds WHERE id = ?`)
+				.bind(buildId)
+				.first<PublishBuildRow>(),
+	)
 }
 
 function timingSafeEqualHex(a: string, b: string) {
@@ -157,9 +190,10 @@ export async function authenticatePublishBuildTicket(input: {
 	buildId: string
 	ticket: string | null
 	now?: number
+	clock?: DeadlineClock
 }) {
 	if (!input.ticket?.startsWith(ticketPrefix)) return null
-	const row = await getPublishBuild(input.db, input.buildId)
+	const row = await getPublishBuild(input.db, input.buildId, input.clock)
 	if (!row) return null
 	if (!timingSafeEqualHex(await sha256Hex(input.ticket), row.ticket_sha256)) {
 		return null
@@ -173,20 +207,37 @@ export async function sealPublishBuild(input: {
 	bucket: R2Bucket
 	buildId: string
 	document: PublishBuildDocument
+	clock?: DeadlineClock
 }) {
 	const body = JSON.stringify(input.document)
 	const sha256 = await sha256Hex(body)
-	await input.bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
-		httpMetadata: { contentType: 'application/json' },
-	})
-	const result = await input.db
-		.prepare(
-			`UPDATE publish_builds
-			SET status = 'sealed', document_sha256 = ?, updated_at = ?
-			WHERE id = ? AND status IN ${sealGuard}`,
-		)
-		.bind(sha256, new Date().toISOString(), input.buildId)
-		.run()
+	await withDeadline(
+		{
+			label: 'publish_build_document.put',
+			timeoutMs: outboundTimeoutMs.r2,
+			clock: input.clock,
+		},
+		() =>
+			input.bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
+				httpMetadata: { contentType: 'application/json' },
+			}),
+	)
+	const result = await withDeadline(
+		{
+			label: 'publish_builds.seal',
+			timeoutMs: outboundTimeoutMs.d1,
+			clock: input.clock,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE publish_builds
+					SET status = 'sealed', document_sha256 = ?, updated_at = ?
+					WHERE id = ? AND status IN ${sealGuard}`,
+				)
+				.bind(sha256, new Date().toISOString(), input.buildId)
+				.run(),
+	)
 	return (result.meta.changes ?? 0) > 0
 }
 
@@ -197,33 +248,45 @@ export async function finishPublishBuild(input: {
 	message?: string | null
 }) {
 	const now = new Date().toISOString()
-	await input.db
-		.prepare(
-			`UPDATE publish_builds
-			SET status = ?, message = ?, updated_at = ?,
-				committed_at = CASE WHEN ? = 'committed' THEN ? ELSE committed_at END
-			WHERE id = ? AND status IN ${finishGuard}`,
-		)
-		.bind(
-			input.status,
-			input.message ?? null,
-			now,
-			input.status,
-			now,
-			input.buildId,
-		)
-		.run()
+	await withDeadline(
+		{ label: 'publish_builds.finish', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			input.db
+				.prepare(
+					`UPDATE publish_builds
+					SET status = ?, message = ?, updated_at = ?,
+						committed_at = CASE WHEN ? = 'committed' THEN ? ELSE committed_at END
+					WHERE id = ? AND status IN ${finishGuard}`,
+				)
+				.bind(
+					input.status,
+					input.message ?? null,
+					now,
+					input.status,
+					now,
+					input.buildId,
+				)
+				.run(),
+	)
 }
 
 async function deletePrefix(bucket: R2Bucket, prefix: string) {
 	let cursor: string | undefined
 	do {
-		const page = await bucket.list({
-			prefix,
-			...(cursor ? { cursor } : {}),
-		})
+		const page = await withDeadline(
+			{ label: 'publish_build_blobs.list', timeoutMs: outboundTimeoutMs.r2 },
+			() => bucket.list({ prefix, ...(cursor ? { cursor } : {}) }),
+		)
 		const keys = page.objects.map((object) => object.key)
-		if (keys.length > 0) await bucket.delete(keys)
+		if (keys.length > 0) {
+			await withDeadline(
+				{
+					label: 'publish_build_blobs.delete',
+					timeoutMs: outboundTimeoutMs.r2,
+				},
+				() => bucket.delete(keys),
+			)
+		}
 		cursor = page.truncated ? page.cursor : undefined
 	} while (cursor)
 }
@@ -249,32 +312,50 @@ export async function purgeExpiredPublishBuilds(input: {
 	const cutoff = new Date(
 		(input.now ?? Date.now()) - publishBuildRetentionMs,
 	).toISOString()
-	const { results } = await input.db
-		.prepare(
-			`SELECT id, status FROM publish_builds
-			WHERE expires_at < ?
-				AND (status != 'committed' OR document_sha256 IS NOT NULL)
-			ORDER BY expires_at LIMIT ?`,
-		)
-		.bind(cutoff, input.limit ?? 10)
-		.all<{ id: string; status: PublishBuildStatus }>()
+	const { results } = await withDeadline(
+		{ label: 'publish_builds.list_expired', timeoutMs: outboundTimeoutMs.d1 },
+		() =>
+			input.db
+				.prepare(
+					`SELECT id, status FROM publish_builds
+					WHERE expires_at < ?
+						AND (status != 'committed' OR document_sha256 IS NOT NULL)
+					ORDER BY expires_at LIMIT ?`,
+				)
+				.bind(cutoff, input.limit ?? 10)
+				.all<{ id: string; status: PublishBuildStatus }>(),
+	)
 	for (const row of results) {
 		await deletePublishBuildBlobs(input.bucket, row.id)
 		if (row.status === 'committed') {
-			await input.db
-				.prepare(
-					`UPDATE publish_builds SET document_sha256 = NULL, updated_at = ?
-					WHERE id = ?`,
-				)
-				.bind(new Date().toISOString(), row.id)
-				.run()
+			await withDeadline(
+				{
+					label: 'publish_builds.clear_manifest',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					input.db
+						.prepare(
+							`UPDATE publish_builds SET document_sha256 = NULL, updated_at = ?
+							WHERE id = ?`,
+						)
+						.bind(new Date().toISOString(), row.id)
+						.run(),
+			)
 		} else {
-			await input.db
-				.prepare(
-					`DELETE FROM publish_builds WHERE id = ? AND status != 'committed'`,
-				)
-				.bind(row.id)
-				.run()
+			await withDeadline(
+				{
+					label: 'publish_builds.delete_expired',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() =>
+					input.db
+						.prepare(
+							`DELETE FROM publish_builds WHERE id = ? AND status != 'committed'`,
+						)
+						.bind(row.id)
+						.run(),
+			)
 		}
 	}
 	return results.length
@@ -284,12 +365,19 @@ export async function readPublishBuildDocument(input: {
 	bucket: R2Bucket
 	row: Pick<PublishBuildRow, 'id' | 'document_sha256'>
 }) {
-	if (!input.row.document_sha256) return null
-	const object = await input.bucket.get(
-		publishBuildDocumentKey(input.row.id, input.row.document_sha256),
+	const sha256 = input.row.document_sha256
+	if (!sha256) return null
+	const text = await withDeadline(
+		{ label: 'publish_build_document.get', timeoutMs: outboundTimeoutMs.r2 },
+		async () => {
+			const object = await input.bucket.get(
+				publishBuildDocumentKey(input.row.id, sha256),
+			)
+			return object ? await object.text() : null
+		},
 	)
-	if (!object) return null
-	return JSON.parse(await object.text()) as PublishBuildDocument
+	if (text === null) return null
+	return JSON.parse(text) as PublishBuildDocument
 }
 
 /** 11B: where the serving build of a commit was made, for package info. */
@@ -298,25 +386,71 @@ export async function getCommittedPublishBuildOrigin(input: {
 	sourceId: string
 	commit: string | null
 }) {
-	if (!input.commit) return null
+	const commit = input.commit
+	if (!commit) return null
 	try {
-		return await input.db
-			.prepare(
-				`SELECT origin, context_name FROM publish_builds
-				WHERE source_id = ? AND commit_sha = ? AND status = 'committed'
-				ORDER BY committed_at DESC LIMIT 1`,
-			)
-			.bind(input.sourceId, input.commit)
-			.first<{ origin: PublishBuildOrigin; context_name: string | null }>()
-	} catch {
+		return await withDeadline(
+			{
+				label: 'publish_builds.committed_origin',
+				timeoutMs: outboundTimeoutMs.d1,
+			},
+			() =>
+				input.db
+					.prepare(
+						`SELECT origin, context_name FROM publish_builds
+						WHERE source_id = ? AND commit_sha = ? AND status = 'committed'
+						ORDER BY committed_at DESC LIMIT 1`,
+					)
+					.bind(input.sourceId, commit)
+					.first<{ origin: PublishBuildOrigin; context_name: string | null }>(),
+		)
+	} catch (error) {
+		// Package info shows the build origin only when it can read it.
+		reportHandledError('publish_builds.committed_origin', error)
 		return null
 	}
 }
+
+/** Why the commit-time gate refuses a publish build. */
+export type UploadedPublishBuildFailure =
+	| { kind: 'offload_disabled' }
+	| { kind: 'not_found'; buildId: string }
+	| { kind: 'commit_mismatch'; buildCommit: string; headCommit: string }
+	| { kind: 'not_sealed' }
+	| { kind: 'already_rejected'; message: string | null }
+	| { kind: 'no_manifest' }
 
 function rejected(message: string) {
 	return new McpCallerError(
 		`Publish build rejected: ${message} ${publishBuildRejectionHint}`,
 	)
+}
+
+export function mapUploadedPublishBuildFailure(
+	failure: UploadedPublishBuildFailure,
+): McpCallerError {
+	switch (failure.kind) {
+		case 'offload_disabled':
+			return new McpCallerError(
+				'publish_build_id needs the publish-offload feature flag, which is off for this account. Publish without it to build on Kody cloud.',
+			)
+		case 'not_found':
+			return rejected(`no publish build "${failure.buildId}" for this package.`)
+		case 'commit_mismatch':
+			return rejected(
+				`the build is for commit ${failure.buildCommit.slice(0, 12)}, but the package repo HEAD is ${failure.headCommit.slice(0, 12)}.`,
+			)
+		case 'not_sealed':
+			return rejected('the upload was never sealed; finish uploading first.')
+		case 'already_rejected':
+			return rejected(
+				failure.message ?? 'this build already failed verification.',
+			)
+		case 'no_manifest':
+			return rejected('the build has no sealed manifest.')
+		default:
+			return assertNever(failure, 'uploaded publish build failure')
+	}
 }
 
 /**
@@ -335,6 +469,20 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 	requesterUserId: string
 	orgId: string
 }): Promise<UploadedPublishBuildRef> {
+	const checked = await checkUploadedPublishBuild(input)
+	if ('kind' in checked) throw mapUploadedPublishBuildFailure(checked)
+	return checked
+}
+
+async function checkUploadedPublishBuild(input: {
+	db: D1Database
+	buildId: string
+	packageId: string
+	sourceId: string
+	commit: string
+	requesterUserId: string
+	orgId: string
+}): Promise<UploadedPublishBuildRef | UploadedPublishBuildFailure> {
 	if (
 		!(await isPublishOffloadEnabledFor(
 			input.db,
@@ -342,9 +490,7 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 			input.orgId,
 		))
 	) {
-		throw new McpCallerError(
-			'publish_build_id needs the publish-offload feature flag, which is off for this account. Publish without it to build on Kody cloud.',
-		)
+		return { kind: 'offload_disabled' }
 	}
 	const row = await getPublishBuild(input.db, input.buildId)
 	if (
@@ -353,20 +499,20 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 		row.source_id !== input.sourceId ||
 		row.requester_user_id !== input.requesterUserId
 	) {
-		throw rejected(`no publish build "${input.buildId}" for this package.`)
+		return { kind: 'not_found', buildId: input.buildId }
 	}
 	if (row.commit_sha !== input.commit) {
-		throw rejected(
-			`the build is for commit ${row.commit_sha.slice(0, 12)}, but the package repo HEAD is ${input.commit.slice(0, 12)}.`,
-		)
+		return {
+			kind: 'commit_mismatch',
+			buildCommit: row.commit_sha,
+			headCommit: input.commit,
+		}
 	}
-	if (row.status === 'uploading') {
-		throw rejected('the upload was never sealed; finish uploading first.')
-	}
+	if (row.status === 'uploading') return { kind: 'not_sealed' }
 	if (row.status === 'rejected') {
-		throw rejected(row.message ?? 'this build already failed verification.')
+		return { kind: 'already_rejected', message: row.message }
 	}
-	if (!row.document_sha256) throw rejected('the build has no sealed manifest.')
+	if (!row.document_sha256) return { kind: 'no_manifest' }
 	return {
 		buildId: row.id,
 		origin: row.origin,
