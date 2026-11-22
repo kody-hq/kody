@@ -1,5 +1,11 @@
+import { createActor, createAsyncLogic, toPromise } from 'xstate'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { isResourceChangeAuditAction } from '#worker/resource-events/projection.ts'
+import {
+	orgAuditOutboxDeliveryState,
+	orgAuditOutboxDrainState,
+	type OrgAuditOutboxDrainRow,
+} from '#worker/orgs/org-audit-outbox-state.ts'
 
 /**
  * What caused a change: the package whose run made it, and how many resource
@@ -218,28 +224,37 @@ export async function tryDeliverOrgAuditOutboxPlan(
 	writer: OrgAuditWriter,
 	plan: OrgAuditOutboxPlan,
 ): Promise<boolean> {
-	try {
-		const live = await writer.appDb
-			.prepare(`SELECT payload_json FROM org_audit_outbox WHERE id = ?`)
-			.bind(plan.outboxId)
-			.first<{ payload_json: string }>()
-		if (!live) return true
-		const payload =
-			parseOrgAuditOutboxPayload(live.payload_json) ?? plan.payload
-		const delivery = await deliverOrgAuditOutboxPayload(writer.db, payload)
-		if (delivery === 'inserted' || delivery === 'already_exists') {
-			await deleteOrgAuditOutboxRow(writer.appDb, plan.outboxId)
+	const delivery = orgAuditOutboxDeliveryState.provide({
+		actors: {
+			readLivePayload: createAsyncLogic<OrgAuditOutboxPayload | 'row_gone'>({
+				run: async () => {
+					const live = await writer.appDb
+						.prepare(`SELECT payload_json FROM org_audit_outbox WHERE id = ?`)
+						.bind(plan.outboxId)
+						.first<{ payload_json: string }>()
+					if (!live) return 'row_gone'
+					return parseOrgAuditOutboxPayload(live.payload_json) ?? plan.payload
+				},
+			}),
+			insertAuditRow: createAsyncLogic<
+				OrgAuditOutboxDeliveryResult,
+				OrgAuditOutboxPayload
+			>({
+				run: ({ input: payload }) =>
+					deliverOrgAuditOutboxPayload(writer.db, payload),
+			}),
 			// Only the delivery that inserted the row emits, so a retried or
 			// concurrent drain never emits the same change twice.
-			if (delivery === 'inserted') {
-				await scheduleResourceChangeEvent(writer.env, payload)
-			}
-			return true
-		}
-		return false
-	} catch {
-		return false
-	}
+			emitResourceChange: createAsyncLogic<void, OrgAuditOutboxPayload>({
+				run: ({ input: payload }) =>
+					scheduleResourceChangeEvent(writer.env, payload),
+			}),
+			clearOutboxRow: createAsyncLogic<void>({
+				run: () => deleteOrgAuditOutboxRow(writer.appDb, plan.outboxId),
+			}),
+		},
+	})
+	return toPromise(createActor(delivery).start())
 }
 
 /**
@@ -320,88 +335,89 @@ export async function drainOrgAuditOutbox(input: {
 	limit?: number
 }) {
 	const auditDb = input.env.AUDIT_DB
-	if (!auditDb) {
-		return {
-			status: 'skipped' as const,
-			reason: 'audit_db_unconfigured',
-			delivered: 0,
-			remaining: 0,
-			errors: 0,
-		}
-	}
-	const writer: OrgAuditWriter = {
-		appDb: input.env.APP_DB,
-		db: auditDb,
-		actorUserId: null,
-		actorUsername: null,
-		credentialKind: null,
-		credentialId: null,
-		// A row the drain delivers still emits its resource change event.
-		env: input.env as Env,
-	}
-	const startedAt = (input.clock ?? Date.now)()
-	const deadline = startedAt + drainTimeBudgetMs
-	const batchLimit = input.limit ?? drainBatchSize
-	let delivered = 0
-	let errors = 0
-	// Advance past rows already attempted in this drain so a batch of
-	// malformed or temporarily failed rows cannot starve later ones.
-	let cursor: { createdAt: string; id: string } | null = null
-	type OutboxDrainRow = {
-		id: string
-		payload_json: string
-		created_at: string
-	}
-
-	while ((input.clock ?? Date.now)() < deadline) {
-		const rows: { results: Array<OutboxDrainRow> } = cursor
-			? await input.env.APP_DB.prepare(
-					`SELECT id, payload_json, created_at
+	const clock = input.clock ?? Date.now
+	const writer: OrgAuditWriter | null = auditDb
+		? {
+				appDb: input.env.APP_DB,
+				db: auditDb,
+				actorUserId: null,
+				actorUsername: null,
+				credentialKind: null,
+				credentialId: null,
+				// A row the drain delivers still emits its resource change event.
+				env: input.env as Env,
+			}
+		: null
+	const drain = orgAuditOutboxDrainState.provide({
+		actors: {
+			readClock: createAsyncLogic<number>({ run: async () => clock() }),
+			listBatch: createAsyncLogic<
+				Array<OrgAuditOutboxDrainRow>,
+				{ cursor: { createdAt: string; id: string } | null; batchLimit: number }
+			>({
+				run: async ({ input: { cursor, batchLimit } }) => {
+					const rows = cursor
+						? await input.env.APP_DB.prepare(
+								`SELECT id, payload_json, created_at
 					 FROM org_audit_outbox
 					 WHERE (created_at > ? OR (created_at = ? AND id > ?))
 					 ORDER BY created_at ASC, id ASC
 					 LIMIT ?`,
-				)
-					.bind(cursor.createdAt, cursor.createdAt, cursor.id, batchLimit)
-					.all<OutboxDrainRow>()
-			: await input.env.APP_DB.prepare(
-					`SELECT id, payload_json, created_at
+							)
+								.bind(cursor.createdAt, cursor.createdAt, cursor.id, batchLimit)
+								.all<OrgAuditOutboxDrainRow>()
+						: await input.env.APP_DB.prepare(
+								`SELECT id, payload_json, created_at
 					 FROM org_audit_outbox
 					 ORDER BY created_at ASC, id ASC
 					 LIMIT ?`,
-				)
-					.bind(batchLimit)
-					.all<OutboxDrainRow>()
-		if (rows.results.length === 0) break
-		for (const row of rows.results) {
-			if ((input.clock ?? Date.now)() >= deadline) break
-			cursor = { createdAt: row.created_at, id: row.id }
-			const payload = parseOrgAuditOutboxPayload(row.payload_json)
-			if (!payload) {
-				errors += 1
-				console.error('org_audit_outbox_invalid_payload', { id: row.id })
-				continue
-			}
-			const ok = await tryDeliverOrgAuditOutboxPlan(writer, {
-				outboxId: row.id,
-				payload,
-			})
-			if (ok) {
-				delivered += 1
-			} else {
-				errors += 1
-			}
+							)
+								.bind(batchLimit)
+								.all<OrgAuditOutboxDrainRow>()
+					return rows.results
+				},
+			}),
+			deliverRow: createAsyncLogic<
+				'delivered' | 'not_delivered' | 'invalid_payload',
+				OrgAuditOutboxDrainRow
+			>({
+				run: async ({ input: row }) => {
+					const payload = parseOrgAuditOutboxPayload(row.payload_json)
+					if (!payload) return 'invalid_payload'
+					const ok = await tryDeliverOrgAuditOutboxPlan(writer!, {
+						outboxId: row.id,
+						payload,
+					})
+					return ok ? 'delivered' : 'not_delivered'
+				},
+			}),
+			countRemaining: createAsyncLogic<number>({
+				run: async () => {
+					const remaining = await input.env.APP_DB.prepare(
+						`SELECT COUNT(*) AS count FROM org_audit_outbox`,
+					).first<{ count: number }>()
+					return remaining?.count ?? 0
+				},
+			}),
+		},
+	})
+	const output = await toPromise(
+		createActor(drain, {
+			input: {
+				auditConfigured: writer !== null,
+				deadline: writer ? clock() + drainTimeBudgetMs : 0,
+				batchLimit: input.limit ?? drainBatchSize,
+			},
+		}).start(),
+	)
+	if (output.status === 'drain_failed') throw output.error
+	if (output.status === 'skipped')
+		return {
+			status: 'skipped' as const,
+			reason: output.reason,
+			delivered: 0,
+			remaining: 0,
+			errors: 0,
 		}
-		if (rows.results.length < batchLimit) break
-	}
-
-	const remaining = await input.env.APP_DB.prepare(
-		`SELECT COUNT(*) AS count FROM org_audit_outbox`,
-	).first<{ count: number }>()
-	return {
-		status: 'ok' as const,
-		delivered,
-		remaining: remaining?.count ?? 0,
-		errors,
-	}
+	return output
 }

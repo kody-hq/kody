@@ -203,3 +203,56 @@ test('only the delivery that inserts a successful row emits its event', async ()
 	await Promise.all(resourceEvents.pending)
 	expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
 })
+
+test('an inserted row still emits its event when clearing the outbox row fails', async () => {
+	const appDb = createAppDb()
+	const auditDb = createAuditTestDb()
+	let failOutboxDelete = true
+	const flakyAppDb = new Proxy(appDb, {
+		get(target, key, receiver) {
+			if (key !== 'prepare') return Reflect.get(target, key, receiver)
+			return (sql: string) => {
+				if (
+					failOutboxDelete &&
+					sql.startsWith('DELETE FROM org_audit_outbox')
+				) {
+					failOutboxDelete = false
+					return {
+						bind: () => ({
+							run: async () => {
+								throw new Error('outbox_delete_unavailable')
+							},
+						}),
+					}
+				}
+				return target.prepare(sql)
+			}
+		},
+	})
+	const writer = {
+		appDb: flakyAppDb,
+		db: auditDb,
+		actorUserId: 'actor-1',
+		actorUsername: null,
+		credentialKind: null,
+		credentialId: null,
+		env: { APP_DB: flakyAppDb, AUDIT_DB: auditDb } as Env,
+	}
+	resourceEvents.dispatch.mockClear()
+	resourceEvents.pending.length = 0
+	const plan = await enqueueOrgAuditOutbox(writer, {
+		orgId: 'org-1',
+		action: 'job.created',
+		resourceType: 'job',
+		resourceId: 'job-1',
+	})
+	expect(await tryDeliverOrgAuditOutboxPlan(writer, plan)).toBe(false)
+	expect(await tryDeliverOrgAuditOutboxPlan(writer, plan)).toBe(true)
+	await Promise.all(resourceEvents.pending)
+	expect(resourceEvents.dispatch).toHaveBeenCalledTimes(1)
+	expect(
+		await appDb
+			.prepare(`SELECT COUNT(*) AS count FROM org_audit_outbox`)
+			.first<{ count: number }>(),
+	).toEqual({ count: 0 })
+})

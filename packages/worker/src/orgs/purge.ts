@@ -14,7 +14,9 @@
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 
+import { createActor, createAsyncLogic, toPromise } from 'xstate'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { softDeletePurgeBatchState } from '#worker/orgs/soft-delete-purge-state.ts'
 import { softDeletePurgeCutoffIso } from '#worker/soft-delete/window.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { shouldRunRetentionCron } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
@@ -354,145 +356,120 @@ export async function pruneSoftDeleted(input: {
 	const legacyDryRun = input.dryRun === true
 	const budgetMs = input.timeBudgetMs ?? softDeletePurgeRunTimeBudgetMs
 	const started = Date.now()
-	const preview = await listSoftDeletePurgeCandidates({
-		env: input.env,
-		now,
-		batchSize: input.batchSize,
-	})
-	const outcomes: Array<SoftDeletePurgeOutcome> = []
-	let purged = 0
-	let failed = 0
-	let timeBudgetExhausted = false
-
-	const legacyFlag = (candidate: SoftDeletePurgeCandidate) =>
-		candidate.legacy ? { legacy: true as const } : {}
 	const retryBackoffCutoff = cutoffIso(now, softDeletePurgeRetryBackoffMs)
 	const nowIso = now.toISOString()
-
-	for (const candidate of preview.candidates) {
-		const candidateDryRun = candidate.legacy ? legacyDryRun : dryRun
-		if (candidateDryRun) {
-			outcomes.push({
-				kind: candidate.kind,
-				id: candidate.id,
-				ageDays: candidate.ageDays,
-				outcome: 'would_purge',
-				...legacyFlag(candidate),
-			})
-			continue
-		}
-		if (Date.now() - started > budgetMs) {
-			timeBudgetExhausted = true
-			break
-		}
-		try {
-			const claimed =
-				candidate.kind === 'org'
-					? await claimOrgForPurge({
-							db: input.env.APP_DB,
-							orgId: candidate.id,
-							nowIso,
-							retryBackoffCutoff,
-						})
-					: candidate.legacy
-						? await claimLegacyUserForPurge({
+	const workflow = softDeletePurgeBatchState.provide({
+		actors: {
+			listCandidates: createAsyncLogic<{
+				scanned: number
+				candidates: Array<SoftDeletePurgeCandidate>
+			}>({
+				run: () =>
+					listSoftDeletePurgeCandidates({
+						env: input.env,
+						now,
+						batchSize: input.batchSize,
+					}),
+			}),
+			readClock: createAsyncLogic<number>({ run: async () => Date.now() }),
+			claimCandidate: createAsyncLogic<boolean, SoftDeletePurgeCandidate>({
+				run: ({ input: candidate }) =>
+					candidate.kind === 'org'
+						? claimOrgForPurge({
 								db: input.env.APP_DB,
-								userId: candidate.id,
+								orgId: candidate.id,
 								nowIso,
 								retryBackoffCutoff,
 							})
-						: await claimUserForPurge({
-								db: input.env.APP_DB,
-								userId: candidate.id,
-								nowIso,
-								retryBackoffCutoff,
-							})
-			if (!claimed) {
-				outcomes.push({
-					kind: candidate.kind,
-					id: candidate.id,
-					ageDays: candidate.ageDays,
-					outcome: 'skipped_claim',
-					...legacyFlag(candidate),
-				})
-				continue
-			}
-			if (candidate.kind === 'org') {
-				await hardPurgeOrg({ env: input.env, orgId: candidate.id })
-			} else if (candidate.legacy) {
-				if (candidate.dbUserId == null) {
-					throw new Error(`user_purge_missing_db_id:${candidate.id}`)
-				}
-				await finishLegacyUserDeletion({
-					env: input.env,
-					dbUserId: candidate.dbUserId,
-					stableUserId: candidate.id,
-				})
-			} else {
-				if (candidate.dbUserId == null) {
-					throw new Error(`user_purge_missing_db_id:${candidate.id}`)
-				}
-				await hardPurgeSoftDeletedUser({
-					env: input.env,
-					dbUserId: candidate.dbUserId,
-					stableUserId: candidate.id,
-				})
-			}
-			purged += 1
-			outcomes.push({
-				kind: candidate.kind,
-				id: candidate.id,
-				ageDays: candidate.ageDays,
-				outcome: 'purged',
-				...legacyFlag(candidate),
-			})
-		} catch (error) {
-			failed += 1
-			const message = redactPurgeFailureDetail(
-				error instanceof Error ? error.message : String(error),
-			)
-			const cleanupErrors = purgeFailureDetails(error)
-			const lane = candidate.legacy ? 'legacy_deletion_finish' : 'soft_delete'
-			console.warn(
-				JSON.stringify({
-					message: 'soft_delete_purge_candidate_failed',
-					kind: candidate.kind,
-					lane,
-					error: message,
-					cleanupErrors,
-				}),
-			)
-			outcomes.push({
-				kind: candidate.kind,
-				id: candidate.id,
-				ageDays: candidate.ageDays,
-				outcome: 'failed',
-				...legacyFlag(candidate),
-				error: message,
-			})
-			await logOrgAuditEvent({
-				env: input.env,
-				orgId: candidate.id,
-				action:
-					candidate.kind === 'org' ? 'org.purge_failed' : 'user.purge_failed',
-				result: 'failure',
-				detailsJson: JSON.stringify({
-					error: message,
-					...(candidate.legacy ? { lane } : {}),
-					...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
-				}),
-				createdAt: nowIso,
-			})
-		}
-	}
-
+						: candidate.legacy
+							? claimLegacyUserForPurge({
+									db: input.env.APP_DB,
+									userId: candidate.id,
+									nowIso,
+									retryBackoffCutoff,
+								})
+							: claimUserForPurge({
+									db: input.env.APP_DB,
+									userId: candidate.id,
+									nowIso,
+									retryBackoffCutoff,
+								}),
+			}),
+			purgeOrg: createAsyncLogic<void, SoftDeletePurgeCandidate>({
+				run: ({ input: candidate }) =>
+					hardPurgeOrg({ env: input.env, orgId: candidate.id }),
+			}),
+			finishLegacyUser: createAsyncLogic<void, SoftDeletePurgeCandidate>({
+				run: async ({ input: candidate }) => {
+					await finishLegacyUserDeletion({
+						env: input.env,
+						dbUserId: candidate.dbUserId!,
+						stableUserId: candidate.id,
+					})
+				},
+			}),
+			purgeUser: createAsyncLogic<void, SoftDeletePurgeCandidate>({
+				run: ({ input: candidate }) =>
+					hardPurgeSoftDeletedUser({
+						env: input.env,
+						dbUserId: candidate.dbUserId!,
+						stableUserId: candidate.id,
+					}),
+			}),
+			recordFailure: createAsyncLogic<
+				string,
+				{ candidate: SoftDeletePurgeCandidate; error: unknown }
+			>({
+				run: async ({ input: { candidate, error } }) => {
+					const message = redactPurgeFailureDetail(
+						error instanceof Error ? error.message : String(error),
+					)
+					const cleanupErrors = purgeFailureDetails(error)
+					const lane = candidate.legacy
+						? 'legacy_deletion_finish'
+						: 'soft_delete'
+					console.warn(
+						JSON.stringify({
+							message: 'soft_delete_purge_candidate_failed',
+							kind: candidate.kind,
+							lane,
+							error: message,
+							cleanupErrors,
+						}),
+					)
+					await logOrgAuditEvent({
+						env: input.env,
+						orgId: candidate.id,
+						action:
+							candidate.kind === 'org'
+								? 'org.purge_failed'
+								: 'user.purge_failed',
+						result: 'failure',
+						detailsJson: JSON.stringify({
+							error: message,
+							...(candidate.legacy ? { lane } : {}),
+							...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
+						}),
+						createdAt: nowIso,
+					})
+					return message
+				},
+			}),
+		},
+	})
+	const output = await toPromise(
+		createActor(workflow, {
+			input: { dryRun, legacyDryRun, started, budgetMs },
+		}).start(),
+	)
+	if (output.status === 'run_failed') throw output.error
 	return {
 		dryRun,
 		legacyDryRun,
-		scanned: preview.scanned,
-		purged,
-		failed,
-		timeBudgetExhausted,
-		outcomes,
+		scanned: output.scanned,
+		purged: output.purged,
+		failed: output.failed,
+		timeBudgetExhausted: output.timeBudgetExhausted,
+		outcomes: output.outcomes,
 	}
 }

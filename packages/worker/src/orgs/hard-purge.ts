@@ -1,4 +1,5 @@
 // soft-delete-read-filter: opt-out
+import { createActor, createAsyncLogic, toPromise } from 'xstate'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	buildUserScopedDeleteOrUpdateSql,
@@ -20,6 +21,15 @@ import {
 	optionalOrgAuditWriter,
 	redactOrgAuditActorIdsForDeletedUser,
 } from './org-audit.ts'
+import {
+	orgHardPurgeState,
+	personHardPurgeState,
+	type PersonalOrgHardPurgeRelation,
+	type PersonHardPurgeOutput,
+	type PersonPurgeMode,
+	type PersonPurgeRow,
+	type PersonPurgeTarget,
+} from './hard-purge-state.ts'
 
 /**
  * How this org relates to a person account for hard-purge policy. A
@@ -34,11 +44,6 @@ import {
  * Remove when: no users row has a missing or blank personal_org_id (drop the
  * stable_user_id fallback only).
  */
-type PersonalOrgHardPurgeRelation =
-	| 'soft_deleted_person'
-	| 'live_person'
-	| 'none'
-
 export class PersonalOrgHardPurgeBlockedForLiveUserError extends Error {
 	constructor(orgId: OwnerId) {
 		super(`personal_org_hard_purge_blocked_live_user:${orgId}`)
@@ -76,29 +81,61 @@ async function personalOrgHardPurgeRelation(
 		: 'live_person'
 }
 
+const orgPurgeActors = (env: Env) => ({
+	wipePinnedConnections: createAsyncLogic<void, { orgId: OwnerId }>({
+		run: ({ input }) => wipeOrgPinnedConnections(env, input.orgId),
+	}),
+	deleteOrgData: createAsyncLogic<
+		void,
+		{ orgId: OwnerId; mode: HardPurgeOrgMode }
+	>({ run: ({ input }) => deleteOrgData({ env, ...input }) }),
+	auditOrgPurged: createAsyncLogic<void, { orgId: OwnerId }>({
+		run: ({ input }) =>
+			logOrgAuditEvent({
+				env,
+				orgId: input.orgId,
+				action: 'org.purged',
+				result: 'success',
+				resourceType: 'org',
+				resourceId: input.orgId,
+			}),
+	}),
+})
+
 export async function hardPurgeOrg(input: {
 	env: Env
 	orgId: OwnerId
 }): Promise<void> {
-	const relation = await personalOrgHardPurgeRelation(
-		input.env.APP_DB,
-		input.orgId,
-	)
-	if (relation === 'live_person') {
-		throw new PersonalOrgHardPurgeBlockedForLiveUserError(input.orgId)
-	}
-	if (relation === 'soft_deleted_person') {
-		throw new PersonalOrgPurgesWithPersonError(input.orgId)
-	}
-	await wipeOrgPinnedConnections(input.env, input.orgId)
-	// Team org: collect the same out-of-band keys account deletion collects
-	// for this owner id, delete those objects, then delete D1 rows (including
-	// owner-scoped inventory without deleted_at).
-	await purgeOwnerOutOfBandSurfaces({
-		env: input.env,
-		ownerId: input.orgId,
+	const workflow = orgHardPurgeState.provide({
+		actors: {
+			...orgPurgeActors(input.env),
+			readPersonalOrgRelation: createAsyncLogic<
+				PersonalOrgHardPurgeRelation,
+				{ orgId: OwnerId }
+			>({
+				run: () => personalOrgHardPurgeRelation(input.env.APP_DB, input.orgId),
+			}),
+			// Team org: collect the same out-of-band keys account deletion collects
+			// for this owner id, delete those objects, then delete D1 rows (including
+			// owner-scoped inventory without deleted_at).
+			purgeOutOfBandSurfaces: createAsyncLogic<void, { orgId: OwnerId }>({
+				run: async () => {
+					await purgeOwnerOutOfBandSurfaces({
+						env: input.env,
+						ownerId: input.orgId,
+					})
+				},
+			}),
+		},
 	})
-	await deleteOrgRows({ env: input.env, orgId: input.orgId, mode: 'team' })
+	const output = await toPromise(
+		createActor(workflow, { input: { orgId: input.orgId } }).start(),
+	)
+	if (output.status === 'blocked_live_person')
+		throw new PersonalOrgHardPurgeBlockedForLiveUserError(input.orgId)
+	if (output.status === 'purges_with_person')
+		throw new PersonalOrgPurgesWithPersonError(input.orgId)
+	if (output.status === 'failed') throw output.error
 }
 
 async function wipeOrgPinnedConnections(env: Env, orgId: OwnerId) {
@@ -112,7 +149,7 @@ async function wipeOrgPinnedConnections(env: Env, orgId: OwnerId) {
 	})
 }
 
-async function deleteOrgRows(input: {
+async function deleteOrgData(input: {
 	env: Env
 	orgId: OwnerId
 	mode: HardPurgeOrgMode
@@ -138,14 +175,6 @@ async function deleteOrgRows(input: {
 	if ((orgDelete.meta.changes ?? 0) === 0) {
 		throw new Error(`org_purge_missing_row:${input.orgId}`)
 	}
-	await logOrgAuditEvent({
-		env: input.env,
-		orgId: input.orgId,
-		action: 'org.purged',
-		result: 'success',
-		resourceType: 'org',
-		resourceId: input.orgId,
-	})
 }
 
 /**
@@ -154,37 +183,119 @@ async function deleteOrgRows(input: {
  * exist while it cancels subscriptions and deletes the customer. Pinned
  * connections are wiped first, while the owner's OAuth apps still exist.
  */
-async function purgePersonAndPersonalOrg(input: {
+async function purgePerson(input: {
 	env: Env
+	mode: PersonPurgeMode
 	dbUserId: number
 	stableUserId: OwnerId
-	storageOwnerId: OwnerId
-	personUserId: string
-	personalOrgId: OwnerId | null
-	purgeSoftDeleted?: boolean
-}) {
-	if (input.personalOrgId) {
-		await wipeOrgPinnedConnections(input.env, input.personalOrgId)
-	}
-	await redactOrgAuditActorIdsForDeletedUser({
-		env: input.env,
-		userId: input.stableUserId,
+}): Promise<PersonHardPurgeOutput> {
+	const env = input.env
+	const workflow = personHardPurgeState.provide({
+		actors: {
+			...orgPurgeActors(env),
+			readPerson: createAsyncLogic<PersonPurgeRow | null, { dbUserId: number }>(
+				{
+					run: async () => {
+						const row = await runD1WithRetry(() =>
+							env.APP_DB.prepare(
+								`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
+			 FROM users WHERE id = ?`,
+							)
+								.bind(input.dbUserId)
+								.first<{
+									personal_org_id: string | null
+									stable_user_id: string
+									deleted_at: string | null
+									deleting_at: string | null
+								}>(),
+						)
+						if (!row) return null
+						return {
+							stableUserId: row.stable_user_id,
+							storageOwnerId: personalOrgIdFromUserRow(row),
+							personUserId: row.stable_user_id?.trim() || input.stableUserId,
+							deletedAt: row.deleted_at,
+							deletingAt: row.deleting_at,
+						}
+					},
+				},
+			),
+			// Tombstone a still-live personal org first: if this attempt removes the
+			// person and then fails on the org, the org lane can still purge it.
+			tombstonePersonalOrg: createAsyncLogic<
+				void,
+				{ orgId: OwnerId; deletedAt: string }
+			>({
+				run: async ({ input: org }) => {
+					await runD1WithRetry(() =>
+						env.APP_DB.prepare(
+							`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+						)
+							.bind(org.deletedAt, org.orgId)
+							.run(),
+					)
+				},
+			}),
+			resolveSoftDeletedOrg: createAsyncLogic<
+				OwnerId | null,
+				{ orgId: OwnerId }
+			>({ run: ({ input: org }) => softDeletedOrgId(env.APP_DB, org.orgId) }),
+			redactAuditActors: createAsyncLogic<void, { userId: OwnerId }>({
+				run: ({ input: actor }) =>
+					redactOrgAuditActorIdsForDeletedUser({ env, userId: actor.userId }),
+			}),
+			deleteAccount: createAsyncLogic<number, PersonPurgeTarget>({
+				run: async ({ input: person }) => {
+					const result = await deleteUserAccount({
+						env,
+						dbUserId: person.dbUserId,
+						mcpUserId: person.storageOwnerId,
+						personUserId: person.personUserId,
+						purgeSoftDeleted: person.mode === 'soft_deleted' ? true : undefined,
+					})
+					return result.deletedRowCounts.users ?? 0
+				},
+			}),
+			readUserRowPresent: createAsyncLogic<boolean, { dbUserId: number }>({
+				run: async () => {
+					const stillThere = await runD1WithRetry(() =>
+						env.APP_DB.prepare(`SELECT 1 AS present FROM users WHERE id = ?`)
+							.bind(input.dbUserId)
+							.first<{ present: number }>(),
+					)
+					return Boolean(stillThere)
+				},
+			}),
+			auditUserPurged: createAsyncLogic<void, PersonPurgeTarget>({
+				run: ({ input: person }) =>
+					logOrgAuditEvent({
+						env,
+						orgId: person.storageOwnerId,
+						action: 'user.purged',
+						result: 'success',
+						resourceType: 'user',
+						resourceId: person.stableUserId,
+						targetUserId: person.stableUserId,
+						...(person.mode === 'legacy'
+							? {
+									detailsJson: JSON.stringify({
+										lane: 'legacy_deletion_finish',
+									}),
+								}
+							: {}),
+					}),
+			}),
+		},
 	})
-	const result = await deleteUserAccount({
-		env: input.env,
-		dbUserId: input.dbUserId,
-		mcpUserId: input.storageOwnerId,
-		personUserId: input.personUserId,
-		purgeSoftDeleted: input.purgeSoftDeleted,
-	})
-	if (input.personalOrgId) {
-		await deleteOrgRows({
-			env: input.env,
-			orgId: input.personalOrgId,
-			mode: 'personal',
-		})
-	}
-	return result
+	return toPromise(
+		createActor(workflow, {
+			input: {
+				mode: input.mode,
+				dbUserId: input.dbUserId,
+				stableUserId: input.stableUserId,
+			},
+		}).start(),
+	)
 }
 
 async function softDeletedOrgId(
@@ -205,36 +316,8 @@ export async function hardPurgeSoftDeletedUser(input: {
 	dbUserId: number
 	stableUserId: OwnerId
 }): Promise<void> {
-	const personalOrgRow = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`SELECT personal_org_id, stable_user_id FROM users WHERE id = ?`,
-		)
-			.bind(input.dbUserId)
-			.first<{ personal_org_id: string | null; stable_user_id: string }>(),
-	)
-	const storageOwnerId = personalOrgRow
-		? personalOrgIdFromUserRow(personalOrgRow)
-		: input.stableUserId
-	const personUserId =
-		personalOrgRow?.stable_user_id?.trim() || input.stableUserId
-	await purgePersonAndPersonalOrg({
-		env: input.env,
-		dbUserId: input.dbUserId,
-		stableUserId: input.stableUserId,
-		storageOwnerId,
-		personUserId,
-		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
-		purgeSoftDeleted: true,
-	})
-	await logOrgAuditEvent({
-		env: input.env,
-		orgId: storageOwnerId,
-		action: 'user.purged',
-		result: 'success',
-		resourceType: 'user',
-		resourceId: input.stableUserId,
-		targetUserId: input.stableUserId,
-	})
+	const output = await purgePerson({ ...input, mode: 'soft_deleted' })
+	if (output.status === 'failed') throw output.error
 }
 
 export class LegacyUserDeletionNotPendingError extends Error {
@@ -269,77 +352,17 @@ export async function finishLegacyUserDeletion(input: {
 	dbUserId: number
 	stableUserId: OwnerId
 }): Promise<{ alreadyGone: boolean }> {
-	const row = await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
-			 FROM users WHERE id = ?`,
-		)
-			.bind(input.dbUserId)
-			.first<{
-				personal_org_id: string | null
-				stable_user_id: string
-				deleted_at: string | null
-				deleting_at: string | null
-			}>(),
-	)
-	if (!row) return { alreadyGone: true }
-	if (row.stable_user_id !== input.stableUserId) {
+	const output = await purgePerson({ ...input, mode: 'legacy' })
+	if (output.status === 'already_gone') return { alreadyGone: true }
+	if (output.status === 'not_pending')
 		throw new LegacyUserDeletionNotPendingError(
 			input.stableUserId,
-			'id_mismatch',
+			output.reason,
 		)
-	}
-	if (row.deleted_at) {
-		// Soft-deleted rows belong to the regular purge lane and its window.
-		throw new LegacyUserDeletionNotPendingError(
-			input.stableUserId,
-			'soft_deleted',
+	if (output.status === 'row_not_removed')
+		throw new Error(
+			`legacy_user_deletion_row_not_removed:${input.stableUserId}`,
 		)
-	}
-	if (!row.deleting_at) {
-		throw new LegacyUserDeletionNotPendingError(input.stableUserId, 'live')
-	}
-	const storageOwnerId = personalOrgIdFromUserRow(row)
-	const personUserId = row.stable_user_id.trim() || input.stableUserId
-	// Tombstone a still-live personal org first: if this attempt removes the
-	// person and then fails on the org, the org lane can still purge it.
-	const deletingAt = row.deleting_at
-	await runD1WithRetry(() =>
-		input.env.APP_DB.prepare(
-			`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
-		)
-			.bind(deletingAt, storageOwnerId)
-			.run(),
-	)
-	const result = await purgePersonAndPersonalOrg({
-		env: input.env,
-		dbUserId: input.dbUserId,
-		stableUserId: input.stableUserId,
-		storageOwnerId,
-		personUserId,
-		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
-	})
-	if ((result.deletedRowCounts.users ?? 0) === 0) {
-		const stillThere = await runD1WithRetry(() =>
-			input.env.APP_DB.prepare(`SELECT 1 AS present FROM users WHERE id = ?`)
-				.bind(input.dbUserId)
-				.first<{ present: number }>(),
-		)
-		if (stillThere) {
-			throw new Error(
-				`legacy_user_deletion_row_not_removed:${input.stableUserId}`,
-			)
-		}
-	}
-	await logOrgAuditEvent({
-		env: input.env,
-		orgId: storageOwnerId,
-		action: 'user.purged',
-		result: 'success',
-		resourceType: 'user',
-		resourceId: input.stableUserId,
-		targetUserId: input.stableUserId,
-		detailsJson: JSON.stringify({ lane: 'legacy_deletion_finish' }),
-	})
+	if (output.status === 'failed') throw output.error
 	return { alreadyGone: false }
 }

@@ -9,8 +9,20 @@ export type LifecycleGraph = {
 	finals: string[]
 	declaredEvents: string[]
 	handlers: Array<{ source: string; event: string }>
-	edges: Array<{ source: string; event: string; target: string; guard: string }>
+	edges: Array<{
+		source: string
+		event: string
+		target: string
+		guard: string
+		actor?: string
+	}>
 }
+
+const actorOutcomeEvents = {
+	onDone: 'xstate.done.actor',
+	onError: 'xstate.error.actor',
+	onTimeout: 'xstate.timeout.actor',
+} as const
 
 export function extractMachineGraph(machine: LifecycleMachine, file: string) {
 	return extractMachineGraphSource(
@@ -109,9 +121,10 @@ function extractMachineGraphSource(
 		object(matches[0]!.setup).get('schemas') ??
 			fail(matches[0]!.setup, 'Missing schemas'),
 	)
-	const events = object(
-		schemas.get('events') ?? fail(matches[0]!.setup, 'Missing event schemas'),
-	)
+	const eventSchemas = schemas.get('events')
+	const events = eventSchemas
+		? object(eventSchemas)
+		: new Map<string, ts.Expression>()
 	const guardDefinitions = object(matches[0]!.setup).get('guards')
 	const guards = guardDefinitions
 		? object(guardDefinitions)
@@ -132,30 +145,77 @@ function extractMachineGraphSource(
 		source: string,
 		event: string,
 		guard: string,
+		actor: string | undefined,
 	) {
 		const returned = object(value)
 		const target = returned.has('target')
 			? literal(returned.get('target')!)
 			: source
 		if (!states.has(target)) fail(value, `Unknown destination ${target}`)
-		graph.edges.push({ source, event, target, guard })
+		graph.edges.push({
+			source,
+			event,
+			target,
+			guard,
+			...(actor ? { actor } : {}),
+		})
+	}
+	function declare(event: string) {
+		if (!graph.declaredEvents.includes(event)) graph.declaredEvents.push(event)
 	}
 	for (const [state, stateNode] of states) {
 		const stateConfig = object(stateNode)
-		if (
-			stateConfig.has('states') ||
-			stateConfig.has('always') ||
-			stateConfig.has('after') ||
-			stateConfig.has('invoke')
-		)
-			fail(stateNode, 'Only flat event-driven lifecycle states are supported')
+		if (stateConfig.has('states') || stateConfig.has('after'))
+			fail(
+				stateNode,
+				'Only flat lifecycle states with event, eventless and invoked-actor handlers are supported',
+			)
 		if (
 			stateConfig.get('type') &&
 			literal(stateConfig.get('type')!) === 'final'
 		)
 			graph.finals.push(state)
-		if (!stateConfig.has('on')) continue
-		for (const [event, handler] of object(stateConfig.get('on')!)) {
+		const handlers: Array<[string, ts.Expression, string | undefined]> = []
+		if (stateConfig.has('on'))
+			for (const [event, handler] of object(stateConfig.get('on')!))
+				handlers.push([event, handler, undefined])
+		if (stateConfig.has('always')) {
+			declare('always')
+			handlers.push(['always', stateConfig.get('always')!, undefined])
+		}
+		if (stateConfig.has('invoke')) {
+			const invoke = object(stateConfig.get('invoke')!)
+			for (const key of invoke.keys())
+				if (
+					![
+						'src',
+						'id',
+						'input',
+						'timeout',
+						'description',
+						...Object.keys(actorOutcomeEvents),
+					].includes(key)
+				)
+					fail(invoke.get(key)!, `Unsupported invoke property ${key}`)
+			const actor = literal(
+				invoke.get('src') ?? fail(stateNode, 'Invoke requires a named src'),
+			)
+			if (invoke.has('onTimeout') !== invoke.has('timeout'))
+				fail(
+					stateNode,
+					'Invoke timeout and onTimeout must be declared together',
+				)
+			for (const [key, event] of Object.entries(actorOutcomeEvents)) {
+				if (!invoke.has(key)) {
+					if (key !== 'onTimeout')
+						fail(stateNode, `Invoked ${actor} requires an explicit ${key}`)
+					continue
+				}
+				declare(event)
+				handlers.push([event, invoke.get(key)!, actor])
+			}
+		}
+		for (const [event, handler, actor] of handlers) {
 			if (ts.isIdentifier(handler) && handler.text === 'undefined') continue
 			const value = unwrap(handler)
 			const wrapper =
@@ -176,7 +236,7 @@ function extractMachineGraphSource(
 				if (wrapper!.has('to'))
 					fail(handler, 'Transition function must be inline')
 				graph.handlers.push({ source: state, event })
-				edge(value, state, event, '')
+				edge(value, state, event, '', actor)
 				continue
 			}
 			graph.handlers.push({ source: state, event })
@@ -227,7 +287,8 @@ function extractMachineGraphSource(
 				if (value) value = unwrap(value)
 				if (!value || (ts.isIdentifier(value) && value.text === 'undefined'))
 					return
-				for (const path of paths) edge(value, state, event, path.join(' && '))
+				for (const path of paths)
+					edge(value, state, event, path.join(' && '), actor)
 			}
 			function statements(
 				nodes: readonly ts.Statement[],
@@ -283,8 +344,13 @@ export function renderStateMachineMermaid(graph: LifecycleGraph): string {
 		`    [*] --> ${id(graph.initial)}`,
 		...graph.edges.map(
 			(edge) =>
-				`    ${id(edge.source)} --> ${id(edge.target)}: ${edge.event}${edge.guard ? ` [${edge.guard}]` : ''}`,
+				`    ${id(edge.source)} --> ${id(edge.target)}: ${edgeLabel(edge)}${edge.guard ? ` [${edge.guard}]` : ''}`,
 		),
 		...graph.finals.map((state) => `    ${id(state)} --> [*]`),
 	].join('\n')
+}
+
+/** Event label with the invoked actor whose outcome the edge handles. */
+export function edgeLabel(edge: LifecycleGraph['edges'][number]) {
+	return edge.actor ? `${edge.event} ${edge.actor}` : edge.event
 }

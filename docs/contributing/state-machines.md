@@ -920,6 +920,524 @@ stateDiagram-v2
 | COMPLETE | in_progress | completed   | —     |
 | FAIL     | in_progress | failed      | —     |
 
+## guest_purge.batch
+
+Lists expired unclaimed guests, then deletes each account before its guest row
+and announces only after both deletes; a failed guest is counted and the batch
+moves on, the batch ends by deleting expired unclaimed guest rows whose account
+is already gone, and a failed listing fails the lane.
+
+Source:
+[`packages/worker/src/guest/guest-purge-state.ts`](../../packages/worker/src/guest/guest-purge-state.ts)
+
+States: listing, advancing, deleting_account, deleting_guest_row, announcing,
+sweeping_orphaned_guest_rows, completed, list_failed
+
+Final states: completed, list_failed
+
+```mermaid
+stateDiagram-v2
+    [*] --> listing
+    listing --> advancing: xstate.done.actor listExpiredGuests
+    listing --> list_failed: xstate.error.actor listExpiredGuests
+    advancing --> deleting_account: always [Has next guest]
+    advancing --> sweeping_orphaned_guest_rows: always [Otherwise (Has next guest)]
+    deleting_account --> deleting_guest_row: xstate.done.actor deleteGuestAccount
+    deleting_account --> advancing: xstate.error.actor deleteGuestAccount
+    deleting_guest_row --> announcing: xstate.done.actor deleteGuestRow
+    deleting_guest_row --> advancing: xstate.error.actor deleteGuestRow
+    announcing --> advancing: xstate.done.actor announceGuestPurged
+    announcing --> advancing: xstate.error.actor announceGuestPurged
+    sweeping_orphaned_guest_rows --> completed: xstate.done.actor deleteOrphanedGuestRows
+    sweeping_orphaned_guest_rows --> completed: xstate.error.actor deleteOrphanedGuestRows
+    completed --> [*]
+    list_failed --> [*]
+```
+
+| Event                                      | From                         | To                           | Guard                      |
+| ------------------------------------------ | ---------------------------- | ---------------------------- | -------------------------- |
+| xstate.done.actor listExpiredGuests        | listing                      | advancing                    | —                          |
+| xstate.error.actor listExpiredGuests       | listing                      | list_failed                  | —                          |
+| always                                     | advancing                    | deleting_account             | Has next guest             |
+| always                                     | advancing                    | sweeping_orphaned_guest_rows | Otherwise (Has next guest) |
+| xstate.done.actor deleteGuestAccount       | deleting_account             | deleting_guest_row           | —                          |
+| xstate.error.actor deleteGuestAccount      | deleting_account             | advancing                    | —                          |
+| xstate.done.actor deleteGuestRow           | deleting_guest_row           | announcing                   | —                          |
+| xstate.error.actor deleteGuestRow          | deleting_guest_row           | advancing                    | —                          |
+| xstate.done.actor announceGuestPurged      | announcing                   | advancing                    | —                          |
+| xstate.error.actor announceGuestPurged     | announcing                   | advancing                    | —                          |
+| xstate.done.actor deleteOrphanedGuestRows  | sweeping_orphaned_guest_rows | completed                    | —                          |
+| xstate.error.actor deleteOrphanedGuestRows | sweeping_orphaned_guest_rows | completed                    | —                          |
+
+## scheduled_lane.run
+
+Leased lanes acquire a lease or skip on overlap; the lane then runs, D1 lock
+contention settles without a report, other failures are reported, and a held
+lease is released before any outcome settles.
+
+Source:
+[`packages/worker/src/scheduled/scheduled-lane-run-state.ts`](../../packages/worker/src/scheduled/scheduled-lane-run-state.ts)
+
+States: deciding, acquiring_lease, running, reporting_failure, releasing_lease,
+completed, skipped_overlap, lock_contention, failed, report_failed
+
+Final states: completed, skipped_overlap, lock_contention, failed, report_failed
+
+```mermaid
+stateDiagram-v2
+    [*] --> deciding
+    deciding --> acquiring_lease: always [Is leased lane]
+    deciding --> running: always [Otherwise (Is leased lane)]
+    acquiring_lease --> running: xstate.done.actor acquireLease [Lease acquired]
+    acquiring_lease --> skipped_overlap: xstate.done.actor acquireLease [Otherwise (Lease acquired)]
+    acquiring_lease --> lock_contention: xstate.error.actor acquireLease [Is d1 lock contention]
+    acquiring_lease --> reporting_failure: xstate.error.actor acquireLease [Otherwise (Is d1 lock contention)]
+    running --> releasing_lease: xstate.done.actor runLane [Holds lease]
+    running --> completed: xstate.done.actor runLane [Otherwise (Holds lease)]
+    running --> releasing_lease: xstate.error.actor runLane [Is d1 lock contention && Holds lease]
+    running --> lock_contention: xstate.error.actor runLane [Is d1 lock contention && Otherwise (Holds lease)]
+    running --> reporting_failure: xstate.error.actor runLane [Otherwise (Is d1 lock contention)]
+    reporting_failure --> releasing_lease: xstate.done.actor reportFailure [Holds lease]
+    reporting_failure --> failed: xstate.done.actor reportFailure [Otherwise (Holds lease)]
+    reporting_failure --> releasing_lease: xstate.error.actor reportFailure [Holds lease]
+    reporting_failure --> report_failed: xstate.error.actor reportFailure [Otherwise (Holds lease)]
+    releasing_lease --> completed: xstate.done.actor releaseLease [Settled completed]
+    releasing_lease --> lock_contention: xstate.done.actor releaseLease [Otherwise (Settled completed) && Settled lock contention]
+    releasing_lease --> report_failed: xstate.done.actor releaseLease [Otherwise (Settled completed) && Otherwise (Settled lock contention) && Settled report failed]
+    releasing_lease --> failed: xstate.done.actor releaseLease [Otherwise (Settled completed) && Otherwise (Settled lock contention) && Otherwise (Settled report failed)]
+    releasing_lease --> completed: xstate.error.actor releaseLease [Settled completed]
+    releasing_lease --> lock_contention: xstate.error.actor releaseLease [Otherwise (Settled completed) && Settled lock contention]
+    releasing_lease --> report_failed: xstate.error.actor releaseLease [Otherwise (Settled completed) && Otherwise (Settled lock contention) && Settled report failed]
+    releasing_lease --> failed: xstate.error.actor releaseLease [Otherwise (Settled completed) && Otherwise (Settled lock contention) && Otherwise (Settled report failed)]
+    completed --> [*]
+    skipped_overlap --> [*]
+    lock_contention --> [*]
+    failed --> [*]
+    report_failed --> [*]
+```
+
+| Event                            | From              | To                | Guard                                                                                                     |
+| -------------------------------- | ----------------- | ----------------- | --------------------------------------------------------------------------------------------------------- |
+| always                           | deciding          | acquiring_lease   | Is leased lane                                                                                            |
+| always                           | deciding          | running           | Otherwise (Is leased lane)                                                                                |
+| xstate.done.actor acquireLease   | acquiring_lease   | running           | Lease acquired                                                                                            |
+| xstate.done.actor acquireLease   | acquiring_lease   | skipped_overlap   | Otherwise (Lease acquired)                                                                                |
+| xstate.error.actor acquireLease  | acquiring_lease   | lock_contention   | Is d1 lock contention                                                                                     |
+| xstate.error.actor acquireLease  | acquiring_lease   | reporting_failure | Otherwise (Is d1 lock contention)                                                                         |
+| xstate.done.actor runLane        | running           | releasing_lease   | Holds lease                                                                                               |
+| xstate.done.actor runLane        | running           | completed         | Otherwise (Holds lease)                                                                                   |
+| xstate.error.actor runLane       | running           | releasing_lease   | Is d1 lock contention && Holds lease                                                                      |
+| xstate.error.actor runLane       | running           | lock_contention   | Is d1 lock contention && Otherwise (Holds lease)                                                          |
+| xstate.error.actor runLane       | running           | reporting_failure | Otherwise (Is d1 lock contention)                                                                         |
+| xstate.done.actor reportFailure  | reporting_failure | releasing_lease   | Holds lease                                                                                               |
+| xstate.done.actor reportFailure  | reporting_failure | failed            | Otherwise (Holds lease)                                                                                   |
+| xstate.error.actor reportFailure | reporting_failure | releasing_lease   | Holds lease                                                                                               |
+| xstate.error.actor reportFailure | reporting_failure | report_failed     | Otherwise (Holds lease)                                                                                   |
+| xstate.done.actor releaseLease   | releasing_lease   | completed         | Settled completed                                                                                         |
+| xstate.done.actor releaseLease   | releasing_lease   | lock_contention   | Otherwise (Settled completed) && Settled lock contention                                                  |
+| xstate.done.actor releaseLease   | releasing_lease   | report_failed     | Otherwise (Settled completed) && Otherwise (Settled lock contention) && Settled report failed             |
+| xstate.done.actor releaseLease   | releasing_lease   | failed            | Otherwise (Settled completed) && Otherwise (Settled lock contention) && Otherwise (Settled report failed) |
+| xstate.error.actor releaseLease  | releasing_lease   | completed         | Settled completed                                                                                         |
+| xstate.error.actor releaseLease  | releasing_lease   | lock_contention   | Otherwise (Settled completed) && Settled lock contention                                                  |
+| xstate.error.actor releaseLease  | releasing_lease   | report_failed     | Otherwise (Settled completed) && Otherwise (Settled lock contention) && Settled report failed             |
+| xstate.error.actor releaseLease  | releasing_lease   | failed            | Otherwise (Settled completed) && Otherwise (Settled lock contention) && Otherwise (Settled report failed) |
+
+## org_audit_outbox.delivery
+
+Re-reads the live outbox payload, inserts it into AUDIT_DB, emits only for a new
+insert, and clears the outbox row last; any failure leaves the row for a later
+drain.
+
+Source:
+[`packages/worker/src/orgs/org-audit-outbox-state.ts`](../../packages/worker/src/orgs/org-audit-outbox-state.ts)
+
+States: reading_live, inserting, emitting, clearing, delivered, already_cleared,
+failed
+
+Final states: delivered, already_cleared, failed
+
+```mermaid
+stateDiagram-v2
+    [*] --> reading_live
+    reading_live --> already_cleared: xstate.done.actor readLivePayload [Outbox row gone]
+    reading_live --> inserting: xstate.done.actor readLivePayload [Otherwise (Outbox row gone)]
+    reading_live --> failed: xstate.error.actor readLivePayload
+    inserting --> emitting: xstate.done.actor insertAuditRow [Audit row inserted]
+    inserting --> clearing: xstate.done.actor insertAuditRow [Otherwise (Audit row inserted)]
+    inserting --> failed: xstate.error.actor insertAuditRow
+    emitting --> clearing: xstate.done.actor emitResourceChange
+    emitting --> clearing: xstate.error.actor emitResourceChange
+    clearing --> delivered: xstate.done.actor clearOutboxRow
+    clearing --> failed: xstate.error.actor clearOutboxRow
+    delivered --> [*]
+    already_cleared --> [*]
+    failed --> [*]
+```
+
+| Event                                 | From         | To              | Guard                          |
+| ------------------------------------- | ------------ | --------------- | ------------------------------ |
+| xstate.done.actor readLivePayload     | reading_live | already_cleared | Outbox row gone                |
+| xstate.done.actor readLivePayload     | reading_live | inserting       | Otherwise (Outbox row gone)    |
+| xstate.error.actor readLivePayload    | reading_live | failed          | —                              |
+| xstate.done.actor insertAuditRow      | inserting    | emitting        | Audit row inserted             |
+| xstate.done.actor insertAuditRow      | inserting    | clearing        | Otherwise (Audit row inserted) |
+| xstate.error.actor insertAuditRow     | inserting    | failed          | —                              |
+| xstate.done.actor emitResourceChange  | emitting     | clearing        | —                              |
+| xstate.error.actor emitResourceChange | emitting     | clearing        | —                              |
+| xstate.done.actor clearOutboxRow      | clearing     | delivered       | —                              |
+| xstate.error.actor clearOutboxRow     | clearing     | failed          | —                              |
+
+## org_audit_outbox.drain
+
+Skips without AUDIT_DB; otherwise lists batches after a cursor while the budget
+lasts, delivers each row in order, counts malformed or undelivered rows as
+errors, and reports the remaining queue.
+
+Source:
+[`packages/worker/src/orgs/org-audit-outbox-state.ts`](../../packages/worker/src/orgs/org-audit-outbox-state.ts)
+
+States: deciding, checking_batch_budget, listing, checking_row_budget,
+delivering, advancing, batch_finished, counting, drained, skipped, drain_failed
+
+Final states: drained, skipped, drain_failed
+
+```mermaid
+stateDiagram-v2
+    [*] --> deciding
+    deciding --> checking_batch_budget: always [Has audit db]
+    deciding --> skipped: always [Otherwise (Has audit db)]
+    checking_batch_budget --> listing: xstate.done.actor readClock [Within budget]
+    checking_batch_budget --> counting: xstate.done.actor readClock [Otherwise (Within budget)]
+    checking_batch_budget --> drain_failed: xstate.error.actor readClock
+    listing --> counting: xstate.done.actor listBatch [Batch empty]
+    listing --> checking_row_budget: xstate.done.actor listBatch [Otherwise (Batch empty)]
+    listing --> drain_failed: xstate.error.actor listBatch
+    checking_row_budget --> delivering: xstate.done.actor readClock [Within budget]
+    checking_row_budget --> batch_finished: xstate.done.actor readClock [Otherwise (Within budget)]
+    checking_row_budget --> drain_failed: xstate.error.actor readClock
+    delivering --> advancing: xstate.done.actor deliverRow [Row delivered]
+    delivering --> advancing: xstate.done.actor deliverRow [Otherwise (Row delivered) && Row payload invalid]
+    delivering --> advancing: xstate.done.actor deliverRow [Otherwise (Row delivered) && Otherwise (Row payload invalid)]
+    delivering --> drain_failed: xstate.error.actor deliverRow
+    advancing --> checking_row_budget: always [Has next row]
+    advancing --> batch_finished: always [Otherwise (Has next row)]
+    batch_finished --> checking_batch_budget: always [Batch was full]
+    batch_finished --> counting: always [Otherwise (Batch was full)]
+    counting --> drained: xstate.done.actor countRemaining
+    counting --> drain_failed: xstate.error.actor countRemaining
+    drained --> [*]
+    skipped --> [*]
+    drain_failed --> [*]
+```
+
+| Event                             | From                  | To                    | Guard                                                        |
+| --------------------------------- | --------------------- | --------------------- | ------------------------------------------------------------ |
+| always                            | deciding              | checking_batch_budget | Has audit db                                                 |
+| always                            | deciding              | skipped               | Otherwise (Has audit db)                                     |
+| xstate.done.actor readClock       | checking_batch_budget | listing               | Within budget                                                |
+| xstate.done.actor readClock       | checking_batch_budget | counting              | Otherwise (Within budget)                                    |
+| xstate.error.actor readClock      | checking_batch_budget | drain_failed          | —                                                            |
+| xstate.done.actor listBatch       | listing               | counting              | Batch empty                                                  |
+| xstate.done.actor listBatch       | listing               | checking_row_budget   | Otherwise (Batch empty)                                      |
+| xstate.error.actor listBatch      | listing               | drain_failed          | —                                                            |
+| xstate.done.actor readClock       | checking_row_budget   | delivering            | Within budget                                                |
+| xstate.done.actor readClock       | checking_row_budget   | batch_finished        | Otherwise (Within budget)                                    |
+| xstate.error.actor readClock      | checking_row_budget   | drain_failed          | —                                                            |
+| xstate.done.actor deliverRow      | delivering            | advancing             | Row delivered                                                |
+| xstate.done.actor deliverRow      | delivering            | advancing             | Otherwise (Row delivered) && Row payload invalid             |
+| xstate.done.actor deliverRow      | delivering            | advancing             | Otherwise (Row delivered) && Otherwise (Row payload invalid) |
+| xstate.error.actor deliverRow     | delivering            | drain_failed          | —                                                            |
+| always                            | advancing             | checking_row_budget   | Has next row                                                 |
+| always                            | advancing             | batch_finished        | Otherwise (Has next row)                                     |
+| always                            | batch_finished        | checking_batch_budget | Batch was full                                               |
+| always                            | batch_finished        | counting              | Otherwise (Batch was full)                                   |
+| xstate.done.actor countRemaining  | counting              | drained               | —                                                            |
+| xstate.error.actor countRemaining | counting              | drain_failed          | —                                                            |
+
+## soft_delete_purge.batch
+
+Lists candidates, previews dry-run ones, and for each live one checks the
+budget, claims it, runs the org, legacy-user or user hard purge, and records
+success or a failure audit before moving on; a failed listing or failure audit
+fails the run.
+
+Source:
+[`packages/worker/src/orgs/soft-delete-purge-state.ts`](../../packages/worker/src/orgs/soft-delete-purge-state.ts)
+
+States: listing, advancing, checking_budget, claiming, purging_org,
+finishing_legacy_user, purging_user, recording_failure, completed, run_failed
+
+Final states: completed, run_failed
+
+```mermaid
+stateDiagram-v2
+    [*] --> listing
+    listing --> advancing: xstate.done.actor listCandidates
+    listing --> run_failed: xstate.error.actor listCandidates
+    advancing --> completed: always [Otherwise (Has next candidate)]
+    advancing --> advancing: always [Has next candidate && Is preview candidate]
+    advancing --> checking_budget: always [Has next candidate && Otherwise (Is preview candidate)]
+    checking_budget --> completed: xstate.done.actor readClock [Budget exceeded]
+    checking_budget --> claiming: xstate.done.actor readClock [Otherwise (Budget exceeded)]
+    checking_budget --> run_failed: xstate.error.actor readClock
+    claiming --> advancing: xstate.done.actor claimCandidate [Claim refused]
+    claiming --> purging_org: xstate.done.actor claimCandidate [Otherwise (Claim refused) && Is org]
+    claiming --> recording_failure: xstate.done.actor claimCandidate [Otherwise (Claim refused) && Otherwise (Is org) && Missing db user id]
+    claiming --> finishing_legacy_user: xstate.done.actor claimCandidate [Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Is legacy user]
+    claiming --> purging_user: xstate.done.actor claimCandidate [Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Otherwise (Is legacy user)]
+    claiming --> recording_failure: xstate.error.actor claimCandidate
+    purging_org --> advancing: xstate.done.actor purgeOrg
+    purging_org --> recording_failure: xstate.error.actor purgeOrg
+    finishing_legacy_user --> advancing: xstate.done.actor finishLegacyUser
+    finishing_legacy_user --> recording_failure: xstate.error.actor finishLegacyUser
+    purging_user --> advancing: xstate.done.actor purgeUser
+    purging_user --> recording_failure: xstate.error.actor purgeUser
+    recording_failure --> advancing: xstate.done.actor recordFailure
+    recording_failure --> run_failed: xstate.error.actor recordFailure
+    completed --> [*]
+    run_failed --> [*]
+```
+
+| Event                               | From                  | To                    | Guard                                                                                                           |
+| ----------------------------------- | --------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| xstate.done.actor listCandidates    | listing               | advancing             | —                                                                                                               |
+| xstate.error.actor listCandidates   | listing               | run_failed            | —                                                                                                               |
+| always                              | advancing             | completed             | Otherwise (Has next candidate)                                                                                  |
+| always                              | advancing             | advancing             | Has next candidate && Is preview candidate                                                                      |
+| always                              | advancing             | checking_budget       | Has next candidate && Otherwise (Is preview candidate)                                                          |
+| xstate.done.actor readClock         | checking_budget       | completed             | Budget exceeded                                                                                                 |
+| xstate.done.actor readClock         | checking_budget       | claiming              | Otherwise (Budget exceeded)                                                                                     |
+| xstate.error.actor readClock        | checking_budget       | run_failed            | —                                                                                                               |
+| xstate.done.actor claimCandidate    | claiming              | advancing             | Claim refused                                                                                                   |
+| xstate.done.actor claimCandidate    | claiming              | purging_org           | Otherwise (Claim refused) && Is org                                                                             |
+| xstate.done.actor claimCandidate    | claiming              | recording_failure     | Otherwise (Claim refused) && Otherwise (Is org) && Missing db user id                                           |
+| xstate.done.actor claimCandidate    | claiming              | finishing_legacy_user | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Is legacy user             |
+| xstate.done.actor claimCandidate    | claiming              | purging_user          | Otherwise (Claim refused) && Otherwise (Is org) && Otherwise (Missing db user id) && Otherwise (Is legacy user) |
+| xstate.error.actor claimCandidate   | claiming              | recording_failure     | —                                                                                                               |
+| xstate.done.actor purgeOrg          | purging_org           | advancing             | —                                                                                                               |
+| xstate.error.actor purgeOrg         | purging_org           | recording_failure     | —                                                                                                               |
+| xstate.done.actor finishLegacyUser  | finishing_legacy_user | advancing             | —                                                                                                               |
+| xstate.error.actor finishLegacyUser | finishing_legacy_user | recording_failure     | —                                                                                                               |
+| xstate.done.actor purgeUser         | purging_user          | advancing             | —                                                                                                               |
+| xstate.error.actor purgeUser        | purging_user          | recording_failure     | —                                                                                                               |
+| xstate.done.actor recordFailure     | recording_failure     | advancing             | —                                                                                                               |
+| xstate.error.actor recordFailure    | recording_failure     | run_failed            | —                                                                                                               |
+
+## org_hard_purge.team_org
+
+Refuses personal orgs, then wipes pinned connections, deletes out-of-band
+storage, deletes D1 rows and the org row, and records org.purged; any failed
+step stops the purge for a later retry.
+
+Source:
+[`packages/worker/src/orgs/hard-purge-state.ts`](../../packages/worker/src/orgs/hard-purge-state.ts)
+
+States: checking_relation, wiping_pinned_connections, purging_out_of_band,
+deleting_org_data, auditing_org_purged, purged, blocked_live_person,
+purges_with_person, failed
+
+Final states: purged, blocked_live_person, purges_with_person, failed
+
+```mermaid
+stateDiagram-v2
+    [*] --> checking_relation
+    checking_relation --> blocked_live_person: xstate.done.actor readPersonalOrgRelation [Owned by live person]
+    checking_relation --> purges_with_person: xstate.done.actor readPersonalOrgRelation [Otherwise (Owned by live person) && Owned by soft deleted person]
+    checking_relation --> wiping_pinned_connections: xstate.done.actor readPersonalOrgRelation [Otherwise (Owned by live person) && Otherwise (Owned by soft deleted person)]
+    checking_relation --> failed: xstate.error.actor readPersonalOrgRelation
+    wiping_pinned_connections --> purging_out_of_band: xstate.done.actor wipePinnedConnections
+    wiping_pinned_connections --> failed: xstate.error.actor wipePinnedConnections
+    purging_out_of_band --> deleting_org_data: xstate.done.actor purgeOutOfBandSurfaces
+    purging_out_of_band --> failed: xstate.error.actor purgeOutOfBandSurfaces
+    deleting_org_data --> auditing_org_purged: xstate.done.actor deleteOrgData
+    deleting_org_data --> failed: xstate.error.actor deleteOrgData
+    auditing_org_purged --> purged: xstate.done.actor auditOrgPurged
+    auditing_org_purged --> failed: xstate.error.actor auditOrgPurged
+    purged --> [*]
+    blocked_live_person --> [*]
+    purges_with_person --> [*]
+    failed --> [*]
+```
+
+| Event                                      | From                      | To                        | Guard                                                                        |
+| ------------------------------------------ | ------------------------- | ------------------------- | ---------------------------------------------------------------------------- |
+| xstate.done.actor readPersonalOrgRelation  | checking_relation         | blocked_live_person       | Owned by live person                                                         |
+| xstate.done.actor readPersonalOrgRelation  | checking_relation         | purges_with_person        | Otherwise (Owned by live person) && Owned by soft deleted person             |
+| xstate.done.actor readPersonalOrgRelation  | checking_relation         | wiping_pinned_connections | Otherwise (Owned by live person) && Otherwise (Owned by soft deleted person) |
+| xstate.error.actor readPersonalOrgRelation | checking_relation         | failed                    | —                                                                            |
+| xstate.done.actor wipePinnedConnections    | wiping_pinned_connections | purging_out_of_band       | —                                                                            |
+| xstate.error.actor wipePinnedConnections   | wiping_pinned_connections | failed                    | —                                                                            |
+| xstate.done.actor purgeOutOfBandSurfaces   | purging_out_of_band       | deleting_org_data         | —                                                                            |
+| xstate.error.actor purgeOutOfBandSurfaces  | purging_out_of_band       | failed                    | —                                                                            |
+| xstate.done.actor deleteOrgData            | deleting_org_data         | auditing_org_purged       | —                                                                            |
+| xstate.error.actor deleteOrgData           | deleting_org_data         | failed                    | —                                                                            |
+| xstate.done.actor auditOrgPurged           | auditing_org_purged       | purged                    | —                                                                            |
+| xstate.error.actor auditOrgPurged          | auditing_org_purged       | failed                    | —                                                                            |
+
+## org_hard_purge.person
+
+Reads the person (a legacy retry also checks it is still a fenced,
+non-soft-deleted row and tombstones its personal org), then wipes pinned
+connections, redacts audit actors, deletes the account, deletes the personal org
+rows, verifies a legacy row is gone, and records user.purged.
+
+Source:
+[`packages/worker/src/orgs/hard-purge-state.ts`](../../packages/worker/src/orgs/hard-purge-state.ts)
+
+States: reading_person, tombstoning_personal_org, resolving_personal_org,
+wiping_pinned_connections, redacting_audit_actors, deleting_account,
+deleting_personal_org_data, auditing_personal_org_purged, verifying_row_removed,
+auditing_user_purged, purged, already_gone, not_pending, row_not_removed, failed
+
+Final states: purged, already_gone, not_pending, row_not_removed, failed
+
+```mermaid
+stateDiagram-v2
+    [*] --> reading_person
+    reading_person --> resolving_personal_org: xstate.done.actor readPerson [Otherwise (Is legacy)]
+    reading_person --> already_gone: xstate.done.actor readPerson [Is legacy && Person missing]
+    reading_person --> not_pending: xstate.done.actor readPerson [Is legacy && Otherwise (Person missing) && Person id mismatch]
+    reading_person --> not_pending: xstate.done.actor readPerson [Is legacy && Otherwise (Person missing) && Otherwise (Person id mismatch) && Person soft deleted]
+    reading_person --> not_pending: xstate.done.actor readPerson [Is legacy && Otherwise (Person missing) && Otherwise (Person id mismatch) && Otherwise (Person soft deleted) && Person not fenced]
+    reading_person --> tombstoning_personal_org: xstate.done.actor readPerson [Is legacy && Otherwise (Person missing) && Otherwise (Person id mismatch) && Otherwise (Person soft deleted) && Otherwise (Person not fenced)]
+    reading_person --> failed: xstate.error.actor readPerson
+    tombstoning_personal_org --> resolving_personal_org: xstate.done.actor tombstonePersonalOrg
+    tombstoning_personal_org --> failed: xstate.error.actor tombstonePersonalOrg
+    resolving_personal_org --> redacting_audit_actors: xstate.done.actor resolveSoftDeletedOrg [No soft deleted personal org]
+    resolving_personal_org --> wiping_pinned_connections: xstate.done.actor resolveSoftDeletedOrg [Otherwise (No soft deleted personal org)]
+    resolving_personal_org --> failed: xstate.error.actor resolveSoftDeletedOrg
+    wiping_pinned_connections --> redacting_audit_actors: xstate.done.actor wipePinnedConnections
+    wiping_pinned_connections --> failed: xstate.error.actor wipePinnedConnections
+    redacting_audit_actors --> deleting_account: xstate.done.actor redactAuditActors
+    redacting_audit_actors --> failed: xstate.error.actor redactAuditActors
+    deleting_account --> deleting_personal_org_data: xstate.done.actor deleteAccount [Has personal org]
+    deleting_account --> verifying_row_removed: xstate.done.actor deleteAccount [Otherwise (Has personal org) && Legacy row may remain]
+    deleting_account --> auditing_user_purged: xstate.done.actor deleteAccount [Otherwise (Has personal org) && Otherwise (Legacy row may remain)]
+    deleting_account --> failed: xstate.error.actor deleteAccount
+    deleting_personal_org_data --> auditing_personal_org_purged: xstate.done.actor deleteOrgData
+    deleting_personal_org_data --> failed: xstate.error.actor deleteOrgData
+    auditing_personal_org_purged --> verifying_row_removed: xstate.done.actor auditOrgPurged [Legacy row may remain]
+    auditing_personal_org_purged --> auditing_user_purged: xstate.done.actor auditOrgPurged [Otherwise (Legacy row may remain)]
+    auditing_personal_org_purged --> failed: xstate.error.actor auditOrgPurged
+    verifying_row_removed --> row_not_removed: xstate.done.actor readUserRowPresent [User row remains]
+    verifying_row_removed --> auditing_user_purged: xstate.done.actor readUserRowPresent [Otherwise (User row remains)]
+    verifying_row_removed --> failed: xstate.error.actor readUserRowPresent
+    auditing_user_purged --> purged: xstate.done.actor auditUserPurged
+    auditing_user_purged --> failed: xstate.error.actor auditUserPurged
+    purged --> [*]
+    already_gone --> [*]
+    not_pending --> [*]
+    row_not_removed --> [*]
+    failed --> [*]
+```
+
+| Event                                    | From                         | To                           | Guard                                                                                                                                         |
+| ---------------------------------------- | ---------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| xstate.done.actor readPerson             | reading_person               | resolving_personal_org       | Otherwise (Is legacy)                                                                                                                         |
+| xstate.done.actor readPerson             | reading_person               | already_gone                 | Is legacy && Person missing                                                                                                                   |
+| xstate.done.actor readPerson             | reading_person               | not_pending                  | Is legacy && Otherwise (Person missing) && Person id mismatch                                                                                 |
+| xstate.done.actor readPerson             | reading_person               | not_pending                  | Is legacy && Otherwise (Person missing) && Otherwise (Person id mismatch) && Person soft deleted                                              |
+| xstate.done.actor readPerson             | reading_person               | not_pending                  | Is legacy && Otherwise (Person missing) && Otherwise (Person id mismatch) && Otherwise (Person soft deleted) && Person not fenced             |
+| xstate.done.actor readPerson             | reading_person               | tombstoning_personal_org     | Is legacy && Otherwise (Person missing) && Otherwise (Person id mismatch) && Otherwise (Person soft deleted) && Otherwise (Person not fenced) |
+| xstate.error.actor readPerson            | reading_person               | failed                       | —                                                                                                                                             |
+| xstate.done.actor tombstonePersonalOrg   | tombstoning_personal_org     | resolving_personal_org       | —                                                                                                                                             |
+| xstate.error.actor tombstonePersonalOrg  | tombstoning_personal_org     | failed                       | —                                                                                                                                             |
+| xstate.done.actor resolveSoftDeletedOrg  | resolving_personal_org       | redacting_audit_actors       | No soft deleted personal org                                                                                                                  |
+| xstate.done.actor resolveSoftDeletedOrg  | resolving_personal_org       | wiping_pinned_connections    | Otherwise (No soft deleted personal org)                                                                                                      |
+| xstate.error.actor resolveSoftDeletedOrg | resolving_personal_org       | failed                       | —                                                                                                                                             |
+| xstate.done.actor wipePinnedConnections  | wiping_pinned_connections    | redacting_audit_actors       | —                                                                                                                                             |
+| xstate.error.actor wipePinnedConnections | wiping_pinned_connections    | failed                       | —                                                                                                                                             |
+| xstate.done.actor redactAuditActors      | redacting_audit_actors       | deleting_account             | —                                                                                                                                             |
+| xstate.error.actor redactAuditActors     | redacting_audit_actors       | failed                       | —                                                                                                                                             |
+| xstate.done.actor deleteAccount          | deleting_account             | deleting_personal_org_data   | Has personal org                                                                                                                              |
+| xstate.done.actor deleteAccount          | deleting_account             | verifying_row_removed        | Otherwise (Has personal org) && Legacy row may remain                                                                                         |
+| xstate.done.actor deleteAccount          | deleting_account             | auditing_user_purged         | Otherwise (Has personal org) && Otherwise (Legacy row may remain)                                                                             |
+| xstate.error.actor deleteAccount         | deleting_account             | failed                       | —                                                                                                                                             |
+| xstate.done.actor deleteOrgData          | deleting_personal_org_data   | auditing_personal_org_purged | —                                                                                                                                             |
+| xstate.error.actor deleteOrgData         | deleting_personal_org_data   | failed                       | —                                                                                                                                             |
+| xstate.done.actor auditOrgPurged         | auditing_personal_org_purged | verifying_row_removed        | Legacy row may remain                                                                                                                         |
+| xstate.done.actor auditOrgPurged         | auditing_personal_org_purged | auditing_user_purged         | Otherwise (Legacy row may remain)                                                                                                             |
+| xstate.error.actor auditOrgPurged        | auditing_personal_org_purged | failed                       | —                                                                                                                                             |
+| xstate.done.actor readUserRowPresent     | verifying_row_removed        | row_not_removed              | User row remains                                                                                                                              |
+| xstate.done.actor readUserRowPresent     | verifying_row_removed        | auditing_user_purged         | Otherwise (User row remains)                                                                                                                  |
+| xstate.error.actor readUserRowPresent    | verifying_row_removed        | failed                       | —                                                                                                                                             |
+| xstate.done.actor auditUserPurged        | auditing_user_purged         | purged                       | —                                                                                                                                             |
+| xstate.error.actor auditUserPurged       | auditing_user_purged         | failed                       | —                                                                                                                                             |
+
+## oauth_purge.run
+
+Loads the stored continuation, runs its next grant or token phase, then saves
+the advanced continuation; a failed load, phase or save ends the run without
+saving.
+
+Source:
+[`packages/worker/src/oauth-purge-state.ts`](../../packages/worker/src/oauth-purge-state.ts)
+
+States: loading_continuation, purging_grants, purging_tokens,
+saving_continuation, saved, failed
+
+Final states: saved, failed
+
+```mermaid
+stateDiagram-v2
+    [*] --> loading_continuation
+    loading_continuation --> purging_grants: xstate.done.actor loadContinuation [Resumes grant phase]
+    loading_continuation --> purging_tokens: xstate.done.actor loadContinuation [Otherwise (Resumes grant phase)]
+    loading_continuation --> failed: xstate.error.actor loadContinuation
+    purging_grants --> saving_continuation: xstate.done.actor purgeGrantPhase
+    purging_grants --> failed: xstate.error.actor purgeGrantPhase
+    purging_tokens --> saving_continuation: xstate.done.actor purgeTokenPhase
+    purging_tokens --> failed: xstate.error.actor purgeTokenPhase
+    saving_continuation --> saved: xstate.done.actor saveContinuation
+    saving_continuation --> failed: xstate.error.actor saveContinuation
+    saved --> [*]
+    failed --> [*]
+```
+
+| Event                               | From                 | To                  | Guard                           |
+| ----------------------------------- | -------------------- | ------------------- | ------------------------------- |
+| xstate.done.actor loadContinuation  | loading_continuation | purging_grants      | Resumes grant phase             |
+| xstate.done.actor loadContinuation  | loading_continuation | purging_tokens      | Otherwise (Resumes grant phase) |
+| xstate.error.actor loadContinuation | loading_continuation | failed              | —                               |
+| xstate.done.actor purgeGrantPhase   | purging_grants       | saving_continuation | —                               |
+| xstate.error.actor purgeGrantPhase  | purging_grants       | failed              | —                               |
+| xstate.done.actor purgeTokenPhase   | purging_tokens       | saving_continuation | —                               |
+| xstate.error.actor purgeTokenPhase  | purging_tokens       | failed              | —                               |
+| xstate.done.actor saveContinuation  | saving_continuation  | saved               | —                               |
+| xstate.error.actor saveContinuation | saving_continuation  | failed              | —                               |
+
+## oauth_purge.coordinator
+
+Idle until a run is requested; a running coordinator queues later requests and
+starts the next queued run after the current one succeeds or fails.
+
+Source:
+[`packages/worker/src/oauth-purge-state.ts`](../../packages/worker/src/oauth-purge-state.ts)
+
+States: idle, running
+
+Final states: None
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> running: RUN
+    running --> running: RUN
+    running --> running: xstate.done.actor purgeRun [Has queued run]
+    running --> idle: xstate.done.actor purgeRun [Otherwise (Has queued run)]
+    running --> running: xstate.error.actor purgeRun [Has queued run]
+    running --> idle: xstate.error.actor purgeRun [Otherwise (Has queued run)]
+```
+
+| Event                       | From    | To      | Guard                      |
+| --------------------------- | ------- | ------- | -------------------------- |
+| RUN                         | idle    | running | —                          |
+| RUN                         | running | running | —                          |
+| xstate.done.actor purgeRun  | running | running | Has queued run             |
+| xstate.done.actor purgeRun  | running | idle    | Otherwise (Has queued run) |
+| xstate.error.actor purgeRun | running | running | Has queued run             |
+| xstate.error.actor purgeRun | running | idle    | Otherwise (Has queued run) |
+
 ## component_probe.status
 
 Consecutive failure and recovery thresholds move a component between operational

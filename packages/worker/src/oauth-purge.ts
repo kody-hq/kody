@@ -1,4 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
+import { type Actor, createActor, createAsyncLogic, toPromise } from 'xstate'
+import {
+	oauthPurgeCoordinatorState,
+	oauthPurgeRunState,
+} from '#worker/oauth-purge-state.ts'
 
 const oauthPurgeBatchSize = 50
 const oauthPurgeKeyConcurrency = 8
@@ -462,15 +467,47 @@ async function continueOAuthPurge(
 	now: number,
 ): Promise<OAuthPurgeResult> {
 	const budget = startRunBudget()
-	const continuation = parseContinuation(
-		await storage.get(oauthPurgeContinuationStorageKey),
-	)
-	const result =
-		continuation.nextPhase === 'grants'
-			? await purgeGrantPhase(kv, continuation, now, budget)
-			: await purgeTokenPhase(kv, continuation, budget)
-	await storage.put(oauthPurgeContinuationStorageKey, continuation)
-	return result
+	const workflow = oauthPurgeRunState.provide({
+		actors: {
+			loadContinuation: createAsyncLogic<PurgeContinuation>({
+				run: async () =>
+					parseContinuation(
+						await storage.get(oauthPurgeContinuationStorageKey),
+					),
+			}),
+			purgeGrantPhase: createAsyncLogic<
+				{ result: OAuthPurgeResult; continuation: PurgeContinuation },
+				PurgeContinuation
+			>({
+				run: async ({ input }) => {
+					const continuation = structuredClone(input)
+					return {
+						result: await purgeGrantPhase(kv, continuation, now, budget),
+						continuation,
+					}
+				},
+			}),
+			purgeTokenPhase: createAsyncLogic<
+				{ result: OAuthPurgeResult; continuation: PurgeContinuation },
+				PurgeContinuation
+			>({
+				run: async ({ input }) => {
+					const continuation = structuredClone(input)
+					return {
+						result: await purgeTokenPhase(kv, continuation, budget),
+						continuation,
+					}
+				},
+			}),
+			saveContinuation: createAsyncLogic<void, PurgeContinuation>({
+				run: ({ input: continuation }) =>
+					storage.put(oauthPurgeContinuationStorageKey, continuation),
+			}),
+		},
+	})
+	const output = await toPromise(createActor(workflow).start())
+	if (output.status === 'failed') throw output.error
+	return output.result
 }
 
 /**
@@ -478,23 +515,37 @@ async function continueOAuthPurge(
  * in strongly consistent Durable Object storage. KV remains only the provider's
  * data plane; it is not used as a lock or continuation-state authority.
  *
- * Runs queue on an in-object promise chain instead of `blockConcurrencyWhile`:
+ * Runs queue in an in-object coordinator machine instead of `blockConcurrencyWhile`:
  * KV awaits let other RPCs in, and `blockConcurrencyWhile` resets the whole
  * object (dropping the unsaved continuation) when a slow KV window outlasts
  * its ~30s limit.
  */
 export class OAuthPurgeCoordinator extends DurableObject<Env> {
-	#previousRun: Promise<unknown> = Promise.resolve()
+	#coordinator: Actor<typeof oauthPurgeCoordinatorState> | null = null
 
 	run(input: { scheduledAt: number }): Promise<OAuthPurgeResult> {
-		const result = this.#previousRun.then(() =>
-			continueOAuthPurge(
-				this.env.OAUTH_KV,
-				this.ctx.storage,
-				Math.floor(input.scheduledAt / 1000),
-			),
-		)
-		this.#previousRun = result.catch(() => {})
-		return result
+		this.#coordinator ??= createActor(
+			oauthPurgeCoordinatorState.provide({
+				actors: {
+					purgeRun: createAsyncLogic<OAuthPurgeResult, { scheduledAt: number }>(
+						{
+							run: ({ input: request }) =>
+								continueOAuthPurge(
+									this.env.OAUTH_KV,
+									this.ctx.storage,
+									Math.floor(request.scheduledAt / 1000),
+								),
+						},
+					),
+				},
+			}),
+		).start()
+		const coordinator = this.#coordinator
+		return new Promise((resolve, reject) => {
+			coordinator.send({
+				type: 'RUN',
+				request: { scheduledAt: input.scheduledAt, resolve, reject },
+			})
+		})
 	}
 }

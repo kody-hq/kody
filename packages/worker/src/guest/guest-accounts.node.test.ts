@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	createGuestAccount,
@@ -275,6 +276,56 @@ test('the purge deletes guests only after the seven-day hold, through account de
 		},
 		createdAt: start.toISOString(),
 	})
+})
+
+test('a guest row left behind after its account was deleted is removed by the next purge', async () => {
+	const { pruneExpiredGuestAccounts } = await import('./guest-account-purge.ts')
+	const { db } = createDb()
+	const guest = await createGuest(db)
+	deleteUserAccount.mockImplementationOnce(async () => {
+		await db
+			.prepare(`DELETE FROM users WHERE stable_user_id = ?`)
+			.bind(guest.personId)
+			.run()
+	})
+	let failGuestRowDelete = true
+	const flakyDb = new Proxy(db, {
+		get(target, property, receiver) {
+			if (property !== 'prepare') return Reflect.get(target, property, receiver)
+			return (sql: string) => {
+				if (
+					failGuestRowDelete &&
+					sql.startsWith('DELETE FROM guest_accounts')
+				) {
+					failGuestRowDelete = false
+					return {
+						bind: () => ({
+							run: async () => {
+								throw new Error('D1_ERROR: network connection lost')
+							},
+						}),
+					}
+				}
+				return target.prepare(sql)
+			}
+		},
+	})
+	consoleError.mockImplementation(() => {})
+	const now = new Date(start.getTime() + guestFullAccessMs + guestHoldMs)
+	const first = await pruneExpiredGuestAccounts({
+		env: { APP_DB: flakyDb } as unknown as Env,
+		now,
+	})
+	expect(first.failed).toBe(1)
+	expect(consoleError).toHaveBeenCalledWith(
+		'guest_account_purge_failed',
+		expect.anything(),
+	)
+	await pruneExpiredGuestAccounts({
+		env: { APP_DB: db } as unknown as Env,
+		now,
+	})
+	expect(await readGuestAccountByPerson(db, guest.personId)).toBeNull()
 })
 
 test('claim codes are stored only as a lookup hash plus a person-bound sealed copy', async () => {

@@ -11,6 +11,7 @@ import { stateMachines, statusEnums } from './state-machines.ts'
 import { isExecutedDirectly } from './node-runtime.ts'
 import {
 	extractMachineGraph,
+	edgeLabel,
 	renderStateMachineMermaid,
 	type LifecycleGraph,
 } from './state-machine-graph.ts'
@@ -103,7 +104,7 @@ function renderTransitions(graph: LifecycleGraph) {
 ${graph.edges
 	.map(
 		(edge) =>
-			`| ${edge.event} | ${edge.source} | ${edge.target} | ${edge.guard || '—'} |`,
+			`| ${edgeLabel(edge)} | ${edge.source} | ${edge.target} | ${edge.guard || '—'} |`,
 	)
 	.join('\n')}`
 }

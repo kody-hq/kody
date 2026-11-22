@@ -1,3 +1,5 @@
+import { createActor, createAsyncLogic, toPromise } from 'xstate'
+import { scheduledLaneRunState } from '#worker/scheduled/scheduled-lane-run-state.ts'
 import { pruneExpiredGuestAccounts } from '#worker/guest/guest-account-purge.ts'
 import { runPackageAppHostMigrationReminder } from '#worker/package-codemods/host-migration-reminder.ts'
 import { reconcileSecondAgentStandardGifts } from '#worker/entitlements/second-agent-gift-reconciliation.ts'
@@ -20,7 +22,6 @@ import { sendUserEntitlementWarningEmails } from '#worker/entitlements/user-enti
 import { sendUserErrorRateEmails } from '#app/user-error-rate-emails.ts'
 import { sendUserUsageCampaignEmails } from '#app/user-usage-campaign-emails.ts'
 import { emitFleetEntitlementCrossingEvents } from '#app/usage-entitlement-alerts.ts'
-import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import {
 	runD1PacedBackupTick,
 	runD1PacedBackupWatchdogTick,
@@ -406,70 +407,73 @@ export async function runScheduledLaneWithFailureIsolation(input: {
 	const scheduledAt = new Date(input.message.scheduledTime)
 	const lane = input.message.lane
 	const leaseMs = scheduledLaneLeaseMs[lane]
-	let leaseHolder: string | null = null
-	try {
-		if (leaseMs !== undefined) {
-			const holder = crypto.randomUUID()
-			const acquired = await acquireScheduledLaneLease(input.env.APP_DB, {
+	const workflow = scheduledLaneRunState.provide({
+		actors: {
+			acquireLease: createAsyncLogic<
+				boolean,
+				{ lane: string; holder: string; leaseMs: number }
+			>({
+				run: ({ input: lease }) =>
+					acquireScheduledLaneLease(input.env.APP_DB, {
+						lane,
+						holder: lease.holder,
+						leaseMs: lease.leaseMs,
+						now: new Date(),
+					}),
+			}),
+			runLane: createAsyncLogic<void, { lane: string }>({
+				run: async () => {
+					await runScheduledLane({ env: input.env, lane, scheduledAt })
+				},
+			}),
+			reportFailure: createAsyncLogic<void, { error: unknown }>({
+				run: async ({ input: failure }) => {
+					const error = failure.error
+					console.error(`scheduled_lane_failed lane=${lane}`, error)
+					Sentry.withScope((scope) => {
+						scope.setTag('scheduled.lane', lane)
+						scope.setContext('scheduled', {
+							lane,
+							scheduledTime: scheduledAt.toISOString(),
+							cron: input.message.cron,
+						})
+						if (lane === pacedRestoreDrillLane) {
+							applyPacedRestoreDrillSentryScope(scope, {
+								kind:
+									error instanceof D1PacedRestoreDrillError
+										? error.kind
+										: classifyPacedRestoreDrillFailure(error),
+								checkpoint:
+									error instanceof D1PacedRestoreDrillError
+										? error.checkpoint
+										: null,
+							})
+						}
+						Sentry.captureException(error)
+					})
+				},
+			}),
+			releaseLease: createAsyncLogic<void, { lane: string; holder: string }>({
+				run: ({ input: lease }) =>
+					releaseScheduledLaneLease(input.env.APP_DB, {
+						lane,
+						holder: lease.holder,
+					}),
+			}),
+		},
+	})
+	const output = await toPromise(
+		createActor(workflow, {
+			input: {
 				lane,
-				holder,
-				leaseMs,
-				now: new Date(),
-			})
-			if (!acquired) {
-				console.warn('scheduled_lane_skipped_overlap', {
-					lane,
-					scheduledTime: scheduledAt.toISOString(),
-				})
-				return 'completed'
-			}
-			leaseHolder = holder
-		}
-		await runScheduledLane({ env: input.env, lane, scheduledAt })
-		return 'completed'
-	} catch (error) {
-		if (isRetryableD1LockError(error)) {
-			console.warn(
-				`scheduled_lane_d1_lock_contention lane=${input.message.lane}`,
-				error,
-			)
-			return 'd1_lock_contention'
-		}
-		console.error(`scheduled_lane_failed lane=${input.message.lane}`, error)
-		Sentry.withScope((scope) => {
-			scope.setTag('scheduled.lane', input.message.lane)
-			scope.setContext('scheduled', {
-				lane: input.message.lane,
 				scheduledTime: scheduledAt.toISOString(),
-				cron: input.message.cron,
-			})
-			if (input.message.lane === pacedRestoreDrillLane) {
-				applyPacedRestoreDrillSentryScope(scope, {
-					kind:
-						error instanceof D1PacedRestoreDrillError
-							? error.kind
-							: classifyPacedRestoreDrillFailure(error),
-					checkpoint:
-						error instanceof D1PacedRestoreDrillError ? error.checkpoint : null,
-				})
-			}
-			Sentry.captureException(error)
-		})
-		return 'failed'
-	} finally {
-		if (leaseHolder !== null) {
-			try {
-				await releaseScheduledLaneLease(input.env.APP_DB, {
-					lane,
-					holder: leaseHolder,
-				})
-			} catch (releaseError) {
-				// The lease expires on its own; the next tick after it lapses runs.
-				console.warn('scheduled_lane_lease_release_failed', {
-					lane,
-					error: releaseError,
-				})
-			}
-		}
-	}
+				lease:
+					leaseMs === undefined
+						? null
+						: { holder: crypto.randomUUID(), leaseMs },
+			},
+		}).start(),
+	)
+	if (output.status === 'report_failed') throw output.error
+	return output.status
 }

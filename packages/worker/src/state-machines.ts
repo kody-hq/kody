@@ -32,6 +32,21 @@ import { platformFeedbackState } from './platform-feedback/platform-feedback-sta
 import { repoSessionState } from './repo/repo-session-state.ts'
 import { packageInvocationState } from './run-records/package-invocation-state.ts'
 import { usageCampaignState } from './usage/usage-campaign-state.ts'
+import { guestPurgeState } from './guest/guest-purge-state.ts'
+import {
+	oauthPurgeCoordinatorState,
+	oauthPurgeRunState,
+} from './oauth-purge-state.ts'
+import {
+	orgHardPurgeState,
+	personHardPurgeState,
+} from './orgs/hard-purge-state.ts'
+import {
+	orgAuditOutboxDeliveryState,
+	orgAuditOutboxDrainState,
+} from './orgs/org-audit-outbox-state.ts'
+import { softDeletePurgeBatchState } from './orgs/soft-delete-purge-state.ts'
+import { scheduledLaneRunState } from './scheduled/scheduled-lane-run-state.ts'
 
 /** Event-driven XState machines registered for graph docs and tests. */
 export const stateMachines = [
@@ -136,6 +151,42 @@ export const stateMachines = [
 	{
 		machine: packageInvocationState,
 		file: 'packages/worker/src/run-records/package-invocation-state.ts',
+	},
+	{
+		machine: guestPurgeState,
+		file: 'packages/worker/src/guest/guest-purge-state.ts',
+	},
+	{
+		machine: scheduledLaneRunState,
+		file: 'packages/worker/src/scheduled/scheduled-lane-run-state.ts',
+	},
+	{
+		machine: orgAuditOutboxDeliveryState,
+		file: 'packages/worker/src/orgs/org-audit-outbox-state.ts',
+	},
+	{
+		machine: orgAuditOutboxDrainState,
+		file: 'packages/worker/src/orgs/org-audit-outbox-state.ts',
+	},
+	{
+		machine: softDeletePurgeBatchState,
+		file: 'packages/worker/src/orgs/soft-delete-purge-state.ts',
+	},
+	{
+		machine: orgHardPurgeState,
+		file: 'packages/worker/src/orgs/hard-purge-state.ts',
+	},
+	{
+		machine: personHardPurgeState,
+		file: 'packages/worker/src/orgs/hard-purge-state.ts',
+	},
+	{
+		machine: oauthPurgeRunState,
+		file: 'packages/worker/src/oauth-purge-state.ts',
+	},
+	{
+		machine: oauthPurgeCoordinatorState,
+		file: 'packages/worker/src/oauth-purge-state.ts',
 	},
 ] as const
 
