@@ -8,8 +8,8 @@
  * null). Those owners asked for a hard deletion and were never offered a
  * restore window, so they skip the 30-day window and the
  * `SOFT_DELETE_PURGE_ENABLED` gate (which guards purging restorable
- * soft-deleted accounts). They keep the same claim, retry backoff, and failure
- * audit as soft-delete candidates. Only an explicit `dryRun: true` previews
+ * soft-deleted accounts). They keep the same claim lease, failure fence, and
+ * failure audit as soft-delete candidates. Only an explicit `dryRun: true` previews
  * them.
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
@@ -33,12 +33,22 @@ import {
 	outboundTimeoutMs,
 	withDeadline,
 } from '#worker/outbound/with-deadline.ts'
+import {
+	newPurgeClaim,
+	purgeClaimClock,
+	purgeClaimFreeSql,
+	purgeForeignDeletingAtGraceMs,
+	purgeClaimSetSql,
+	renewPurgeClaim,
+	settlePurgeClaimFailure,
+	type PurgeClaim,
+	type PurgeClaimRow,
+} from '#worker/scheduled/purge-claim.ts'
 
 export { shouldRunRetentionCron as shouldRunSoftDeletePurgeCron }
 
 export const softDeletePurgeBatchSize = 5
 export const softDeletePurgeRunTimeBudgetMs = 20_000
-export const softDeletePurgeRetryBackoffMs = 6 * 60 * 60 * 1000
 
 export function softDeletePurgeWritesEnabled(env: Env): boolean {
 	return (
@@ -190,6 +200,7 @@ async function listOrgCandidates(input: {
 	db: D1Database
 	ageCutoff: string
 	retryBackoffCutoff: string
+	nowIso: string
 	batchSize: number
 }) {
 	const { results } = await runD1WithRetry(() =>
@@ -205,7 +216,12 @@ async function listOrgCandidates(input: {
 				 FROM orgs
 				 WHERE deleted_at IS NOT NULL
 				   AND datetime(deleted_at) < datetime(?)
-				   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+				   AND (
+				     deleting_at IS NULL
+				     OR purge_claim_holder IS NOT NULL
+				     OR datetime(deleting_at) < datetime(?)
+				   )
+				   AND ${purgeClaimFreeSql}
 				   AND NOT EXISTS (
 				     SELECT 1 FROM users u
 				     WHERE (u.deleted_at IS NOT NULL OR u.deleting_at IS NOT NULL)
@@ -217,7 +233,12 @@ async function listOrgCandidates(input: {
 				 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 				 LIMIT ?`,
 					)
-					.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
+					.bind(
+						input.ageCutoff,
+						input.retryBackoffCutoff,
+						input.nowIso,
+						input.batchSize,
+					)
 					.all<{ id: OwnerId; deleted_at: string }>(),
 		),
 	)
@@ -228,6 +249,7 @@ async function listUserCandidates(input: {
 	db: D1Database
 	ageCutoff: string
 	retryBackoffCutoff: string
+	nowIso: string
 	batchSize: number
 }) {
 	const { results } = await runD1WithRetry(() =>
@@ -243,11 +265,21 @@ async function listUserCandidates(input: {
 				 FROM users
 				 WHERE deleted_at IS NOT NULL
 				   AND datetime(deleted_at) < datetime(?)
-				   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+				   AND (
+				     deleting_at IS NULL
+				     OR purge_claim_holder IS NOT NULL
+				     OR datetime(deleting_at) < datetime(?)
+				   )
+				   AND ${purgeClaimFreeSql}
 				 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 				 LIMIT ?`,
 					)
-					.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
+					.bind(
+						input.ageCutoff,
+						input.retryBackoffCutoff,
+						input.nowIso,
+						input.batchSize,
+					)
 					.all<{ db_user_id: number; id: OwnerId; deleted_at: string }>(),
 		),
 	)
@@ -257,10 +289,11 @@ async function listUserCandidates(input: {
 async function listLegacyUserCandidates(input: {
 	db: D1Database
 	retryBackoffCutoff: string
+	nowIso: string
 	batchSize: number
 }) {
-	// The backoff on `deleting_at` also keeps this lane off deletions that are
-	// in flight right now (account deletion stamps the fence when it starts).
+	// The grace on `deleting_at` also keeps this lane off deletions that are in
+	// flight right now (account deletion stamps the fence when it starts).
 	const { results } = await runD1WithRetry(() =>
 		withDeadline(
 			{
@@ -274,11 +307,12 @@ async function listLegacyUserCandidates(input: {
 				 FROM users
 				 WHERE deleted_at IS NULL
 				   AND deleting_at IS NOT NULL
-				   AND datetime(deleting_at) < datetime(?)
+				   AND (purge_claim_holder IS NOT NULL OR datetime(deleting_at) < datetime(?))
+				   AND ${purgeClaimFreeSql}
 				 ORDER BY datetime(deleting_at) ASC, id ASC
 				 LIMIT ?`,
 					)
-					.bind(input.retryBackoffCutoff, input.batchSize)
+					.bind(input.retryBackoffCutoff, input.nowIso, input.batchSize)
 					.all<{ db_user_id: number; id: OwnerId; deleting_at: string }>(),
 		),
 	)
@@ -295,23 +329,27 @@ export async function listSoftDeletePurgeCandidates(input: {
 }> {
 	const now = input.now ?? new Date()
 	const ageCutoff = softDeletePurgeCutoffIso(now)
-	const retryBackoffCutoff = cutoffIso(now, softDeletePurgeRetryBackoffMs)
+	const retryBackoffCutoff = cutoffIso(now, purgeForeignDeletingAtGraceMs)
+	const nowIso = now.toISOString()
 	const batchSize = input.batchSize ?? softDeletePurgeBatchSize
 	const orgs = await listOrgCandidates({
 		db: input.env.APP_DB,
 		ageCutoff,
 		retryBackoffCutoff,
+		nowIso,
 		batchSize,
 	})
 	const users = await listUserCandidates({
 		db: input.env.APP_DB,
 		ageCutoff,
 		retryBackoffCutoff,
+		nowIso,
 		batchSize,
 	})
 	const legacyUsers = await listLegacyUserCandidates({
 		db: input.env.APP_DB,
 		retryBackoffCutoff,
+		nowIso,
 		batchSize,
 	})
 	const candidates: Array<SoftDeletePurgeCandidate> = [
@@ -345,6 +383,7 @@ async function claimOrgForPurge(input: {
 	orgId: string
 	nowIso: string
 	retryBackoffCutoff: string
+	claim: PurgeClaim
 }): Promise<boolean> {
 	const created = await runD1WithRetry(() =>
 		withDeadline(
@@ -356,12 +395,20 @@ async function claimOrgForPurge(input: {
 				input.db
 					.prepare(
 						`UPDATE orgs
-				 SET deleting_at = ?, updated_at = ?
+				 SET deleting_at = ?, updated_at = ?, ${purgeClaimSetSql}
 				 WHERE id = ?
 				   AND deleted_at IS NOT NULL
-				   AND deleting_at IS NULL`,
+				   AND deleting_at IS NULL
+				   AND ${purgeClaimFreeSql}`,
 					)
-					.bind(input.nowIso, input.nowIso, input.orgId)
+					.bind(
+						input.nowIso,
+						input.nowIso,
+						input.claim.holder,
+						input.claim.until,
+						input.orgId,
+						input.nowIso,
+					)
 					.run(),
 		),
 	)
@@ -376,16 +423,20 @@ async function claimOrgForPurge(input: {
 				input.db
 					.prepare(
 						`UPDATE orgs
-				 SET deleting_at = ?, updated_at = ?
+				 SET deleting_at = ?, updated_at = ?, ${purgeClaimSetSql}
 				 WHERE id = ?
 				   AND deleted_at IS NOT NULL
-				   AND datetime(deleting_at) < datetime(?)`,
+				   AND (purge_claim_holder IS NOT NULL OR datetime(deleting_at) < datetime(?))
+				   AND ${purgeClaimFreeSql}`,
 					)
 					.bind(
 						input.nowIso,
 						input.nowIso,
+						input.claim.holder,
+						input.claim.until,
 						input.orgId,
 						input.retryBackoffCutoff,
+						input.nowIso,
 					)
 					.run(),
 		),
@@ -398,6 +449,7 @@ async function claimUserForPurge(input: {
 	userId: string
 	nowIso: string
 	retryBackoffCutoff: string
+	claim: PurgeClaim
 }): Promise<boolean> {
 	const created = await runD1WithRetry(() =>
 		withDeadline(
@@ -409,12 +461,20 @@ async function claimUserForPurge(input: {
 				input.db
 					.prepare(
 						`UPDATE users
-				 SET deleting_at = ?, updated_at = ?
+				 SET deleting_at = ?, updated_at = ?, ${purgeClaimSetSql}
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NOT NULL
-				   AND deleting_at IS NULL`,
+				   AND deleting_at IS NULL
+				   AND ${purgeClaimFreeSql}`,
 					)
-					.bind(input.nowIso, input.nowIso, input.userId)
+					.bind(
+						input.nowIso,
+						input.nowIso,
+						input.claim.holder,
+						input.claim.until,
+						input.userId,
+						input.nowIso,
+					)
 					.run(),
 		),
 	)
@@ -429,16 +489,20 @@ async function claimUserForPurge(input: {
 				input.db
 					.prepare(
 						`UPDATE users
-				 SET deleting_at = ?, updated_at = ?
+				 SET deleting_at = ?, updated_at = ?, ${purgeClaimSetSql}
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NOT NULL
-				   AND datetime(deleting_at) < datetime(?)`,
+				   AND (purge_claim_holder IS NOT NULL OR datetime(deleting_at) < datetime(?))
+				   AND ${purgeClaimFreeSql}`,
 					)
 					.bind(
 						input.nowIso,
 						input.nowIso,
+						input.claim.holder,
+						input.claim.until,
 						input.userId,
 						input.retryBackoffCutoff,
+						input.nowIso,
 					)
 					.run(),
 		),
@@ -448,9 +512,10 @@ async function claimUserForPurge(input: {
 
 /**
  * Claim a legacy deletion by restamping its `deleting_at` fence. Only rows
- * still fenced, still without `deleted_at`, and past the retry backoff are
- * claimed, so concurrent passes and in-flight deletions are left alone. The
- * restamp starts the next backoff window if this attempt fails.
+ * still fenced, still without `deleted_at`, claimed before by a lane or
+ * stamped longer ago than the foreign-deletion grace, and with no live lease
+ * or failure fence are claimed, so concurrent passes and in-flight deletions
+ * are left alone.
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 async function claimLegacyUserForPurge(input: {
@@ -458,6 +523,7 @@ async function claimLegacyUserForPurge(input: {
 	userId: string
 	nowIso: string
 	retryBackoffCutoff: string
+	claim: PurgeClaim
 }): Promise<boolean> {
 	const claimed = await runD1WithRetry(() =>
 		withDeadline(
@@ -469,17 +535,21 @@ async function claimLegacyUserForPurge(input: {
 				input.db
 					.prepare(
 						`UPDATE users
-				 SET deleting_at = ?, updated_at = ?
+				 SET deleting_at = ?, updated_at = ?, ${purgeClaimSetSql}
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NULL
 				   AND deleting_at IS NOT NULL
-				   AND datetime(deleting_at) < datetime(?)`,
+				   AND (purge_claim_holder IS NOT NULL OR datetime(deleting_at) < datetime(?))
+				   AND ${purgeClaimFreeSql}`,
 					)
 					.bind(
 						input.nowIso,
 						input.nowIso,
+						input.claim.holder,
+						input.claim.until,
 						input.userId,
 						input.retryBackoffCutoff,
+						input.nowIso,
 					)
 					.run(),
 		),
@@ -520,8 +590,9 @@ export async function pruneSoftDeleted(input: {
 
 	const legacyFlag = (candidate: SoftDeletePurgeCandidate) =>
 		candidate.legacy ? { legacy: true as const } : {}
-	const retryBackoffCutoff = cutoffIso(now, softDeletePurgeRetryBackoffMs)
+	const retryBackoffCutoff = cutoffIso(now, purgeForeignDeletingAtGraceMs)
 	const nowIso = now.toISOString()
+	const laneNow = purgeClaimClock(now, started)
 
 	for (const candidate of preview.candidates) {
 		const candidateDryRun = candidate.legacy ? legacyDryRun : dryRun
@@ -539,14 +610,21 @@ export async function pruneSoftDeleted(input: {
 			timeBudgetExhausted = true
 			break
 		}
+		const claim = newPurgeClaim(now)
+		const claimRow: PurgeClaimRow =
+			candidate.kind === 'org'
+				? { table: 'orgs', column: 'id', value: candidate.id }
+				: { table: 'users', column: 'stable_user_id', value: candidate.id }
+		let claimed = false
 		try {
-			const claimed =
+			claimed =
 				candidate.kind === 'org'
 					? await claimOrgForPurge({
 							db: input.env.APP_DB,
 							orgId: candidate.id,
 							nowIso,
 							retryBackoffCutoff,
+							claim,
 						})
 					: candidate.legacy
 						? await claimLegacyUserForPurge({
@@ -554,12 +632,14 @@ export async function pruneSoftDeleted(input: {
 								userId: candidate.id,
 								nowIso,
 								retryBackoffCutoff,
+								claim,
 							})
 						: await claimUserForPurge({
 								db: input.env.APP_DB,
 								userId: candidate.id,
 								nowIso,
 								retryBackoffCutoff,
+								claim,
 							})
 			if (!claimed) {
 				outcomes.push({
@@ -571,8 +651,18 @@ export async function pruneSoftDeleted(input: {
 				})
 				continue
 			}
+			const onStepComplete = () =>
+				renewPurgeClaim(input.env.APP_DB, {
+					row: claimRow,
+					holder: claim.holder,
+					now: laneNow(),
+				})
 			if (candidate.kind === 'org') {
-				await hardPurgeOrg({ env: input.env, orgId: candidate.id })
+				await hardPurgeOrg({
+					env: input.env,
+					orgId: candidate.id,
+					onStepComplete,
+				})
 			} else if (candidate.legacy) {
 				if (candidate.dbUserId == null) {
 					throw new Error(`user_purge_missing_db_id:${candidate.id}`)
@@ -581,6 +671,7 @@ export async function pruneSoftDeleted(input: {
 					env: input.env,
 					dbUserId: candidate.dbUserId,
 					stableUserId: candidate.id,
+					onStepComplete,
 				})
 			} else {
 				if (candidate.dbUserId == null) {
@@ -590,6 +681,7 @@ export async function pruneSoftDeleted(input: {
 					env: input.env,
 					dbUserId: candidate.dbUserId,
 					stableUserId: candidate.id,
+					onStepComplete,
 				})
 			}
 			purged += 1
@@ -620,6 +712,20 @@ export async function pruneSoftDeleted(input: {
 				error: message,
 			})
 			await mapSoftDeletePurgeFailure(failure, { env: input.env, nowIso })
+			if (claimed) {
+				await settlePurgeClaimFailure(input.env, {
+					row: claimRow,
+					holder: claim.holder,
+					now: laneNow(),
+					fence: true,
+					item: {
+						lane: 'soft_delete_purge',
+						kind: candidate.kind,
+						id: candidate.id,
+						lastFailure: message,
+					},
+				})
+			}
 		}
 	}
 

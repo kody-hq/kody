@@ -257,6 +257,7 @@ test('purge deletes only aged unverified person accounts through full account de
 		dbUserId: eligible.id,
 		mcpUserId: eligible.stableUserId,
 		personUserId: eligible.stableUserId,
+		onStepComplete: expect.any(Function),
 	})
 	expect(h.usernames()).toEqual([
 		'fenced-unverified',
@@ -718,4 +719,71 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 		scanned: 1,
 		candidates: [{ stableUserId: fresh.stableUserId, ageDays: 9 }],
 	})
+})
+
+test('a cleanup failure counts an attempt behind a 24 hour fence, and a blocked account is skipped', async () => {
+	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	consoleWarn.mockImplementation(() => {})
+	const h = createHarness()
+	const damaged = await h.seed('cleanup-counted', 8)
+	const blocked = await h.seed('purge-blocked', 9)
+	h.sqlite
+		.prepare(
+			`UPDATE users SET purge_attempts = 5, purge_blocked_at = ? WHERE id = ?`,
+		)
+		.run(daysAgo(1), blocked.id)
+	deleteUserAccount.mockImplementationOnce(async () => {
+		throw new AccountDeletionCleanupError(['simulated cleanup'], {
+			deletedRowCounts: {},
+			updatedRowCounts: {},
+			deletedKvKeys: 0,
+			deletedCommunityAssets: 0,
+			deletedEmailBlobs: 0,
+			deletedArtifactRepos: 0,
+			revokedOAuthGrants: 0,
+			clearedDurableObjects: {},
+			deletedVectors: 0,
+			stripeRefunds: [],
+			warnings: ['simulated cleanup'],
+		})
+	})
+
+	expect(await h.run()).toMatchObject({ scanned: 1, purged: 0, failed: 1 })
+	expect(purgedStableIds(deleteUserAccount)).toEqual([damaged.stableUserId])
+	const row = h.sqlite
+		.prepare(
+			`SELECT purge_claim_holder, purge_claim_until, purge_attempts FROM users WHERE id = ?`,
+		)
+		.get(damaged.id) as {
+		purge_claim_holder: string | null
+		purge_claim_until: string
+		purge_attempts: number
+	}
+	expect(row.purge_attempts).toBe(1)
+	expect(row.purge_claim_holder).toEqual(expect.any(String))
+	const fenceMs = Date.parse(row.purge_claim_until) - now.getTime()
+	expect(fenceMs).toBeGreaterThanOrEqual(millisecondsPerDay)
+	expect(fenceMs).toBeLessThan(millisecondsPerDay + 60_000)
+	const passAt = async (hours: number) => {
+		deleteUserAccount.mockClear()
+		const result = await pruneUnverifiedAccounts({
+			env: h.env,
+			now: new Date(now.getTime() + hours * 60 * 60 * 1000),
+		})
+		return { result, deleted: purgedStableIds(deleteUserAccount) }
+	}
+	expect(await passAt(23)).toEqual({
+		result: runResult({ scanned: 0, purged: 0, failed: 0 }, []),
+		deleted: [],
+	})
+	expect(await passAt(25)).toMatchObject({
+		result: { scanned: 1, purged: 1, failed: 0 },
+		deleted: [damaged.stableUserId],
+	})
+	expect(h.usernames()).toEqual(['purge-blocked'])
+	expect(await passAt(24 * 30)).toEqual({
+		result: runResult({ scanned: 0, purged: 0, failed: 0 }, []),
+		deleted: [],
+	})
+	expect(h.usernames()).toEqual(['purge-blocked'])
 })

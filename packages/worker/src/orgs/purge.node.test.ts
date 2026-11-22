@@ -310,7 +310,7 @@ test('explicit dryRun previews legacy deletions without claiming', async () => {
 	expect((await userRow(db, 31))?.deleting_at).toBe(deletingAt)
 })
 
-test('failed legacy deletion is audited, backs off, and retries later', async () => {
+test('failed legacy deletion is audited, fenced for 24 hours, and retries later', async () => {
 	const { env, db } = await createEnv(false)
 	await seedUser(db, {
 		id: 41,
@@ -344,13 +344,13 @@ test('failed legacy deletion is audited, backs off, and retries later', async ()
 	expect(audit?.action).toBe('user.purge_failed')
 	expect(audit?.details_json).toContain('legacy_deletion_finish')
 
-	// Inside the six-hour backoff: not picked up again.
+	// Inside the 24-hour failure fence: not picked up again.
 	const soon = new Date(now.getTime() + 60 * 60 * 1000)
 	const skipped = await pruneSoftDeleted({ env, now: soon })
 	expect(skipped.scanned).toBe(0)
 
-	// After the backoff the next pass retries and finishes.
-	const later = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+	// After the fence the next pass retries and finishes.
+	const later = new Date(now.getTime() + 25 * 60 * 60 * 1000)
 	const retried = await pruneSoftDeleted({ env, now: later })
 	expect(retried.purged).toBe(1)
 	expect(await userRow(db, 41)).toBeNull()

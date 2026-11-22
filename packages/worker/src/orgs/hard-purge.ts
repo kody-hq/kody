@@ -90,6 +90,8 @@ async function personalOrgHardPurgeRelation(
 export async function hardPurgeOrg(input: {
 	env: Env
 	orgId: OwnerId
+	/** Called after each completed step that leaves the org row in place. */
+	onStepComplete?: () => Promise<void>
 }): Promise<void> {
 	const relation = await personalOrgHardPurgeRelation(
 		input.env.APP_DB,
@@ -102,6 +104,7 @@ export async function hardPurgeOrg(input: {
 		throw new PersonalOrgPurgesWithPersonError(input.orgId)
 	}
 	await wipeOrgPinnedConnections(input.env, input.orgId)
+	await input.onStepComplete?.()
 	// Team org: collect the same out-of-band keys account deletion collects
 	// for this owner id, delete those objects, then delete D1 rows (including
 	// owner-scoped inventory without deleted_at).
@@ -109,6 +112,7 @@ export async function hardPurgeOrg(input: {
 		env: input.env,
 		ownerId: input.orgId,
 	})
+	await input.onStepComplete?.()
 	await deleteOrgRows({ env: input.env, orgId: input.orgId, mode: 'team' })
 }
 
@@ -180,20 +184,24 @@ async function purgePersonAndPersonalOrg(input: {
 	personUserId: string
 	personalOrgId: OwnerId | null
 	purgeSoftDeleted?: boolean
+	onStepComplete?: () => Promise<void>
 }) {
 	if (input.personalOrgId) {
 		await wipeOrgPinnedConnections(input.env, input.personalOrgId)
+		await input.onStepComplete?.()
 	}
 	await redactOrgAuditActorIdsForDeletedUser({
 		env: input.env,
 		userId: input.stableUserId,
 	})
+	await input.onStepComplete?.()
 	const result = await deleteUserAccount({
 		env: input.env,
 		dbUserId: input.dbUserId,
 		mcpUserId: input.storageOwnerId,
 		personUserId: input.personUserId,
 		purgeSoftDeleted: input.purgeSoftDeleted,
+		onStepComplete: input.onStepComplete,
 	})
 	if (input.personalOrgId) {
 		await deleteOrgRows({
@@ -228,6 +236,8 @@ export async function hardPurgeSoftDeletedUser(input: {
 	env: Env
 	dbUserId: number
 	stableUserId: OwnerId
+	/** Called after each completed step that leaves the users row in place. */
+	onStepComplete?: () => Promise<void>
 }): Promise<void> {
 	const personalOrgRow = await runD1WithRetry(() =>
 		withDeadline(
@@ -256,6 +266,7 @@ export async function hardPurgeSoftDeletedUser(input: {
 		personUserId,
 		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
 		purgeSoftDeleted: true,
+		onStepComplete: input.onStepComplete,
 	})
 	await logOrgAuditEvent({
 		env: input.env,
@@ -299,6 +310,8 @@ export async function finishLegacyUserDeletion(input: {
 	env: Env
 	dbUserId: number
 	stableUserId: OwnerId
+	/** Called after each completed step that leaves the users row in place. */
+	onStepComplete?: () => Promise<void>
 }): Promise<{ alreadyGone: boolean }> {
 	const row = await runD1WithRetry(() =>
 		withDeadline(
@@ -356,6 +369,7 @@ export async function finishLegacyUserDeletion(input: {
 					.run(),
 		),
 	)
+	await input.onStepComplete?.()
 	const result = await purgePersonAndPersonalOrg({
 		env: input.env,
 		dbUserId: input.dbUserId,
@@ -363,6 +377,7 @@ export async function finishLegacyUserDeletion(input: {
 		storageOwnerId,
 		personUserId,
 		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
+		onStepComplete: input.onStepComplete,
 	})
 	if ((result.deletedRowCounts.users ?? 0) === 0) {
 		const stillThere = await runD1WithRetry(() =>
