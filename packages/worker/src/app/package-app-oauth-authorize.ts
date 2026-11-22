@@ -223,6 +223,7 @@ async function renderPackageAppSignInError(input: {
 		isOwnerHost({ env: input.env, url: retry, username: input.orgUsername })
 	) {
 		// The owner host serves this app at its path address, not at `/`.
+		// Remove when: the package-app path address cutover has passed and owner-host OAuth callbacks stay at zero.
 		retry.searchParams.set(
 			'return_to',
 			buildPackageAppSubdomainPath({ kodyId: input.kodyId }),
