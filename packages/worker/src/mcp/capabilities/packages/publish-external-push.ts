@@ -111,6 +111,7 @@ import {
 	pendingPackageSecretApprovalsSchema,
 } from './shared.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
+import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
 	reportCapabilityProgress,
 	type McpReportProgress,
@@ -783,6 +784,26 @@ async function getPublishedPackageTestHints(input: {
 	}
 }
 
+/**
+ * The publish renames the saved package to the published manifest name, so
+ * links in the result read the row again instead of the pre-publish name.
+ */
+async function readPublishedPackageIdentity(input: {
+	env: Env
+	ownerUserId: OwnerId
+	packageId: string
+	kodyId: string
+	name: string
+}) {
+	const saved = await getSavedPackageById(input.env.APP_DB, {
+		userId: input.ownerUserId,
+		packageId: input.packageId,
+	})
+	return saved
+		? { kodyId: saved.kodyId, name: saved.name }
+		: { kodyId: input.kodyId, name: input.name }
+}
+
 async function resolvePublishedHostedAppUrl(input: {
 	env: Env
 	baseUrl: string
@@ -1212,6 +1233,7 @@ async function runExternalPublishAttempt(input: {
 							publishedCommit,
 						},
 						async () => {
+							const published = await readPublishedPackageIdentity(input)
 							const [testHints, listing] = await Promise.all([
 								getPublishedPackageTestHints({
 									env: input.env,
@@ -1219,7 +1241,7 @@ async function runExternalPublishAttempt(input: {
 									userId: input.ownerUserId,
 									sourceId: input.source.id,
 									packageId: input.packageId,
-									kodyId: input.kodyId,
+									kodyId: published.kodyId,
 									publisherUserId: input.requestedByUserId ?? input.ownerUserId,
 								}),
 								getListingBehindPublishHint({
@@ -1228,7 +1250,7 @@ async function runExternalPublishAttempt(input: {
 									ownerUserId: input.ownerUserId,
 									ownerScope: input.ownerScope,
 									packageId: input.packageId,
-									kodyId: input.kodyId,
+									kodyId: published.kodyId,
 									promotedCommit: publishedCommit,
 								}),
 							])
@@ -1240,7 +1262,7 @@ async function runExternalPublishAttempt(input: {
 									baseUrl: input.baseUrl,
 									ownerScope: input.ownerScope,
 									ownerEmail: input.ownerEmail,
-									name: input.name,
+									name: published.name,
 									hasApp: input.hasApp,
 								}),
 								static_dependents: await getPublishStaticDependents({
@@ -1256,7 +1278,7 @@ async function runExternalPublishAttempt(input: {
 										userId: input.ownerUserId,
 										orgSlug: input.orgSlug,
 										packageId: input.packageId,
-										kodyId: input.kodyId,
+										kodyId: published.kodyId,
 										sourceId: input.source.id,
 									}),
 								held_for_approval: await buildHeldForApprovalPublishNotice({
@@ -1265,7 +1287,7 @@ async function runExternalPublishAttempt(input: {
 									ownerUserId: input.ownerUserId,
 									ownerScope: input.ownerScope,
 									packageId: input.packageId,
-									kodyId: input.kodyId,
+									kodyId: published.kodyId,
 								}),
 								allowed_packages_publish_notice:
 									await getAllowedPackagesPublishNoticeForPublishedPackage({
@@ -1274,8 +1296,8 @@ async function runExternalPublishAttempt(input: {
 										userId: input.ownerUserId,
 										orgSlug: input.orgSlug,
 										packageId: input.packageId,
-										packageDisplayName: input.packageDisplayName,
-										kodyId: input.kodyId,
+										packageDisplayName: published.name,
+										kodyId: published.kodyId,
 										sourceId: input.source.id,
 									}),
 							}
@@ -1476,6 +1498,7 @@ async function runExternalPublishAttempt(input: {
 						publishedCommit: result.published_commit,
 					},
 					async () => {
+						const published = await readPublishedPackageIdentity(input)
 						const enablementTriggers = await resolvePublishEnablementTriggers({
 							env: input.env,
 							baseUrl: input.baseUrl,
@@ -1486,7 +1509,7 @@ async function runExternalPublishAttempt(input: {
 						const testHints = readPackageTestHintsFromManifest({
 							manifest: result.manifest,
 							packageId: input.packageId,
-							kodyId: input.kodyId,
+							kodyId: published.kodyId,
 							enablementTriggers,
 						})
 						const listing = await getListingBehindPublishHint({
@@ -1495,7 +1518,7 @@ async function runExternalPublishAttempt(input: {
 							ownerUserId: input.ownerUserId,
 							ownerScope: input.ownerScope,
 							packageId: input.packageId,
-							kodyId: input.kodyId,
+							kodyId: published.kodyId,
 							promotedCommit: result.published_commit,
 							promotedVersion: readPromotedVersionFromManifest(result.manifest),
 						})
@@ -1507,7 +1530,7 @@ async function runExternalPublishAttempt(input: {
 								baseUrl: input.baseUrl,
 								ownerScope: input.ownerScope,
 								ownerEmail: input.ownerEmail,
-								name: input.name,
+								name: published.name,
 								hasApp: Boolean(testHints?.app),
 							}),
 							static_dependents: await getPublishStaticDependents({
@@ -1524,7 +1547,7 @@ async function runExternalPublishAttempt(input: {
 									userId: input.ownerUserId,
 									orgSlug: input.orgSlug,
 									packageId: input.packageId,
-									kodyId: input.kodyId,
+									kodyId: published.kodyId,
 									sourceId: input.source.id,
 								}),
 							held_for_approval: await buildHeldForApprovalPublishNotice({
@@ -1533,7 +1556,7 @@ async function runExternalPublishAttempt(input: {
 								ownerUserId: input.ownerUserId,
 								ownerScope: input.ownerScope,
 								packageId: input.packageId,
-								kodyId: input.kodyId,
+								kodyId: published.kodyId,
 							}),
 							allowed_packages_publish_notice:
 								result.allowed_packages_publish_notice ??
@@ -1543,8 +1566,8 @@ async function runExternalPublishAttempt(input: {
 									userId: input.ownerUserId,
 									orgSlug: input.orgSlug,
 									packageId: input.packageId,
-									packageDisplayName: input.packageDisplayName,
-									kodyId: input.kodyId,
+									packageDisplayName: published.name,
+									kodyId: published.kodyId,
 									sourceId: input.source.id,
 								})),
 						}

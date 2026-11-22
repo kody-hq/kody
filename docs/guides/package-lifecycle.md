@@ -449,6 +449,26 @@ Keep the schedule disabled when representative testing is inconclusive,
 credentials or host approval are missing, the result is unexpected, or the live
 mutation has not been explicitly confirmed by the user.
 
+## Rename a package
+
+The package name is in `package.json#name`, and the git origin
+`https://kody.codes/@owner/{name}.git` follows it. Rename in this order:
+
+1. Set `name` to the new `@owner/new-leaf` (and `kody.id` to `new-leaf` if the
+   manifest sets it), then commit.
+2. Push to the current origin, which still uses the old name. The new git URL
+   exists only after the publish.
+3. Publish by `package_id`: `kody package publish <package_id>`. Name lookups
+   still return the old name until this publish finishes.
+4. Point origin at the new name:
+   `git remote set-url origin https://kody.codes/@owner/new-leaf.git`.
+5. Change `kody:@owner/old-leaf` to `kody:@owner/new-leaf` in each dependent
+   package, then publish each one.
+
+The publish result's `hosted_app_url` uses the new name, and the old app URL
+redirects to it. A remote from `packageGetGitRemote` does not depend on the
+name, so step 4 applies only to a `kody.codes` origin.
+
 ## Delete a package
 
 `packageDelete` permanently removes a saved package the signed-in user owns. Do
