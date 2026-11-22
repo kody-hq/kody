@@ -81,7 +81,7 @@ function chainCalls(expression, methods) {
 	return false
 }
 
-export function isOutboundCall(call) {
+function isOutboundCall(call) {
 	const callee = call.callee
 	if (callee.type === 'Identifier') {
 		return callee.name === 'fetch' || RPC_FACTORY_PATTERN.test(callee.name)

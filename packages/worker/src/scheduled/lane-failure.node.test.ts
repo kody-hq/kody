@@ -7,8 +7,8 @@ function mapFailure(failure: Failure) {
 	switch (failure.kind) {
 		case 'a':
 			return 1
-		// @ts-expect-error an unmapped kind leaves `failure` typed as `{ kind: 'b' }`, not never
 		default:
+			// @ts-expect-error an unmapped kind leaves `failure` typed as `{ kind: 'b' }`, not never
 			return assertNever(failure, 'test failure')
 	}
 }
