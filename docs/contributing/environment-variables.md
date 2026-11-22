@@ -286,7 +286,7 @@ secret. There are no GitHub-specific Worker environment variables.
 
 ## Publish build chunk scan
 
-- `PUBLISH_CHUNK_SCAN_URL` — optional Worker var. When set, each new chunk
+- `PUBLISH_CHUNK_SCAN_URL`: optional Worker var. When set, each new chunk
   uploaded to `PUT /v1/publish-builds/{id}/blobs/{sha256}` is POSTed as
   `{"buildId","sha256","bytes"}` to this URL after its size and sha256 checks,
   with a 10 second deadline, before it is stored. `{"verdict":"allow"}` stores
