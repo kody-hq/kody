@@ -71,11 +71,15 @@ function json(body: unknown, status = 200) {
 	})
 }
 
+type OriginDownKind = 'html-503' | 'measured'
+
 /**
- * Main origin returns the Cloudflare 1105 page while `down`; package runtime
- * and jobs stay healthy, like the 2026-11-20 Western Europe outage.
+ * `html-503`: Cloudflare 1105 page on every kody.codes URL (Western Europe
+ * 2026-11-20). Storage cards skip because `/health/components` is not JSON.
+ * `measured`: parseable per-binding failures so app, mcp, and storage all
+ * open in one tick.
  */
-function stubNetwork() {
+function stubNetwork(kind: OriginDownKind = 'html-503') {
 	const state = { down: true }
 	const wakes: Array<WakeCall> = []
 	vi.stubGlobal(
@@ -104,30 +108,45 @@ function stubNetwork() {
 				})
 			}
 			if (url.startsWith('https://kody.codes/')) {
-				if (state.down) {
+				if (state.down && kind === 'html-503') {
 					return new Response('error code: 1105', {
 						status: 503,
 						headers: { 'content-type': 'text/plain; charset=UTF-8' },
 					})
 				}
 				if (url === 'https://kody.codes/health') {
-					return json({ ok: true, commitSha: 'a'.repeat(40) })
+					return state.down
+						? json({ ok: false }, 503)
+						: json({ ok: true, commitSha: 'a'.repeat(40) })
 				}
 				if (url === 'https://kody.codes/mcp') {
+					if (state.down) return new Response(null, { status: 503 })
 					return new Response(null, {
 						status: 401,
 						headers: { 'WWW-Authenticate': 'Bearer resource_metadata="x"' },
 					})
 				}
 				if (url === 'https://kody.codes/health/components') {
-					return json({
-						ok: true,
-						components: [
-							{ id: 'app_db', ok: true, latencyMs: 1 },
-							{ id: 'kv', ok: true, latencyMs: 1 },
-							{ id: 'assets', ok: true, latencyMs: 1 },
-						],
-					})
+					return state.down
+						? json(
+								{
+									ok: false,
+									components: [
+										{ id: 'app_db', ok: false, error: 'timeout' },
+										{ id: 'kv', ok: false, error: 'timeout' },
+										{ id: 'assets', ok: false, error: 'timeout' },
+									],
+								},
+								503,
+							)
+						: json({
+								ok: true,
+								components: [
+									{ id: 'app_db', ok: true, latencyMs: 1 },
+									{ id: 'kv', ok: true, latencyMs: 1 },
+									{ id: 'assets', ok: true, latencyMs: 1 },
+								],
+							})
 				}
 			}
 			return new Response('unavailable', { status: 503 })
@@ -159,8 +178,8 @@ afterEach(() => {
 	vi.restoreAllMocks()
 })
 
-test('five components opening in one tick give one wake, retries dedupe, and recovery sends one all-clear', async () => {
-	const { state, wakes } = stubNetwork()
+test('origin HTML 503 opens app and mcp only, one wake, and recovery sends one all-clear', async () => {
+	const { state, wakes } = stubNetwork('html-503')
 	const { db, store, flush } = createStore()
 
 	for (let index = 0; index < 6; index++) await tick(store, flush, index)
@@ -173,19 +192,15 @@ test('five components opening in one tick give one wake, retries dedupe, and rec
 		name: 'cole',
 	})
 	const prompt = opened!.body.prompt
-	for (const name of [
-		'App & API (app, incident #',
-		'MCP endpoint (mcp,',
-		'Primary database (app_db,',
-		'Key-value storage (kv,',
-		'Asset storage (assets,',
-	]) {
-		expect(prompt).toContain(name)
-	}
-	expect(prompt).toContain('5 components opened an incident')
+	expect(prompt).toContain('App & API (app, incident #')
+	expect(prompt).toContain('MCP endpoint (mcp,')
+	expect(prompt).toContain('2 components opened an incident')
 	expect(prompt).toContain('HTTP 503')
 	expect(prompt).toContain('started 2026-11-20T05:13:24.000Z')
 	expect(prompt).toContain('Status page: https://status.kody.codes')
+	expect(prompt).not.toContain('Primary database')
+	expect(prompt).not.toContain('Key-value storage')
+	expect(prompt).not.toContain('Asset storage')
 	expect(prompt).not.toContain('Package runtime')
 	expect(prompt).not.toContain('Jobs')
 
@@ -199,6 +214,28 @@ test('five components opening in one tick give one wake, retries dedupe, and rec
 		{ kind: 'opened' },
 		{ kind: 'all_clear' },
 	])
+})
+
+test('five measured components opening in one tick give one wake', async () => {
+	const { wakes } = stubNetwork('measured')
+	const { store, flush } = createStore()
+
+	for (let index = 0; index < 6; index++) await tick(store, flush, index)
+
+	expect(wakes).toHaveLength(1)
+	const prompt = wakes[0]!.body.prompt
+	for (const name of [
+		'App & API (app, incident #',
+		'MCP endpoint (mcp,',
+		'Primary database (app_db,',
+		'Key-value storage (kv,',
+		'Asset storage (assets,',
+	]) {
+		expect(prompt).toContain(name)
+	}
+	expect(prompt).toContain('5 components opened an incident')
+	expect(prompt).not.toContain('Package runtime')
+	expect(prompt).not.toContain('Jobs')
 })
 
 test('unset wake secrets skip with one warning and never throw', async () => {
