@@ -19,6 +19,7 @@ import {
 	isDisconnectedSecretEncryptedValue,
 } from '#mcp/secrets/disconnected.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { createPromiseLruCacheByBinding } from '#worker/package-registry/published-package-cache.ts'
 import {
 	type SecretBucketRow,
 	type SecretEntryRow,
@@ -69,10 +70,10 @@ type SecretEntryLookup = SecretEntryRow & {
  * Promise.allSettled) share one D1 round-trip (KODY-9K). Cleared when the
  * promise settles so a later write in the same isolate still re-reads.
  */
-const inflightSecretBuckets = new WeakMap<
-	D1Database,
-	Map<string, Promise<SecretBucketRow | null>>
->()
+const inflightSecretBuckets =
+	createPromiseLruCacheByBinding<SecretBucketRow | null>({
+		retainSettled: false,
+	})
 
 type PendingSecretEntryRequest = {
 	bucketId: string
@@ -104,19 +105,10 @@ export async function getSecretBucket(input: {
 	// pre-expiry row from the first coalesced request (KODY-9K follow-up).
 	const now = input.now ?? new Date().toISOString()
 	const cacheKey = `${input.userId}\0${input.scope}\0${input.bindingKey}`
-	let inflight = inflightSecretBuckets.get(input.db)
-	if (!inflight) {
-		inflight = new Map()
-		inflightSecretBuckets.set(input.db, inflight)
-	}
-	const existing = inflight.get(cacheKey)
-	const pending =
-		existing ??
-		loadSecretBucket({ ...input, now }).finally(() => {
-			if (inflight.get(cacheKey) === pending) inflight.delete(cacheKey)
-		})
-	if (!existing) inflight.set(cacheKey, pending)
-	const bucket = await pending
+	const bucket = await inflightSecretBuckets.for(input.db).getOrCreate({
+		cacheKey,
+		create: () => loadSecretBucket({ ...input, now }),
+	})
 	if (bucket && bucket.expires_at != null && bucket.expires_at <= now) {
 		return null
 	}

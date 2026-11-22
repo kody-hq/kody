@@ -11,6 +11,7 @@ import {
 } from '#worker/identity/reserved-usernames.ts'
 
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { createPromiseLruCacheByBinding } from '#worker/package-registry/published-package-cache.ts'
 export const reservedUsernamesKvKey = 'platform-settings:v1:reserved-usernames'
 const reservedUsernamesCacheTtlMs = 30_000
 export const reservedUsernamesKvReadFailedLogKey =
@@ -32,15 +33,12 @@ type ReservedUsernamesEnv = Pick<Env, 'BUNDLE_ARTIFACTS_KV'>
 
 type ReservedUsernamesWriteEnv = Pick<Env, 'BUNDLE_ARTIFACTS_KV'>
 
-const cacheGeneration = 0
-const memos = new WeakMap<
-	object,
-	{
-		expiresAt: number
-		pending: Promise<ReservedUsernamesRecord>
-		generation: number
-	}
->()
+const reservedUsernameRecordKey = 'record'
+const reservedUsernameRecords =
+	createPromiseLruCacheByBinding<ReservedUsernamesRecord>({
+		ttlMs: reservedUsernamesCacheTtlMs,
+		limit: 1,
+	})
 
 function uniqueSorted(names: Iterable<string>) {
 	return [...new Set(names)].sort((left, right) => left.localeCompare(right))
@@ -110,25 +108,10 @@ async function loadReservedUsernameRecordUncached(
 export async function loadReservedUsernameRecord(
 	env: ReservedUsernamesEnv,
 ): Promise<ReservedUsernamesRecord> {
-	const now = Date.now()
-	const cached = memos.get(env)
-	if (
-		cached &&
-		cached.generation === cacheGeneration &&
-		cached.expiresAt > now
-	) {
-		return cached.pending
-	}
-	const pending = loadReservedUsernameRecordUncached(env)
-	memos.set(env, {
-		expiresAt: now + reservedUsernamesCacheTtlMs,
-		pending,
-		generation: cacheGeneration,
+	return await reservedUsernameRecords.for(env).getOrCreate({
+		cacheKey: reservedUsernameRecordKey,
+		create: () => loadReservedUsernameRecordUncached(env),
 	})
-	pending.catch(() => {
-		if (memos.get(env)?.pending === pending) memos.delete(env)
-	})
-	return pending
 }
 
 export async function isEffectivelyReservedUsername(
@@ -210,7 +193,7 @@ async function writeReservedUsernameRecord(input: {
 		updatedBy: input.updatedBy,
 	}
 	await kv.put(reservedUsernamesKvKey, JSON.stringify(record))
-	memos.delete(input.env)
+	reservedUsernameRecords.clear(input.env)
 	return record satisfies {
 		added: Array<string>
 		removed: Array<string>

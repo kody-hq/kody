@@ -1,4 +1,5 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { createPromiseLruCacheByBinding } from '#worker/package-registry/published-package-cache.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 
@@ -84,10 +85,10 @@ export function isPackageSecretAccessUnavailableError(error: unknown) {
  * fetch-gateway resolves N secrets share one D1 load (KODY-9K). Cleared when
  * the promise settles so a later adopt/unadopt still re-reads.
  */
-const inflightImplicitUserSecretAccess = new WeakMap<
-	D1Database,
-	Map<string, Promise<AllowedPackagesWouldBlockAccessKind | null>>
->()
+const inflightImplicitUserSecretAccess =
+	createPromiseLruCacheByBinding<AllowedPackagesWouldBlockAccessKind | null>({
+		retainSettled: false,
+	})
 
 /**
  * Self-authored packages (no `community_forks` row) and adopted community
@@ -115,18 +116,10 @@ export async function implicitUserSecretReadAccessKind(input: {
 }): Promise<AllowedPackagesWouldBlockAccessKind | null> {
 	const db = input.env.APP_DB
 	const cacheKey = `${input.userId}\0${input.packageId}`
-	let inflight = inflightImplicitUserSecretAccess.get(db)
-	if (!inflight) {
-		inflight = new Map()
-		inflightImplicitUserSecretAccess.set(db, inflight)
-	}
-	const existing = inflight.get(cacheKey)
-	if (existing) return existing
-	const pending = loadImplicitUserSecretReadAccess(input).finally(() => {
-		if (inflight.get(cacheKey) === pending) inflight.delete(cacheKey)
+	return await inflightImplicitUserSecretAccess.for(db).getOrCreate({
+		cacheKey,
+		create: () => loadImplicitUserSecretReadAccess(input),
 	})
-	inflight.set(cacheKey, pending)
-	return pending
 }
 
 async function loadImplicitUserSecretReadAccess(input: {

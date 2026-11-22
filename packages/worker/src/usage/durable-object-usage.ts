@@ -283,7 +283,9 @@ function scheduleDurableObjectUsageFlush() {
 
 async function flushQueuedDurableObjectUsage() {
 	if (inFlightFlush) {
-		await inFlightFlush
+		// The previous flush may belong to a request that has since ended, and
+		// its failure is not this flush's: only wait for it to finish.
+		await inFlightFlush.catch(() => undefined)
 		if (pendingByKey.size === 0) return
 	}
 	const buckets = [...pendingByKey.values()]

@@ -5,6 +5,7 @@
  * is rendered.
  */
 
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 import {
 	landingOrbitAgents,
 	type LandingOrbitAgentIcon,
@@ -53,7 +54,9 @@ type OgBinaryAssetCache = {
 }
 
 let cache: OgBinaryAssetCache | null = null
-let loadPromise: Promise<void> | null = null
+const assetLoads = new PromiseLruCache<OgBinaryAssetCache>({
+	retainSettled: false,
+})
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 	return bytes.buffer.slice(
@@ -165,7 +168,7 @@ function requireCache(): OgBinaryAssetCache {
 /** Test hook: clears the per-isolate OG binary asset cache. */
 export function resetOgBinaryAssetsCache() {
 	cache = null
-	loadPromise = null
+	assetLoads.clear()
 }
 
 /** Fetch and cache OG fonts and art. Requires the ASSETS binding. */
@@ -176,17 +179,11 @@ export async function ensureOgBinaryAssetsReady(input: {
 	if (!input.assets) {
 		throw new Error('OG binary assets require an ASSETS binding')
 	}
-	if (!loadPromise) {
-		loadPromise = loadOgBinaryAssets(input.assets)
-			.then((loaded) => {
-				cache = loaded
-			})
-			.catch((error) => {
-				loadPromise = null
-				throw error
-			})
-	}
-	await loadPromise
+	const assets = input.assets
+	cache ??= await assetLoads.getOrCreate({
+		cacheKey: 'og',
+		create: () => loadOgBinaryAssets(assets),
+	})
 }
 
 export function getBricolageGrotesqueLatin700FontData(): ArrayBuffer {

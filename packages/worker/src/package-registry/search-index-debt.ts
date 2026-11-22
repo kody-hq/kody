@@ -2,6 +2,7 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { upsertSavedPackageVector } from './vectorize.ts'
+import { PromiseLruCache } from './published-package-cache.ts'
 
 /**
  * Deferred saved-package vector upserts must not fail silently. Before
@@ -25,7 +26,7 @@ type SearchIndexDebtRow = {
 }
 
 /** Coalesce concurrent schedules for the same package in one isolate. */
-const inFlightReconciles = new Map<string, Promise<void>>()
+const inFlightReconciles = new PromiseLruCache<void>({ retainSettled: false })
 
 export async function markSavedPackageSearchIndexDebt(input: {
 	db: D1Database
@@ -269,24 +270,14 @@ export async function scheduleSavedPackageSearchIndexUpsert(input: {
 		embedText: input.embedText,
 	})
 
-	const existing = inFlightReconciles.get(input.packageId)
-	if (existing) {
-		if (input.waitUntil) {
-			input.waitUntil(existing)
-			return
-		}
-		await existing
-		return
-	}
-
-	const task = reconcileSavedPackageSearchIndex({
-		env: input.env,
-		packageId: input.packageId,
-	}).finally(() => {
-		inFlightReconciles.delete(input.packageId)
+	const task = inFlightReconciles.getOrCreate({
+		cacheKey: input.packageId,
+		create: () =>
+			reconcileSavedPackageSearchIndex({
+				env: input.env,
+				packageId: input.packageId,
+			}),
 	})
-	inFlightReconciles.set(input.packageId, task)
-
 	if (input.waitUntil) {
 		input.waitUntil(task)
 		return

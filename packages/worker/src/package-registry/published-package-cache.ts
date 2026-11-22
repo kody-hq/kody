@@ -175,12 +175,18 @@ export class PromiseLruCache<T> {
 		 */
 		byteBudget?: RetainedByteBudget
 		sizeOf?: (value: T) => number
+		/**
+		 * `false` shares only in-flight work: an entry is dropped once it
+		 * settles, so every later call runs its own `create()`.
+		 */
+		retainSettled?: boolean
 	}) {
 		this.ttlMs = input?.ttlMs ?? publishedPackageCacheTtlMs
 		this.limit = input?.limit ?? publishedPackageCacheLimit
 		this.inFlightWaitMs = input?.inFlightWaitMs ?? promiseLruCacheInFlightWaitMs
 		this.byteBudget = input?.byteBudget ?? null
 		this.sizeOf = input?.sizeOf ?? estimateRetainedBytes
+		this.retainSettled = input?.retainSettled ?? true
 		this.byteBudget?.register(this)
 	}
 
@@ -189,6 +195,7 @@ export class PromiseLruCache<T> {
 	private readonly inFlightWaitMs: number
 	private readonly byteBudget: RetainedByteBudget | null
 	private readonly sizeOf: (value: T) => number
+	private readonly retainSettled: boolean
 
 	/** @internal Least recently used settled entry that holds sized bytes. */
 	oldestSizedEntry() {
@@ -243,6 +250,10 @@ export class PromiseLruCache<T> {
 		this.touch(entry)
 		void pending.then(
 			(value) => {
+				if (!this.retainSettled) {
+					if (this.cache.get(key) === entry) this.delete(key)
+					return
+				}
 				entry.settled = { value }
 				this.recordSize(key, entry, value)
 			},
@@ -273,6 +284,17 @@ export class PromiseLruCache<T> {
 			this.byteBudget?.adjust(-entry.bytes)
 			entry.bytes = 0
 		}
+	}
+
+	/** Drop every entry whose key matches, e.g. one owner's prefix. */
+	deleteWhere(matches: (key: string) => boolean) {
+		for (const key of [...this.cache.keys()]) {
+			if (matches(key)) this.delete(key)
+		}
+	}
+
+	clear() {
+		this.deleteWhere(() => true)
 	}
 
 	private recordSize(key: string, entry: PromiseLruCacheEntry<T>, value: T) {
@@ -362,6 +384,29 @@ export class PromiseLruCache<T> {
 			}
 			this.delete(oldestKey)
 		}
+	}
+}
+
+/**
+ * One {@link PromiseLruCache} per binding object (a `D1Database`, an `env`),
+ * so test databases never share entries and a dropped binding frees its cache.
+ */
+export function createPromiseLruCacheByBinding<T>(
+	options?: ConstructorParameters<typeof PromiseLruCache<T>>[0],
+) {
+	const caches = new WeakMap<object, PromiseLruCache<T>>()
+	return {
+		for(binding: object) {
+			let cache = caches.get(binding)
+			if (!cache) {
+				cache = new PromiseLruCache<T>(options)
+				caches.set(binding, cache)
+			}
+			return cache
+		},
+		clear(binding: object) {
+			caches.get(binding)?.clear()
+		},
 	}
 }
 
