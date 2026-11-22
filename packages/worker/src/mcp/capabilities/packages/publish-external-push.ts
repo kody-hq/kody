@@ -2,9 +2,10 @@ import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { showBuildOrigin } from '#worker/publish-offload/policy.ts'
 import {
+	decidePublishRoute,
 	resolveUploadedPublishBuildForPublish,
-	type UploadedPublishBuildRef,
-} from '#worker/publish-offload/store.ts'
+} from '#worker/publish-offload/edge.ts'
+import type { UploadedPublishBuildRef } from '#worker/publish-offload/store.ts'
 import {
 	type OwnerId,
 	personIdFromStored,
@@ -122,10 +123,7 @@ import {
 	resolveListingBehindPublishHint,
 } from '#worker/community/resolve-listing-behind-publish-hint.ts'
 import { buildUpdatePublicListingHref } from '#universal/update-public-listing.ts'
-import {
-	decidePublishRoute,
-	publishRouteDeps,
-} from '#worker/publish-offload/publish-routing.ts'
+import { publishRouteDeps } from '#worker/publish-offload/publish-routing.ts'
 
 const inputSchema = z.object({
 	package_id: z.string().min(1).optional().describe(packageIdLookupDescription),
@@ -1754,10 +1752,10 @@ export const publishExternalPushCapability = defineDomainCapability(
 				args.publish_build_id || durableReentry
 					? null
 					: await decidePublishRoute({
+							env: ctx.env,
 							requestedContext: args.context,
 							packageRef: name,
 							deps: publishRouteDeps({
-								env: ctx.env,
 								callerContext: ctx.callerContext,
 								request: requireMcpRequest(ctx.callerContext),
 								personId: user.userId,
@@ -1797,7 +1795,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				durableReentry,
 				uploadedBuild: publishBuildId
 					? await resolveUploadedPublishBuildForPublish({
-							db: ctx.env.APP_DB,
+							env: ctx.env,
 							buildId: publishBuildId,
 							packageId,
 							sourceId: source.id,

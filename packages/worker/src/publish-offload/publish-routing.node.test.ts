@@ -1,52 +1,101 @@
+import { Effect } from 'effect'
 import { expect, test, vi } from 'vitest'
+import { mcpFailure } from './edge.ts'
+import type {
+	PublishBindingUnavailable,
+	PublishContextFlagsOff,
+} from './errors.ts'
 import {
 	decidePublishRoute,
 	parsePublishBinding,
 	publishBindingUnavailableMessage,
 	publishContextFlagsOffMessage,
+	type PublishRoute,
 	type PublishRouteDeps,
 } from './publish-routing.ts'
 
-function deps(overrides: Partial<PublishRouteDeps> = {}) {
-	const buildOnContext = vi.fn<PublishRouteDeps['buildOnContext']>(
-		async ({ context }) => ({
-			kind: 'context',
-			buildId: 'pb_1',
-			contextName: context ?? 'chain-box',
-		}),
+/** Runs a route decision the way the `packagePublishExternalPush` edge does. */
+function run(
+	effect: Effect.Effect<
+		PublishRoute,
+		PublishContextFlagsOff | PublishBindingUnavailable | Error
+	>,
+) {
+	return Effect.runPromise(
+		effect.pipe(
+			Effect.catchTags({
+				PublishContextFlagsOff: (error) =>
+					Effect.sync(() => mcpFailure.PublishContextFlagsOff(error)),
+				PublishBindingUnavailable: (error) =>
+					Effect.sync(() => mcpFailure.PublishBindingUnavailable(error)),
+			}),
+		),
 	)
-	const readBoundContext = vi.fn(async () => null as string | null)
+}
+
+function deps(overrides: Partial<PublishRouteDeps<Error>> = {}) {
+	const buildOnContext = vi.fn<PublishRouteDeps<Error>['buildOnContext']>(
+		({ context }) =>
+			Effect.succeed({
+				kind: 'context',
+				buildId: 'pb_1',
+				contextName: context ?? 'chain-box',
+			}),
+	)
+	const readBoundContext = vi.fn(() => Effect.succeed(null as string | null))
 	return {
-		flagsEnabled: vi.fn(async () => true),
+		flagsEnabled: vi.fn(() => Effect.succeed(true)),
 		readBoundContext,
-		chainMayUseContexts: vi.fn(async () => true),
+		chainMayUseContexts: vi.fn(() => Effect.succeed(true)),
 		buildOnContext,
 		...overrides,
-	} satisfies PublishRouteDeps
+	} satisfies PublishRouteDeps<Error>
 }
 
 test('flags off: cloud, no manifest read, and a named context is refused', async () => {
-	const d = deps({ flagsEnabled: async () => false })
+	const d = deps({ flagsEnabled: () => Effect.succeed(false) })
 	await expect(
-		decidePublishRoute({ requestedContext: null, packageRef: 'pkg', deps: d }),
+		run(
+			decidePublishRoute({
+				requestedContext: null,
+				packageRef: 'pkg',
+				deps: d,
+			}),
+		),
 	).resolves.toEqual({ kind: 'cloud', via: 'flags_off' })
 	expect(d.readBoundContext).not.toHaveBeenCalled()
 	await expect(
-		decidePublishRoute({ requestedContext: 'nas', packageRef: 'pkg', deps: d }),
+		run(
+			decidePublishRoute({
+				requestedContext: 'nas',
+				packageRef: 'pkg',
+				deps: d,
+			}),
+		),
 	).rejects.toThrow(publishContextFlagsOffMessage)
 	await expect(
-		decidePublishRoute({
-			requestedContext: 'cloud',
-			packageRef: 'pkg',
-			deps: d,
-		}),
+		run(
+			decidePublishRoute({
+				requestedContext: 'cloud',
+				packageRef: 'pkg',
+				deps: d,
+			}),
+		),
 	).resolves.toEqual({ kind: 'cloud', via: 'requested' })
 })
 
 test('a named context overrides the binding and never falls back', async () => {
-	const d = deps({ readBoundContext: vi.fn(async () => 'bound-box') })
+	const d = deps({
+		readBoundContext: vi.fn(() => Effect.succeed('bound-box')),
+	})
 	await expect(
-		decidePublishRoute({ requestedContext: 'nas', packageRef: 'pkg', deps: d }),
+		run(
+			decidePublishRoute({
+				requestedContext: 'nas',
+				packageRef: 'pkg',
+				deps: d,
+			}),
+		),
 	).resolves.toEqual({
 		kind: 'context',
 		via: 'requested',
@@ -61,9 +110,17 @@ test('a named context overrides the binding and never falls back', async () => {
 })
 
 test('a bound package builds only on its bound context', async () => {
-	const d = deps({ readBoundContext: vi.fn(async () => 'bound-box') })
+	const d = deps({
+		readBoundContext: vi.fn(() => Effect.succeed('bound-box')),
+	})
 	await expect(
-		decidePublishRoute({ requestedContext: null, packageRef: 'pkg', deps: d }),
+		run(
+			decidePublishRoute({
+				requestedContext: null,
+				packageRef: 'pkg',
+				deps: d,
+			}),
+		),
 	).resolves.toMatchObject({ kind: 'context', via: 'bound' })
 	expect(d.buildOnContext).toHaveBeenCalledWith({
 		context: 'bound-box',
@@ -74,18 +131,20 @@ test('a bound package builds only on its bound context', async () => {
 
 test('a bound context that is unavailable fails the publish with the binding error', async () => {
 	const d = deps({
-		readBoundContext: vi.fn(async () => 'bound-box'),
-		buildOnContext: vi.fn(async () => {
-			throw new Error(
-				'bound-box could not take this run (bound-box was offline).',
-			)
-		}),
+		readBoundContext: vi.fn(() => Effect.succeed('bound-box')),
+		buildOnContext: vi.fn(() =>
+			Effect.fail(
+				new Error('bound-box could not take this run (bound-box was offline).'),
+			),
+		),
 	})
-	const error = await decidePublishRoute({
-		requestedContext: null,
-		packageRef: '@me/big',
-		deps: d,
-	}).catch((caught: unknown) => caught)
+	const error = await run(
+		decidePublishRoute({
+			requestedContext: null,
+			packageRef: '@me/big',
+			deps: d,
+		}),
+	).catch((caught: unknown) => caught)
 	expect(error).toMatchObject({
 		code: 'execution_context_binding_unavailable',
 		status: 409,
@@ -97,9 +156,15 @@ test('a bound context that is unavailable fails the publish with the binding err
 })
 
 test('a binding to cloud builds on Kody cloud without touching the chain', async () => {
-	const d = deps({ readBoundContext: vi.fn(async () => 'cloud') })
+	const d = deps({ readBoundContext: vi.fn(() => Effect.succeed('cloud')) })
 	await expect(
-		decidePublishRoute({ requestedContext: null, packageRef: 'pkg', deps: d }),
+		run(
+			decidePublishRoute({
+				requestedContext: null,
+				packageRef: 'pkg',
+				deps: d,
+			}),
+		),
 	).resolves.toEqual({ kind: 'cloud', via: 'bound' })
 	expect(d.buildOnContext).not.toHaveBeenCalled()
 })
@@ -107,11 +172,13 @@ test('a binding to cloud builds on Kody cloud without touching the chain', async
 test('unbound packages follow the chain, Kody cloud last', async () => {
 	const onContext = deps()
 	await expect(
-		decidePublishRoute({
-			requestedContext: null,
-			packageRef: 'pkg',
-			deps: onContext,
-		}),
+		run(
+			decidePublishRoute({
+				requestedContext: null,
+				packageRef: 'pkg',
+				deps: onContext,
+			}),
+		),
 	).resolves.toMatchObject({
 		kind: 'context',
 		via: 'chain',
@@ -123,23 +190,29 @@ test('unbound packages follow the chain, Kody cloud last', async () => {
 	})
 
 	const fellThrough = deps({
-		buildOnContext: vi.fn(async () => ({ kind: 'cloud' as const })),
+		buildOnContext: vi.fn(() => Effect.succeed({ kind: 'cloud' as const })),
 	})
 	await expect(
-		decidePublishRoute({
-			requestedContext: null,
-			packageRef: 'pkg',
-			deps: fellThrough,
-		}),
+		run(
+			decidePublishRoute({
+				requestedContext: null,
+				packageRef: 'pkg',
+				deps: fellThrough,
+			}),
+		),
 	).resolves.toEqual({ kind: 'cloud', via: 'chain' })
 
-	const cloudOnly = deps({ chainMayUseContexts: vi.fn(async () => false) })
+	const cloudOnly = deps({
+		chainMayUseContexts: vi.fn(() => Effect.succeed(false)),
+	})
 	await expect(
-		decidePublishRoute({
-			requestedContext: null,
-			packageRef: 'pkg',
-			deps: cloudOnly,
-		}),
+		run(
+			decidePublishRoute({
+				requestedContext: null,
+				packageRef: 'pkg',
+				deps: cloudOnly,
+			}),
+		),
 	).resolves.toEqual({ kind: 'cloud', via: 'chain' })
 	expect(cloudOnly.buildOnContext).not.toHaveBeenCalled()
 })

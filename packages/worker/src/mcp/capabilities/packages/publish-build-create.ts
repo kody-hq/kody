@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { McpCallerError } from '#mcp/caller-error.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -13,10 +13,21 @@ import {
 	packageNameLookupDescription,
 } from '#worker/package-registry/package-name.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
+import { Effect, Match } from 'effect'
+import { D1, fromD1Promise } from '#worker/effect/d1.ts'
+import { runEdge } from '#worker/effect/edge.ts'
+import { outbound } from '#worker/effect/outbound.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import { dispatchContextPublishBuild } from '#worker/publish-offload/context-dispatch.ts'
-import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import { mcpFailure } from '#worker/publish-offload/edge.ts'
+import {
+	PublishBuildCreateRefused,
+	PublishContextFlagsOff,
+	PublishOffloadDisabled,
+} from '#worker/publish-offload/errors.ts'
 import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
 import { isPublishOffloadEnabledFor } from '#worker/publish-offload/flag.ts'
+import { publishOffloadRuntime } from '#worker/publish-offload/services.ts'
 import { publishContextFlagsOffMessage } from '#worker/publish-offload/publish-routing.ts'
 import {
 	publishLargePackagesDocsUrl,
@@ -114,124 +125,158 @@ export const publishBuildCreateCapability = defineDomainCapability(
 		inputSchema,
 		outputSchema,
 		async handler(args, ctx) {
-			const user = requireMcpUser(ctx.callerContext)
-			const request = requireMcpRequest(ctx.callerContext)
-			if (
-				!(await isPublishOffloadEnabledFor(
-					ctx.env.APP_DB,
-					user.userId,
-					request.org.id,
-				))
-			) {
-				throw new McpCallerError(
-					'Publishing a build made outside Kody cloud needs the publish-offload feature flag, which is off for this account.',
-				)
-			}
-			if (
-				args.origin === 'context' &&
-				!(await isExecutionContextsEnabledFor(
-					ctx.env.APP_DB,
-					user.userId,
-					request.org.id,
-				))
-			) {
-				throw new ExecutionContextError({
-					status: 403,
-					code: 'feature_disabled',
-					message: publishContextFlagsOffMessage,
-				})
-			}
-			const owner = await resolvePackageOwnerContext(ctx.env, {
-				user,
-				request,
-			})
-			const nameInput = args.name?.trim() || undefined
-			const { packageId, userId, name, source } =
-				await resolveOwnedPackageSource({
-					db: ctx.env.APP_DB,
-					userId: owner.ownerUserId,
-					ownerScope: owner.ownerScope,
-					args: {
-						package_id: args.package_id,
-						kody_id: nameInput ?? args.kody_id?.trim() ?? undefined,
-					},
-				})
-			await authorizePackageWrite(
-				{ env: ctx.env, request },
-				{ id: packageId, userId, label: name },
+			const program = createBuild(args, ctx)
+			return await runEdge(
+				publishOffloadRuntime(ctx.env),
+				program,
+				Match.type<Effect.Error<typeof program>>().pipe(
+					Match.tagsExhaustive({
+						PublishOffloadDisabled: mcpFailure.PublishOffloadDisabled,
+						PublishContextFlagsOff: mcpFailure.PublishContextFlagsOff,
+						PublishBuildCreateRefused: mcpFailure.PublishBuildCreateRefused,
+						PublishContextNeedsPerson: mcpFailure.PublishContextNeedsPerson,
+						PublishContextFromContextRun:
+							mcpFailure.PublishContextFromContextRun,
+						PublishContextUnavailable: mcpFailure.PublishContextUnavailable,
+						PublishContextTimedOut: mcpFailure.PublishContextTimedOut,
+						PublishContextBuildFailed: mcpFailure.PublishContextBuildFailed,
+						DatabaseError: mcpFailure.DatabaseError,
+						OutboundCallError: mcpFailure.OutboundCallError,
+					}),
+				),
 			)
-			const head = await resolveArtifactSourceHead(ctx.env, source.repo_id)
-			if (!head.commit) {
-				throw new McpCallerError(
-					`Package "${name}" has no pushed commit to build. Push first.`,
-				)
-			}
-			if (args.expected_commit && args.expected_commit !== head.commit) {
-				throw new McpCallerError(
-					`Kody sees ${head.commit.slice(0, 12)} at the head of "${name}" (branch ${head.branch}), not your commit ${args.expected_commit.slice(0, 12)}. Nothing was built. Push that commit to the package's Kody remote and try again.`,
-				)
-			}
-			await purgeExpiredPublishBuilds({
-				db: ctx.env.APP_DB,
-				bucket: ctx.env.REPO_SESSION_BLOBS,
-			}).catch(() => {})
-			const created = await createPublishBuild({
-				db: ctx.env.APP_DB,
-				packageId,
-				sourceId: source.id,
-				ownerUserId: userId,
-				requesterUserId: user.userId,
-				orgId: request.org.id,
-				commit: head.commit,
-				origin: args.origin,
-			})
-			const common = {
-				build_id: created.buildId,
-				package_id: packageId,
-				commit: head.commit,
-				origin: args.origin,
-				upload_path: `/v1/publish-builds/${created.buildId}`,
-				source_root: source.source_root,
-				manifest_path: source.manifest_path,
-				expires_at: created.expiresAt,
-				builder_version: publishBuilderVersion,
-				chunk_bytes: publishOffloadLimits.chunkBytes,
-				max_source_bytes: publishOffloadLimits.maxSourceBytes,
-				max_target_bytes: publishOffloadLimits.maxTargetBytes,
-				docs_url: publishLargePackagesDocsUrl,
-			}
-			if (args.origin === 'cli') {
-				return {
-					...common,
-					status: 'uploading' as const,
-					upload_ticket: created.ticket,
-				}
-			}
-			const dispatched = await dispatchContextPublishBuild({
-				env: ctx.env,
-				callerContext: ctx.callerContext,
-				request,
-				buildId: created.buildId,
-				ticket: created.ticket,
-				uploadPath: common.upload_path,
-				packageId,
-				packageName: name,
-				repoId: source.repo_id,
-				commit: head.commit,
-				sourceRoot: source.source_root,
-				manifestPath: source.manifest_path,
-				context: args.context ?? null,
-			})
-			if (dispatched.kind !== 'context') {
-				throw new McpCallerError(
-					'No execution context you operate took this publish build.',
-				)
-			}
-			return {
-				...common,
-				status: 'sealed' as const,
-				context_name: dispatched.contextName,
-			}
 		},
 	},
 )
+
+type CreateArgs = z.infer<typeof inputSchema>
+
+const createBuild = Effect.fn('PackagePublishBuildCreate.handler')(function* (
+	args: CreateArgs,
+	ctx: CapabilityContext,
+) {
+	const env = yield* WorkerEnv
+	const db = yield* D1
+	const user = requireMcpUser(ctx.callerContext)
+	const request = requireMcpRequest(ctx.callerContext)
+	if (!(yield* isPublishOffloadEnabledFor(user.userId, request.org.id))) {
+		return yield* new PublishOffloadDisabled({
+			message:
+				'Publishing a build made outside Kody cloud needs the publish-offload feature flag, which is off for this account.',
+		})
+	}
+	if (
+		args.origin === 'context' &&
+		!(yield* fromD1Promise('execution_contexts.flag', () =>
+			isExecutionContextsEnabledFor(db.database(), user.userId, request.org.id),
+		))
+	) {
+		return yield* new PublishContextFlagsOff({
+			message: publishContextFlagsOffMessage,
+		})
+	}
+	const owner = yield* outbound('package_registry.resolve_owner', () =>
+		resolvePackageOwnerContext(env, { user, request }),
+	)
+	const nameInput = args.name?.trim() || undefined
+	const { packageId, userId, name, source } = yield* outbound(
+		'package_registry.resolve_owned_source',
+		() =>
+			resolveOwnedPackageSource({
+				db: db.database(),
+				userId: owner.ownerUserId,
+				ownerScope: owner.ownerScope,
+				args: {
+					package_id: args.package_id,
+					kody_id: nameInput ?? args.kody_id?.trim() ?? undefined,
+				},
+			}),
+	)
+	yield* outbound('authorization.package_write', () =>
+		authorizePackageWrite(
+			{ env, request },
+			{ id: packageId, userId, label: name },
+		),
+	)
+	const head = yield* outbound('artifacts.source_head', () =>
+		resolveArtifactSourceHead(env, source.repo_id),
+	)
+	const commit = head.commit
+	if (!commit) {
+		return yield* new PublishBuildCreateRefused({
+			message: `Package "${name}" has no pushed commit to build. Push first.`,
+		})
+	}
+	if (args.expected_commit && args.expected_commit !== commit) {
+		return yield* new PublishBuildCreateRefused({
+			message: `Kody sees ${commit.slice(0, 12)} at the head of "${name}" (branch ${head.branch}), not your commit ${args.expected_commit.slice(0, 12)}. Nothing was built. Push that commit to the package's Kody remote and try again.`,
+		})
+	}
+	yield* purgeExpiredPublishBuilds().pipe(
+		Effect.catchTags({
+			DatabaseError: (error) =>
+				Effect.logDebug('publish_build_purge_failed', {
+					message: error.message,
+				}),
+			OutboundCallError: (error) =>
+				Effect.logDebug('publish_build_purge_failed', {
+					message: error.message,
+				}),
+		}),
+	)
+	const created = yield* createPublishBuild({
+		packageId,
+		sourceId: source.id,
+		ownerUserId: userId,
+		requesterUserId: user.userId,
+		orgId: request.org.id,
+		commit,
+		origin: args.origin,
+	})
+	const common = {
+		build_id: created.buildId,
+		package_id: packageId,
+		commit,
+		origin: args.origin,
+		upload_path: `/v1/publish-builds/${created.buildId}`,
+		source_root: source.source_root,
+		manifest_path: source.manifest_path,
+		expires_at: created.expiresAt,
+		builder_version: publishBuilderVersion,
+		chunk_bytes: publishOffloadLimits.chunkBytes,
+		max_source_bytes: publishOffloadLimits.maxSourceBytes,
+		max_target_bytes: publishOffloadLimits.maxTargetBytes,
+		docs_url: publishLargePackagesDocsUrl,
+	}
+	if (args.origin === 'cli') {
+		return {
+			...common,
+			status: 'uploading' as const,
+			upload_ticket: created.ticket,
+		}
+	}
+	const dispatched = yield* dispatchContextPublishBuild({
+		callerContext: ctx.callerContext,
+		request,
+		buildId: created.buildId,
+		ticket: created.ticket,
+		uploadPath: common.upload_path,
+		packageId,
+		packageName: name,
+		repoId: source.repo_id,
+		commit,
+		sourceRoot: source.source_root,
+		manifestPath: source.manifest_path,
+		context: args.context ?? null,
+	})
+	if (dispatched.kind !== 'context') {
+		return yield* new PublishBuildCreateRefused({
+			message: 'No execution context you operate took this publish build.',
+		})
+	}
+	return {
+		...common,
+		status: 'sealed' as const,
+		context_name: dispatched.contextName,
+	}
+})

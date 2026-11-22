@@ -1,8 +1,12 @@
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { McpCallerError } from '#mcp/caller-error.ts'
+import { Effect, Option, Predicate } from 'effect'
+import { D1, sql } from '#worker/effect/d1.ts'
+import { outbound } from '#worker/effect/outbound.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import { routePublishBuild } from '#worker/execution-contexts/route-publish-build.ts'
 import { resolveArtifactSourceRepo } from '#worker/repo/artifacts.ts'
+import { PublishContextBuildFailed } from './errors.ts'
 import {
 	publishBuildCloneTokenTtlSeconds,
 	publishOffloadLimits,
@@ -10,14 +14,28 @@ import {
 import { getPublishBuild } from './store.ts'
 import { publishBuilderVersion } from './types.ts'
 
+export type ContextDispatchResult =
+	| { kind: 'cloud' }
+	| { kind: 'context'; contextName: string }
+
+function resultText(content: ReadonlyArray<unknown>) {
+	return content
+		.map((part) =>
+			Predicate.hasProperty(part, 'text') ? String(part.text) : '',
+		)
+		.join('\n')
+		.trim()
+}
+
 /**
  * Build on an execution context the publisher operates. The context clones
  * with a freshly minted read-only token for this one repo (valid ~5
  * minutes, sent only inside the run request), never the operator's CLI
  * login, and uploads with the per-build ticket.
  */
-export async function dispatchContextPublishBuild(input: {
-	env: Env
+export const dispatchContextPublishBuild = Effect.fn(
+	'PublishOffload.dispatchContextBuild',
+)(function* (input: {
 	callerContext: McpCallerContext
 	request: RequestContext
 	buildId: string
@@ -32,15 +50,22 @@ export async function dispatchContextPublishBuild(input: {
 	context: string | null
 	/** Follow the chain to Kody cloud instead of failing (default publish). */
 	fallbackToCloud?: boolean
-}): Promise<{ kind: 'cloud' } | { kind: 'context'; contextName: string }> {
-	const repo = await resolveArtifactSourceRepo(input.env, input.repoId)
-	const info = await repo.info()
+}) {
+	const env = yield* WorkerEnv
+	const db = yield* D1
+	const repo = yield* outbound('artifacts.resolve_repo', () =>
+		resolveArtifactSourceRepo(env, input.repoId),
+	)
+	const info = yield* outbound('artifacts.repo_info', () => repo.info())
 	if (!info) {
-		throw new McpCallerError(`Package "${input.packageName}" has no git repo.`)
+		return yield* new PublishContextBuildFailed({
+			message: `Package "${input.packageName}" has no git repo.`,
+		})
 	}
-	const token = await repo.createToken('read', publishBuildCloneTokenTtlSeconds)
-	const routed = await routePublishBuild({
-		env: input.env,
+	const token = yield* outbound('artifacts.create_token', () =>
+		repo.createToken('read', publishBuildCloneTokenTtlSeconds),
+	)
+	const routed = yield* routePublishBuild({
 		request: input.request,
 		apiUrl: input.callerContext.baseUrl,
 		context: input.context,
@@ -66,30 +91,32 @@ export async function dispatchContextPublishBuild(input: {
 		},
 		...(input.fallbackToCloud ? { fallbackToCloud: true } : {}),
 	})
-	if (routed.kind === 'cloud') return routed
+	if (routed.kind === 'cloud') {
+		const result: ContextDispatchResult = routed
+		return result
+	}
 	if (routed.result.isError) {
-		const text = routed.result.content
-			.map((part) =>
-				part && typeof part === 'object' && 'text' in part
-					? String((part as { text: unknown }).text)
-					: '',
-			)
-			.join('\n')
-			.trim()
-		throw new McpCallerError(
-			`The publish build on ${routed.contextName} failed: ${text || 'no details'}`,
-		)
+		return yield* new PublishContextBuildFailed({
+			message: `The publish build on ${routed.contextName} failed: ${resultText(routed.result.content) || 'no details'}`,
+		})
 	}
-	const row = await getPublishBuild(input.env.APP_DB, input.buildId)
-	if (row?.status !== 'sealed') {
-		throw new McpCallerError(
-			`The publish build on ${routed.contextName} finished without sealing its upload.`,
-		)
+	const row = yield* getPublishBuild(input.buildId)
+	if (Option.getOrUndefined(row)?.status !== 'sealed') {
+		return yield* new PublishContextBuildFailed({
+			message: `The publish build on ${routed.contextName} finished without sealing its upload.`,
+		})
 	}
-	await input.env.APP_DB.prepare(
-		`UPDATE publish_builds SET context_name = ? WHERE id = ?`,
+	yield* db.run(
+		'publish_builds.set_context_name',
+		sql(
+			`UPDATE publish_builds SET context_name = ? WHERE id = ?`,
+			routed.contextName,
+			input.buildId,
+		),
 	)
-		.bind(routed.contextName, input.buildId)
-		.run()
-	return { kind: 'context', contextName: routed.contextName }
-}
+	const result: ContextDispatchResult = {
+		kind: 'context',
+		contextName: routed.contextName,
+	}
+	return result
+})

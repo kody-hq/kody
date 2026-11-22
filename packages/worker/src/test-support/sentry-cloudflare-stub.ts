@@ -76,3 +76,11 @@ export function withSentry<THandler>(
 ) {
 	return handler
 }
+
+export function startInactiveSpan(_options: unknown) {
+	return {
+		setAttribute(_key: string, _value: unknown) {},
+		setStatus(_status: unknown) {},
+		end(_endTime?: number) {},
+	}
+}

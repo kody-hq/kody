@@ -211,6 +211,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run typecheck
 
+      - name: 🧪 Effect check
+        if: ${{ !cancelled() }}
+        run: npm run effect:check
+
       - name: 🧾 Generated worker types
         if: ${{ !cancelled() }}
         run: npm run generate-types:check

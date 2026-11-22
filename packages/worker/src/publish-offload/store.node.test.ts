@@ -6,6 +6,7 @@ import {
 	d1ImportMaxStatementBytes,
 	utf8ByteLength,
 } from '@kody-internal/shared/backup-restore-safety.ts'
+import { runPublishOffload } from '#worker/test-support/publish-offload-effect.ts'
 import { publishBuildRetentionMs } from './policy.ts'
 import {
 	publishBuildBlobKey,
@@ -49,7 +50,10 @@ test('seal and finish preserve their source restrictions including committed rew
 			.prepare(`INSERT INTO publish_builds (id, status) VALUES (?, ?)`)
 			.run(status, status)
 		expect(
-			await sealPublishBuild({ db, bucket, buildId: status, document }),
+			await runPublishOffload(sealPublishBuild({ buildId: status, document }), {
+				db,
+				bucket,
+			}),
 		).toBe(status === 'uploading')
 	}
 	for (const target of ['committed', 'rejected'] as const) {
@@ -57,7 +61,10 @@ test('seal and finish preserve their source restrictions including committed rew
 			sqlite
 				.prepare(`UPDATE publish_builds SET status = ? WHERE id = ?`)
 				.run(source, source)
-			await finishPublishBuild({ db, buildId: source, status: target })
+			await runPublishOffload(
+				finishPublishBuild({ buildId: source, status: target }),
+				{ db },
+			)
 			expect(
 				sqlite
 					.prepare(`SELECT status FROM publish_builds WHERE id = ?`)
@@ -68,9 +75,15 @@ test('seal and finish preserve their source restrictions including committed rew
 		}
 	}
 	expect(
-		await sealPublishBuild({ db, bucket, buildId: 'missing', document }),
+		await runPublishOffload(
+			sealPublishBuild({ buildId: 'missing', document }),
+			{ db, bucket },
+		),
 	).toBe(false)
-	await finishPublishBuild({ db, buildId: 'missing', status: 'rejected' })
+	await runPublishOffload(
+		finishPublishBuild({ buildId: 'missing', status: 'rejected' }),
+		{ db },
+	)
 })
 
 function fakeDb(rows: Array<{ id: string; status: string }>) {
@@ -119,7 +132,7 @@ test('expired builds lose their chunks; committed rows stay for build origin', a
 		publishBuildBlobKey('pb_live', 'c'.repeat(64)),
 	])
 	const now = Date.parse('2026-11-03T12:00:00Z')
-	const purged = await purgeExpiredPublishBuilds({
+	const purged = await runPublishOffload(purgeExpiredPublishBuilds(), {
 		db: db as unknown as D1Database,
 		bucket: bucket as unknown as R2Bucket,
 		now,
@@ -162,12 +175,13 @@ test('a sealed document too large for a D1 import statement stays in R2', async 
 	)
 
 	expect(
-		await sealPublishBuild({
-			db,
-			bucket: bucket as unknown as R2Bucket,
-			buildId: 'pb_big',
-			document,
-		}),
+		await runPublishOffload(
+			sealPublishBuild({
+				buildId: 'pb_big',
+				document,
+			}),
+			{ db, bucket: bucket as unknown as R2Bucket },
+		),
 	).toBe(true)
 
 	const row = sqlite
@@ -180,10 +194,12 @@ test('a sealed document too large for a D1 import statement stays in R2', async 
 		publishBuildDocumentKey('pb_big', row.document_sha256),
 	])
 	expect(
-		await readPublishBuildDocument({
-			bucket: bucket as unknown as R2Bucket,
-			row,
-		}),
+		await runPublishOffload(
+			readPublishBuildDocument({
+				row,
+			}),
+			{ bucket: bucket as unknown as R2Bucket },
+		),
 	).toEqual(document)
 })
 
@@ -208,7 +224,7 @@ test('a committed build that still had a document before 0289 is purged after it
 	)
 	const bucket = fakeBucket([publishBuildBlobKey('pb_old', 'a'.repeat(64))])
 
-	const purged = await purgeExpiredPublishBuilds({
+	const purged = await runPublishOffload(purgeExpiredPublishBuilds(), {
 		db: createD1FromSqlite(sqlite),
 		bucket: bucket as unknown as R2Bucket,
 		now: Date.parse('2026-11-03T12:00:00Z'),

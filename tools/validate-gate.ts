@@ -36,6 +36,7 @@ const parallelValidateLegs = [
 	{ name: 'format', command: 'npm run format:check', weight: 'check' },
 	{ name: 'lint', command: 'npm run lint', weight: 'check' },
 	{ name: 'typecheck', command: 'npm run typecheck', weight: 'suite' },
+	{ name: 'effect-check', command: 'npm run effect:check', weight: 'suite' },
 	{
 		name: 'worker-types',
 		command: 'npm run generate-types:check',

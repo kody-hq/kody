@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { expect, test } from 'vitest'
 import { sha256Hex, workerLoaderModuleBytes } from './module-hashes.ts'
 import { preparePublishBuildSourceTree } from './source-tree.ts'
@@ -53,10 +54,12 @@ const tree = {
 
 test('a manifest that matches the pushed tree passes', async () => {
 	await expect(
-		verifySourceManifest({
-			serverFiles: tree,
-			claimed: await manifestFor(tree),
-		}),
+		Effect.runPromise(
+			verifySourceManifest({
+				serverFiles: tree,
+				claimed: await manifestFor(tree),
+			}),
+		),
 	).resolves.not.toThrow()
 })
 
@@ -66,15 +69,21 @@ test('a manifest from a dirty or different tree is refused', async () => {
 		'src/index.ts': 'export default 2',
 	})
 	await expect(
-		verifySourceManifest({ serverFiles: tree, claimed: edited }),
+		Effect.runPromise(
+			verifySourceManifest({ serverFiles: tree, claimed: edited }),
+		),
 	).rejects.toBeInstanceOf(PublishBuildVerificationError)
 	const extra = await manifestFor({ ...tree, 'src/extra.ts': 'x' })
 	await expect(
-		verifySourceManifest({ serverFiles: tree, claimed: extra }),
+		Effect.runPromise(
+			verifySourceManifest({ serverFiles: tree, claimed: extra }),
+		),
 	).rejects.toThrow(/src\/extra\.ts/)
 	const missing = await manifestFor({ 'package.json': tree['package.json'] })
 	await expect(
-		verifySourceManifest({ serverFiles: tree, claimed: missing }),
+		Effect.runPromise(
+			verifySourceManifest({ serverFiles: tree, claimed: missing }),
+		),
 	).rejects.toThrow(/src\/index\.ts/)
 })
 
@@ -84,20 +93,26 @@ test('the uploaded target set must equal the declared targets', async () => {
 	] as const
 	const ok = await uploadedTarget({ 'index.js': 'export default 1' })
 	expect(
-		matchUploadedTargets({ expected: expected as never, uploaded: [ok] }),
+		Effect.runSync(
+			matchUploadedTargets({ expected: expected as never, uploaded: [ok] }),
+		),
 	).toEqual([{ target: expected[0], uploaded: ok }])
 	expect(() =>
-		matchUploadedTargets({ expected: expected as never, uploaded: [] }),
+		Effect.runSync(
+			matchUploadedTargets({ expected: expected as never, uploaded: [] }),
+		),
 	).toThrow(/missing/)
 	const stray = await uploadedTarget(
 		{ 'index.js': 'x' },
 		{ entryPoint: 'src/other.ts' },
 	)
 	expect(() =>
-		matchUploadedTargets({
-			expected: expected as never,
-			uploaded: [ok, stray],
-		}),
+		Effect.runSync(
+			matchUploadedTargets({
+				expected: expected as never,
+				uploaded: [ok, stray],
+			}),
+		),
 	).toThrow(PublishBuildVerificationError)
 })
 
@@ -105,23 +120,27 @@ test('a tampered module is refused by hash', async () => {
 	const source = 'export default 1'
 	const uploaded = await uploadedTarget({ 'index.js': source })
 	await expect(
-		verifyUploadedTargetModules({
-			uploaded,
-			modules: { 'index.js': source },
-			ownPackageId: 'pkg-1',
-			linkedImports: new Map(),
-		}),
+		Effect.runPromise(
+			verifyUploadedTargetModules({
+				uploaded,
+				modules: { 'index.js': source },
+				ownPackageId: 'pkg-1',
+				linkedImports: new Map(),
+			}),
+		),
 	).resolves.toEqual({
 		totalBytes: 19,
 		referencedLinkedImports: new Set(),
 	})
 	await expect(
-		verifyUploadedTargetModules({
-			uploaded,
-			modules: { 'index.js': 'export default "evil"' },
-			ownPackageId: 'pkg-1',
-			linkedImports: new Map(),
-		}),
+		Effect.runPromise(
+			verifyUploadedTargetModules({
+				uploaded,
+				modules: { 'index.js': 'export default "evil"' },
+				ownPackageId: 'pkg-1',
+				linkedImports: new Map(),
+			}),
+		),
 	).rejects.toBeInstanceOf(PublishBuildVerificationError)
 })
 
@@ -148,12 +167,14 @@ test('a bundle that still imports kody:runtime or a kody: package is refused for
 				},
 			)
 			await expect(
-				verifyUploadedTargetModules({
-					uploaded,
-					modules: { 'bundle.js': source },
-					ownPackageId: 'pkg-1',
-					linkedImports: new Map(),
-				}),
+				Effect.runPromise(
+					verifyUploadedTargetModules({
+						uploaded,
+						modules: { 'bundle.js': source },
+						ownPackageId: 'pkg-1',
+						linkedImports: new Map(),
+					}),
+				),
 			).rejects.toThrow(
 				/module "bundle\.js" of "[^"]+" still imports "kody:[^"]+"\. A build rewrites kody: imports to modules Kody supplies at load time, and this one did not, so the bundle would fail to load\. Update the Kody CLI/,
 			)
@@ -162,17 +183,19 @@ test('a bundle that still imports kody:runtime or a kody: package is refused for
 	const rewritten =
 		'import { packageContext } from "./.__kody_virtual__/runtime.js"\nexport default "kody:runtime is only a string here"'
 	await expect(
-		verifyUploadedTargetModules({
-			uploaded: await uploadedTarget(
-				{ 'bundle.js': rewritten },
-				{
-					mainModule: 'bundle.js',
-				},
-			),
-			modules: { 'bundle.js': rewritten },
-			ownPackageId: 'pkg-1',
-			linkedImports: new Map(),
-		}),
+		Effect.runPromise(
+			verifyUploadedTargetModules({
+				uploaded: await uploadedTarget(
+					{ 'bundle.js': rewritten },
+					{
+						mainModule: 'bundle.js',
+					},
+				),
+				modules: { 'bundle.js': rewritten },
+				ownPackageId: 'pkg-1',
+				linkedImports: new Map(),
+			}),
+		),
 	).resolves.toMatchObject({ referencedLinkedImports: new Set() })
 })
 
@@ -184,22 +207,26 @@ test('unsafe module paths and a missing main module are refused', async () => {
 	]) {
 		const uploaded = await uploadedTarget({ 'index.js': 'a', [path]: 'b' })
 		await expect(
-			verifyUploadedTargetModules({
-				uploaded,
-				modules: { 'index.js': 'a', [path]: 'b' },
-				ownPackageId: 'pkg-1',
-				linkedImports: new Map(),
-			}),
+			Effect.runPromise(
+				verifyUploadedTargetModules({
+					uploaded,
+					modules: { 'index.js': 'a', [path]: 'b' },
+					ownPackageId: 'pkg-1',
+					linkedImports: new Map(),
+				}),
+			),
 		).rejects.toBeInstanceOf(PublishBuildVerificationError)
 	}
 	const noMain = await uploadedTarget({ 'other.js': 'a' })
 	await expect(
-		verifyUploadedTargetModules({
-			uploaded: noMain,
-			modules: { 'other.js': 'a' },
-			ownPackageId: 'pkg-1',
-			linkedImports: new Map(),
-		}),
+		Effect.runPromise(
+			verifyUploadedTargetModules({
+				uploaded: noMain,
+				modules: { 'other.js': 'a' },
+				ownPackageId: 'pkg-1',
+				linkedImports: new Map(),
+			}),
+		),
 	).rejects.toThrow(/main module/i)
 })
 
@@ -236,7 +263,9 @@ test('the builder manifest matches the server snapshot for binaries and .kodyign
 	// The server's published snapshot of the same commit: ignored files are
 	// dropped and the PNG is a latin1 string.
 	await expect(
-		verifySourceManifest({ serverFiles: sourceFiles, claimed: manifest }),
+		Effect.runPromise(
+			verifySourceManifest({ serverFiles: sourceFiles, claimed: manifest }),
+		),
 	).resolves.not.toThrow()
 })
 
@@ -341,12 +370,14 @@ for (const [label, source] of [
 	test(`binding checks refuse ${label}`, async () => {
 		const uploaded = await uploadedTarget({ 'index.js': source })
 		await expect(
-			verifyUploadedTargetModules({
-				uploaded,
-				modules: { 'index.js': source },
-				ownPackageId: 'pkg-1',
-				linkedImports: new Map(),
-			}),
+			Effect.runPromise(
+				verifyUploadedTargetModules({
+					uploaded,
+					modules: { 'index.js': source },
+					ownPackageId: 'pkg-1',
+					linkedImports: new Map(),
+				}),
+			),
 		).rejects.toBeInstanceOf(PublishBuildVerificationError)
 	})
 }
@@ -359,12 +390,14 @@ test('a module re-exporting the runtime namespace is refused even when another m
 	}
 	const uploaded = await uploadedTarget(modules)
 	await expect(
-		verifyUploadedTargetModules({
-			uploaded,
-			modules,
-			ownPackageId: 'pkg-1',
-			linkedImports: new Map(),
-		}),
+		Effect.runPromise(
+			verifyUploadedTargetModules({
+				uploaded,
+				modules,
+				ownPackageId: 'pkg-1',
+				linkedImports: new Map(),
+			}),
+		),
 	).rejects.toThrow(/re-exports a Kody platform module/)
 })
 
@@ -378,12 +411,14 @@ test('CommonJS uploads are refused', async () => {
 		chunks: [],
 	}
 	await expect(
-		verifyUploadedTargetModules({
-			uploaded,
-			modules: { 'index.js': module },
-			ownPackageId: 'pkg-1',
-			linkedImports: new Map(),
-		}),
+		Effect.runPromise(
+			verifyUploadedTargetModules({
+				uploaded,
+				modules: { 'index.js': module },
+				ownPackageId: 'pkg-1',
+				linkedImports: new Map(),
+			}),
+		),
 	).rejects.toThrow(/CommonJS/)
 })
 
@@ -398,12 +433,14 @@ test('binding checks accept the bundler output for the package itself', async ()
 	].join('\n')
 	const uploaded = await uploadedTarget({ 'index.js': source })
 	await expect(
-		verifyUploadedTargetModules({
-			uploaded,
-			modules: { 'index.js': source },
-			ownPackageId: 'pkg-1',
-			linkedImports: new Map(),
-		}),
+		Effect.runPromise(
+			verifyUploadedTargetModules({
+				uploaded,
+				modules: { 'index.js': source },
+				ownPackageId: 'pkg-1',
+				linkedImports: new Map(),
+			}),
+		),
 	).resolves.toEqual({
 		totalBytes: 444,
 		referencedLinkedImports: new Set(),
@@ -419,12 +456,14 @@ test('an upload may import the linked placeholders the source imports', async ()
 		'export default async () => await list();',
 	].join('\n')
 	const uploaded = await uploadedTarget({ 'index.js': source })
-	const result = await verifyUploadedTargetModules({
-		uploaded,
-		modules: { 'index.js': source },
-		ownPackageId: 'pkg-1',
-		linkedImports,
-	})
+	const result = await Effect.runPromise(
+		verifyUploadedTargetModules({
+			uploaded,
+			modules: { 'index.js': source },
+			ownPackageId: 'pkg-1',
+			linkedImports,
+		}),
+	)
 	expect([...result.referencedLinkedImports]).toEqual([linkedNotes])
 })
 
@@ -436,12 +475,14 @@ test('an upload may use linked placeholders as namespaces, re-exports and dynami
 		'export const load = () => import("./.__kody_linked__/@them__notes/list.js");',
 	].join('\n')
 	const uploaded = await uploadedTarget({ 'index.js': source })
-	const result = await verifyUploadedTargetModules({
-		uploaded,
-		modules: { 'index.js': source },
-		ownPackageId: 'pkg-1',
-		linkedImports,
-	})
+	const result = await Effect.runPromise(
+		verifyUploadedTargetModules({
+			uploaded,
+			modules: { 'index.js': source },
+			ownPackageId: 'pkg-1',
+			linkedImports,
+		}),
+	)
 	expect([...result.referencedLinkedImports]).toEqual([linkedNotes])
 })
 
@@ -511,12 +552,14 @@ for (const [label, modules, message] of [
 	test(`an upload is refused for ${label}`, async () => {
 		const uploaded = await uploadedTarget(modules)
 		await expect(
-			verifyUploadedTargetModules({
-				uploaded,
-				modules: { ...modules },
-				ownPackageId: 'pkg-1',
-				linkedImports,
-			}),
+			Effect.runPromise(
+				verifyUploadedTargetModules({
+					uploaded,
+					modules: { ...modules },
+					ownPackageId: 'pkg-1',
+					linkedImports,
+				}),
+			),
 		).rejects.toThrow(message)
 	})
 }
@@ -531,9 +574,19 @@ test('targets that share a build must upload the same bytes', () => {
 		modules: { 'bundle.js': { sha256, size: 10, chunks: [sha256] } },
 	})
 	expect(() =>
-		assertSameBuildUploadMatches({ kept: upload('a'), uploaded: upload('a') }),
+		Effect.runSync(
+			assertSameBuildUploadMatches({
+				kept: upload('a'),
+				uploaded: upload('a'),
+			}),
+		),
 	).not.toThrow()
 	expect(() =>
-		assertSameBuildUploadMatches({ kept: upload('a'), uploaded: upload('b') }),
+		Effect.runSync(
+			assertSameBuildUploadMatches({
+				kept: upload('a'),
+				uploaded: upload('b'),
+			}),
+		),
 	).toThrow(PublishBuildVerificationError)
 })

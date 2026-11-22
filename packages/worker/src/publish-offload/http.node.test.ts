@@ -1,4 +1,6 @@
+import { Effect, Option } from 'effect'
 import { beforeEach, expect, test, vi } from 'vitest'
+import { PublishBuildTicketInvalid } from './errors.ts'
 import { sha256Hex } from './module-hashes.ts'
 
 const row = {
@@ -10,14 +12,21 @@ const row = {
 }
 const sealed = vi.fn()
 
-vi.mock('./store.ts', () => ({
-	authenticatePublishBuildTicket: async (input: { ticket: string | null }) =>
-		input.ticket === 'kpb_good' ? row : null,
+import type * as Store from './store.ts'
+
+vi.mock('./store.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof Store>()),
+	authenticatePublishBuildTicket: (input: { ticket: string | null }) =>
+		input.ticket === 'kpb_good'
+			? Effect.succeed(row)
+			: Effect.fail(new PublishBuildTicketInvalid()),
+	getPublishBuild: () => Effect.succeed(Option.some(row)),
 	publishBuildBlobKey: (buildId: string, sha: string) =>
 		`publish-builds/${buildId}/blobs/${sha}`,
 	publishBuildBlobPrefix: (buildId: string) =>
 		`publish-builds/${buildId}/blobs/`,
-	sealPublishBuild: (input: unknown) => sealed(input),
+	sealPublishBuild: (input: unknown) =>
+		Effect.sync(() => sealed(input) ?? true),
 }))
 
 const { handlePublishBuildRoute } = await import('./http.ts')

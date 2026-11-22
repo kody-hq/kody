@@ -1,11 +1,15 @@
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
-import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import { Effect, Exit, Option, Schema } from 'effect'
+import { fromD1Promise, D1 } from '#worker/effect/d1.ts'
+import { outbound } from '#worker/effect/outbound.ts'
+import { WorkerEnv } from '#worker/effect/worker-env.ts'
 import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
 import { getChain } from '#worker/execution-contexts/store.ts'
 import { packagePublishDefinitionSchema } from '#worker/package-registry/types.ts'
 import { readArtifactFileAtCommit } from '#worker/repo/artifact-file.ts'
 import { dispatchContextPublishBuild } from './context-dispatch.ts'
+import { PublishBindingUnavailable, PublishContextFlagsOff } from './errors.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { createPublishBuild, discardUnstartedPublishBuild } from './store.ts'
 
@@ -41,17 +45,17 @@ export type PublishRouteBuildResult =
 	| { kind: 'cloud' }
 	| { kind: 'context'; buildId: string; contextName: string }
 
-export type PublishRouteDeps = {
+export type PublishRouteDeps<E = never, R = never> = {
 	/** `execution-contexts` and `publish-offload` are both on for the publisher. */
-	flagsEnabled: () => Promise<boolean>
+	flagsEnabled: () => Effect.Effect<boolean, E, R>
 	/** `kody.publish.execution.context` at the commit being published. */
-	readBoundContext: () => Promise<string | null>
+	readBoundContext: () => Effect.Effect<string | null, E, R>
 	/** False only for a non-strict chain with no contexts (cloud only). */
-	chainMayUseContexts: () => Promise<boolean>
+	chainMayUseContexts: () => Effect.Effect<boolean, E, R>
 	buildOnContext: (input: {
 		context: string | null
 		fallbackToCloud: boolean
-	}) => Promise<PublishRouteBuildResult>
+	}) => Effect.Effect<PublishRouteBuildResult, E, R>
 }
 
 export const publishContextFlagsOffMessage =
@@ -74,63 +78,66 @@ export function publishBindingUnavailableMessage(input: {
 	].join(' ')
 }
 
-export async function decidePublishRoute(input: {
+export function decidePublishRoute<E, R>(input: {
 	requestedContext: string | null | undefined
 	packageRef: string
-	deps: PublishRouteDeps
-}): Promise<PublishRoute> {
-	const requested = input.requestedContext?.trim() || null
-	if (requested === 'cloud') return { kind: 'cloud', via: 'requested' }
-	if (!(await input.deps.flagsEnabled())) {
-		if (requested) {
-			throw new ExecutionContextError({
-				status: 403,
-				code: 'feature_disabled',
-				message: publishContextFlagsOffMessage,
-			})
+	deps: PublishRouteDeps<E, R>
+}): Effect.Effect<
+	PublishRoute,
+	E | PublishContextFlagsOff | PublishBindingUnavailable,
+	R
+> {
+	return Effect.gen(function* () {
+		const requested = input.requestedContext?.trim() || null
+		const route = (value: PublishRoute) => value
+		if (requested === 'cloud') return route({ kind: 'cloud', via: 'requested' })
+		if (!(yield* input.deps.flagsEnabled())) {
+			if (requested) {
+				return yield* new PublishContextFlagsOff({
+					message: publishContextFlagsOffMessage,
+				})
+			}
+			return route({ kind: 'cloud', via: 'flags_off' })
 		}
-		return { kind: 'cloud', via: 'flags_off' }
-	}
-	if (requested) {
-		const built = await input.deps.buildOnContext({
-			context: requested,
-			fallbackToCloud: false,
-		})
-		return built.kind === 'context'
-			? { ...built, via: 'requested' }
-			: { kind: 'cloud', via: 'requested' }
-	}
-	const bound = await input.deps.readBoundContext()
-	if (bound === 'cloud') return { kind: 'cloud', via: 'bound' }
-	if (bound) {
-		let built: PublishRouteBuildResult
-		try {
-			built = await input.deps.buildOnContext({
-				context: bound,
+		if (requested) {
+			const built = yield* input.deps.buildOnContext({
+				context: requested,
 				fallbackToCloud: false,
 			})
-		} catch (error) {
-			throw bindingUnavailable(input.packageRef, bound, errorText(error))
+			return built.kind === 'context'
+				? route({ ...built, via: 'requested' })
+				: route({ kind: 'cloud', via: 'requested' })
 		}
-		if (built.kind !== 'context') {
-			throw bindingUnavailable(
-				input.packageRef,
-				bound,
-				'it did not take the publish build',
-			)
+		const bound = yield* input.deps.readBoundContext()
+		if (bound === 'cloud') return route({ kind: 'cloud', via: 'bound' })
+		if (bound) {
+			const built = yield* input.deps
+				.buildOnContext({ context: bound, fallbackToCloud: false })
+				.pipe(
+					Effect.mapError((error) =>
+						bindingUnavailable(input.packageRef, bound, errorText(error)),
+					),
+				)
+			if (built.kind !== 'context') {
+				return yield* bindingUnavailable(
+					input.packageRef,
+					bound,
+					'it did not take the publish build',
+				)
+			}
+			return route({ ...built, via: 'bound' })
 		}
-		return { ...built, via: 'bound' }
-	}
-	if (!(await input.deps.chainMayUseContexts())) {
-		return { kind: 'cloud', via: 'chain' }
-	}
-	const built = await input.deps.buildOnContext({
-		context: null,
-		fallbackToCloud: true,
-	})
-	return built.kind === 'context'
-		? { ...built, via: 'chain' }
-		: { kind: 'cloud', via: 'chain' }
+		if (!(yield* input.deps.chainMayUseContexts())) {
+			return route({ kind: 'cloud', via: 'chain' })
+		}
+		const built = yield* input.deps.buildOnContext({
+			context: null,
+			fallbackToCloud: true,
+		})
+		return built.kind === 'context'
+			? route({ ...built, via: 'chain' })
+			: route({ kind: 'cloud', via: 'chain' })
+	}).pipe(Effect.withSpan('PublishOffload.decideRoute'))
 }
 
 function bindingUnavailable(
@@ -138,11 +145,9 @@ function bindingUnavailable(
 	context: string,
 	reason: string,
 ) {
-	return new ExecutionContextError({
-		status: 409,
-		code: 'execution_context_binding_unavailable',
+	return new PublishBindingUnavailable({
 		message: publishBindingUnavailableMessage({ packageRef, context, reason }),
-		details: { context, config: publishBindingConfigPath },
+		context,
 	})
 }
 
@@ -150,23 +155,22 @@ function errorText(error: unknown) {
 	return error instanceof Error ? error.message : String(error)
 }
 
+const PublishBindingManifest = Schema.fromJsonString(
+	Schema.Struct({
+		kody: Schema.optionalKey(
+			Schema.Struct({ publish: Schema.optionalKey(Schema.Unknown) }),
+		),
+	}),
+)
+
 /** Reads `kody.publish.execution.context` from package.json text. */
 export function parsePublishBinding(manifestText: string | null) {
 	if (!manifestText) return null
-	let parsed: unknown
-	try {
-		parsed = JSON.parse(manifestText)
-	} catch {
-		return null
-	}
-	const kody =
-		parsed && typeof parsed === 'object'
-			? (parsed as { kody?: unknown }).kody
-			: null
-	const publish =
-		kody && typeof kody === 'object'
-			? (kody as { publish?: unknown }).publish
-			: undefined
+	const manifest = Schema.decodeUnknownOption(PublishBindingManifest)(
+		manifestText,
+	)
+	if (Option.isNone(manifest)) return null
+	const publish = manifest.value.kody?.publish
 	if (publish === undefined) return null
 	const result = packagePublishDefinitionSchema.safeParse(publish)
 	return result.success ? (result.data.execution?.context ?? null) : null
@@ -174,7 +178,6 @@ export function parsePublishBinding(manifestText: string | null) {
 
 /** The real dependencies for {@link decidePublishRoute}. */
 export function publishRouteDeps(input: {
-	env: Env
 	callerContext: McpCallerContext
 	request: RequestContext
 	personId: string
@@ -188,70 +191,105 @@ export function publishRouteDeps(input: {
 		manifest_path: string
 	}
 	commit: string
-}): PublishRouteDeps {
-	const db = input.env.APP_DB
+}) {
 	const orgId = input.request.org.id
-	return {
-		flagsEnabled: async () => {
-			const [contexts, offload] = await Promise.all([
-				isExecutionContextsEnabledFor(db, input.personId, orgId),
-				isPublishOffloadEnabledFor(db, input.personId, orgId),
-			])
-			return contexts && offload
-		},
-		readBoundContext: async () => {
-			const bytes = await readArtifactFileAtCommit({
-				env: input.env,
-				repoId: input.source.repo_id,
-				commit: input.commit,
-				filePath: input.source.manifest_path,
-			})
-			return parsePublishBinding(bytes ? new TextDecoder().decode(bytes) : null)
-		},
-		chainMayUseContexts: async () => {
-			const chain = await getChain(db, { orgId, userId: input.personId })
-			return (
-				chain.strict || chain.entries.some((entry) => entry.kind === 'context')
+	const deps = {
+		flagsEnabled: Effect.fn('PublishRoute.flagsEnabled')(function* () {
+			const db = yield* D1
+			const [contexts, offload] = yield* Effect.all(
+				[
+					fromD1Promise('execution_contexts.flag', () =>
+						isExecutionContextsEnabledFor(db.database(), input.personId, orgId),
+					),
+					isPublishOffloadEnabledFor(input.personId, orgId),
+				],
+				{ concurrency: 'unbounded' },
 			)
-		},
-		buildOnContext: async ({ context, fallbackToCloud }) => {
-			const created = await createPublishBuild({
-				db,
-				packageId: input.packageId,
-				sourceId: input.source.id,
-				ownerUserId: input.ownerUserId,
-				requesterUserId: input.personId,
-				orgId,
-				commit: input.commit,
-				origin: 'context',
-			})
-			// A failed build is left for the expiry sweep, which also drops any
-			// chunks it uploaded.
-			const dispatched = await dispatchContextPublishBuild({
-				env: input.env,
-				callerContext: input.callerContext,
-				request: input.request,
-				buildId: created.buildId,
-				ticket: created.ticket,
-				uploadPath: `/v1/publish-builds/${created.buildId}`,
-				packageId: input.packageId,
-				packageName: input.packageName,
-				repoId: input.source.repo_id,
-				commit: input.commit,
-				sourceRoot: input.source.source_root,
-				manifestPath: input.source.manifest_path,
-				context,
-				fallbackToCloud,
-			})
-			if (dispatched.kind === 'cloud') {
-				await discardUnstartedPublishBuild(db, created.buildId).catch(() => {})
-				return { kind: 'cloud' }
-			}
-			return {
-				kind: 'context',
-				buildId: created.buildId,
-				contextName: dispatched.contextName,
-			}
-		},
+			return contexts && offload
+		}),
+		readBoundContext: Effect.fn('PublishRoute.readBoundContext')(function* () {
+			const env = yield* WorkerEnv
+			const bytes = yield* outbound('artifacts.read_file_at_commit', () =>
+				readArtifactFileAtCommit({
+					env,
+					repoId: input.source.repo_id,
+					commit: input.commit,
+					filePath: input.source.manifest_path,
+				}),
+			)
+			return parsePublishBinding(bytes ? new TextDecoder().decode(bytes) : null)
+		}),
+		chainMayUseContexts: Effect.fn('PublishRoute.chainMayUseContexts')(
+			function* () {
+				const db = yield* D1
+				const chain = yield* fromD1Promise('execution_contexts.chain', () =>
+					getChain(db.database(), { orgId, userId: input.personId }),
+				)
+				return (
+					chain.strict ||
+					chain.entries.some((entry) => entry.kind === 'context')
+				)
+			},
+		),
+		buildOnContext: Effect.fn('PublishRoute.buildOnContext')(function* ({
+			context,
+			fallbackToCloud,
+		}: {
+			context: string | null
+			fallbackToCloud: boolean
+		}) {
+			// A build Kody cloud took instead is discarded on the way out; a
+			// failed build is left for the expiry sweep, which also drops any
+			// chunks a context may still be uploading.
+			return yield* Effect.acquireUseRelease(
+				createPublishBuild({
+					packageId: input.packageId,
+					sourceId: input.source.id,
+					ownerUserId: input.ownerUserId,
+					requesterUserId: input.personId,
+					orgId,
+					commit: input.commit,
+					origin: 'context',
+				}),
+				(created) =>
+					dispatchContextPublishBuild({
+						callerContext: input.callerContext,
+						request: input.request,
+						buildId: created.buildId,
+						ticket: created.ticket,
+						uploadPath: `/v1/publish-builds/${created.buildId}`,
+						packageId: input.packageId,
+						packageName: input.packageName,
+						repoId: input.source.repo_id,
+						commit: input.commit,
+						sourceRoot: input.source.source_root,
+						manifestPath: input.source.manifest_path,
+						context,
+						fallbackToCloud,
+					}).pipe(
+						Effect.map((dispatched): PublishRouteBuildResult =>
+							dispatched.kind === 'cloud'
+								? { kind: 'cloud' }
+								: {
+										kind: 'context',
+										buildId: created.buildId,
+										contextName: dispatched.contextName,
+									},
+						),
+					),
+				(created, exit) =>
+					Exit.isSuccess(exit) && exit.value.kind === 'cloud'
+						? discardUnstartedPublishBuild(created.buildId).pipe(
+								Effect.catchTag('DatabaseError', (error) =>
+									Effect.logDebug('publish_build_discard_failed', {
+										buildId: created.buildId,
+										message: error.message,
+									}),
+								),
+							)
+						: Effect.void,
+			)
+		}),
 	}
+	return deps
 }

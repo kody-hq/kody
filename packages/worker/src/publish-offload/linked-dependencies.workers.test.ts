@@ -1,3 +1,5 @@
+import { Effect } from 'effect'
+import { runPublishOffload } from '#worker/test-support/publish-offload-effect.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -326,24 +328,30 @@ async function commitUploadedTarget(input: {
 	uploaded: PublishBuildTargetEntry
 	modules: WorkerLoaderModules
 }) {
-	const linkedImports = await collectLinkedPackageImports({
-		sourceFiles: importerFiles,
-		entryPoint: input.uploaded.entryPoint,
-	})
-	const { referencedLinkedImports } = await verifyUploadedTargetModules({
-		uploaded: input.uploaded,
-		modules: input.modules,
-		ownPackageId: input.ownPackageId,
-		linkedImports,
-	})
-	const linked = await linkUploadedPackageImports({
-		env,
-		baseUrl,
-		userId: input.userId,
-		modules: input.modules,
-		linkedImports,
-		referenced: referencedLinkedImports,
-	})
+	const linkedImports = await Effect.runPromise(
+		collectLinkedPackageImports({
+			sourceFiles: importerFiles,
+			entryPoint: input.uploaded.entryPoint,
+		}),
+	)
+	const { referencedLinkedImports } = await Effect.runPromise(
+		verifyUploadedTargetModules({
+			uploaded: input.uploaded,
+			modules: input.modules,
+			ownPackageId: input.ownPackageId,
+			linkedImports,
+		}),
+	)
+	const linked = await runPublishOffload(
+		linkUploadedPackageImports({
+			baseUrl,
+			userId: input.userId,
+			modules: input.modules,
+			linkedImports,
+			referenced: referencedLinkedImports,
+		}),
+		{ env },
+	)
 	const dependencies = await resolveKodyDependenciesForEntryPoint({
 		env,
 		baseUrl,
@@ -485,31 +493,37 @@ test(
 	async () => {
 		const { userId, notes, reader } = await setup()
 		const built = await buildOffWorker(userId, reader.packageId)
-		const linkedImports = await collectLinkedPackageImports({
-			sourceFiles: importerFiles,
-			entryPoint: built.target.entryPoint,
-		})
-		const { referencedLinkedImports } = await verifyUploadedTargetModules({
-			uploaded: await uploadedEntry(built),
-			modules: built.modules,
-			ownPackageId: reader.packageId,
-			linkedImports,
-		})
+		const linkedImports = await Effect.runPromise(
+			collectLinkedPackageImports({
+				sourceFiles: importerFiles,
+				entryPoint: built.target.entryPoint,
+			}),
+		)
+		const { referencedLinkedImports } = await Effect.runPromise(
+			verifyUploadedTargetModules({
+				uploaded: await uploadedEntry(built),
+				modules: built.modules,
+				ownPackageId: reader.packageId,
+				linkedImports,
+			}),
+		)
 		const artifactCache: LinkedDependencyArtifactCache = new Map()
 		const measured: Array<{ path: string; bytes: number }> = []
 		const link = (cache?: LinkedDependencyArtifactCache) =>
-			linkUploadedPackageImports({
-				env,
-				baseUrl,
-				userId,
-				modules: built.modules,
-				linkedImports,
-				referenced: referencedLinkedImports,
-				...(cache ? { artifactCache: cache } : {}),
-				onArtifact: async (artifact) => {
-					measured.push(artifact)
-				},
-			})
+			runPublishOffload(
+				linkUploadedPackageImports({
+					baseUrl,
+					userId,
+					modules: built.modules,
+					linkedImports,
+					referenced: referencedLinkedImports,
+					...(cache ? { artifactCache: cache } : {}),
+					onArtifact: async (artifact) => {
+						measured.push(artifact)
+					},
+				}),
+				{ env },
+			)
 		const first = await link(artifactCache)
 		const linkedSources = Object.values(first.modules)
 			.map((module) => JSON.stringify(module))

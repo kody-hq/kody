@@ -1,4 +1,5 @@
 import type { PublishBuildOrigin } from './policy.ts'
+import type * as Schemas from './schemas.ts'
 
 export type { PublishBuildStatus } from './publish-build-state.ts'
 
@@ -9,37 +10,19 @@ export type { PublishBuildStatus } from './publish-build-state.ts'
  */
 export const publishBuilderVersion = 2
 
-export type PublishBuildFileEntry = {
-	path: string
-	size: number
-	sha256: string
-}
+export type PublishBuildFileEntry = typeof Schemas.PublishBuildFileEntry.Type
 
-export type PublishBuildModuleEntry = {
-	sha256: string
-	size: number
-	/** Content-addressed chunks (sha256 hex), in order, that make the module. */
-	chunks: Array<string>
-}
+export type PublishBuildModuleEntry =
+	typeof Schemas.PublishBuildModuleEntry.Type
 
-export type PublishBuildTargetEntry = {
-	kind: string
-	bundleKind: 'app' | 'app-client' | 'module' | 'importable-module'
-	artifactName: string | null
-	entryPoint: string
-	mainModule: string
-	modules: Record<string, PublishBuildModuleEntry>
-}
+/** Mutable `modules` so a builder can fill the record it seals. */
+export type PublishBuildTargetEntry = Omit<
+	typeof Schemas.PublishBuildTargetEntry.Type,
+	'modules'
+> & { modules: Record<string, PublishBuildModuleEntry> }
 
 /** What a builder seals: the tree it built and every target it produced. */
-export type PublishBuildDocument = {
-	builderVersion: number
-	commit: string
-	files: Array<PublishBuildFileEntry>
-	targets: Array<PublishBuildTargetEntry>
-	/** Builder timing, shown to the publisher; never trusted. */
-	buildMs?: number
-}
+export type PublishBuildDocument = typeof Schemas.PublishBuildDocument.Type
 
 export type UploadedPublishBuildRef = {
 	buildId: string

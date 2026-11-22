@@ -953,6 +953,7 @@ test('durable re-entry finalizes an uploaded build without the upload bucket bin
 				commit_sha: 'commit-new',
 				status: 'sealed',
 				document_sha256: 'a'.repeat(64),
+				message: null,
 				origin: 'cli',
 				context_name: null,
 			}

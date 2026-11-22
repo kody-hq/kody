@@ -1,42 +1,27 @@
 import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
-import { McpCallerError } from '#worker/mcp/caller-error.ts'
+import { Clock, Effect, Option, Schema } from 'effect'
+import { D1, sql } from '#worker/effect/d1.ts'
+import { digestSha256Hex } from './digest.ts'
+import {
+	PublishBuildDocumentUnreadable,
+	PublishBuildRejected,
+	PublishBuildTicketInvalid,
+	PublishOffloadDisabled,
+} from './errors.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
-import { sha256Hex } from './module-hashes.ts'
 import { publishBuildState } from './publish-build-state.ts'
 import {
-	publishBuildRejectionHint,
 	publishBuildRetentionMs,
 	publishBuildTicketTtlMs,
 	type PublishBuildOrigin,
 } from './policy.ts'
-import type {
-	PublishBuildDocument,
-	PublishBuildStatus,
-	UploadedPublishBuildRef,
-} from './types.ts'
+import * as Schemas from './schemas.ts'
+import { PublishBuildBucket } from './services.ts'
+import type { PublishBuildDocument, UploadedPublishBuildRef } from './types.ts'
 
 export type { UploadedPublishBuildRef } from './types.ts'
 
-export type PublishBuildRow = {
-	id: string
-	package_id: string
-	source_id: string
-	owner_user_id: string
-	requester_user_id: string
-	org_id: string
-	commit_sha: string
-	origin: PublishBuildOrigin
-	context_id: string | null
-	context_name: string | null
-	ticket_sha256: string
-	status: PublishBuildStatus
-	document_sha256: string | null
-	message: string | null
-	created_at: string
-	updated_at: string
-	expires_at: string
-	committed_at: string | null
-}
+export type PublishBuildRow = typeof Schemas.PublishBuildRow.Type
 
 const ticketPrefix = 'kpb_'
 const sealGuard = sqlSourcesOf(publishBuildState, 'SEAL', ['uploading'])
@@ -66,76 +51,94 @@ function publishBuildDocumentPrefix(buildId: string) {
 	return `publish-build-documents/${buildId}/`
 }
 
-function randomToken(bytes = 32) {
-	const buffer = crypto.getRandomValues(new Uint8Array(bytes))
-	return Array.from(buffer, (byte) => byte.toString(16).padStart(2, '0')).join(
-		'',
+const randomToken = (bytes = 32) =>
+	Effect.sync(() =>
+		Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) =>
+			byte.toString(16).padStart(2, '0'),
+		).join(''),
 	)
+
+const nowIso = Effect.map(Clock.currentTimeMillis, (now) =>
+	new Date(now).toISOString(),
+)
+
+export type CreatedPublishBuild = {
+	readonly buildId: string
+	readonly ticket: string
+	readonly expiresAt: string
 }
 
-export async function createPublishBuild(input: {
-	db: D1Database
-	packageId: string
-	sourceId: string
-	ownerUserId: string
-	requesterUserId: string
-	orgId: string
-	commit: string
-	origin: Exclude<PublishBuildOrigin, 'cloud'>
-	contextId?: string | null
-	contextName?: string | null
-	now?: number
-}) {
-	const now = input.now ?? Date.now()
-	const id = `pb_${randomToken(12)}`
-	const ticket = `${ticketPrefix}${randomToken()}`
-	const nowIso = new Date(now).toISOString()
-	const expiresAt = new Date(now + publishBuildTicketTtlMs).toISOString()
-	await input.db
-		.prepare(
-			`INSERT INTO publish_builds (
+export const createPublishBuild = Effect.fn('PublishBuildStore.create')(
+	function* (input: {
+		packageId: string
+		sourceId: string
+		ownerUserId: string
+		requesterUserId: string
+		orgId: string
+		commit: string
+		origin: Exclude<PublishBuildOrigin, 'cloud'>
+		contextId?: string | null
+		contextName?: string | null
+	}) {
+		const db = yield* D1
+		const now = yield* Clock.currentTimeMillis
+		const id = `pb_${yield* randomToken(12)}`
+		const ticket = `${ticketPrefix}${yield* randomToken()}`
+		const createdAt = new Date(now).toISOString()
+		const expiresAt = new Date(now + publishBuildTicketTtlMs).toISOString()
+		yield* db.run(
+			'publish_builds.create',
+			sql(
+				`INSERT INTO publish_builds (
 				id, package_id, source_id, owner_user_id, requester_user_id, org_id,
 				commit_sha, origin, context_id, context_name, ticket_sha256, status,
 				created_at, updated_at, expires_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', ?, ?, ?)`,
+				id,
+				input.packageId,
+				input.sourceId,
+				input.ownerUserId,
+				input.requesterUserId,
+				input.orgId,
+				input.commit,
+				input.origin,
+				input.contextId ?? null,
+				input.contextName ?? null,
+				yield* digestSha256Hex(ticket),
+				createdAt,
+				createdAt,
+				expiresAt,
+			),
 		)
-		.bind(
-			id,
-			input.packageId,
-			input.sourceId,
-			input.ownerUserId,
-			input.requesterUserId,
-			input.orgId,
-			input.commit,
-			input.origin,
-			input.contextId ?? null,
-			input.contextName ?? null,
-			await sha256Hex(ticket),
-			nowIso,
-			nowIso,
-			expiresAt,
-		)
-		.run()
-	return { buildId: id, ticket, expiresAt }
-}
+		const created: CreatedPublishBuild = { buildId: id, ticket, expiresAt }
+		return created
+	},
+)
 
 /** Drops a build nothing took (the chain ended in Kody cloud). */
-export async function discardUnstartedPublishBuild(
-	db: D1Database,
+export const discardUnstartedPublishBuild = Effect.fn(
+	'PublishBuildStore.discardUnstarted',
+)(function* (buildId: string) {
+	const db = yield* D1
+	yield* db.run(
+		'publish_builds.discard_unstarted',
+		sql(
+			`DELETE FROM publish_builds WHERE id = ? AND status = 'uploading'`,
+			buildId,
+		),
+	)
+})
+
+export const getPublishBuild = Effect.fn('PublishBuildStore.get')(function* (
 	buildId: string,
 ) {
-	await db
-		.prepare(`DELETE FROM publish_builds WHERE id = ? AND status = 'uploading'`)
-		.bind(buildId)
-		.run()
-}
-
-export async function getPublishBuild(db: D1Database, buildId: string) {
-	return await db
-		.prepare(`SELECT * FROM publish_builds WHERE id = ?`)
-		.bind(buildId)
-		.first<PublishBuildRow>()
-}
+	const db = yield* D1
+	return yield* db.first(
+		'publish_builds.get',
+		Schemas.PublishBuildRow,
+		sql(`SELECT * FROM publish_builds WHERE id = ?`, buildId),
+	)
+})
 
 function timingSafeEqualHex(a: string, b: string) {
 	if (a.length !== b.length) return false
@@ -152,86 +155,90 @@ function timingSafeEqualHex(a: string, b: string) {
  * or expired. It grants no permission; publishing still needs the
  * publisher's own `package:write`.
  */
-export async function authenticatePublishBuildTicket(input: {
-	db: D1Database
-	buildId: string
-	ticket: string | null
-	now?: number
-}) {
-	if (!input.ticket?.startsWith(ticketPrefix)) return null
-	const row = await getPublishBuild(input.db, input.buildId)
-	if (!row) return null
-	if (!timingSafeEqualHex(await sha256Hex(input.ticket), row.ticket_sha256)) {
-		return null
+export const authenticatePublishBuildTicket = Effect.fn(
+	'PublishBuildStore.authenticateTicket',
+)(function* (input: { buildId: string; ticket: string | null }) {
+	const ticket = input.ticket
+	if (!ticket?.startsWith(ticketPrefix)) {
+		return yield* new PublishBuildTicketInvalid()
 	}
-	if (Date.parse(row.expires_at) <= (input.now ?? Date.now())) return null
+	const found = yield* getPublishBuild(input.buildId)
+	if (Option.isNone(found)) return yield* new PublishBuildTicketInvalid()
+	const row = found.value
+	if (!timingSafeEqualHex(yield* digestSha256Hex(ticket), row.ticket_sha256)) {
+		return yield* new PublishBuildTicketInvalid()
+	}
+	if (Date.parse(row.expires_at) <= (yield* Clock.currentTimeMillis)) {
+		return yield* new PublishBuildTicketInvalid()
+	}
 	return row
-}
+})
 
-export async function sealPublishBuild(input: {
-	db: D1Database
-	bucket: R2Bucket
-	buildId: string
-	document: PublishBuildDocument
-}) {
-	const body = JSON.stringify(input.document)
-	const sha256 = await sha256Hex(body)
-	await input.bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
-		httpMetadata: { contentType: 'application/json' },
-	})
-	const result = await input.db
-		.prepare(
-			`UPDATE publish_builds
+/** Stores the document and seals the build; false when it was not uploading. */
+export const sealPublishBuild = Effect.fn('PublishBuildStore.seal')(
+	function* (input: { buildId: string; document: PublishBuildDocument }) {
+		const db = yield* D1
+		const bucket = yield* PublishBuildBucket
+		const body = JSON.stringify(input.document)
+		const sha256 = yield* digestSha256Hex(body)
+		yield* bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
+			httpMetadata: { contentType: 'application/json' },
+		})
+		const result = yield* db.run(
+			'publish_builds.seal',
+			sql(
+				`UPDATE publish_builds
 			SET status = 'sealed', document_sha256 = ?, updated_at = ?
 			WHERE id = ? AND status IN ${sealGuard}`,
+				sha256,
+				yield* nowIso,
+				input.buildId,
+			),
 		)
-		.bind(sha256, new Date().toISOString(), input.buildId)
-		.run()
-	return (result.meta.changes ?? 0) > 0
-}
+		return result.changes > 0
+	},
+)
 
-export async function finishPublishBuild(input: {
-	db: D1Database
-	buildId: string
-	status: 'committed' | 'rejected'
-	message?: string | null
-}) {
-	const now = new Date().toISOString()
-	await input.db
-		.prepare(
-			`UPDATE publish_builds
+export const finishPublishBuild = Effect.fn('PublishBuildStore.finish')(
+	function* (input: {
+		buildId: string
+		status: 'committed' | 'rejected'
+		message?: string | null
+	}) {
+		const db = yield* D1
+		const now = yield* nowIso
+		yield* db.run(
+			'publish_builds.finish',
+			sql(
+				`UPDATE publish_builds
 			SET status = ?, message = ?, updated_at = ?,
 				committed_at = CASE WHEN ? = 'committed' THEN ? ELSE committed_at END
 			WHERE id = ? AND status IN ${finishGuard}`,
+				input.status,
+				input.message ?? null,
+				now,
+				input.status,
+				now,
+				input.buildId,
+			),
 		)
-		.bind(
-			input.status,
-			input.message ?? null,
-			now,
-			input.status,
-			now,
-			input.buildId,
-		)
-		.run()
-}
+	},
+)
 
-async function deletePrefix(bucket: R2Bucket, prefix: string) {
+const deletePrefix = Effect.fnUntraced(function* (prefix: string) {
+	const bucket = yield* PublishBuildBucket
 	let cursor: string | undefined
 	do {
-		const page = await bucket.list({
-			prefix,
-			...(cursor ? { cursor } : {}),
-		})
-		const keys = page.objects.map((object) => object.key)
-		if (keys.length > 0) await bucket.delete(keys)
-		cursor = page.truncated ? page.cursor : undefined
+		const page = yield* bucket.listPage(prefix, cursor)
+		if (page.keys.length > 0) yield* bucket.delete(page.keys)
+		cursor = page.cursor
 	} while (cursor)
-}
+})
 
-async function deletePublishBuildBlobs(bucket: R2Bucket, buildId: string) {
-	await deletePrefix(bucket, publishBuildBlobPrefix(buildId))
-	await deletePrefix(bucket, publishBuildDocumentPrefix(buildId))
-}
+const ExpiredBuildRow = Schema.Struct({
+	id: Schema.String,
+	status: Schemas.PublishBuildStatus,
+})
 
 /**
  * Drops the chunks of builds whose ticket expired over a day ago (a
@@ -240,84 +247,125 @@ async function deletePublishBuildBlobs(bucket: R2Bucket, buildId: string) {
  * row goes. Runs a few builds at a time whenever a build starts, so the
  * work tracks how many builds are made.
  */
-export async function purgeExpiredPublishBuilds(input: {
-	db: D1Database
-	bucket: R2Bucket
-	now?: number
-	limit?: number
-}) {
+export const purgeExpiredPublishBuilds = Effect.fn(
+	'PublishBuildStore.purgeExpired',
+)(function* (input: { limit?: number } = {}) {
+	const db = yield* D1
 	const cutoff = new Date(
-		(input.now ?? Date.now()) - publishBuildRetentionMs,
+		(yield* Clock.currentTimeMillis) - publishBuildRetentionMs,
 	).toISOString()
-	const { results } = await input.db
-		.prepare(
+	const rows = yield* db.all(
+		'publish_builds.list_expired',
+		ExpiredBuildRow,
+		sql(
 			`SELECT id, status FROM publish_builds
 			WHERE expires_at < ?
 				AND (status != 'committed' OR document_sha256 IS NOT NULL)
 			ORDER BY expires_at LIMIT ?`,
-		)
-		.bind(cutoff, input.limit ?? 10)
-		.all<{ id: string; status: PublishBuildStatus }>()
-	for (const row of results) {
-		await deletePublishBuildBlobs(input.bucket, row.id)
+			cutoff,
+			input.limit ?? 10,
+		),
+	)
+	for (const row of rows) {
+		yield* deletePrefix(publishBuildBlobPrefix(row.id))
+		yield* deletePrefix(publishBuildDocumentPrefix(row.id))
 		if (row.status === 'committed') {
-			await input.db
-				.prepare(
+			yield* db.run(
+				'publish_builds.clear_document',
+				sql(
 					`UPDATE publish_builds SET document_sha256 = NULL, updated_at = ?
 					WHERE id = ?`,
-				)
-				.bind(new Date().toISOString(), row.id)
-				.run()
+					yield* nowIso,
+					row.id,
+				),
+			)
 		} else {
-			await input.db
-				.prepare(
+			yield* db.run(
+				'publish_builds.delete_expired',
+				sql(
 					`DELETE FROM publish_builds WHERE id = ? AND status != 'committed'`,
-				)
-				.bind(row.id)
-				.run()
+					row.id,
+				),
+			)
 		}
 	}
-	return results.length
-}
+	return rows.length
+})
 
-export async function readPublishBuildDocument(input: {
-	bucket: R2Bucket
-	row: Pick<PublishBuildRow, 'id' | 'document_sha256'>
-}) {
+export const readPublishBuildDocument = Effect.fn(
+	'PublishBuildStore.readDocument',
+)(function* (input: { row: Pick<PublishBuildRow, 'id' | 'document_sha256'> }) {
 	if (!input.row.document_sha256) return null
-	const object = await input.bucket.get(
+	const bucket = yield* PublishBuildBucket
+	const text = yield* bucket.getText(
 		publishBuildDocumentKey(input.row.id, input.row.document_sha256),
 	)
-	if (!object) return null
-	return JSON.parse(await object.text()) as PublishBuildDocument
-}
+	if (text === null) return null
+	return yield* Schema.decodeUnknownEffect(Schemas.PublishBuildDocumentJson)(
+		text,
+	).pipe(
+		Effect.mapError(
+			(cause) =>
+				new PublishBuildDocumentUnreadable({
+					buildId: input.row.id,
+					message: cause.message,
+				}),
+		),
+	)
+})
+
+const CommittedOriginRow = Schema.Struct({
+	origin: Schemas.PublishBuildOrigin,
+	context_name: Schema.NullOr(Schema.String),
+})
 
 /** 11B: where the serving build of a commit was made, for package info. */
-export async function getCommittedPublishBuildOrigin(input: {
-	db: D1Database
-	sourceId: string
-	commit: string | null
-}) {
+export const getCommittedPublishBuildOrigin = Effect.fn(
+	'PublishBuildStore.committedOrigin',
+)(function* (input: { sourceId: string; commit: string | null }) {
 	if (!input.commit) return null
-	try {
-		return await input.db
-			.prepare(
+	const db = yield* D1
+	return yield* db
+		.first(
+			'publish_builds.committed_origin',
+			CommittedOriginRow,
+			sql(
 				`SELECT origin, context_name FROM publish_builds
 				WHERE source_id = ? AND commit_sha = ? AND status = 'committed'
 				ORDER BY committed_at DESC LIMIT 1`,
-			)
-			.bind(input.sourceId, input.commit)
-			.first<{ origin: PublishBuildOrigin; context_name: string | null }>()
-	} catch {
-		return null
-	}
-}
+				input.sourceId,
+				input.commit,
+			),
+		)
+		.pipe(
+			Effect.map(Option.getOrNull),
+			Effect.catchTag('DatabaseError', (error) =>
+				Effect.as(
+					Effect.logDebug('publish_build_origin_read_failed', {
+						message: error.message,
+					}),
+					null,
+				),
+			),
+		)
+})
 
-function rejected(message: string) {
-	return new McpCallerError(
-		`Publish build rejected: ${message} ${publishBuildRejectionHint}`,
-	)
-}
+const rejected = (reason: string) => new PublishBuildRejected({ reason })
+
+const { fields } = Schemas.PublishBuildRow
+/** The columns the commit-time gate reads. */
+const PublishBuildGateRow = Schema.Struct({
+	id: fields.id,
+	package_id: fields.package_id,
+	source_id: fields.source_id,
+	requester_user_id: fields.requester_user_id,
+	commit_sha: fields.commit_sha,
+	status: fields.status,
+	document_sha256: fields.document_sha256,
+	message: fields.message,
+	origin: fields.origin,
+	context_name: fields.context_name,
+})
 
 /**
  * Commit-time gate for `packagePublishExternalPush({ publish_build_id })`:
@@ -326,50 +374,67 @@ function rejected(message: string) {
  * which doesn't have the upload bucket. RepoSession reads and verifies the
  * sealed document and links its Kody package imports before serving.
  */
-export async function resolveUploadedPublishBuildForPublish(input: {
-	db: D1Database
+export const resolveUploadedPublishBuildForPublish = Effect.fn(
+	'PublishBuildStore.resolveForPublish',
+)(function* (input: {
 	buildId: string
 	packageId: string
 	sourceId: string
 	commit: string
 	requesterUserId: string
 	orgId: string
-}): Promise<UploadedPublishBuildRef> {
+}) {
 	if (
-		!(await isPublishOffloadEnabledFor(
-			input.db,
-			input.requesterUserId,
-			input.orgId,
-		))
+		!(yield* isPublishOffloadEnabledFor(input.requesterUserId, input.orgId))
 	) {
-		throw new McpCallerError(
-			'publish_build_id needs the publish-offload feature flag, which is off for this account. Publish without it to build on Kody cloud.',
-		)
+		return yield* new PublishOffloadDisabled({
+			message:
+				'publish_build_id needs the publish-offload feature flag, which is off for this account. Publish without it to build on Kody cloud.',
+		})
 	}
-	const row = await getPublishBuild(input.db, input.buildId)
+	const db = yield* D1
+	const found = yield* db.first(
+		'publish_builds.get_for_publish',
+		PublishBuildGateRow,
+		sql(
+			`SELECT ${Object.keys(PublishBuildGateRow.fields).join(', ')}
+			FROM publish_builds WHERE id = ?`,
+			input.buildId,
+		),
+	)
+	const row = Option.getOrUndefined(found)
 	if (
 		!row ||
 		row.package_id !== input.packageId ||
 		row.source_id !== input.sourceId ||
 		row.requester_user_id !== input.requesterUserId
 	) {
-		throw rejected(`no publish build "${input.buildId}" for this package.`)
+		return yield* rejected(
+			`no publish build "${input.buildId}" for this package.`,
+		)
 	}
 	if (row.commit_sha !== input.commit) {
-		throw rejected(
+		return yield* rejected(
 			`the build is for commit ${row.commit_sha.slice(0, 12)}, but the package repo HEAD is ${input.commit.slice(0, 12)}.`,
 		)
 	}
 	if (row.status === 'uploading') {
-		throw rejected('the upload was never sealed; finish uploading first.')
+		return yield* rejected(
+			'the upload was never sealed; finish uploading first.',
+		)
 	}
 	if (row.status === 'rejected') {
-		throw rejected(row.message ?? 'this build already failed verification.')
+		return yield* rejected(
+			row.message ?? 'this build already failed verification.',
+		)
 	}
-	if (!row.document_sha256) throw rejected('the build has no sealed manifest.')
-	return {
+	if (!row.document_sha256) {
+		return yield* rejected('the build has no sealed manifest.')
+	}
+	const ref: UploadedPublishBuildRef = {
 		buildId: row.id,
 		origin: row.origin,
 		contextName: row.context_name,
 	}
-}
+	return ref
+})
