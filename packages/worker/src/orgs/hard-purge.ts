@@ -81,15 +81,33 @@ async function personalOrgHardPurgeRelation(
 		: 'live_person'
 }
 
-const orgPurgeActors = (env: Env) => ({
-	wipePinnedConnections: createAsyncLogic<void, { orgId: OwnerId }>({
+/**
+ * Async actor logic that runs `afterStep` once the step completes. Purge lanes
+ * pass a lease renewal so a long item keeps its claim.
+ */
+function purgeStepLogic(afterStep: (() => Promise<void>) | undefined) {
+	return <TOutput, TInput>(config: {
+		run: (args: { input: TInput }) => Promise<TOutput>
+	}) =>
+		createAsyncLogic<TOutput, TInput>({
+			run: async (args) => {
+				const output = await config.run(args)
+				await afterStep?.()
+				return output
+			},
+		})
+}
+
+type PurgeStepLogic = ReturnType<typeof purgeStepLogic>
+
+const orgPurgeActors = (env: Env, step: PurgeStepLogic) => ({
+	wipePinnedConnections: step<void, { orgId: OwnerId }>({
 		run: ({ input }) => wipeOrgPinnedConnections(env, input.orgId),
 	}),
-	deleteOrgData: createAsyncLogic<
-		void,
-		{ orgId: OwnerId; mode: HardPurgeOrgMode }
-	>({ run: ({ input }) => deleteOrgData({ env, ...input }) }),
-	auditOrgPurged: createAsyncLogic<void, { orgId: OwnerId }>({
+	deleteOrgData: step<void, { orgId: OwnerId; mode: HardPurgeOrgMode }>({
+		run: ({ input }) => deleteOrgData({ env, ...input }),
+	}),
+	auditOrgPurged: step<void, { orgId: OwnerId }>({
 		run: ({ input }) =>
 			logOrgAuditEvent({
 				env,
@@ -105,11 +123,13 @@ const orgPurgeActors = (env: Env) => ({
 export async function hardPurgeOrg(input: {
 	env: Env
 	orgId: OwnerId
+	afterStep?: () => Promise<void>
 }): Promise<void> {
+	const step = purgeStepLogic(input.afterStep)
 	const workflow = orgHardPurgeState.provide({
 		actors: {
-			...orgPurgeActors(input.env),
-			readPersonalOrgRelation: createAsyncLogic<
+			...orgPurgeActors(input.env, step),
+			readPersonalOrgRelation: step<
 				PersonalOrgHardPurgeRelation,
 				{ orgId: OwnerId }
 			>({
@@ -118,7 +138,7 @@ export async function hardPurgeOrg(input: {
 			// Team org: collect the same out-of-band keys account deletion collects
 			// for this owner id, delete those objects, then delete D1 rows (including
 			// owner-scoped inventory without deleted_at).
-			purgeOutOfBandSurfaces: createAsyncLogic<void, { orgId: OwnerId }>({
+			purgeOutOfBandSurfaces: step<void, { orgId: OwnerId }>({
 				run: async () => {
 					await purgeOwnerOutOfBandSurfaces({
 						env: input.env,
@@ -188,44 +208,41 @@ async function purgePerson(input: {
 	mode: PersonPurgeMode
 	dbUserId: number
 	stableUserId: OwnerId
+	afterStep?: () => Promise<void>
 }): Promise<PersonHardPurgeOutput> {
 	const env = input.env
+	const step = purgeStepLogic(input.afterStep)
 	const workflow = personHardPurgeState.provide({
 		actors: {
-			...orgPurgeActors(env),
-			readPerson: createAsyncLogic<PersonPurgeRow | null, { dbUserId: number }>(
-				{
-					run: async () => {
-						const row = await runD1WithRetry(() =>
-							env.APP_DB.prepare(
-								`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
+			...orgPurgeActors(env, step),
+			readPerson: step<PersonPurgeRow | null, { dbUserId: number }>({
+				run: async () => {
+					const row = await runD1WithRetry(() =>
+						env.APP_DB.prepare(
+							`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
 			 FROM users WHERE id = ?`,
-							)
-								.bind(input.dbUserId)
-								.first<{
-									personal_org_id: string | null
-									stable_user_id: string
-									deleted_at: string | null
-									deleting_at: string | null
-								}>(),
 						)
-						if (!row) return null
-						return {
-							stableUserId: row.stable_user_id,
-							storageOwnerId: personalOrgIdFromUserRow(row),
-							personUserId: row.stable_user_id?.trim() || input.stableUserId,
-							deletedAt: row.deleted_at,
-							deletingAt: row.deleting_at,
-						}
-					},
+							.bind(input.dbUserId)
+							.first<{
+								personal_org_id: string | null
+								stable_user_id: string
+								deleted_at: string | null
+								deleting_at: string | null
+							}>(),
+					)
+					if (!row) return null
+					return {
+						stableUserId: row.stable_user_id,
+						storageOwnerId: personalOrgIdFromUserRow(row),
+						personUserId: row.stable_user_id?.trim() || input.stableUserId,
+						deletedAt: row.deleted_at,
+						deletingAt: row.deleting_at,
+					}
 				},
-			),
+			}),
 			// Tombstone a still-live personal org first: if this attempt removes the
 			// person and then fails on the org, the org lane can still purge it.
-			tombstonePersonalOrg: createAsyncLogic<
-				void,
-				{ orgId: OwnerId; deletedAt: string }
-			>({
+			tombstonePersonalOrg: step<void, { orgId: OwnerId; deletedAt: string }>({
 				run: async ({ input: org }) => {
 					await runD1WithRetry(() =>
 						env.APP_DB.prepare(
@@ -236,15 +253,14 @@ async function purgePerson(input: {
 					)
 				},
 			}),
-			resolveSoftDeletedOrg: createAsyncLogic<
-				OwnerId | null,
-				{ orgId: OwnerId }
-			>({ run: ({ input: org }) => softDeletedOrgId(env.APP_DB, org.orgId) }),
-			redactAuditActors: createAsyncLogic<void, { userId: OwnerId }>({
+			resolveSoftDeletedOrg: step<OwnerId | null, { orgId: OwnerId }>({
+				run: ({ input: org }) => softDeletedOrgId(env.APP_DB, org.orgId),
+			}),
+			redactAuditActors: step<void, { userId: OwnerId }>({
 				run: ({ input: actor }) =>
 					redactOrgAuditActorIdsForDeletedUser({ env, userId: actor.userId }),
 			}),
-			deleteAccount: createAsyncLogic<number, PersonPurgeTarget>({
+			deleteAccount: step<number, PersonPurgeTarget>({
 				run: async ({ input: person }) => {
 					const result = await deleteUserAccount({
 						env,
@@ -256,7 +272,7 @@ async function purgePerson(input: {
 					return result.deletedRowCounts.users ?? 0
 				},
 			}),
-			readUserRowPresent: createAsyncLogic<boolean, { dbUserId: number }>({
+			readUserRowPresent: step<boolean, { dbUserId: number }>({
 				run: async () => {
 					const stillThere = await runD1WithRetry(() =>
 						env.APP_DB.prepare(`SELECT 1 AS present FROM users WHERE id = ?`)
@@ -266,7 +282,7 @@ async function purgePerson(input: {
 					return Boolean(stillThere)
 				},
 			}),
-			auditUserPurged: createAsyncLogic<void, PersonPurgeTarget>({
+			auditUserPurged: step<void, PersonPurgeTarget>({
 				run: ({ input: person }) =>
 					logOrgAuditEvent({
 						env,
@@ -315,6 +331,7 @@ export async function hardPurgeSoftDeletedUser(input: {
 	env: Env
 	dbUserId: number
 	stableUserId: OwnerId
+	afterStep?: () => Promise<void>
 }): Promise<void> {
 	const output = await purgePerson({ ...input, mode: 'soft_deleted' })
 	if (output.status === 'failed') throw output.error
@@ -351,6 +368,7 @@ export async function finishLegacyUserDeletion(input: {
 	env: Env
 	dbUserId: number
 	stableUserId: OwnerId
+	afterStep?: () => Promise<void>
 }): Promise<{ alreadyGone: boolean }> {
 	const output = await purgePerson({ ...input, mode: 'legacy' })
 	if (output.status === 'already_gone') return { alreadyGone: true }

@@ -26,8 +26,12 @@ function purge(input: {
 	refuseClaim?: Array<string>
 	failPurge?: Array<string>
 	failAudit?: boolean
+	blockOn?: Array<string>
 }) {
 	const calls: Array<string> = []
+	const fences: Array<string> = []
+	const blocked: Array<{ id: string; attempts: number; lastFailure: string }> =
+		[]
 	const clock = [...(input.clock ?? [])]
 	function purgeStep(name: string) {
 		return createAsyncLogic({
@@ -68,6 +72,30 @@ function purge(input: {
 						: String(failure.error)
 				},
 			}),
+			fenceFailure: createAsyncLogic({
+				run: async ({ input: next }: { input: SoftDeletePurgeCandidate }) => {
+					fences.push(next.id)
+					const isBlocked = input.blockOn?.includes(next.id) === true
+					return { attempts: isBlocked ? 5 : 1, blocked: isBlocked }
+				},
+			}),
+			recordBlocked: createAsyncLogic({
+				run: async ({
+					input: block,
+				}: {
+					input: {
+						candidate: SoftDeletePurgeCandidate
+						attempts: number
+						lastFailure: string
+					}
+				}) => {
+					blocked.push({
+						id: block.candidate.id,
+						attempts: block.attempts,
+						lastFailure: block.lastFailure,
+					})
+				},
+			}),
 		},
 	})
 	const output = toPromise(
@@ -80,7 +108,7 @@ function purge(input: {
 			},
 		}).start(),
 	)
-	return { calls, output }
+	return { calls, fences, blocked, output }
 }
 
 test('each candidate is claimed before the hard purge for its kind', async () => {
@@ -175,4 +203,26 @@ test('a failed failure audit fails the run', async () => {
 		failAudit: true,
 	})
 	expect(await output).toMatchObject({ status: 'run_failed' })
+})
+
+test('each recorded failure is fenced, and only a newly blocked one records purge.blocked', async () => {
+	const { output, fences, blocked } = purge({
+		candidates: [candidate('user-1'), candidate('user-2'), candidate('user-3')],
+		failPurge: ['user-1', 'user-2'],
+		blockOn: ['user-2'],
+	})
+	expect(await output).toMatchObject({
+		status: 'completed',
+		purged: 1,
+		failed: 2,
+		outcomes: [
+			{ id: 'user-1', outcome: 'failed', error: 'purge failed' },
+			{ id: 'user-2', outcome: 'failed', error: 'purge failed' },
+			{ id: 'user-3', outcome: 'purged' },
+		],
+	})
+	expect(fences).toEqual(['user-1', 'user-2'])
+	expect(blocked).toEqual([
+		{ id: 'user-2', attempts: 5, lastFailure: 'purge failed' },
+	])
 })

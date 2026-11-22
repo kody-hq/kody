@@ -1158,14 +1158,16 @@ stateDiagram-v2
 
 Lists candidates, previews dry-run ones, and for each live one checks the
 budget, claims it, runs the org, legacy-user or user hard purge, and records
-success or a failure audit before moving on; a failed listing or failure audit
-fails the run.
+success or a failure audit and 24 hour fence (plus a purge.blocked record on the
+fifth failure) before moving on; a failed listing, failure audit, fence or block
+record fails the run.
 
 Source:
 [`packages/worker/src/orgs/soft-delete-purge-state.ts`](../../packages/worker/src/orgs/soft-delete-purge-state.ts)
 
 States: listing, advancing, checking_budget, claiming, purging_org,
-finishing_legacy_user, purging_user, recording_failure, completed, run_failed
+finishing_legacy_user, purging_user, recording_failure, fencing_failure,
+recording_blocked, completed, run_failed
 
 Final states: completed, run_failed
 
@@ -1192,8 +1194,13 @@ stateDiagram-v2
     finishing_legacy_user --> recording_failure: xstate.error.actor finishLegacyUser
     purging_user --> advancing: xstate.done.actor purgeUser
     purging_user --> recording_failure: xstate.error.actor purgeUser
-    recording_failure --> advancing: xstate.done.actor recordFailure
+    recording_failure --> fencing_failure: xstate.done.actor recordFailure
     recording_failure --> run_failed: xstate.error.actor recordFailure
+    fencing_failure --> recording_blocked: xstate.done.actor fenceFailure [Newly blocked]
+    fencing_failure --> advancing: xstate.done.actor fenceFailure [Otherwise (Newly blocked)]
+    fencing_failure --> run_failed: xstate.error.actor fenceFailure
+    recording_blocked --> advancing: xstate.done.actor recordBlocked
+    recording_blocked --> run_failed: xstate.error.actor recordBlocked
     completed --> [*]
     run_failed --> [*]
 ```
@@ -1220,8 +1227,13 @@ stateDiagram-v2
 | xstate.error.actor finishLegacyUser | finishing_legacy_user | recording_failure     | —                                                                                                               |
 | xstate.done.actor purgeUser         | purging_user          | advancing             | —                                                                                                               |
 | xstate.error.actor purgeUser        | purging_user          | recording_failure     | —                                                                                                               |
-| xstate.done.actor recordFailure     | recording_failure     | advancing             | —                                                                                                               |
+| xstate.done.actor recordFailure     | recording_failure     | fencing_failure       | —                                                                                                               |
 | xstate.error.actor recordFailure    | recording_failure     | run_failed            | —                                                                                                               |
+| xstate.done.actor fenceFailure      | fencing_failure       | recording_blocked     | Newly blocked                                                                                                   |
+| xstate.done.actor fenceFailure      | fencing_failure       | advancing             | Otherwise (Newly blocked)                                                                                       |
+| xstate.error.actor fenceFailure     | fencing_failure       | run_failed            | —                                                                                                               |
+| xstate.done.actor recordBlocked     | recording_blocked     | advancing             | —                                                                                                               |
+| xstate.error.actor recordBlocked    | recording_blocked     | run_failed            | —                                                                                                               |
 
 ## org_hard_purge.team_org
 
