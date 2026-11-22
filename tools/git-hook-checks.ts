@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
 	existsSync,
 	mkdirSync,
@@ -623,7 +624,7 @@ export async function runGitHookChecks(input: {
 					git,
 					stdin: input.stdin,
 					store: provenance,
-					check: script,
+					check: relatedTestProvenanceCheck(script, relatedPaths ?? []),
 				})
 				if (skipRelated.skip && skipRelated.reason) log(skipRelated.reason)
 				return !skipRelated.skip
@@ -709,7 +710,7 @@ export async function runGitHookChecks(input: {
 				if (!commitTree || commitTree !== testedTreeAfter) continue
 				recordProvenanceCheck(provenance, {
 					check: isRelatedTestScript(script)
-						? script
+						? relatedTestProvenanceCheck(script, relatedPaths ?? [])
 						: script === 'knip'
 							? 'knip'
 							: 'test:push',
@@ -726,6 +727,17 @@ function isRelatedTestScript(
 	script: string,
 ): script is `vitest related --project ${string}` {
 	return script.startsWith('vitest related --project ')
+}
+
+/** A related run only vouches for the same tree and the same selected paths. */
+function relatedTestProvenanceCheck(
+	script: `vitest related --project ${string}`,
+	paths: ReadonlyArray<string>,
+): GitHookProvenanceCheck {
+	const selection = createHash('sha256')
+		.update([...new Set(paths)].sort().join('\n'))
+		.digest('hex')
+	return `${script} paths:${selection}`
 }
 
 function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {

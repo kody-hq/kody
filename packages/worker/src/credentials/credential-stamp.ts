@@ -911,13 +911,14 @@ async function scanServerEvalFailures(
  */
 export async function scanLiteralMcpServerKeys(
 	files: Record<string, string>,
+	serverPaths?: ReadonlySet<string>,
 ): Promise<{
 	keys: Array<string>
 	failures: Array<CredentialStampGateFailure>
 }> {
 	files = omitOversizedClientCredentialStampModules(
 		files,
-		await collectServerRuntimeModulePaths(files),
+		serverPaths ?? (await collectServerRuntimeModulePaths(files)),
 	)
 	const keys = new Set<string>()
 	const failures: Array<CredentialStampGateFailure> = []
@@ -1791,7 +1792,7 @@ export async function collectCredentialStampPasses(
 					if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
 					else scanUnparsedCredentialKeys(files[path]!, keyScan)
 				}),
-			() => scanLiteralMcpServerKeys(files),
+			() => scanLiteralMcpServerKeys(files, serverPaths),
 			() =>
 				detectLegacyCredentialPatternsCodemod.detect(files, {
 					packageName: '',
