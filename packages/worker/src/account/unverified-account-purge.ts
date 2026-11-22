@@ -28,6 +28,17 @@ import {
 	withDeadline,
 } from '#worker/outbound/with-deadline.ts'
 import { assertNever, reportLaneError } from '#worker/scheduled/lane-failure.ts'
+import {
+	newPurgeClaim,
+	purgeClaimClock,
+	purgeClaimFreeSql,
+	purgeClaimSetSql,
+	purgeForeignDeletingAtGraceMs,
+	renewPurgeClaim,
+	settlePurgeClaimFailure,
+	type PurgeClaim,
+	type PurgeClaimRow,
+} from '#worker/scheduled/purge-claim.ts'
 
 export { shouldRunRetentionCron as shouldRunUnverifiedAccountPurgeCron }
 
@@ -39,12 +50,6 @@ export const unverifiedAccountPurgeBatchSize = 5
  * set is drained or this budget is exhausted.
  */
 export const unverifiedAccountPurgeRunTimeBudgetMs = 20_000
-/**
- * Skip rows whose `deleting_at` is newer than this window. Each claim restamps
- * `deleting_at`, so a failed deletion retries after this backoff instead of
- * every hourly tick or never.
- */
-export const unverifiedAccountPurgeRetryBackoffMs = 6 * 60 * 60 * 1000
 /**
  * Upper bound for the compact failure reason written to the audit row and
  * returned in per-account outcomes: `<ErrorName>: <first warning or message>`.
@@ -90,7 +95,12 @@ type UnverifiedAccountRow = {
 
 type UnverifiedAccountClaim =
 	| { claimed: false }
-	| { claimed: true; created: boolean; deletingAt: string }
+	| {
+			claimed: true
+			created: boolean
+			deletingAt: string
+			claim: PurgeClaim
+	  }
 
 export type UnverifiedAccountPurgeOutcomeKind =
 	| 'purged'
@@ -126,10 +136,15 @@ function cutoffIso(now: Date, millisecondsAgo: number) {
 	return new Date(now.getTime() - millisecondsAgo).toISOString()
 }
 
+/**
+ * A `deleting_at` a lane did not claim is skipped inside the foreign-deletion
+ * grace. Claimed rows follow their lease, failure fence, and block.
+ */
 function purgeCutoffs(now: Date) {
 	return {
 		ageCutoff: cutoffIso(now, unverifiedAccountPurgeDays * millisecondsPerDay),
-		retryBackoffCutoff: cutoffIso(now, unverifiedAccountPurgeRetryBackoffMs),
+		retryBackoffCutoff: cutoffIso(now, purgeForeignDeletingAtGraceMs),
+		nowIso: now.toISOString(),
 	}
 }
 
@@ -137,7 +152,8 @@ function unverifiedAccountSqlConditions() {
 	return [
 		...unverifiedPersonEligibilitySql,
 		'datetime(created_at) < datetime(?)',
-		'(deleting_at IS NULL OR datetime(deleting_at) < datetime(?))',
+		'(deleting_at IS NULL OR purge_claim_holder IS NOT NULL OR datetime(deleting_at) < datetime(?))',
+		purgeClaimFreeSql,
 	] as const
 }
 
@@ -236,7 +252,7 @@ function reportPurgeFailureToSentry(input: {
 export type UnverifiedAccountPurgeFailure =
 	/** Deletion refused before any cleanup ran: release a fence this pass created. */
 	| { kind: 'pre_cleanup_failed'; userId: OwnerId; error: unknown }
-	/** Cleanup started: keep the fence so the retry backoff restamps it. */
+	/** Cleanup started: keep the fence and claim behind the failure fence. */
 	| { kind: 'cleanup_failed'; userId: OwnerId; error: unknown }
 	| { kind: 'release_failed'; userId: OwnerId; error: unknown }
 	| { kind: 'audit_failed'; userId: OwnerId; error: unknown }
@@ -291,6 +307,7 @@ async function listUnverifiedAccountsPage(input: {
 	db: D1Database
 	ageCutoff: string
 	retryBackoffCutoff: string
+	nowIso: string
 	batchSize: number
 }) {
 	const conditions = unverifiedAccountSqlConditions().join('\n			AND ')
@@ -309,7 +326,12 @@ async function listUnverifiedAccountsPage(input: {
 				ORDER BY (deleting_at IS NULL) DESC, datetime(created_at) ASC, id ASC
 				LIMIT ?`,
 					)
-					.bind(input.ageCutoff, input.retryBackoffCutoff, input.batchSize)
+					.bind(
+						input.ageCutoff,
+						input.retryBackoffCutoff,
+						input.nowIso,
+						input.batchSize,
+					)
 					.all<UnverifiedAccountRow>(),
 		),
 	)
@@ -323,6 +345,8 @@ async function claimUnverifiedAccountForPurge(input: {
 	retryBackoffCutoff: string
 }): Promise<UnverifiedAccountClaim> {
 	const deletingAt = utcSqliteTimestamp(input.now)
+	const claim = newPurgeClaim(input.now)
+	const nowIso = input.now.toISOString()
 	const eligibility = unverifiedPersonEligibilitySql.join('\n					AND ')
 	const createdResult = await runD1WithRetry(() =>
 		withDeadline(
@@ -334,18 +358,26 @@ async function claimUnverifiedAccountForPurge(input: {
 				input.db
 					.prepare(
 						`UPDATE users
-				SET deleting_at = ?, updated_at = ?
+				SET deleting_at = ?, updated_at = ?, ${purgeClaimSetSql}
 				WHERE id = ?
 					AND ${eligibility}
-					AND deleting_at IS NULL`,
+					AND deleting_at IS NULL
+					AND ${purgeClaimFreeSql}`,
 					)
-					.bind(deletingAt, deletingAt, input.dbUserId)
+					.bind(
+						deletingAt,
+						deletingAt,
+						claim.holder,
+						claim.until,
+						input.dbUserId,
+						nowIso,
+					)
 					.run(),
 		),
 	)
 	if ((createdResult.meta.changes ?? 0) === 1) {
 		await invalidatePackageAppOwnerCacheForDbUserId(input.db, input.dbUserId)
-		return { claimed: true, created: true, deletingAt }
+		return { claimed: true, created: true, deletingAt, claim }
 	}
 	const restampedResult = await runD1WithRetry(() =>
 		withDeadline(
@@ -357,23 +389,27 @@ async function claimUnverifiedAccountForPurge(input: {
 				input.db
 					.prepare(
 						`UPDATE users
-				SET deleting_at = ?, updated_at = ?
+				SET deleting_at = ?, updated_at = ?, ${purgeClaimSetSql}
 				WHERE id = ?
 					AND ${eligibility}
-					AND datetime(deleting_at) < datetime(?)`,
+					AND (purge_claim_holder IS NOT NULL OR datetime(deleting_at) < datetime(?))
+					AND ${purgeClaimFreeSql}`,
 					)
 					.bind(
 						deletingAt,
 						deletingAt,
+						claim.holder,
+						claim.until,
 						input.dbUserId,
 						input.retryBackoffCutoff,
+						nowIso,
 					)
 					.run(),
 		),
 	)
 	if ((restampedResult.meta.changes ?? 0) === 1) {
 		await invalidatePackageAppOwnerCacheForDbUserId(input.db, input.dbUserId)
-		return { claimed: true, created: false, deletingAt }
+		return { claimed: true, created: false, deletingAt, claim }
 	}
 	return { claimed: false }
 }
@@ -416,7 +452,8 @@ export async function pruneUnverifiedAccounts(input: {
 	const timeBudgetMs =
 		input.timeBudgetMs ?? unverifiedAccountPurgeRunTimeBudgetMs
 	const batchSize = input.batchSize ?? unverifiedAccountPurgeBatchSize
-	const { ageCutoff, retryBackoffCutoff } = purgeCutoffs(now)
+	const { ageCutoff, retryBackoffCutoff, nowIso } = purgeCutoffs(now)
+	const laneNow = purgeClaimClock(now, startedAtMs)
 	const result: UnverifiedAccountPurgeResult = {
 		scanned: 0,
 		purged: 0,
@@ -428,6 +465,7 @@ export async function pruneUnverifiedAccounts(input: {
 		db: input.env.APP_DB,
 		ageCutoff,
 		retryBackoffCutoff,
+		nowIso,
 		batchSize,
 	})
 	result.scanned = page.length
@@ -451,6 +489,11 @@ export async function pruneUnverifiedAccounts(input: {
 			})
 			continue
 		}
+		const claimRow: PurgeClaimRow = {
+			table: 'users',
+			column: 'id',
+			value: account.id,
+		}
 		try {
 			await deleteUserAccount({
 				env: input.env,
@@ -460,6 +503,12 @@ export async function pruneUnverifiedAccounts(input: {
 					stable_user_id: account.stable_user_id,
 				}),
 				personUserId: account.stable_user_id,
+				onStepComplete: () =>
+					renewPurgeClaim(input.env.APP_DB, {
+						row: claimRow,
+						holder: claim.claim.holder,
+						now: laneNow(),
+					}),
 			})
 			try {
 				await logAuditEvent({
@@ -492,8 +541,8 @@ export async function pruneUnverifiedAccounts(input: {
 				error,
 			})
 			if (claim.created && failure.releaseClaim) {
-				// A failed release leaves the fence in place; the retry backoff
-				// restamps it later, so it must not abort the rest of the batch.
+				// A failed release leaves the fence in place; a later pass
+				// restamps it, so it must not abort the rest of the batch.
 				try {
 					await withDeadline(
 						{
@@ -554,6 +603,20 @@ export async function pruneUnverifiedAccounts(input: {
 				error,
 				userId: account.stable_user_id,
 				warnings,
+			})
+			// A refusal before cleanup released the fence it created above, so the
+			// claim is released too and only the attempt is counted.
+			await settlePurgeClaimFailure(input.env, {
+				row: claimRow,
+				holder: claim.claim.holder,
+				now: laneNow(),
+				fence: !(claim.created && failure.releaseClaim),
+				item: {
+					lane: 'unverified_account_purge',
+					kind: 'user',
+					id: account.stable_user_id,
+					lastFailure: reason,
+				},
 			})
 		}
 	}

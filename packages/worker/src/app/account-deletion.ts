@@ -1847,6 +1847,11 @@ export async function deleteUserAccount(input: {
 	 * through the guest alias, so they must survive the deletion.
 	 */
 	keepOAuthGrants?: boolean
+	/**
+	 * Called after each completed cleanup step while the users row still
+	 * exists. Purge lanes renew their claim lease here; a throw stops deletion.
+	 */
+	onStepComplete?: () => Promise<void>
 }): Promise<AccountDeletionResult> {
 	const personUserId = input.personUserId ?? input.mcpUserId
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
@@ -1976,6 +1981,7 @@ export async function deleteUserAccount(input: {
 			throw error
 		}
 	}
+	await input.onStepComplete?.()
 
 	// Stop running package workflows before purging the storage their steps
 	// write to. On failure, stop with the deletion fence held and nothing
@@ -1989,6 +1995,7 @@ export async function deleteUserAccount(input: {
 	if (!workflowRunsCancelled) {
 		throw new AccountDeletionCleanupError(warnings, result)
 	}
+	await input.onStepComplete?.()
 
 	result.deletedVectors = await deleteVectorsByIds({
 		env: input.env,
@@ -2081,6 +2088,7 @@ export async function deleteUserAccount(input: {
 				warnings,
 			}),
 	)
+	await input.onStepComplete?.()
 	if (input.env.BUNDLE_ARTIFACTS_KV) {
 		const sourceSnapshotKeys = await listKvKeysByPrefix({
 			kv: input.env.BUNDLE_ARTIFACTS_KV,
@@ -2258,6 +2266,7 @@ export async function deleteUserAccount(input: {
 	if (warnings.length > 0) {
 		throw new AccountDeletionCleanupError(warnings, result)
 	}
+	await input.onStepComplete?.()
 
 	// Jobs data lives in the jobs worker's database (ADR 0016), so it cannot
 	// join the atomic APP_DB deletion below. Purge it fail-closed here, after
@@ -2271,6 +2280,7 @@ export async function deleteUserAccount(input: {
 	if (warnings.length > 0) {
 		throw new AccountDeletionCleanupError(warnings, result)
 	}
+	await input.onStepComplete?.()
 
 	if (inventory.stripeCustomerId) {
 		const customerId = inventory.stripeCustomerId
