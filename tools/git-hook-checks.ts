@@ -735,7 +735,7 @@ function relatedTestProvenanceCheck(
 	paths: ReadonlyArray<string>,
 ): GitHookProvenanceCheck {
 	const selection = createHash('sha256')
-		.update([...new Set(paths)].sort().join('\n'))
+		.update(JSON.stringify([...new Set(paths)].sort()))
 		.digest('hex')
 	return `${script} paths:${selection}`
 }
