@@ -17,6 +17,18 @@ import type { EntitySourceRow } from '#worker/repo/types.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
+	parseJsonText,
+	reportHandledError,
+} from '#worker/outbound/typed-failure.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import {
+	publishBuildArtifactWriteDeadlineMs,
+	publishBuildDependencyResolveDeadlineMs,
+} from './policy.ts'
+import {
 	finishPublishBuild,
 	getPublishBuild,
 	readPublishBuildDocument,
@@ -51,15 +63,20 @@ async function readModule(input: {
 	const parts: Array<Uint8Array> = []
 	let size = 0
 	for (const chunk of input.entry.chunks) {
-		const object = await input.bucket.get(
-			publishBuildBlobKey(input.buildId, chunk),
+		const bytes = await withDeadline(
+			{ label: 'publish_build_blob.get', timeoutMs: outboundTimeoutMs.r2 },
+			async () => {
+				const object = await input.bucket.get(
+					publishBuildBlobKey(input.buildId, chunk),
+				)
+				return object ? new Uint8Array(await object.arrayBuffer()) : null
+			},
 		)
-		if (!object) {
+		if (!bytes) {
 			throw new PublishBuildVerificationError(
 				`chunk ${chunk.slice(0, 12)} was never uploaded (or expired); upload the build again.`,
 			)
 		}
-		const bytes = new Uint8Array(await object.arrayBuffer())
 		parts.push(bytes)
 		size += bytes.byteLength
 	}
@@ -85,8 +102,15 @@ async function readModule(input: {
 			return { cjs: decoder.decode(body) }
 		case 'text':
 			return { text: decoder.decode(body) }
-		case 'json':
-			return { json: JSON.parse(decoder.decode(body)) as object }
+		case 'json': {
+			const parsed = parseJsonText(decoder.decode(body))
+			if (parsed.kind === 'invalid_json') {
+				throw new PublishBuildVerificationError(
+					'an uploaded JSON module is not valid JSON.',
+				)
+			}
+			return { json: parsed.value as object }
+		}
 		case 'data':
 			return { data: body.slice().buffer }
 		default:
@@ -171,12 +195,17 @@ export async function persistUploadedPublishBuild(input: {
 }): Promise<PersistUploadedPublishBuildResult> {
 	const db = input.env.APP_DB
 	const reject = async (message: string) => {
-		await finishPublishBuild({
-			db,
-			buildId: input.buildId,
-			status: 'rejected',
-			message,
-		}).catch(() => {})
+		try {
+			await finishPublishBuild({
+				db,
+				buildId: input.buildId,
+				status: 'rejected',
+				message,
+			})
+		} catch (error) {
+			// The publish is refused either way; the row stays sealed until expiry.
+			reportHandledError('publish_builds.finish_rejected', error)
+		}
 		return {
 			ok: false as const,
 			message: `Publish build rejected: ${message}`,
@@ -253,15 +282,22 @@ export async function persistUploadedPublishBuild(input: {
 			const dependencies =
 				target.bundleKind === 'app-client'
 					? []
-					: await resolveKodyDependenciesForEntryPoint({
-							env: input.env,
-							baseUrl: input.baseUrl,
-							userId: input.userId,
-							sourceFiles: input.sourceFiles,
-							entryPoint: target.entryPoint,
-							importNodesCache,
-							loadedPackages,
-						})
+					: await withDeadline(
+							{
+								label: 'publish_build.resolve_dependencies',
+								timeoutMs: publishBuildDependencyResolveDeadlineMs,
+							},
+							() =>
+								resolveKodyDependenciesForEntryPoint({
+									env: input.env,
+									baseUrl: input.baseUrl,
+									userId: input.userId,
+									sourceFiles: input.sourceFiles,
+									entryPoint: target.entryPoint,
+									importNodesCache,
+									loadedPackages,
+								}),
+						)
 			endStep('resolve-dependencies')
 			const linkedImports =
 				target.bundleKind === 'app-client'
@@ -304,15 +340,22 @@ export async function persistUploadedPublishBuild(input: {
 				}),
 			})
 		}
-		const results = await persistPublishedPackageArtifactTargets({
-			env: input.env,
-			userId: input.userId,
-			source: { ...input.source, published_commit: input.publishedCommit },
-			savedPackage: input.savedPackage,
-			targets: input.targets,
-			builtIn: { origin: row.origin, contextName: row.context_name },
-			...createUploadedTargetBuilders(prepared),
-		})
+		const results = await withDeadline(
+			{
+				label: 'publish_build.write_artifacts',
+				timeoutMs: publishBuildArtifactWriteDeadlineMs,
+			},
+			() =>
+				persistPublishedPackageArtifactTargets({
+					env: input.env,
+					userId: input.userId,
+					source: { ...input.source, published_commit: input.publishedCommit },
+					savedPackage: input.savedPackage,
+					targets: input.targets,
+					builtIn: { origin: row.origin, contextName: row.context_name },
+					...createUploadedTargetBuilders(prepared),
+				}),
+		)
 		endStep('write-artifacts')
 		const failed = results.filter((result) => !result.ok)
 		if (failed.length > 0) {

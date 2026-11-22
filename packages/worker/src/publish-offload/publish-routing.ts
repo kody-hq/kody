@@ -3,9 +3,21 @@ import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
 import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
 import { getChain } from '#worker/execution-contexts/store.ts'
+import {
+	assertNever,
+	parseJsonText,
+	reportHandledError,
+} from '#worker/outbound/typed-failure.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
 import { packagePublishDefinitionSchema } from '#worker/package-registry/types.ts'
 import { readArtifactFileAtCommit } from '#worker/repo/artifact-file.ts'
-import { dispatchContextPublishBuild } from './context-dispatch.ts'
+import {
+	dispatchContextPublishBuild,
+	mapContextDispatchFailure,
+} from './context-dispatch.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { createPublishBuild, discardUnstartedPublishBuild } from './store.ts'
 
@@ -74,21 +86,56 @@ export function publishBindingUnavailableMessage(input: {
 	].join(' ')
 }
 
+/** Why a publish cannot be routed; mapped once by {@link decidePublishRoute}. */
+export type PublishRouteFailure =
+	| { kind: 'context_flags_off' }
+	| { kind: 'binding_unavailable'; context: string; reason: string }
+
+export function mapPublishRouteFailure(
+	failure: PublishRouteFailure,
+	packageRef: string,
+): ExecutionContextError {
+	switch (failure.kind) {
+		case 'context_flags_off':
+			return new ExecutionContextError({
+				status: 403,
+				code: 'feature_disabled',
+				message: publishContextFlagsOffMessage,
+			})
+		case 'binding_unavailable':
+			return new ExecutionContextError({
+				status: 409,
+				code: 'execution_context_binding_unavailable',
+				message: publishBindingUnavailableMessage({
+					packageRef,
+					context: failure.context,
+					reason: failure.reason,
+				}),
+				details: { context: failure.context, config: publishBindingConfigPath },
+			})
+		default:
+			return assertNever(failure, 'publish route failure')
+	}
+}
+
 export async function decidePublishRoute(input: {
 	requestedContext: string | null | undefined
 	packageRef: string
 	deps: PublishRouteDeps
 }): Promise<PublishRoute> {
+	const route = await routePublish(input)
+	if ('via' in route) return route
+	throw mapPublishRouteFailure(route, input.packageRef)
+}
+
+async function routePublish(input: {
+	requestedContext: string | null | undefined
+	deps: PublishRouteDeps
+}): Promise<PublishRoute | PublishRouteFailure> {
 	const requested = input.requestedContext?.trim() || null
 	if (requested === 'cloud') return { kind: 'cloud', via: 'requested' }
 	if (!(await input.deps.flagsEnabled())) {
-		if (requested) {
-			throw new ExecutionContextError({
-				status: 403,
-				code: 'feature_disabled',
-				message: publishContextFlagsOffMessage,
-			})
-		}
+		if (requested) return { kind: 'context_flags_off' }
 		return { kind: 'cloud', via: 'flags_off' }
 	}
 	if (requested) {
@@ -110,14 +157,18 @@ export async function decidePublishRoute(input: {
 				fallbackToCloud: false,
 			})
 		} catch (error) {
-			throw bindingUnavailable(input.packageRef, bound, errorText(error))
+			return {
+				kind: 'binding_unavailable',
+				context: bound,
+				reason: errorText(error),
+			}
 		}
 		if (built.kind !== 'context') {
-			throw bindingUnavailable(
-				input.packageRef,
-				bound,
-				'it did not take the publish build',
-			)
+			return {
+				kind: 'binding_unavailable',
+				context: bound,
+				reason: 'it did not take the publish build',
+			}
 		}
 		return { ...built, via: 'bound' }
 	}
@@ -133,19 +184,6 @@ export async function decidePublishRoute(input: {
 		: { kind: 'cloud', via: 'chain' }
 }
 
-function bindingUnavailable(
-	packageRef: string,
-	context: string,
-	reason: string,
-) {
-	return new ExecutionContextError({
-		status: 409,
-		code: 'execution_context_binding_unavailable',
-		message: publishBindingUnavailableMessage({ packageRef, context, reason }),
-		details: { context, config: publishBindingConfigPath },
-	})
-}
-
 function errorText(error: unknown) {
 	return error instanceof Error ? error.message : String(error)
 }
@@ -153,12 +191,9 @@ function errorText(error: unknown) {
 /** Reads `kody.publish.execution.context` from package.json text. */
 export function parsePublishBinding(manifestText: string | null) {
 	if (!manifestText) return null
-	let parsed: unknown
-	try {
-		parsed = JSON.parse(manifestText)
-	} catch {
-		return null
-	}
+	const json = parseJsonText(manifestText)
+	if (json.kind === 'invalid_json') return null
+	const parsed = json.value
 	const kody =
 		parsed && typeof parsed === 'object'
 			? (parsed as { kody?: unknown }).kody
@@ -194,22 +229,41 @@ export function publishRouteDeps(input: {
 	return {
 		flagsEnabled: async () => {
 			const [contexts, offload] = await Promise.all([
-				isExecutionContextsEnabledFor(db, input.personId, orgId),
+				withDeadline(
+					{
+						label: 'feature_flags.execution_contexts',
+						timeoutMs: outboundTimeoutMs.d1,
+					},
+					() => isExecutionContextsEnabledFor(db, input.personId, orgId),
+				),
 				isPublishOffloadEnabledFor(db, input.personId, orgId),
 			])
 			return contexts && offload
 		},
 		readBoundContext: async () => {
-			const bytes = await readArtifactFileAtCommit({
-				env: input.env,
-				repoId: input.source.repo_id,
-				commit: input.commit,
-				filePath: input.source.manifest_path,
-			})
+			const bytes = await withDeadline(
+				{
+					label: 'artifacts.read_publish_binding',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() =>
+					readArtifactFileAtCommit({
+						env: input.env,
+						repoId: input.source.repo_id,
+						commit: input.commit,
+						filePath: input.source.manifest_path,
+					}),
+			)
 			return parsePublishBinding(bytes ? new TextDecoder().decode(bytes) : null)
 		},
 		chainMayUseContexts: async () => {
-			const chain = await getChain(db, { orgId, userId: input.personId })
+			const chain = await withDeadline(
+				{
+					label: 'execution_context_chain.get',
+					timeoutMs: outboundTimeoutMs.d1,
+				},
+				() => getChain(db, { orgId, userId: input.personId }),
+			)
 			return (
 				chain.strict || chain.entries.some((entry) => entry.kind === 'context')
 			)
@@ -244,8 +298,16 @@ export function publishRouteDeps(input: {
 				fallbackToCloud,
 			})
 			if (dispatched.kind === 'cloud') {
-				await discardUnstartedPublishBuild(db, created.buildId).catch(() => {})
+				try {
+					await discardUnstartedPublishBuild(db, created.buildId)
+				} catch (error) {
+					// The cloud build goes ahead; the expiry sweep drops the row.
+					reportHandledError('publish_builds.discard_unstarted', error)
+				}
 				return { kind: 'cloud' }
+			}
+			if (dispatched.kind !== 'context') {
+				throw mapContextDispatchFailure(dispatched)
 			}
 			return {
 				kind: 'context',

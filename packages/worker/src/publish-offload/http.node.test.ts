@@ -187,3 +187,118 @@ test('a document for another commit cannot be sealed', async () => {
 		),
 	).rejects.toThrow(/this build is for/)
 })
+
+const sealPath = '/v1/publish-builds/pb_0123456789abcdef01234567/seal'
+
+test('an oversized chunk is refused without waiting for the rest of the body', async () => {
+	const sha = '0'.repeat(64)
+	let pulls = 0
+	// Sends more than the 4 MiB cap, then never ends: a reader that buffers
+	// the whole body before checking the cap would wait forever.
+	const body = new ReadableStream<Uint8Array>({
+		pull(controller) {
+			pulls += 1
+			if (pulls <= 5) controller.enqueue(new Uint8Array(1024 * 1024))
+		},
+	})
+	const url = new URL(
+		`https://kody.test/v1/publish-builds/pb_0123456789abcdef01234567/blobs/${sha}`,
+	)
+	const request = new Request(url, {
+		method: 'PUT',
+		body,
+		headers: { Authorization: 'Bearer kpb_good' },
+		duplex: 'half',
+	} as RequestInit)
+	const outcome = await Promise.race([
+		handlePublishBuildRoute({
+			request,
+			env: { REPO_SESSION_BLOBS: bucket, APP_DB: {} } as never,
+			url,
+		}).catch((error: unknown) => error),
+		new Promise((resolve) => setTimeout(() => resolve('still reading'), 2_000)),
+	])
+	expect(outcome).toMatchObject({ status: 400, code: 'invalid_request' })
+	expect(String((outcome as Error).message)).toMatch(/at most/)
+	expect(bucket.puts).toHaveLength(0)
+})
+
+test('a seal body that is not JSON is a 400, not an internal error', async () => {
+	await expect(
+		call('POST', sealPath, '{"builderVersion":'),
+	).rejects.toMatchObject({
+		status: 400,
+		code: 'invalid_request',
+		message: 'Request body must be valid JSON.',
+	})
+	expect(sealed).not.toHaveBeenCalled()
+})
+
+test('a seal document whose targets have no module chunk lists is a 400, not an internal error', async () => {
+	await expect(
+		call(
+			'POST',
+			sealPath,
+			JSON.stringify({
+				builderVersion: 2,
+				commit: row.commit_sha,
+				files: [],
+				targets: [{ kind: 'module', modules: { 'index.js': {} } }],
+			}),
+		),
+	).rejects.toMatchObject({
+		status: 400,
+		code: 'invalid_request',
+		message: 'The build document needs files and targets.',
+	})
+	expect(sealed).not.toHaveBeenCalled()
+})
+
+test('a seal that loses the race to another request is a 409, not a success', async () => {
+	sealed.mockResolvedValue(false)
+	await expect(
+		call(
+			'POST',
+			sealPath,
+			JSON.stringify({
+				builderVersion: 2,
+				commit: row.commit_sha,
+				files: [],
+				targets: [],
+			}),
+		),
+	).rejects.toMatchObject({ status: 409, code: 'invalid_request' })
+	expect(sealed).toHaveBeenCalledTimes(1)
+})
+
+test('a hung R2 call fails with a 503 at its deadline', async () => {
+	let expire = () => {}
+	const hungBucket = {
+		...bucket,
+		head: () => new Promise(() => {}),
+	}
+	const url = new URL(
+		`https://kody.test/v1/publish-builds/pb_0123456789abcdef01234567/blobs/${'0'.repeat(64)}`,
+	)
+	const pending = handlePublishBuildRoute({
+		request: new Request(url, {
+			method: 'PUT',
+			body: chunk,
+			headers: { Authorization: 'Bearer kpb_good' },
+		}),
+		env: { REPO_SESSION_BLOBS: hungBucket, APP_DB: {} } as never,
+		url,
+		clock: {
+			setTimer: (_ms, onExpire) => {
+				expire = onExpire
+				return () => {}
+			},
+		},
+	})
+	await Promise.resolve()
+	expire()
+	await expect(pending).rejects.toMatchObject({
+		status: 503,
+		code: 'internal_error',
+	})
+})

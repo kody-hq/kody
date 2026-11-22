@@ -69,6 +69,29 @@
 	},
 	"overrides": [
 		{
+			"files": [
+				"**/packages/worker/src/mcp/capabilities/packages/publish-build-create.ts",
+				"**/packages/worker/src/execution-contexts/route-publish-build.ts",
+				"**/packages/worker/src/publish-offload/context-dispatch.ts",
+				"**/packages/worker/src/publish-offload/flag.ts",
+				"**/packages/worker/src/publish-offload/http.ts",
+				"**/packages/worker/src/publish-offload/link-dependencies.ts",
+				"**/packages/worker/src/publish-offload/module-hashes.ts",
+				"**/packages/worker/src/publish-offload/persist-uploaded.ts",
+				"**/packages/worker/src/publish-offload/policy.ts",
+				"**/packages/worker/src/publish-offload/publish-build-state.ts",
+				"**/packages/worker/src/publish-offload/publish-routing.ts",
+				"**/packages/worker/src/publish-offload/store.ts",
+				"**/packages/worker/src/publish-offload/types.ts",
+				"**/packages/worker/src/publish-offload/verify.ts"
+			],
+			"rules": {
+				"kody-custom/require-outbound-deadline": "error",
+				"kody-custom/no-floating-promise": "error",
+				"kody-custom/no-swallowed-error": "error"
+			}
+		},
+		{
 			"files": ["**/packages/worker/client/event-mixin.ts"],
 			"rules": {
 				"typescript/no-explicit-any": "off"
