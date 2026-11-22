@@ -11,7 +11,7 @@ import { SiteLink } from '../components/site-link.tsx'
  * technical archive and technical posts; site chrome and other categories
  * keep the editorial look.
  */
-export const TECHNICAL_BLOG_CATEGORY = 'technical'
+const TECHNICAL_BLOG_CATEGORY = 'technical'
 
 export function isTechnicalBlogCategory(slug: string) {
 	return slug === TECHNICAL_BLOG_CATEGORY
