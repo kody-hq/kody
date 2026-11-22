@@ -46,8 +46,6 @@ vi.mock('#worker/storage-buckets/service.ts', async (importOriginal) => {
 			mockModule.recordStorageBucketEstimate(...args),
 		maybeRefreshStorageBucketEstimate: (...args: Array<unknown>) =>
 			mockModule.maybeRefreshStorageBucketEstimate(...args),
-		flushStorageBucketRegistrationsForTests: async () => undefined,
-		clearStorageBucketRegistrationDedupeForTests: () => undefined,
 		listPlatformStorageBuckets: async () => [],
 	}
 })

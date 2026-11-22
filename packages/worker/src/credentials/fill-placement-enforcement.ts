@@ -5,6 +5,7 @@
  * A legacy credential with no placement (null) narrows to headers plus the
  * parts it was seen filled into before enforcement (recorded as `observed`
  * opt-ins by migration 0195), so nobody migrates anything by hand.
+ * Remove when: every secret credential row has a stored placement (null placements backfilled).
  */
 import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
@@ -34,6 +35,7 @@ import {
  * The placement the gateway enforces: stored headers (any header for a legacy
  * null placement), plus each query, path, or body part that is both allowed
  * by the stored placement and opted in.
+ * Remove when: every secret credential row has a stored placement (null placements backfilled).
  */
 export function effectiveFillPlacement(
 	stored: CredentialFillPlacement | null,
@@ -88,6 +90,7 @@ export type FillPlacementRefusalLinks = {
  * counts as approved only when the stored placement lists it and the owner
  * opted in, so a legacy (null) placement that fills a part because Kody once
  * observed it there still needs the owner's explicit approval to record it.
+ * Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
  */
 export function pendingPlacementApprovalParts<
 	Part extends OptInFillPlacementPart,

@@ -35,6 +35,7 @@ import {
 	MetadataGrid,
 	TimestampValue,
 } from './account-management-components.tsx'
+import { AdminFileStorageQuota } from './admin-file-storage-quota.tsx'
 import { AdminOrgLimitsPanel } from './admin-users-limits.tsx'
 import {
 	formatAdminCreditLedgerKind,
@@ -544,6 +545,7 @@ export function AdminOrgsPage(props: {
 				description="Review organization plans, seats, credits, budgets, and lifecycle state."
 				currentHref={props.currentHref}
 			/>
+			<AdminFileStorageQuota />
 			<RecordTable
 				mode="none"
 				ariaLabel="Organizations"
@@ -920,7 +922,10 @@ export function AdminOrgDetailPage(props: {
 					<p>Limit overrides are not available for a deleted organization.</p>
 				</AccountManagementPanel>
 			) : (
-				<AdminOrgLimitsPanel orgId={org.id} />
+				<>
+					<AdminOrgLimitsPanel orgId={org.id} />
+					<AdminFileStorageQuota key={org.id} orgId={org.id} />
+				</>
 			)}
 		</AccountManagementShell>
 	)

@@ -32,6 +32,28 @@ export const saveCredentialPlacement = createServerFn({ method: 'POST' })
 		)
 	})
 
+export const saveCredentialRequestProfile = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+			credentialId: z.string().min(1).max(100),
+			profile: z.string().max(65000).nullable(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { setCredentialRequestProfile } =
+			await import('#app/credential-placement-mutation.ts')
+		const { requireOperationResult } = await import('#app/operation-result.ts')
+		return withWebsiteMutation(
+			{ scope: { orgSlug: data.orgSlug } },
+			async ({ env, user }) =>
+				requireOperationResult(
+					await setCredentialRequestProfile({ env, user, ...data }),
+				),
+		)
+	})
+
 export const approveCredentialPlacementRequest = createServerFn({
 	method: 'POST',
 })

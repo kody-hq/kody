@@ -23,6 +23,8 @@ import {
 	ensureCloudflareQueue,
 	ensureD1Database,
 	ensureR2Bucket,
+	ensureR2BucketLifecycle,
+	packageRunStagingLifecyclePolicy,
 	fail,
 	isWranglerNotFoundOutput,
 	listD1Databases,
@@ -604,6 +606,11 @@ async function ensurePreviewResources(options: CliOptions) {
 		name: repoSessionBlobsBucketName,
 		dryRun: options.dryRun,
 	})
+	ensureR2BucketLifecycle({
+		name: repoSessionBlobs.name,
+		policy: packageRunStagingLifecyclePolicy,
+		dryRun: options.dryRun,
+	})
 	const fileBlobs = await ensureR2Bucket({
 		name: fileBlobsBucketName,
 		dryRun: options.dryRun,
@@ -690,6 +697,7 @@ async function ensurePreviewResources(options: CliOptions) {
 		// the origin never needs the full `index.ts` bootstrap. The full entry
 		// is only the fallback for a legacy preview script that still owns
 		// transferred classes (see planOriginPreviewDeploy).
+		// Permanent: stored data or clients from before this change still exist.
 		...(deployPlan.originEntry === 'slim'
 			? { mainEntryPath: defaultProductionEntryPath }
 			: {}),

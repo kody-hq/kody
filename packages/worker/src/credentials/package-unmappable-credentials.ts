@@ -13,7 +13,6 @@ import type { CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import { getLatestPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 import { visitorCredentialIdsByNeedKey } from '#worker/package-capabilities/capability-set.ts'
 // Type-only and erased: repo/types.ts pulls in Workers-only modules at runtime.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { memoizePerRequest } from '#worker/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'

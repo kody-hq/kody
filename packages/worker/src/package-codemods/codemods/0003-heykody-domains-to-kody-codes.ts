@@ -27,6 +27,7 @@ const legacyOriginPattern = /https:\/\/heykody\.(?:app|dev)(?!\.?[A-Za-z0-9-])/g
  * rewrite silently changes meaning. Tested against the post-rewrite text
  * so every non-rewritable occurrence is flagged, including ones embedded
  * in an https:// origin the rewriter refused.
+ * Remove when: a codemod rescan finds no published package that still uses these patterns.
  */
 const legacyMentionPattern = /\bheykody\.(?:app|dev)\b/
 
@@ -115,6 +116,7 @@ function transformLegacyDomains(
  * the canonical https://kody.codes and flags every other legacy-hostname
  * mention for manual review. Kept registered while any published package
  * still references a heykody origin.
+ * Remove when: a codemod rescan finds no published package that still uses these patterns.
  */
 export const heykodyDomainsToKodyCodesCodemod = {
 	id: heykodyDomainsToKodyCodesCodemodId,

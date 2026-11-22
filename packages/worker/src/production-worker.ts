@@ -50,6 +50,7 @@ import { originWorkerHandler } from './origin-handler.ts'
  * steady-state production only through cross-script bindings or the
  * `RUNTIME_WORKER` service forward, never through a local export on this
  * script.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export { KodyFetchGateway, JobsHost, KodyApi, DynamicWorkerUsageTail }
 

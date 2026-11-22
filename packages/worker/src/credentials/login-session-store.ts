@@ -485,6 +485,8 @@ export async function obtainLoginSession(
 	input: SessionKey & {
 		env: SessionEnv
 		exchange: () => Promise<LoginSession>
+		/** A single-request exchange shares throttling, but never reads or saves a token. */
+		cacheSession?: false
 		/** Whether the credential still matches what the caller read. */
 		isCurrent?: () => Promise<boolean>
 		rejectedSessionId?: string | null
@@ -497,6 +499,7 @@ export async function obtainLoginSession(
 	const deadline = Date.now() + leaseMs * 2
 	const leaseId = crypto.randomUUID()
 	const rejected = Boolean(input.rejectedSessionId)
+	const cacheSession = input.cacheSession !== false
 	if (input.rejectedSessionId) {
 		refuseWhileCoolingDown(await readLoginFailure(input.env.APP_DB, input), {
 			now: Date.now(),
@@ -509,7 +512,7 @@ export async function obtainLoginSession(
 		)
 	}
 	for (;;) {
-		const stored = await readStoredLoginSession(input)
+		const stored = cacheSession ? await readStoredLoginSession(input) : null
 		if (stored) {
 			return {
 				session: stored,
@@ -535,7 +538,9 @@ export async function obtainLoginSession(
 			let leaseCleared = false
 			try {
 				// The holder may have published between the read and the claim.
-				const storedAfterClaim = await readStoredLoginSession(input)
+				const storedAfterClaim = cacheSession
+					? await readStoredLoginSession(input)
+					: null
 				if (storedAfterClaim) {
 					return {
 						session: storedAfterClaim,
@@ -566,7 +571,19 @@ export async function obtainLoginSession(
 					leaseCleared = recorded.recorded
 					throw recorded.error
 				}
-				if (session.expiresAt === null && !session.replacement) {
+				if (!cacheSession) {
+					await input.env.APP_DB.prepare(
+						`DELETE FROM login_credential_sessions
+						WHERE credential_id = ? AND user_id = ? AND lease_id = ?`,
+					)
+						.bind(input.credentialId, input.ownerId, leaseId)
+						.run()
+					leaseCleared = true
+				}
+				if (
+					!cacheSession ||
+					(session.expiresAt === null && !session.replacement)
+				) {
 					return {
 						session,
 						source: 'new',

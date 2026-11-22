@@ -4,7 +4,12 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test, vi } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
+import {
+	resolvePackageAppRunLocations,
+	resolvePublicPackageAppLocation,
+} from '#worker/package-app-public-url.ts'
+import * as packageRepo from '#worker/package-registry/repo.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 // These fixtures have no owner or package rows, so no profile package exists.
 vi.mock('#worker/package-app-profile-host.ts', () => ({
@@ -127,8 +132,8 @@ test('resolvePublicPackageAppLocation falls back to kody.run when only pending h
 			kodyId: 'demo',
 		}),
 	).resolves.toEqual({
-		hostedUrl: 'https://pkg-owner.kody.run/demo',
-		appBasePath: '/demo',
+		hostedUrl: 'https://demo--pkg-owner.kody.run/',
+		appBasePath: '',
 	})
 })
 
@@ -141,7 +146,48 @@ test('resolvePublicPackageAppLocation falls back to kody.run when no custom host
 			kodyId: 'demo',
 		}),
 	).resolves.toEqual({
-		hostedUrl: 'https://pkg-owner.kody.run/demo',
-		appBasePath: '/demo',
+		hostedUrl: 'https://demo--pkg-owner.kody.run/',
+		appBasePath: '',
 	})
+})
+
+test('resolvePackageAppRunLocations gives each run package its served app URL, null only without an app', async () => {
+	const env = createEnv({ withHostname: 'verified' })
+	const packages: Record<string, Partial<SavedPackageRecord>> = {
+		'pkg-demo': { id: 'pkg-demo', name: '@pkg-owner/demo', hasApp: true },
+		'pkg-plain': { id: 'pkg-plain', name: '@pkg-owner/plain', hasApp: true },
+		'pkg-no-app': { id: 'pkg-no-app', name: '@pkg-owner/lib', hasApp: false },
+	}
+	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockImplementation(
+		async (_db, packageId) =>
+			(packages[packageId] as SavedPackageRecord | undefined) ?? null,
+	)
+	await expect(
+		resolvePackageAppRunLocations({
+			env,
+			baseUrl: 'https://kody.codes',
+			packageIds: ['pkg-demo', 'pkg-plain', 'pkg-no-app', 'pkg-gone'],
+		}),
+	).resolves.toEqual({
+		'pkg-demo': { hostedUrl: 'https://app.example.com/', appBasePath: '' },
+		'pkg-plain': {
+			hostedUrl: 'https://plain--pkg-owner.kody.run/',
+			appBasePath: '',
+		},
+		'pkg-no-app': { hostedUrl: null, appBasePath: null },
+		'pkg-gone': { hostedUrl: null, appBasePath: null },
+	})
+})
+
+test('resolvePublicPackageAppLocation never links the shared owner host path address', async () => {
+	const env = createEnv({ withHostname: 'none' })
+	const location = await resolvePublicPackageAppLocation({
+		env,
+		username: 'pkg-owner',
+		kodyId: 'demo',
+		restPath: '/inbox',
+	})
+	expect(location?.hostedUrl).toBe('https://demo--pkg-owner.kody.run/inbox')
+	expect(location?.hostedUrl).not.toMatch(/^https:\/\/pkg-owner\.kody\.run\//)
+	expect(location?.hostedUrl).not.toContain('/packages/')
 })

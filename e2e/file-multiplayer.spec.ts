@@ -56,19 +56,18 @@ test('collaborators jump to a live caret and merge edits after a disconnect', as
 		})
 		expect(response.ok()).toBe(true)
 		const collaborator = await context.newPage()
-		let connected = true
 		let connection: WebSocketRoute | undefined
 		let serverConnection: WebSocketRoute | undefined
 		let connectLive!: () => void
-		const liveConnection = new Promise<void>((resolve) => {
+		let liveConnection = new Promise<void>((resolve) => {
 			connectLive = resolve
 		})
+		// Hold every guest socket, including reconnects, until the test
+		// releases the gate. Closing reconnects with 4001 left FileRoomClient
+		// on a CONNECTING socket that never fired onclose, so pending offline
+		// edits never flushed.
 		await collaborator.routeWebSocket('**/file-session/**', async (socket) => {
 			await liveConnection
-			if (!connected) {
-				void socket.close({ code: 4001 })
-				return
-			}
 			connection = socket
 			serverConnection = socket.connectToServer()
 		})
@@ -87,12 +86,12 @@ test('collaborators jump to a live caret and merge edits after a disconnect', as
 		await guestEditor.pressSequentially(' together')
 		await expect(ownerEditor).toContainText('Shared paragraph together')
 
+		const caret = ownerEditor.locator('[data-presence-session]')
+		await expect(caret).toHaveCount(1, { timeout: 20_000 })
 		const jump = page.getByRole('button', {
 			name: /^Jump to multiplayer-guest-/,
 		})
 		await expect(jump).toBeVisible()
-		const caret = ownerEditor.locator('[data-presence-session]')
-		await expect(caret).toHaveCount(1)
 		await ownerEditor.evaluate((editor) =>
 			editor.scrollIntoView({ block: 'start', behavior: 'instant' }),
 		)
@@ -104,7 +103,9 @@ test('collaborators jump to a live caret and merge edits after a disconnect', as
 			page.getByText('People & agents', { exact: true }),
 		).toHaveCount(0)
 
-		connected = false
+		liveConnection = new Promise<void>((resolve) => {
+			connectLive = resolve
+		})
 		await serverConnection!.close({ code: 4001 })
 		await connection!.close({ code: 4001 })
 		await expect(
@@ -125,7 +126,7 @@ test('collaborators jump to a live caret and merge edits after a disconnect', as
 		await page.keyboard.insertText('Live: ')
 		await expect(ownerEditor).toContainText('Live: Shared paragraph together')
 		await expect(ownerEditor).not.toContainText('with offline edits')
-		connected = true
+		connectLive()
 
 		const merged = 'Live: Shared paragraph together with offline edits'
 		const paragraphText = (editor: Locator) =>

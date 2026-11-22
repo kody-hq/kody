@@ -95,7 +95,11 @@ export type CredentialFillPlacementObservationView = {
 /** What the detail pane adds to a list row. Never a value. */
 export type AccountCredentialDetail = {
 	id: string
-	/** The legacy placeholder that fills this value on its hosts, if any. */
+	canApproveRequestProfile?: boolean
+	/**
+	 * The legacy placeholder that fills this value on its hosts, if any.
+	 * Permanent: stored data or clients from before this change still exist.
+	 */
 	placeholder: string | null
 	/** Team orgs a personal credential is granted to. */
 	grants: Array<{ orgSlug: string; orgName: string; grantedAt: string }>

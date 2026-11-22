@@ -2,14 +2,12 @@
 import { FileAnchorContext } from '../file-anchor-context.ts'
 import { FileAnchorMarker } from '../file-anchor-markers.tsx'
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
+import { useContext, useEffectEvent, useMemo, useRef, useState } from 'react'
 import {
-	useContext,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-} from 'react'
+	useExternalInstanceSync,
+	useLayoutMeasure,
+	useResourceLifetime,
+} from '../../lib/primitives.ts'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import type {
 	JsonLine,
@@ -86,7 +84,7 @@ export default function JsonFileViewer({
 		setPending((current) => new Set(current).add(id))
 		request({ type: 'children', id, offset })
 	}
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const instance = new Worker(
 			new URL('./json-preview.worker.ts', import.meta.url),
 			{ type: 'module' },
@@ -186,7 +184,9 @@ export default function JsonFileViewer({
 				]),
 			].sort((a, b) => a - b),
 	})
-	useLayoutEffect(() => {
+	const virtualItems = virtual.getVirtualItems()
+	const renderedRange = `${virtualItems[0]?.index}:${virtualItems.at(-1)?.index}`
+	useLayoutMeasure(() => {
 		if (!focusAfter.current) return
 		if (focusedIndex >= 0)
 			virtual.scrollToIndex(focusedIndex, { align: 'auto' })
@@ -197,8 +197,8 @@ export default function JsonFileViewer({
 			focusAfter.current = false
 			target.focus({ preventScroll: true })
 		}
-	})
-	useLayoutEffect(() => {
+	}, [focused, focusedIndex, renderedRange])
+	useLayoutMeasure(() => {
 		if (revealAfter.current === undefined) return
 		const index = rows.findIndex(
 			(row) => !row.more && row.node.id === revealAfter.current,
@@ -206,7 +206,7 @@ export default function JsonFileViewer({
 		if (index < 0) return
 		revealAfter.current = undefined
 		virtual.scrollToIndex(index, { align: 'center' })
-	})
+	}, [rows])
 
 	function toggle(node: JsonNode) {
 		if (!node.count) return
@@ -225,7 +225,7 @@ export default function JsonFileViewer({
 		setFocused(row.node.id)
 		virtual.scrollToIndex(index, { align: 'auto' })
 	}
-	useEffect(() => {
+	const revealPointer = useEffectEvent(() => {
 		if (pointer === undefined || !selected) {
 			revealed.current = undefined
 			return
@@ -252,6 +252,10 @@ export default function JsonFileViewer({
 		if (index >= 0) virtual.scrollToIndex(index, { align: 'center' })
 		else revealAfter.current = pointer
 		revealed.current = selected.id
+	})
+	useExternalInstanceSync(() => {
+		revealPointer()
+		// oxlint-disable-next-line react/exhaustive-deps -- a new pointer or rendered range reveals the target
 	}, [pointer, selected?.id, root, children, pending])
 
 	if (error)

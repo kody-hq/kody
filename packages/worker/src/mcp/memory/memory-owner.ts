@@ -3,6 +3,7 @@
  * acting person's personal org, regardless of which org the connection is bound
  * to. Team-org `mcp_memories` rows are legacy: readable until cleanup, not
  * writable.
+ * Remove when: the ADR 0072 cleanup has deleted every team-org memory.
  */
 import type {
 	OwnerId,

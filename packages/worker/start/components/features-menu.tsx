@@ -6,8 +6,8 @@ import {
 	showPopoverPanel,
 } from '#client/popover-open.ts'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useRef, useState } from 'react'
-import { useLocation } from '@tanstack/react-router'
+import { useCallback, useRef, useState } from 'react'
+import { useCloseOnNavigation } from './close-on-navigation.ts'
 import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
 import { colors, shadows, typography } from '#universal/styles/tokens.ts'
@@ -95,14 +95,22 @@ export function FeaturesMenu(props: Props) {
 			}
 		}, 180)
 	}
-	useEffect(() => () => clearTimeout(closeTimer.current), [])
+	const triggerRef = useCallback((node: HTMLButtonElement | null) => {
+		trigger.current = node
+		if (!node) return
+		return () => {
+			trigger.current = null
+			clearTimeout(closeTimer.current)
+		}
+	}, [])
 	const mobile = useRef<HTMLDetailsElement>(null)
-	const href = useLocation({ select: (location) => location.href })
-	useEffect(() => {
-		cancelClose()
+	const closeMenus = useCallback(() => {
+		clearTimeout(closeTimer.current)
 		dismissOpenPopoverPanel(panel.current)
 		if (mobile.current) mobile.current.open = false
-	}, [href])
+	}, [])
+	const mobileRef = useCloseOnNavigation(closeMenus, { ref: mobile })
+	const panelRef = useCloseOnNavigation(closeMenus, { ref: panel })
 
 	function links() {
 		return (
@@ -149,7 +157,7 @@ export function FeaturesMenu(props: Props) {
 		)
 	}
 	return props.mobile ? (
-		<details ref={mobile} id="features-navigation-mobile" css={mobileCss}>
+		<details ref={mobileRef} id="features-navigation-mobile" css={mobileCss}>
 			<summary>
 				Features{' '}
 				<span aria-hidden="true">
@@ -180,7 +188,7 @@ export function FeaturesMenu(props: Props) {
 			}}
 		>
 			<button
-				ref={trigger}
+				ref={triggerRef}
 				onPointerDown={(event) => {
 					lastPointerType.current = event.pointerType
 				}}
@@ -215,7 +223,7 @@ export function FeaturesMenu(props: Props) {
 			</button>
 			<div
 				id={panelId}
-				ref={panel}
+				ref={panelRef}
 				popover="auto"
 				aria-label="Features"
 				css={panelCss}

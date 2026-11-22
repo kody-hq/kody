@@ -339,16 +339,21 @@ module-oriented runtime model:
   Expired jobs are rejected.
 
 Static saved-package imports from ad hoc **execute** run under the ad hoc
-execute runtime. That means imported package modules can share exported helpers,
-but `packageContext` remains **`null`** because the imported module has not been
-entered as its own package runtime. Imported modules keep stamped
-`packageStorage()` and stamp-aligned secret authority: A's export may use
-secrets locked to A (or A's `kody.secretMounts`) without granting those secrets
-to the execute entry. The execute entry cannot select A's id on
+execute runtime. That means imported package modules can share exported helpers.
+The imported package's own modules read `packageContext` as
+`{ packageId, hostedUrl, appBasePath }`: their package's id plus the URL its app
+is served at (the same canonical URL a browser opens, including a verified
+custom hostname). Both app fields are `null` when the package has no app.
+`kody execute --local` does not resolve hosted app URLs yet, so imported modules
+there read only `packageId`. `kodyId` and other run fields are absent because
+the module has not been entered as its own package runtime. Imported modules
+keep stamped `packageStorage()` and stamp-aligned secret authority: A's export
+may use secrets locked to A (or A's `kody.secretMounts`) without granting those
+secrets to the execute entry. The execute entry cannot select A's id on
 `kody.packageSecretGet` / `Has`; only A's stamped `packageSecrets` binding
 carries that authority. Unstamped execute entry code can still use **your** user
-secrets through `{{secret:...}}` placeholders; it cannot use A's mounts.
-`packageContext` stays `null` on ad hoc execute.
+secrets through `{{secret:...}}` placeholders; it cannot use A's mounts. In the
+execute entry itself, `packageContext` stays `null`.
 
 When you need to edit saved source, prefer the repo-backed workflow in
 [Repo-backed editing sessions](./repo-sessions.md). Open by package identity
@@ -568,37 +573,23 @@ from ad hoc execute (hosted, `--local`, or Open API with a run), not from
 package code; a package that holds a refresh token uses a
 [login credential](../guides/credentials.md#login).
 
-See [Secrets and host approval](./secrets-and-values.md) for placeholders, host
-approval, and **`kody.secretList`** / **`secretSet`**.
-
-`fetch` fills `{{secret:name}}` in the body as well as in headers. A body that
-forwards text you did not write (a user message, an issue body) can then fail
-with `Secret "name" was not found`, or send a saved secret to a host that
-credential allows. Set `x-kody-secret-resolution: headers-only` on that fetch.
-Headers still resolve; the URL and body are sent as written. `off` skips
-resolution entirely, including headers.
+For new calls, open a scoped client with `credential(key)`. Use a declared need
+from an imported package, or declare a
+[run-scoped need and pick its credential by ID](../guides/credentials.md). The
+credential controls where its value is sent, independently of any user-supplied
+text in the request.
 
 ```ts
-await fetch('https://api.github.com/repos/acme/widgets/issues', {
+const github = await credential('github')
+await github.fetch('https://api.github.com/repos/acme/widgets/issues', {
 	method: 'POST',
-	headers: {
-		Authorization: 'Bearer {{secret:github}}',
-		'content-type': 'application/json',
-		'x-kody-secret-resolution': 'headers-only',
-	},
+	headers: { 'content-type': 'application/json' },
 	body: JSON.stringify({ title: 'Widget broke', body: userReport }),
 })
 ```
 
-To mention the syntax in prose, write the inert form `{{secret:<name>}}`. Treat
-a resolvable `{{secret:name}}` as wiring, not as text you show to users or send
-onward. `kody dev check` and publish warn for clear cases only: a literal fetch
-init with a non-literal body when `x-kody-secret-resolution` is omitted or set
-to the literal `on`. Helpers that build headers in a variable and header spreads
-still warn (the scanner cannot see `headers-only` there). Variable whole-`init`
-values (`fetch(url, init)`) are skipped. Use `headers-only` or `off` to opt out.
-Each credential also has a fill placement that intersects with that header; see
-[Credentials](../guides/credentials.md#keys-and-placeholders).
+For existing placeholder calls, see
+[legacy fetch compatibility](./secrets-and-values.md#placeholders-in-fetch).
 
 ## Named state
 

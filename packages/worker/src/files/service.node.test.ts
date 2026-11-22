@@ -76,7 +76,11 @@ async function fixture() {
 	const store = {
 		revision: vi.fn(async () => null),
 		objectProvider: vi.fn(async () => null),
-		storageStatus: vi.fn(async () => ({ active: null, providers: [] })),
+		storageUsage: vi.fn(async () => ({
+			includedBytes: 1048576,
+			usedBytes: 0,
+			external: false,
+		})),
 		list: vi.fn(async () => [file, hidden]),
 		metadata: vi.fn(
 			async (_owner: string, _id: string): Promise<FileMetadata> => file,
@@ -228,10 +232,14 @@ test('grant management cannot bypass a restricted ancestor through a direct chil
 
 test('file reads are filtered, and a read grant never permits writing or deleting', async () => {
 	const f = await fixture()
-	expect((await listFiles(f.context())).files).toEqual([])
+	expect(await listFiles(f.context())).toMatchObject({
+		files: [],
+		storage: { usedBytes: null },
+	})
 	await expect(getFile(f.context(), f.file.id)).rejects.toThrow()
 	expect(f.store.read).not.toHaveBeenCalled()
 	await f.grant('file', f.file.id, ['file:read'])
+	expect((await listFiles(f.context())).storage.usedBytes).toBeNull()
 	expect((await listFiles(f.context())).files.map((file) => file.id)).toEqual([
 		f.file.id,
 	])
@@ -713,7 +721,7 @@ test('a profile denial names the profile grant the file operation lacks', async 
 			}),
 		).rejects.toMatchObject({
 			code: 'profile_grant',
-			message: `Profile "file-reviewer" was not granted file:write on file "${f.file.id}". The person it acts for can grant it (accessGrant with subject_type "profile").`,
+			message: `Profile "file-reviewer" was not granted file:write on file "${f.file.id}". The person it acts for can grant it with accessGrant (resource_type "file", subject_type "profile", subject_id the profile id).`,
 		})
 	} finally {
 		f.sqlite.close()

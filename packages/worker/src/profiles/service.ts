@@ -11,8 +11,10 @@ import {
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import type { GrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import { ProfileError } from './errors.ts'
 import { isProfilesEnabledFor } from './flag.ts'
+import { grantResourceToProfile, removeProfileGrant } from './package-grants.ts'
 import {
 	canActOnProfile,
 	chainExpiry,
@@ -25,6 +27,7 @@ import {
 	profileStatus,
 	type ProfileAction,
 	type ProfileActor,
+	type ProfileGrantRefusal,
 	type ProfileRow,
 	type ProfileStatus,
 	type RequestedProfileGrant,
@@ -258,6 +261,21 @@ function chainGrantCap(
 	return cap ?? new Map<string, Set<OrgPermission>>()
 }
 
+function profileGrantRefusalError(refusal: ProfileGrantRefusal) {
+	const target = `${refusal.grant.resourceType} ${refusal.grant.resourceId}`
+	return new ProfileError({
+		status: refusal.code === 'profile_grant_not_allowed' ? 400 : 403,
+		code: refusal.code,
+		message:
+			refusal.code === 'profile_grant_exceeds_parent'
+				? `The parent profile chain does not hold ${refusal.permission} on ${target}, so a sub-profile cannot get it.`
+				: refusal.code === 'profile_grant_exceeds_caller'
+					? `You do not hold ${refusal.permission} on ${target}, so you cannot give it to a profile.`
+					: `A profile cannot be granted ${refusal.permission ?? 'that'} on ${target}. Profile grants name one resource (never the whole org) with permissions of its kind.`,
+		details: { grant: refusal.grant },
+	})
+}
+
 export async function createProfile(
 	caller: ProfilesCaller,
 	input: {
@@ -364,20 +382,7 @@ export async function createProfile(
 		callerHolds: caller.holds,
 		orgId: caller.orgId,
 	})
-	if (refusal) {
-		const target = `${refusal.grant.resourceType} ${refusal.grant.resourceId}`
-		throw new ProfileError({
-			status: refusal.code === 'profile_grant_not_allowed' ? 400 : 403,
-			code: refusal.code,
-			message:
-				refusal.code === 'profile_grant_exceeds_parent'
-					? `The parent profile chain does not hold ${refusal.permission} on ${target}, so a sub-profile cannot get it.`
-					: refusal.code === 'profile_grant_exceeds_caller'
-						? `You do not hold ${refusal.permission} on ${target}, so a profile you create cannot get it.`
-						: `A profile cannot be granted ${refusal.permission ?? 'that'} on ${target}. Profile grants name one resource (never the whole org) with permissions of its kind.`,
-			details: { grant: refusal.grant },
-		})
-	}
+	if (refusal) throw profileGrantRefusalError(refusal)
 	const row: ProfileRow = {
 		id: `prf_${crypto.randomUUID().replaceAll('-', '')}`,
 		org_id: caller.orgId,
@@ -567,4 +572,65 @@ export async function revokeProfile(
 		grants.get(input.profileId) ?? [],
 		new Date().toISOString(),
 	)
+}
+
+/**
+ * Gives an existing profile a grant on one resource, replacing its live grant
+ * there. The grant passes the same checks `createProfile` runs on its grants:
+ * you hold each permission now and every parent profile holds it too.
+ */
+export async function grantToProfile(
+	caller: ProfilesCaller,
+	input: {
+		profileId: string
+		grant: RequestedProfileGrant
+		preset: GrantPreset | null
+		label: string
+	},
+): Promise<{ grantId: string; profile: ProfileView }> {
+	const chain = await loadAuthorizedChain(caller, input.profileId, 'edit')
+	const ancestors = chain.slice(0, -1)
+	const grantsByProfile = await loadProfileGrants(caller.env.APP_DB, {
+		orgId: caller.orgId,
+		profileIds: ancestors.map((row) => row.id),
+	})
+	const refusal = checkProfileGrants({
+		grants: [input.grant],
+		parentGrants: ancestors.length
+			? chainGrantCap(ancestors, grantsByProfile)
+			: null,
+		callerHolds: caller.holds,
+		orgId: caller.orgId,
+	})
+	if (refusal) throw profileGrantRefusalError(refusal)
+	const { grantId } = await grantResourceToProfile({
+		env: caller.env,
+		request: caller.request,
+		profileId: input.profileId,
+		resource: {
+			type: input.grant.resourceType,
+			id: input.grant.resourceId,
+			label: input.label,
+		},
+		preset: input.preset,
+		permissions: input.grant.permissions,
+		ifParentLacks: 'Give the parent profile access first.',
+	})
+	return { grantId, profile: await getProfile(caller, input.profileId) }
+}
+
+/**
+ * Revokes one live profile grant (from `findLiveProfileGrant`). Only the
+ * person the profile acts for, or a profile above it, can.
+ */
+export async function revokeProfileGrant(
+	caller: ProfilesCaller,
+	grant: { grantId: string; profileId: string },
+) {
+	await loadAuthorizedChain(caller, grant.profileId, 'edit')
+	await removeProfileGrant({
+		db: caller.env.APP_DB,
+		orgId: caller.orgId,
+		grantId: grant.grantId,
+	})
 }

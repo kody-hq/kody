@@ -153,6 +153,7 @@ test('personal org credential detail keeps the list and local-reads pane', async
 	expect(page.credentials.some((item) => item.id === t.credentialId)).toBe(true)
 	expect(page.packages).toHaveLength(2)
 	expect(page.selected?.id).toBe(t.credentialId)
+	expect(page.selected?.canApproveRequestProfile).toBe(true)
 	expect(page.selected?.placeholder).toBe('{{secret:annToken}}')
 	expect(page.selected?.grants).toEqual([])
 	expect(page.selected?.grantsUnavailable).toBe(false)

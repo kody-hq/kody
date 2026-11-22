@@ -31,11 +31,13 @@ export const d1LongRunningExportMessage =
 export const d1NetworkConnectionLostMessage = 'Network connection lost'
 
 /**
- * Cloudflare D1 capacity blips. Three exact platform phrasings exist:
+ * Cloudflare D1 capacity blips. Four exact platform phrasings exist:
  * - `D1_ERROR: D1 DB is overloaded. Requests queued for too long.`
  * - `D1_ERROR: D1 DB is overloaded. Too many requests queued.`
  * - `D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10
  *   second window.` (KODY-DS)
+ * - `D1_ERROR: Your account is generating too much load on D1 DBs. Please back
+ *   off and try again later.` (KODY-H0, account-level throttle)
  * Not an application defect — D1's request queue timed out, rejected, or
  * throttled under load. Same retry / Sentry-drop class as SQLITE_BUSY and binding
  * transport blips. Match only these exact D1 forms (optional `Error:` /
@@ -49,6 +51,9 @@ export const d1DbOverloadedTooManyQueuedMessage =
 
 export const d1DbOverloadedResourceWindowMessage =
 	'D1 DB is overloaded. Too many resources consumed within a 10 second window'
+
+export const d1AccountOverloadedMessage =
+	'Your account is generating too much load on D1 DBs. Please back off and try again later'
 
 /**
  * Cloudflare D1 opaque platform failures with a support reference, e.g.
@@ -111,7 +116,8 @@ function isD1DbOverloadedMessage(message: string) {
 	return (
 		isExactD1PlatformMessage(message, d1DbOverloadedMessage) ||
 		isExactD1PlatformMessage(message, d1DbOverloadedTooManyQueuedMessage) ||
-		isExactD1PlatformMessage(message, d1DbOverloadedResourceWindowMessage)
+		isExactD1PlatformMessage(message, d1DbOverloadedResourceWindowMessage) ||
+		isExactD1PlatformMessage(message, d1AccountOverloadedMessage)
 	)
 }
 
@@ -359,7 +365,8 @@ function withAttemptTimeout<T>(
  * exports block other requests), binding "Network connection lost"
  * transport blips, "D1 DB is overloaded. Requests queued for too long" /
  * "D1 DB is overloaded. Too many requests queued" / "… Too many resources
- * consumed within a 10 second window" capacity blips, opaque
+ * consumed within a 10 second window" / "Your account is generating too much
+ * load on D1 DBs" capacity blips, opaque
  * D1 "internal error …; reference = …" platform faults (including D1 DB and
  * Durable Object storage object-reset, with either `in` or `while starting up`
  * phrasing), and D1-prefixed Durable Object platform-reset sentences such as
@@ -370,7 +377,10 @@ function withAttemptTimeout<T>(
  * drop, a D1 capacity spike, or a D1 backend blip.
  *
  * When `attemptTimeoutMs` is set, a hung attempt is also retried so a single
- * idle-database stall cannot consume an outer deadline.
+ * idle-database stall cannot consume an outer deadline. `jitter` spreads each
+ * backoff over its upper half so a burst of callers does not retry in step.
+ * Overload blips always back off with jitter: D1 is asking callers to back
+ * off, and synchronized retries would hit it again together.
  */
 export async function runD1WithRetry<T>(
 	operation: () => Promise<T>,
@@ -378,6 +388,7 @@ export async function runD1WithRetry<T>(
 		maxAttempts?: number
 		baseDelayMs?: number
 		attemptTimeoutMs?: number
+		jitter?: boolean
 	},
 ): Promise<T> {
 	const maxAttempts = options?.maxAttempts ?? d1LockRetryMaxAttempts
@@ -401,7 +412,12 @@ export async function runD1WithRetry<T>(
 				}
 				throw error
 			}
-			await sleep(baseDelayMs * 2 ** (attempt - 1))
+			const backoffMs = baseDelayMs * 2 ** (attempt - 1)
+			await sleep(
+				options?.jitter || classifyRetryableD1Error(error) === 'overloaded'
+					? backoffMs / 2 + Math.random() * (backoffMs / 2)
+					: backoffMs,
+			)
 		}
 	}
 	throw lastError

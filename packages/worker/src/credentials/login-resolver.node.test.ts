@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -24,7 +25,6 @@ import {
 	CredentialLoginRetryLaterError,
 	CredentialNotFoundError,
 } from './credential-request.ts'
-import { clearLoginSessionsForTests } from './login-resolver.ts'
 import { resolveCredential } from './resolve-credential.ts'
 
 vi.mock(
@@ -230,7 +230,7 @@ async function setup() {
 	}
 	valueReads.count = 0
 	scheduledAudits.length = 0
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	return {
 		env,
 		db,
@@ -281,6 +281,57 @@ test('a login credential runs its exchange and places the session, reusing it un
 	])
 	expect(JSON.stringify(rows)).not.toContain(password)
 	expect(JSON.stringify(rows)).not.toContain('session-1')
+})
+
+test('a Bluesky login signs in with createSession and sends only the access token', async () => {
+	const t = await setup()
+	const appPassword = 'abcd-efgh-ijkl-mnop'
+	const exchanges = stubLoginEndpoint(() =>
+		Response.json({
+			did: 'did:plc:example',
+			handle: 'me.example.com',
+			accessJwt: 'bsky-access-1',
+			refreshJwt: 'bsky-refresh-1',
+		}),
+	)
+	const id = await t.storeCredential({
+		name: 'bluesky',
+		value: JSON.stringify({
+			identifier: 'me.example.com',
+			password: appPassword,
+		}),
+		hosts: ['bsky.social'],
+		exchange: {
+			url: 'https://bsky.social/xrpc/com.atproto.server.createSession',
+			bodyFormat: 'json',
+			body: { identifier: '{identifier}', password: '{password}' },
+			tokenPath: 'accessJwt',
+			ttlSeconds: 3600,
+		},
+	})
+
+	const resolved = await t.signIn({
+		actor: t.requestAs('bea', 'owner'),
+		credentialId: id,
+		requestUrl:
+			'https://bsky.social/xrpc/app.bsky.feed.searchPosts?q=kody&limit=25',
+	})
+	expect(resolved.placement).toEqual({
+		kind: 'header',
+		name: 'Authorization',
+		value: 'Bearer bsky-access-1',
+	})
+	expect(JSON.stringify(resolved)).not.toContain(appPassword)
+	expect(JSON.stringify(resolved)).not.toContain('bsky-refresh-1')
+	expect(exchanges).toHaveLength(1)
+	expect(exchanges[0]!.url).toBe(
+		'https://bsky.social/xrpc/com.atproto.server.createSession',
+	)
+	expect(JSON.parse(String(exchanges[0]!.init.body))).toEqual({
+		identifier: 'me.example.com',
+		password: appPassword,
+	})
+	expect(JSON.stringify(await t.audits())).not.toContain(appPassword)
 })
 
 test('Use is checked on every resolution, cached session or not', async () => {
@@ -517,7 +568,7 @@ test('a session persists encrypted across isolates and is reused until the crede
 	expect(JSON.stringify(stored)).not.toContain(password)
 
 	// A fresh isolate has an empty front cache and reuses the stored session.
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const again = await t.signIn({ actor, credentialId: id })
 	expect(again.placement.value).toBe('Bearer session-1')
 	expect(exchanges).toHaveLength(1)
@@ -534,7 +585,7 @@ test('a session persists encrypted across isolates and is reused until the crede
 			.bind(JSON.stringify(value), id)
 			.run()
 	await setColumn('allowed_hosts', ['api.example.com', 'auth.example.com'])
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	expect((await t.signIn({ actor, credentialId: id })).placement.value).toBe(
 		'Bearer session-2',
 	)
@@ -592,7 +643,7 @@ test('deleting a login credential deletes its stored session', async () => {
 		audit: null,
 	})
 	expect(await count()).toEqual({ n: 0 })
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	await expect(
 		t.signIn({ actor: t.requestAs('bea', 'owner'), credentialId: id }),
 	).rejects.toBeInstanceOf(CredentialNotFoundError)

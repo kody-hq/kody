@@ -22,6 +22,10 @@ import {
 	userWebhookHmacSecretContext,
 	userWebhookUrlSecretContext,
 } from '#mcp/secrets/crypto.ts'
+import {
+	readVaultItemConfig,
+	vaultItemRefContext,
+} from '#mcp/secrets/vault-item-config.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
 	orgAuditOutboxInsertStatement,
@@ -635,6 +639,23 @@ test('apply refuses orphans unless skipOrphans', async () => {
 
 test('apply moves everything, re-seals credentials, and cleans up orphans', async () => {
 	const { sqlite, db } = await seed()
+	const vaultRef = 'i/test-item/password'
+	const bindingId = 'test-binding'
+	const encryptedRef = await encryptSecretValue(
+		env,
+		vaultRef,
+		vaultItemRefContext(src, bindingId),
+	)
+	sqlite
+		.prepare("UPDATE secret_entries SET config_json = ? WHERE name = 'API_KEY'")
+		.run(
+			JSON.stringify({
+				kind: 'vault-item',
+				bindingId,
+				providerId: '@test/vault',
+				encryptedRef,
+			}),
+		)
 	sqlite
 		.prepare(
 			`INSERT INTO user_repos (id, user_id, name, created_at, updated_at)
@@ -747,11 +768,32 @@ test('apply moves everything, re-seals credentials, and cleans up orphans', asyn
 
 	const secretRows = sqlite
 		.prepare(
-			`SELECT e.name, e.encrypted_value, b.user_id FROM secret_entries e
+			`SELECT e.name, e.encrypted_value, e.config_json, b.user_id FROM secret_entries e
 			 JOIN secret_buckets b ON b.id = e.bucket_id ORDER BY e.name`,
 		)
-		.all() as Array<{ name: string; encrypted_value: string; user_id: string }>
+		.all() as Array<{
+		name: string
+		encrypted_value: string
+		config_json: string | null
+		user_id: string
+	}>
 	expect(secretRows.map((row) => row.user_id)).toEqual([dst, dst])
+	const vault = readVaultItemConfig(secretRows[0]!.config_json)!
+	expect(vault).toMatchObject({ bindingId, providerId: '@test/vault' })
+	expect(
+		await decryptSecretValue(
+			env,
+			vault.encryptedRef,
+			vaultItemRefContext(dst, bindingId),
+		),
+	).toBe(vaultRef)
+	await expect(
+		decryptSecretValue(
+			env,
+			vault.encryptedRef,
+			vaultItemRefContext(src, bindingId),
+		),
+	).rejects.toThrow('Unable to decrypt secret value.')
 	for (const [row, plaintext] of [
 		[secretRows[0]!, plaintexts.userSecret],
 		[secretRows[1]!, plaintexts.packageSecret],

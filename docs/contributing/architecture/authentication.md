@@ -354,6 +354,11 @@ assistant features:
   reads `orgId` and fails closed without it. `personId` names the person the
   grant acts as; credential resolution still uses the grant subject `userId`.
   There is no feature flag.
+- [Org binding lookup](../../../packages/worker/src/orgs/repo.ts) resolves a
+  normalized slug to an active org where the person has a live membership or
+  qualifying grant. Callers resolving multiple slugs use
+  `loadOrgBindingsForSlugs`, which batches lookups within D1's parameter limit
+  and omits slugs with no binding.
 - **MCP requests**: `handleMcpRequest` in `packages/worker/src/mcp-auth.ts` is
   the single chokepoint for `/mcp`. After token validation it checks
   `users.email_verified_at` (via `isAccountEmailVerified`) and rejects
@@ -478,15 +483,16 @@ after the restore window is `hardPurgeSoftDeletedUser`
   plus a `Set-Cookie` that destroys the session. It does not hard-delete rows or
   refund unused time. Prorated refunds run with the later hard purge.
 - After the 30-day restore window, the purge lane hard-deletes across the
-  surfaces below. While `SOFT_DELETE_PURGE_ENABLED` is not `true`, that lane
-  only lists soft-deleted candidates. The same lane also finishes legacy
-  deletions from the flow before soft delete: person rows left with
-  `deleting_at` set and `deleted_at` null after a cleanup step warned. Those
-  owners asked for a hard deletion and were never offered a restore window, so
-  they skip the window and the flag, and keep the lane's claim, six-hour retry
-  backoff, and `user.purge_failed` audit. The lane purges the personal org
-  graph, then re-runs `deleteUserAccount` on the fenced row; storage that is
-  already gone counts as done. The deletion is the same across:
+  surfaces below. Production sets `SOFT_DELETE_PURGE_ENABLED` to `true`. Where
+  it is not `true` (preview and test), that lane only lists soft-deleted
+  candidates. The same lane also finishes legacy deletions from the flow before
+  soft delete: person rows left with `deleting_at` set and `deleted_at` null
+  after a cleanup step warned. Those owners asked for a hard deletion and were
+  never offered a restore window, so they skip the window and the flag, and keep
+  the lane's claim, six-hour retry backoff, and `user.purge_failed` audit. The
+  lane re-runs `deleteUserAccount` on the fenced row, then purges the personal
+  org graph; storage that is already gone counts as done. The deletion is the
+  same across:
   - the user's active package workflow instances, terminated first so no step
     writes after the purge; if any termination fails, deletion stops before
     purging anything and keeps the account fenced so a retry can still find the
@@ -669,21 +675,20 @@ shared host does not clear sibling apps.
 - max age is the **remaining** lifetime of the `kody_session` that minted the
   handoff (7 days, or 30 days with remember-me), snapshotted into the token as
   `sessExp` and into the cookie as `expiresAt`. Browser `Max-Age` and a
-  server-side `expiresAt` check in `readPackageAppSession` both use that
-  instant, so the package-app cookie cannot outlive the parent session.
-  Remember-me renewal on the app origin does not extend an already-issued
-  package-app cookie; a later handoff mints a new snapshot. Tokens without
-  `sessExp`, and cookies without `expiresAt`, use a 12 hour lifetime from
-  mint/`issuedAt`
+  [server-side `expiresAt` check](../../../packages/worker/src/app/package-app-session.ts)
+  both use that snapshot, not a live lookup of the parent session. Remember-me
+  renewal on the app origin does not extend an already-issued package-app
+  cookie; a later handoff mints a new snapshot. Tokens without `sessExp` use a
+  12-hour lifetime from
+  [handoff exchange](../../../packages/worker/src/app/package-app-handoff.ts).
 - signed with a **derived** secret,
   `sha256Base64Url('kody-package-app-session:v2:' + COOKIE_SECRET)`, so a value
   signed for this cookie can never verify as a `kody_session`
-- payload is `{ v: 3, stableUserId, pkgUsername, app, issuedAt, expiresAt? }` —
-  a shape the app session schema rejects, so the two cannot be confused even by
-  name substitution. Readers also accept legacy host-wide `v: 2` cookies (no
-  `app` field / unhashed name) until the next login/handoff or logout clears
-  them. New cookies always set `expiresAt`; readers treat a missing field as the
-  12 hour mint/`issuedAt` fallback above.
+- payload is `{ v: 3, stableUserId, pkgUsername, app, issuedAt, expiresAt }` — a
+  shape the app session schema rejects, so the two cannot be confused even by
+  name substitution. `expiresAt` is required. Host-wide `v: 2` cookies and
+  unhashed `__Host-kody_pkg_session` / `kody_pkg_session` names are not read
+  (#3906).
 - the `__Host-` prefix on secure requests forbids a `Domain` attribute, so
   sibling subdomains cannot plant a shadow cookie under this name
 - sibling subdomains are still same-site (until the Public Suffix List entry),

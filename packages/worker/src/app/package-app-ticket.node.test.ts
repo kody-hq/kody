@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -8,7 +9,6 @@ import {
 	mintPackageAppTicketCookie,
 	packageAppTicketTtlMs,
 	readPackageAppTicket,
-	resetPackageAppTicketKeysForTests,
 	type PackageAppTicketGrant,
 } from './package-app-ticket.ts'
 
@@ -82,7 +82,7 @@ async function read(
 }
 
 beforeEach(() => {
-	resetPackageAppTicketKeysForTests()
+	resetIsolateState()
 })
 
 test('a minted ticket round-trips its grant and sets a short host-only cookie', async () => {
@@ -101,12 +101,12 @@ test('a minted ticket round-trips its grant and sets a short host-only cookie', 
 test('rotation: every listed key verifies and the first key signs', async () => {
 	const oldCookie = await mint(envWith(keyA))
 
-	resetPackageAppTicketKeysForTests()
+	resetIsolateState()
 	const rotating = envWith(` ${keyB} , ${keyA} ,`)
 	await expect(read(rotating, requestWith(oldCookie))).resolves.toEqual(grant)
 	const newCookie = await mint(rotating)
 
-	resetPackageAppTicketKeysForTests()
+	resetIsolateState()
 	const rotated = envWith(keyB)
 	await expect(read(rotated, requestWith(newCookie))).resolves.toEqual(grant)
 	await expect(read(rotated, requestWith(oldCookie))).resolves.toBeNull()
@@ -117,7 +117,7 @@ test('falls back to a COOKIE_SECRET-derived key when no ticket keys are set', as
 	const cookie = await mint(env)
 	await expect(read(env, requestWith(cookie))).resolves.toEqual(grant)
 
-	resetPackageAppTicketKeysForTests()
+	resetIsolateState()
 	await expect(read(envWith(keyA), requestWith(cookie))).resolves.toBeNull()
 })
 

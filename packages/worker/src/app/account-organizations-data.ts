@@ -29,7 +29,7 @@ export type AccountOrganizationSnapshot = {
 
 type PendingInviteViewer = Pick<
 	AuthenticatedAppUser,
-	'email' | 'username' | 'mcpUser'
+	'email' | 'emailVerified' | 'username' | 'mcpUser'
 >
 
 function inviteLinkLabel(link: PendingInviteLinkSummary) {
@@ -97,6 +97,7 @@ export async function listPendingInvitesForViewer(
 	const [invites, inviteLinks] = await Promise.all([
 		listPendingInvitesForPerson(env.APP_DB, {
 			email: user.email,
+			emailVerified: user.emailVerified,
 			username: user.username,
 			now,
 		}),

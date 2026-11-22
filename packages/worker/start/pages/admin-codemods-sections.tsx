@@ -26,10 +26,10 @@ import {
  */
 const codemodItemColumns: Array<RecordTableColumn> = [
 	{ key: 'kodyId', label: 'kodyId', primary: true },
-	{ key: 'userId', label: 'userId', drop: 2 },
+	{ key: 'userId', label: 'userId' },
 	{ key: 'status', label: 'status' },
-	{ key: 'changedPaths', label: 'changedPaths', drop: 1 },
-	{ key: 'findings', label: 'findings', drop: 3 },
+	{ key: 'changedPaths', label: 'changedPaths' },
+	{ key: 'findings', label: 'findings' },
 	{ key: 'error', label: 'error' },
 ]
 const clampedCellCss = css(recordCellClamp(24))
@@ -161,11 +161,11 @@ export function RunHistoryPanel(input: {
 					columns={[
 						{ key: 'run', label: 'Run', primary: true },
 						{ key: 'created', label: 'Created' },
-						{ key: 'codemod', label: 'Codemod', drop: 1 },
+						{ key: 'codemod', label: 'Codemod' },
 						{ key: 'mode', label: 'Mode' },
 						{ key: 'status', label: 'Status' },
-						{ key: 'scope', label: 'Scope', drop: 2 },
-						{ key: 'initiatedBy', label: 'Initiated by', drop: 3 },
+						{ key: 'scope', label: 'Scope' },
+						{ key: 'initiatedBy', label: 'Initiated by' },
 						{ key: 'actions', label: 'Actions' },
 					]}
 					rows={runs.map((run) => {

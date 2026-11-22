@@ -1,10 +1,8 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { expect, test } from 'vitest'
-import { createCookie } from 'remix/cookie'
-import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import {
 	createAuthCookie,
 	readParsedAuthSession,
-	resetAuthSessionSecretForTests,
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
 import {
@@ -14,7 +12,6 @@ import {
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
-	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
 import {
 	consoleWarn,
@@ -157,8 +154,7 @@ test('handoff tokens are single use, short lived, and bound to one user and pack
 })
 
 test('the package-app session cookie is not interchangeable with the app session cookie', async () => {
-	resetPackageAppSessionCookieForTests()
-	resetAuthSessionSecretForTests()
+	resetIsolateState()
 	const env = createTestEnv()
 	const ownerSession = {
 		session: { stableUserId: ownerStableUserId, username: 'owner' },
@@ -262,31 +258,4 @@ test('the package-app session cookie is not interchangeable with the app session
 			'https://kodyapps.dev/@owner/packages/x',
 		),
 	).resolves.toBeNull()
-
-	// Pre-per-app host-wide cookies (v2, no app field) still authorize any
-	// leaf until login/handoff or logout clears them.
-	const legacyExpiresAt = now + 12 * 60 * 60 * 1000
-	const legacyCookie = createCookie('kody_pkg_session', {
-		httpOnly: true,
-		sameSite: 'Lax',
-		path: '/',
-		secrets: [
-			await sha256Base64Url(`kody-package-app-session:v2:${cookieSecret}`),
-		],
-	})
-	const legacyPair =
-		(
-			await legacyCookie.serialize(
-				JSON.stringify({
-					v: 2,
-					stableUserId: ownerStableUserId,
-					pkgUsername: 'owner',
-					issuedAt: now,
-				}),
-			)
-		).split(';')[0] ?? ''
-	await expect(
-		read(legacyPair, legacyExpiresAt - 1, localUrl),
-	).resolves.toMatchObject({ ...ownerSession, expiresAt: legacyExpiresAt })
-	await expect(read(legacyPair, legacyExpiresAt, localUrl)).resolves.toBeNull()
 })

@@ -63,6 +63,7 @@ export type SecretMetadata = {
 	/**
 	 * How fill placement was chosen. Null/omitted on legacy rows. See
 	 * `CredentialPlacementOrigin`.
+	 * Remove when: every secret credential row has a stored placement (null placements backfilled).
 	 */
 	placementOrigin?: CredentialPlacementOrigin | null
 	/**

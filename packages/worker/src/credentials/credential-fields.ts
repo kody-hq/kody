@@ -1,12 +1,12 @@
 /**
  * The fields a credential owns for the opt-in types (ADR 0068): its provider,
  * how a scoped client places it (`inject`), and, for the `url`, `login`, and
- * `signing` kinds, its kind, hosts, and login exchange. Key placeholders
- * ignore `provider` and `inject` and keep their own placement.
+ * `signing` kinds, its kind, hosts, and login exchange. Ordinary Key
+ * placeholders use fill placement, not `inject`. A Key with an approved
+ * request profile uses it through a scoped client instead.
  *
- * Only the credential's manager edits these, and every edit is audited. Hosts
- * are set only together with a new value: whoever supplies the value decides
- * where it may go, and an existing value's hosts keep the approval flow.
+ * Field updates here are audited. Hosts are supplied with the value or edited
+ * through the dedicated website host flow for eligible Keys and connections.
  */
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getDomain, getPublicSuffix } from 'tldts'
@@ -17,6 +17,9 @@ import {
 	runAppDbBatchWithOrgAudit,
 } from '#worker/orgs/org-audit.ts'
 import { getOrgCredential, type OrgCredential } from './credential-ids.ts'
+import { bodyPlacementSchema } from './body-placement.ts'
+import { pathPlacementSchema } from './path-placement.ts'
+import { credentialCompositionSchema } from './credential-composition.ts'
 import { credentialHostsAllow } from './credential-request.ts'
 import {
 	type CredentialFillPlacement,
@@ -76,6 +79,9 @@ export const credentialInjectSchema = z.discriminatedUnion('kind', [
 		kind: z.literal('query'),
 		param: z.string().min(1).max(100),
 	}),
+	bodyPlacementSchema,
+	pathPlacementSchema,
+	credentialCompositionSchema,
 ])
 
 export type CredentialInject = z.infer<typeof credentialInjectSchema>
@@ -198,7 +204,21 @@ export function assertInjectFitsKind(input: {
 	kind: StoredCredentialKindValue
 	inject: CredentialInject
 }) {
-	if (input.kind === 'login' && input.inject.kind === 'basic') {
+	if (
+		input.kind !== 'secret' &&
+		(input.inject.kind === 'body' ||
+			input.inject.kind === 'path' ||
+			input.inject.kind === 'composition')
+	) {
+		throw new McpCallerError(
+			'An approved request placement requires a Key credential.',
+		)
+	}
+	if (
+		input.kind === 'login' &&
+		input.inject.kind !== 'header' &&
+		input.inject.kind !== 'query'
+	) {
 		throw new McpCallerError(
 			'A login credential places its session token in a header or query parameter, not basic auth.',
 		)
@@ -384,7 +404,10 @@ export async function updateCredentialFields(input: {
 	}
 	if (touchesProviderOrInject) {
 		details.provider = { before: before.provider, after: provider }
-		details.inject = { before: before.inject, after: inject }
+		details.inject = {
+			before: injectWithoutRequestDetails(before.inject),
+			after: injectWithoutRequestDetails(inject),
+		}
 	}
 	if (setsPlacement) {
 		details.placement = { before: before.placement, after: placement }
@@ -416,6 +439,14 @@ export async function updateCredentialFields(input: {
 		},
 	})
 	return { credential, provider, inject, placement }
+}
+
+export function injectWithoutRequestDetails(inject: CredentialInject) {
+	return inject.kind === 'body' ||
+		inject.kind === 'path' ||
+		inject.kind === 'composition'
+		? { kind: inject.kind }
+		: inject
 }
 
 export async function readCredentialFields(input: {

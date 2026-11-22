@@ -19,7 +19,11 @@ type GitRunner = (args: ReadonlyArray<string>) => GitCommandResult
 
 const gitHookProvenanceRelativePath = '.tmp/git-hook-provenance.json'
 
-export type GitHookProvenanceCheck = 'knip' | 'test:push'
+/** A `vitest related` script records under its own script text. */
+export type GitHookProvenanceCheck =
+	| 'knip'
+	| 'test:push'
+	| `vitest related --project ${string}`
 
 export type GitHookProvenanceEntry = {
 	at: string
@@ -97,17 +101,18 @@ export function hasUntrackedFiles(git: GitRunner) {
 
 /**
  * Tree SHA covering the current index + tracked worktree (via `stash create`).
- * Falls back to `HEAD^{tree}` when the worktree is clean enough that
- * `stash create` is empty. Does not include untracked files — callers should
+ * Falls back to `HEAD^{tree}` only when `stash create` succeeds with empty
+ * output (no tracked edits); returns null when it fails. Does not include untracked files — callers should
  * check `hasUntrackedFiles` before recording provenance.
  */
 export function treeShaForWorktree(git: GitRunner) {
 	const stash = git(['stash', 'create'])
-	if (stash.status === 0) {
-		const stashCommit = stash.stdout.trim()
-		if (/^[0-9a-f]{40}$/i.test(stashCommit)) {
-			return treeShaForCommit(git, stashCommit)
-		}
+	if (stash.status !== 0) return null
+	const stashCommit = stash.stdout.trim()
+	if (stashCommit) {
+		return /^[0-9a-f]{40}$/i.test(stashCommit)
+			? treeShaForCommit(git, stashCommit)
+			: null
 	}
 	const head = git(['rev-parse', '--verify', '--quiet', 'HEAD^{tree}'])
 	if (head.status !== 0) return null

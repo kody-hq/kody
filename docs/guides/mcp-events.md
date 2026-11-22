@@ -55,8 +55,8 @@ not registered.
 ## Opt a topic into MCP
 
 Declare the topic in `package.json#kody.emits` as usual, and set `mcp: true`.
-This example also declares a package app (`kody.app.entry`) because
-`events.dispatch` runs only inside a package runtime:
+This example declares a package app (`kody.app.entry`) that emits it;
+`events.dispatch` works from any of the package's code:
 
 ```json
 {
@@ -96,10 +96,10 @@ Rules:
 
 ## Emit
 
-`events` is bound only in package apps, package jobs, and subscription handlers.
-Ad hoc `execute` leaves it unbound, and statically importing a package export
-from `execute` does not bind it, so do not dispatch from `execute`. Emit from
-one of those runtimes instead. Here the app answers `POST /ping`:
+Emit from any code in the package that declares the topic. An ad hoc `execute`
+snippet has no package identity and cannot emit, but an `execute` call that
+imports one of the package's exports can, and the event carries that package.
+Here the app answers `POST /ping`:
 
 ```ts
 import { events } from 'kody:runtime'
@@ -126,8 +126,9 @@ export default {
 ```
 
 The same `events.dispatch` call works from a `kody.jobs` entry (run it once with
-`jobRunNow`) or from a `kody.subscriptions` handler that re-emits another topic.
-See [Package subscriptions and events](./package-subscriptions.md).
+`jobRunNow`), a package export, or a `kody.subscriptions` handler that re-emits
+another topic. See
+[Package subscriptions and events](./package-subscriptions.md).
 
 Dispatch stays asynchronous: validate → enqueue on
 `kody-package-events-dispatch` → deliver to package subscribers **and** any

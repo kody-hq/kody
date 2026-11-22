@@ -32,6 +32,19 @@ export function buildMcpServerUsageUrl(input: {
 	).toString()
 }
 
+export function buildMcpServerPackageApprovalUrl(input: {
+	baseUrl: string
+	orgSlug: string
+	serverId: string
+	packageId: string
+	kodyId?: string | null
+}) {
+	const url = new URL(buildMcpServerUsageUrl(input))
+	url.searchParams.set('package_id', input.packageId)
+	if (input.kodyId) url.searchParams.set('package', input.kodyId)
+	return url.toString()
+}
+
 export function createMcpServerExecuteAccessDeniedMessage(input: {
 	serverName: string
 	usageUrl: string

@@ -5,7 +5,8 @@ import { fail, parseJsonc } from './resource-utils.ts'
 /**
  * Generate the preview Wrangler config for the `api.kody.codes` edge worker
  * (`packages/api-worker`). Previews deploy it as `<app-worker>-api` on
- * workers.dev, bound to the per-preview app worker's `KodyApi` entrypoint.
+ * workers.dev, bound to the per-preview app worker's `KodyApi` entrypoint
+ * and its repo session blobs bucket (package check upload staging).
  * Production deploys the committed config unchanged.
  */
 
@@ -22,7 +23,11 @@ function asRecord(value: unknown, label: string): JsonRecord {
 
 export function buildPreviewApiWorkerConfig(
 	baseConfig: JsonRecord,
-	input: { workerName: string; appWorkerName: string },
+	input: {
+		workerName: string
+		appWorkerName: string
+		repoSessionBlobsBucketName: string
+	},
 ): JsonRecord {
 	const config = structuredClone(baseConfig)
 	const envs = asRecord(config.env, 'api worker config "env"')
@@ -38,6 +43,19 @@ export function buildPreviewApiWorkerConfig(
 		throw new Error('api worker config has no env.preview KODY_API binding.')
 	}
 	binding.service = input.appWorkerName
+	const buckets = preview.r2_buckets
+	if (!Array.isArray(buckets)) {
+		throw new Error('api worker config "env.preview.r2_buckets" is missing.')
+	}
+	const bucket = buckets
+		.map((entry, index) => asRecord(entry, `env.preview.r2_buckets[${index}]`))
+		.find((entry) => entry.binding === 'REPO_SESSION_BLOBS')
+	if (!bucket) {
+		throw new Error(
+			'api worker config has no env.preview REPO_SESSION_BLOBS binding.',
+		)
+	}
+	bucket.bucket_name = input.repoSessionBlobsBucketName
 	config.name = input.workerName
 	config.env = { preview }
 	return config
@@ -53,6 +71,10 @@ function readFlag(argv: Array<string>, name: string) {
 export async function main(argv = process.argv.slice(2)) {
 	const workerName = readFlag(argv, '--worker-name')
 	const appWorkerName = readFlag(argv, '--app-worker-name')
+	const repoSessionBlobsBucketName = readFlag(
+		argv,
+		'--repo-session-blobs-bucket',
+	)
 	const outConfigPath = readFlag(argv, '--out-config')
 	const baseConfig = parseJsonc<JsonRecord>(
 		await readFile(defaultBaseConfigPath, 'utf8'),
@@ -60,6 +82,7 @@ export async function main(argv = process.argv.slice(2)) {
 	const config = buildPreviewApiWorkerConfig(baseConfig, {
 		workerName,
 		appWorkerName,
+		repoSessionBlobsBucketName,
 	})
 	await writeFile(outConfigPath, `${JSON.stringify(config, null, '\t')}\n`)
 	console.log(`api_wrangler_config=${outConfigPath}`)

@@ -489,6 +489,7 @@ class DesktopExecution {
 				if (existing) {
 					// The kody CLI already registered this machine: reuse it (after the
 					// same server-side ownership check as legacy setups), never a second.
+					// Permanent: stored data or clients from before this change still exist.
 					const listed = JSON.parse(
 						await this.runner.command([
 							'context',

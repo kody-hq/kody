@@ -185,7 +185,9 @@ before it ever reached Kody. A library default User-Agent (for example Python's
 `Python-urllib/3.x`) can trigger it. Cloudflare recommends a descriptive
 User-Agent that identifies the client instead. If Muse does not provide a way to
 configure that header, contact the deployment owner to review the Cloudflare
-rule; do not spoof a browser User-Agent to evade the block.
+rule; do not spoof a browser User-Agent to evade the block. Package-app hosts
+(`*.kody.run`) do not run this check, so the block applies to the app origin
+only.
 
 Once the error body is from Kody rather than Cloudflare, the usual MCP OAuth
 distinction applies: 401 means a missing, invalid, or expired token (Kody's 401

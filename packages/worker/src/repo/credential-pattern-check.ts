@@ -26,10 +26,11 @@ import {
 	mergeCredentialStampIntoManifestFiles,
 	mergeCredentialStampPasses,
 	mergeLegacyCredentialFindings,
-	omitOversizedCredentialStampModules,
+	omitOversizedClientCredentialStampModules,
 	sealCredentialStamp,
 } from '#worker/credentials/credential-stamp.ts'
 import {
+	isLoginExchangeBodyPlacement,
 	mergePackageCredentialScans,
 	scanPackageCredentials,
 	type CredentialReference,
@@ -52,15 +53,14 @@ const credentialPatternCheckLabel = `codemod ${detectLegacyCredentialPatternsCod
 const credentialStampGateHeading =
 	'Credential stamp publish gate (issue #3836 phase 1):'
 const credentialStampGateFixIntro =
-	'Publish failed. Packages must be conversion-ready: every credential use is a fixed kody.credentials slot with a real description, and every call site uses a literal key. Prefer credential("SLOT") / credentials("SLOT") so callers can pick which saved credential fills each slot with the execute credentials call map ({ "SLOT": "credential-name" }) or a stored/trigger mapping; placeholders and createAuthenticatedFetch resolve the literal slot name as a saved credential name. Never choose credential names at runtime, and do not use |scope=, packageSecrets.get, server eval, vault placeholders, or credential.named() in stamped packages. Leftover kody.secretMounts may stay so stale static dependents keep resolving; removing a mount or deleting its secret breaks those dependents. Fix each item below, then publish again.'
+	'Publish failed. Declare each need in kody.credentials with a real description and use its literal key with credential(key) or credentials(key). Callers pick stable credential ids in a run or use stored mappings. Keep existing mount bindings until their static dependents migrate. Fix each item below, then publish again.'
 const credentialPatternFindingsHeading = `Credential placeholder references (${credentialPatternCheckLabel}):`
 const credentialPatternLabelsDoc =
 	'Labels are described under "Credential slots" in the packages docs.'
 
 /**
- * Notes for labels whose requests need a change to work as written, or where
- * a more secure option already fits. Placeholders themselves keep working
- * (ADR 0068), so no note may read as a coming removal.
+ * Notes for legacy references whose requests need a change to work as written.
+ * Remove when: a codemod rescan finds no published package that still uses these patterns.
  */
 const credentialPatternNotes: Partial<Record<LegacyCredentialPattern, string>> =
 	{
@@ -71,9 +71,7 @@ const credentialPatternNotes: Partial<Record<LegacyCredentialPattern, string>> =
 type CredentialTypeHint = 'inject' | 'oauth' | 'url' | 'login' | 'signing'
 
 /**
- * Optional suggestions, one per credential type that fits a placement the
- * scan found (ADR 0068). They describe a choice, never a problem: nothing is
- * suggested for a placement no type fits, and placeholders keep working.
+ * Migration suggestions for placements with a credential equivalent.
  */
 const credentialTypeHints: Record<CredentialTypeHint, string> = {
 	inject:
@@ -87,15 +85,7 @@ const credentialTypeHints: Record<CredentialTypeHint, string> = {
 		'Signing (secretJwtSign or signature key material): a signing credential (secretSet kind "signing") signs through credential(key).sign() without exposing the key.',
 }
 
-const credentialTypeHintsHeading =
-	'Optional, if you want a scoped credential type for these (ADR 0068):'
-
-/**
- * Whole field names only. An unanchored `pass` also matches `compass`.
- * `refresh_token` / `client_secret` stay the same names, including camelCase.
- */
-const loginBodyFieldPattern =
-	/^(?:pass(?:word|wd)?|refresh_?token|client_?secret)$/i
+const credentialTypeHintsHeading = 'Credential migration options (ADR 0068):'
 
 /** Codemod 0010 lists a secret name unless this slot kind is declared for it. */
 const declaredSlotKindByNameKind = {
@@ -127,11 +117,10 @@ function credentialTypeHintFor(
 		case 'path':
 		case 'url':
 			return 'url'
-		case 'body': {
-			if (placement.endpoint !== 'login') return null
-			const field = placement.field ?? reference.name
-			return loginBodyFieldPattern.test(field) ? 'login' : null
-		}
+		case 'body':
+			return isLoginExchangeBodyPlacement(placement, reference.name)
+				? 'login'
+				: null
 		case 'signing':
 			return 'signing'
 		case 'header-custom':
@@ -322,8 +311,8 @@ type CredentialTreeViewPlan = {
 }
 
 /**
- * How one tree is scanned. `stamp` is the tree without oversized modules,
- * which the stamp seals; `full` is set only when some were left out, for the
+ * How one tree is scanned. `stamp` is the tree without oversized modules no
+ * server runtime root reaches, which the stamp seals; `full` is set only when some were left out, for the
  * findings that cover every module.
  */
 export type CredentialTreeScanPlan =
@@ -418,14 +407,18 @@ export async function planCredentialTreeScan(
 ): Promise<CredentialTreeScanPlan> {
 	const sizeLimitMessage = await credentialScanSizeLimitFailure(files)
 	if (sizeLimitMessage) return { sizeLimitMessage }
-	const stampFiles = omitOversizedCredentialStampModules(files)
+	const serverPaths = await collectServerRuntimeModulePaths(files)
+	const stampFiles = omitOversizedClientCredentialStampModules(
+		files,
+		serverPaths,
+	)
 	return {
 		stamp: await planCredentialTreeView(
 			stampFiles,
-			[...(await collectServerRuntimeModulePaths(stampFiles))].sort(),
+			[...serverPaths].sort(),
 			maxChunkAstNodes,
 		),
-		// The stamp scan left oversized modules out, so the findings that
+		// The stamp scan left oversized client modules out, so the findings that
 		// cover every module need their own walk of the full tree.
 		full:
 			stampFiles === files
@@ -444,7 +437,12 @@ export async function scanCredentialTreeChunk(
 			? files
 			: { ...files, 'package.json': request.manifest }
 	const viewFiles =
-		request.view === 'stamp' ? omitOversizedCredentialStampModules(tree) : tree
+		request.view === 'stamp'
+			? omitOversizedClientCredentialStampModules(
+					tree,
+					new Set(request.serverPaths),
+				)
+			: tree
 	adoptScannableModulePlan(viewFiles, {
 		modulePaths: request.modulePaths,
 		visit: request.visit,
@@ -560,7 +558,7 @@ export async function buildCredentialPatternCheck(
 				: {},
 		)
 		// The stamp walk already covers every module for these, unless it left
-		// oversized modules out. Then the full view's walk covers the tree.
+		// oversized client modules out. Then the full view's walk covers the tree.
 		const fullChunks = plan.full
 			? await scanView('full', plan.full, manifest)
 			: null
@@ -579,6 +577,10 @@ export async function buildCredentialPatternCheck(
 		return {
 			stamp,
 			legacyFindings,
+			placeholderCount: Object.values(inventory.placeholders).reduce(
+				(total, count) => total + count,
+				0,
+			),
 			typeHintLines: credentialTypeHintLines(files, inventory),
 			requestPlacementHits: secretPlaceholderRequestPlacementsOf(inventory),
 			// Chunks answer in sorted module order; the notice lists modules
@@ -602,6 +604,7 @@ export async function buildCredentialPatternCheck(
 	const {
 		stamp,
 		legacyFindings,
+		placeholderCount,
 		typeHintLines,
 		requestPlacementHits,
 		fetchBodyHits,
@@ -609,6 +612,11 @@ export async function buildCredentialPatternCheck(
 		merged.addedKeys.length === 0
 			? preliminary
 			: await scanTree(merged.files, merged.files['package.json'])
+	const deprecation = placeholderCount
+		? [
+				`Deprecated credential placeholders: ${placeholderCount} in the scanned source. Declare needs in kody.credentials and call credential(key).`,
+			]
+		: []
 	const patternsByPath = new Map<string, Array<string>>()
 	for (const finding of legacyFindings) {
 		const pattern = legacyCredentialPatternFromMessage(finding.message)
@@ -638,6 +646,7 @@ export async function buildCredentialPatternCheck(
 			message: [
 				credentialStampGateHeading,
 				credentialStampGateFixIntro,
+				...deprecation,
 				...failureLines,
 				...addedNote,
 				...staleNote,
@@ -666,6 +675,7 @@ export async function buildCredentialPatternCheck(
 			message: [
 				credentialStampGateHeading,
 				`Credential stamp is empty (${credentialPatternCheckLabel}): no literal credential uses to seal.`,
+				...deprecation,
 				...staleNote,
 			]
 				.filter(Boolean)
@@ -694,6 +704,7 @@ export async function buildCredentialPatternCheck(
 		message: [
 			credentialStampGateHeading,
 			stampLine,
+			...deprecation,
 			...(lines.length > 0
 				? [
 						credentialPatternFindingsHeading,

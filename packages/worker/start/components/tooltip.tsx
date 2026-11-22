@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
 	colors,
 	radius,
@@ -37,34 +37,9 @@ export function Tooltip({
 	className,
 	children,
 }: TooltipProps) {
-	const ref = useRef<HTMLSpanElement>(null)
-	useEffect(() => {
-		const trigger = ref.current?.parentElement
-		if (!trigger) return
-		// On the document: a hovered trigger without focus never gets the key.
-		function onKeyDown(event: KeyboardEvent) {
-			if (event.key !== 'Escape') return
-			if (trigger!.matches(':hover, :focus-visible')) {
-				trigger!.dataset.tooltipDismissed = ''
-			}
-		}
-		function reset() {
-			delete trigger!.dataset.tooltipDismissed
-		}
-		document.addEventListener('keydown', onKeyDown)
-		trigger.addEventListener('blur', reset)
-		trigger.addEventListener('pointerenter', reset)
-		trigger.addEventListener('pointerleave', reset)
-		return () => {
-			document.removeEventListener('keydown', onKeyDown)
-			trigger.removeEventListener('blur', reset)
-			trigger.removeEventListener('pointerenter', reset)
-			trigger.removeEventListener('pointerleave', reset)
-		}
-	}, [])
 	return (
 		<span
-			ref={ref}
+			ref={attachTooltipDismiss}
 			id={id}
 			role="tooltip"
 			// Read through the trigger's aria-describedby, not as page text.
@@ -131,4 +106,29 @@ const alignCss = {
 	},
 	start: { left: 0, '&::after': { left: '1rem' } },
 	end: { right: 0, '&::after': { right: '1rem' } },
+}
+
+function attachTooltipDismiss(node: HTMLSpanElement | null) {
+	const trigger = node?.parentElement
+	if (!trigger) return
+	// On the document: a hovered trigger without focus never gets the key.
+	function onKeyDown(event: KeyboardEvent) {
+		if (event.key !== 'Escape') return
+		if (trigger!.matches(':hover, :focus-visible')) {
+			trigger!.dataset.tooltipDismissed = ''
+		}
+	}
+	function reset() {
+		delete trigger!.dataset.tooltipDismissed
+	}
+	document.addEventListener('keydown', onKeyDown)
+	trigger.addEventListener('blur', reset)
+	trigger.addEventListener('pointerenter', reset)
+	trigger.addEventListener('pointerleave', reset)
+	return () => {
+		document.removeEventListener('keydown', onKeyDown)
+		trigger.removeEventListener('blur', reset)
+		trigger.removeEventListener('pointerenter', reset)
+		trigger.removeEventListener('pointerleave', reset)
+	}
 }

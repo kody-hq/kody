@@ -98,6 +98,7 @@ export function buildPackageAppUrl(input: {
  *   `{leaf}--{handle}` host on the package-app domain. The package is bound
  *   by hostname, so the path has no username or slug. The app is mounted at
  *   `/`.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export type PackageAppMount =
 	| 'user-subdomain'
@@ -138,6 +139,7 @@ export function isDnsSafeUsername(username: string) {
  * `/-/`, …) cannot use the short path: the serving parser treats them as host
  * roots or prefixes, not package leaves. Those fall back to the legacy
  * `/packages/{leaf}` mount, which still routes today.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function buildPackageAppSubdomainPath(input: {
 	kodyId: string
@@ -232,6 +234,7 @@ export function buildPackageAppRootOrigin(input: {
  * when the pair has no valid host label (for example a legacy leaf that is not
  * lower-kebab-case), so callers fall back to another address instead of
  * emitting a host that cannot route.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function buildPackageAppHostOrigin(input: {
 	packageAppOrigin: string
@@ -266,10 +269,15 @@ export function buildPackageAppCustomHostnameUrl(input: {
 }
 
 /**
- * Canonical browser URL for a hosted package app: the per-user subdomain of
- * the package-app origin when one is configured (its root for a profile
- * package), or the path-based mount on
- * the app origin when a non-production deployment serves package apps inline.
+ * Canonical browser URL for a hosted package app, and the only builder
+ * surfaces should use for "where does this app live". With a package-app
+ * origin configured the app is mounted at the root of its own host
+ * ({@link buildPackageAppRootOrigin}: `{leaf}--{handle}.`, or the owner's bare
+ * host for a profile package). The shared `{username}.` host path address
+ * (`/{kodyId}`, and the older `/packages/{kodyId}`) only serves old links
+ * during the migration and is used here only for a pair with no valid host
+ * label. Without a package-app origin, non-production deployments serve the
+ * app inline under `/@{username}/packages/{kodyId}` on the app origin.
  */
 export function resolveHostedPackageAppUrl(input: {
 	packageAppBaseUrl: string | null
@@ -278,33 +286,59 @@ export function resolveHostedPackageAppUrl(input: {
 	kodyId: string
 	restPath?: string | null
 }) {
+	return resolveHostedPackageAppLocation(input).hostedUrl
+}
+
+/**
+ * {@link resolveHostedPackageAppUrl} plus the origin-relative mount the app
+ * sees: empty when the app owns its host's root.
+ */
+export function resolveHostedPackageAppLocation(input: {
+	packageAppBaseUrl: string | null
+	appBaseUrl: string
+	username: string
+	kodyId: string
+	restPath?: string | null
+}) {
 	if (input.packageAppBaseUrl) {
-		const profileOrigin = isProfilePackage(input)
-			? buildPackageAppRootOrigin({
-					packageAppOrigin: input.packageAppBaseUrl,
-					username: input.username,
-					kodyId: input.kodyId,
-				})
-			: null
-		if (profileOrigin) {
-			return buildPackageAppCustomHostnameUrl({
-				origin: profileOrigin,
-				restPath: input.restPath,
-			})
-		}
-		return buildPackageAppSubdomainUrl({
+		const rootOrigin = buildPackageAppRootOrigin({
 			packageAppOrigin: input.packageAppBaseUrl,
 			username: input.username,
 			kodyId: input.kodyId,
-			restPath: input.restPath,
 		})
+		if (rootOrigin) {
+			return {
+				hostedUrl: buildPackageAppCustomHostnameUrl({
+					origin: rootOrigin,
+					restPath: input.restPath,
+				}),
+				appBasePath: '',
+			}
+		}
+		// Names that are not a valid host label keep the owner host path address.
+		// Remove when: no saved package has a name that fails `buildPackageAppRootOrigin`.
+		return {
+			hostedUrl: buildPackageAppSubdomainUrl({
+				packageAppOrigin: input.packageAppBaseUrl,
+				username: input.username,
+				kodyId: input.kodyId,
+				restPath: input.restPath,
+			}),
+			appBasePath: buildPackageAppSubdomainPath({ kodyId: input.kodyId }),
+		}
 	}
-	return buildPackageAppUrl({
-		origin: input.appBaseUrl,
-		username: input.username,
-		kodyId: input.kodyId,
-		restPath: input.restPath,
-	})
+	return {
+		hostedUrl: buildPackageAppUrl({
+			origin: input.appBaseUrl,
+			username: input.username,
+			kodyId: input.kodyId,
+			restPath: input.restPath,
+		}),
+		appBasePath: buildPackageAppPath({
+			username: input.username,
+			kodyId: input.kodyId,
+		}),
+	}
 }
 
 export function normalizePackageInvocationExportName(exportName: string) {

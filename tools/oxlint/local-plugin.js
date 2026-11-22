@@ -725,6 +725,54 @@ const noRawDialogRule = {
 	},
 }
 
+const noBareEffectRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Keep useEffect and useLayoutEffect inside start/lib/primitives.ts so effects stay rare and named.',
+		},
+		schema: [],
+		messages: {
+			useAlternative:
+				'Use a route loader or useQuery for data, useSyncExternalStore for subscriptions, a ref callback with cleanup for DOM work, a key reset or render-time derivation for derived state, or an event handler for user actions. For true external sync, use a hook from start/lib/primitives.ts.',
+		},
+	},
+	createOnce(context) {
+		const effectNames = new Set(['useEffect', 'useLayoutEffect'])
+		function allowed() {
+			const filename = context.filename
+			return (
+				/\/start\/lib\/primitives\.ts$/.test(filename) ||
+				/\.test\.tsx?$/.test(filename)
+			)
+		}
+		return {
+			ImportDeclaration(node) {
+				if (node.source.value !== 'react' || allowed()) return
+				for (const specifier of node.specifiers) {
+					if (
+						specifier.type === 'ImportSpecifier' &&
+						effectNames.has(specifier.imported.name)
+					)
+						context.report({ node: specifier, messageId: 'useAlternative' })
+				}
+			},
+			MemberExpression(node) {
+				if (
+					node.property.type !== 'Identifier' ||
+					!effectNames.has(node.property.name) ||
+					node.object.type !== 'Identifier' ||
+					node.object.name !== 'React' ||
+					allowed()
+				)
+					return
+				context.report({ node, messageId: 'useAlternative' })
+			},
+		}
+	},
+}
+
 const noRawTableRule = {
 	meta: {
 		type: 'problem',
@@ -875,6 +923,165 @@ const noRawButtonStyleRule = {
 	},
 }
 
+const NON_PRODUCTION_PATH_PATTERN =
+	/(?:^|\/)(?:test|tests|__tests__|test-support|e2e|fixtures|mock-servers)\/|(?:\.|-)(?:test|spec|fixture)\.[^/]+$|-test-support\.[^/]+$|(?:^|\/)vitest[^/]*\.[^/]+$|(?:^|\/)tools\/vitest-[^/]+$/
+const TEST_HOOK_NAME_PATTERN = /[a-z0-9](?:ForTests?|ForTesting)$/
+const TEST_RUNNER_ENV_NAMES = new Set(['VITEST', 'vitest', 'JEST_WORKER_ID'])
+const TEST_MODE_ENV_NAMES = new Set(['NODE_ENV', 'MODE'])
+
+function memberPropertyName(node) {
+	if (node?.type !== 'MemberExpression') return null
+	if (!node.computed && node.property.type === 'Identifier') {
+		return node.property.name
+	}
+	if (node.computed && node.property.type === 'Literal') {
+		return typeof node.property.value === 'string' ? node.property.value : null
+	}
+	return null
+}
+
+function isTestModeComparison(node) {
+	if (!['==', '===', '!=', '!=='].includes(node.operator)) return false
+	const pairs = [
+		[node.left, node.right],
+		[node.right, node.left],
+	]
+	return pairs.some(
+		([member, literal]) =>
+			TEST_MODE_ENV_NAMES.has(memberPropertyName(member) ?? '') &&
+			literal.type === 'Literal' &&
+			literal.value === 'test',
+	)
+}
+
+const noTestHooksInProductionRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Keep production code identical under tests: no *ForTests helpers and no test-runner checks.',
+		},
+		schema: [],
+		messages: {
+			testHookName:
+				'Keep `{{name}}` out of production code. Hold per-isolate caches in `isolateState`/`isolateCollection` from `@kody-internal/shared/isolate-state.ts` (tests call `resetIsolateState()`), inject the dependency, or move the helper to a test-support module.',
+			testRunnerCheck:
+				'Production code runs the same under tests. Inject the dependency (an option or env binding) or mock it from a test-support setup file instead of checking the test runner.',
+		},
+	},
+	createOnce(context) {
+		let skip = false
+		function reportName(id) {
+			if (skip || id?.type !== 'Identifier') return
+			if (!TEST_HOOK_NAME_PATTERN.test(id.name)) return
+			context.report({
+				node: id,
+				messageId: 'testHookName',
+				data: { name: id.name },
+			})
+		}
+		return {
+			before() {
+				skip = NON_PRODUCTION_PATH_PATTERN.test(
+					repoRelativePath(context.filename),
+				)
+			},
+			FunctionDeclaration(node) {
+				reportName(node.id)
+			},
+			VariableDeclarator(node) {
+				reportName(node.id)
+			},
+			MethodDefinition(node) {
+				reportName(node.key)
+			},
+			PropertyDefinition(node) {
+				reportName(node.key)
+			},
+			MemberExpression(node) {
+				if (skip) return
+				if (!TEST_RUNNER_ENV_NAMES.has(memberPropertyName(node) ?? '')) return
+				context.report({ node, messageId: 'testRunnerCheck' })
+			},
+			BinaryExpression(node) {
+				if (skip || !isTestModeComparison(node)) return
+				context.report({ node, messageId: 'testRunnerCheck' })
+			},
+		}
+	},
+}
+
+const EXIT_CONDITION_TOPIC_PATTERN =
+	/\b(?:legacy|compat|compatibility|back(?:wards?)?[- ]compat\w*|for now|temporar(?:y|ily) (?:fix|workaround|shim|hack|path|alias|bridge|branch|copy|redirect|lane|support))\b/i
+const EXIT_CONDITION_MARKER_PATTERN = /\b(?:Remove when|Permanent):[ \t]*[^\s*]/
+
+function commentGroups(comments, sourceText) {
+	const groups = []
+	for (const comment of comments) {
+		const previous = groups.at(-1)?.at(-1)
+		const between = previous
+			? sourceText.slice(previous.range[1], comment.range[0])
+			: null
+		const adjacent =
+			previous &&
+			previous.type === 'Line' &&
+			comment.type === 'Line' &&
+			/^[ \t]*\r?\n[ \t]*$/.test(between)
+		if (adjacent) groups.at(-1).push(comment)
+		else groups.push([comment])
+	}
+	return groups
+}
+
+const requireExitConditionCommentRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Comments about legacy, compatibility, or temporary paths state how the path ends.',
+		},
+		schema: [],
+		messages: {
+			missingExitCondition:
+				'Say how this path ends: add `Remove when: <issue or metric>` to this comment, or `Permanent: <why>` when the behavior stays. If the condition already holds, delete the path instead.',
+		},
+	},
+	createOnce(context) {
+		return {
+			Program() {
+				if (
+					NON_PRODUCTION_PATH_PATTERN.test(repoRelativePath(context.filename))
+				) {
+					return
+				}
+				const sourceText = context.sourceCode.getText()
+				const comments = context.sourceCode.getAllComments()
+				for (const group of commentGroups(comments, sourceText)) {
+					const text = group
+						.map((comment) => comment.value)
+						.join('\n')
+						.replaceAll(/`[^`\n]*`/g, '')
+						.replaceAll(/\s*\n[\s*]*/g, ' ')
+					if (/oxlint-disable|eslint-disable/.test(text)) continue
+					if (!EXIT_CONDITION_TOPIC_PATTERN.test(text)) continue
+					const raw = group
+						.map((comment) => comment.value)
+						.join('\n')
+						.replaceAll(/\s*\n[\s*]*/g, ' ')
+					if (EXIT_CONDITION_MARKER_PATTERN.test(raw)) continue
+					context.report({
+						loc: {
+							start: context.sourceCode.getLocFromIndex(group[0].range[0]),
+							end: context.sourceCode.getLocFromIndex(group.at(-1).range[1]),
+						},
+						messageId: 'missingExitCondition',
+					})
+				}
+			},
+		}
+	},
+}
+
 const plugin = {
 	meta: { name: 'kody-custom' },
 	rules: {
@@ -885,11 +1092,14 @@ const plugin = {
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
 		'no-raw-button-style': noRawButtonStyleRule,
+		'no-bare-effect': noBareEffectRule,
 		'no-raw-dialog': noRawDialogRule,
 		'no-raw-overlay': noRawOverlayRule,
 		'no-raw-table': noRawTableRule,
 		'no-raw-form-control': noRawFormControlRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
+		'no-test-hooks-in-production': noTestHooksInProductionRule,
+		'require-exit-condition-comment': requireExitConditionCommentRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
 		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,
 	},

@@ -796,11 +796,22 @@ test('createExecuteExecutor reuses stable dynamic worker ids until binding conte
 	expect(invocationLoader.stats).toEqual(statsFor(3, 1))
 	expect(invocationLoader.evaluations.map((entry) => entry.invocation)).toEqual(
 		[
-			{ params: { room: 'office' }, packageContext: null, mcpServers: [] },
-			{ params: { room: 'kitchen' }, packageContext: null, mcpServers: [] },
+			{
+				params: { room: 'office' },
+				packageContext: null,
+				packageApps: {},
+				mcpServers: [],
+			},
+			{
+				params: { room: 'kitchen' },
+				packageContext: null,
+				packageApps: {},
+				mcpServers: [],
+			},
 			{
 				params: { room: 'office' },
 				packageContext: { packageId: 'pkg-1', kodyId: 'bot' },
+				packageApps: {},
 				mcpServers: [],
 			},
 		],
@@ -835,6 +846,7 @@ test('createExecuteExecutor reuses stable dynamic worker ids until binding conte
 		{
 			params: undefined,
 			packageContext: null,
+			packageApps: {},
 			mcpServers: [
 				{
 					name: 'home',
@@ -850,6 +862,7 @@ test('createExecuteExecutor reuses stable dynamic worker ids until binding conte
 		{
 			params: undefined,
 			packageContext: null,
+			packageApps: {},
 			mcpServers: [
 				{
 					name: 'home',

@@ -26,5 +26,5 @@ is the constant.
   user-critical paths. Tests run offline.
 
 Flavor choice, console spies, workers pool, and `using`:
-[Testing principles](../contributing/testing-principles.md). Production seams:
+[Test runners](../contributing/test-runners.md). Production seams:
 [No invasive test-only code](./no-invasive-test-only-code.md).

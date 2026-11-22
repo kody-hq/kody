@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useExternalInstanceSync, useLayoutMeasure } from '../lib/primitives.ts'
+import { useCallback, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import type {
 	CommentAnchor,
@@ -88,7 +89,7 @@ export function CollaborativeTextEditor({
 	const anchorKey = JSON.stringify(
 		threadAnchors.map(({ thread, offset }) => [thread.id, offset]),
 	)
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		const surface = mirror.current
 		if (!surface) return
 		const anchors: [string, number][] = JSON.parse(anchorKey)
@@ -125,7 +126,7 @@ export function CollaborativeTextEditor({
 		enabled: !!onComment && !!selectedAnchor,
 		meta: { name: 'Comment on selected text' },
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (!selectedRange || !selectedAnchor) {
 			setCommentRect(null)
 			return
@@ -143,14 +144,18 @@ export function CollaborativeTextEditor({
 			window.removeEventListener('scroll', update, true)
 			window.removeEventListener('resize', update)
 		}
+		// oxlint-disable-next-line react/exhaustive-deps -- a new width repositions the comment anchors
 	}, [selectedRange, selectedAnchor, width])
-	useEffect(() => {
-		const element = input.current
+	const inputRef = useCallback((element: HTMLTextAreaElement | null) => {
+		input.current = element
 		if (!element) return
 		const observer = new ResizeObserver(() => setWidth(element.clientWidth))
 		observer.observe(element)
 		setWidth(element.clientWidth)
-		return () => observer.disconnect()
+		return () => {
+			input.current = null
+			observer.disconnect()
+		}
 	}, [])
 	const ranges = participants
 		.filter(
@@ -375,7 +380,7 @@ export function CollaborativeTextEditor({
 			})}
 			{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- transparent textarea layered over the highlighted text */}
 			<textarea
-				ref={input}
+				ref={inputRef}
 				aria-label="Document text"
 				readOnly={readOnly}
 				spellCheck={false}

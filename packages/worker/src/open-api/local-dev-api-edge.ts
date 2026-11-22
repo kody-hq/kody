@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { buildCliClientIdMetadataDocument } from '#worker/cli-client-metadata.ts'
 import { isLoopbackHostname } from '#worker/repo/artifacts.ts'
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 
 /**
  * Local `npm run dev` / `control-kody dev` has no `kody-api` edge worker, so
@@ -38,6 +39,7 @@ const forwardedHeaderNames = [
 	'X-Kody-Gateway-Method',
 	'X-Kody-Gateway-Package-Id',
 	'X-Kody-Gateway-Headers',
+	'X-Kody-Gateway-Credentials',
 	'x-kody-secret-resolution',
 	'Upgrade',
 	'Connection',
@@ -80,7 +82,9 @@ export async function handleLocalDevApiRequest(input: {
 	})
 }
 
-const seededCliClientOrigins = new Map<string, Promise<void>>()
+const seededCliClientOrigins = new PromiseLruCache<void>({
+	ttlMs: Number.POSITIVE_INFINITY,
+})
 
 /**
  * The OAuth provider only fetches HTTPS Client ID Metadata Documents, so on
@@ -89,29 +93,25 @@ const seededCliClientOrigins = new Map<string, Promise<void>>()
  * same document the origin serves, so `kody login` works locally.
  */
 export function ensureLocalCliClientRegistration(env: Env, origin: string) {
-	const existing = seededCliClientOrigins.get(origin)
-	if (existing) return existing
-	const pending = (async () => {
-		const document = buildCliClientIdMetadataDocument(origin)
-		const key = `client:${document.client_id}`
-		if (await env.OAUTH_KV.get(key)) return
-		await env.OAUTH_KV.put(
-			key,
-			JSON.stringify({
-				clientId: document.client_id,
-				redirectUris: document.redirect_uris,
-				clientName: document.client_name,
-				clientUri: document.client_uri,
-				tokenEndpointAuthMethod: document.token_endpoint_auth_method,
-				grantTypes: document.grant_types,
-				responseTypes: document.response_types,
-				registrationDate: Math.floor(Date.now() / 1000),
-			}),
-		)
-	})().catch((error: unknown) => {
-		seededCliClientOrigins.delete(origin)
-		throw error
+	return seededCliClientOrigins.getOrCreate({
+		cacheKey: origin,
+		create: async () => {
+			const document = buildCliClientIdMetadataDocument(origin)
+			const key = `client:${document.client_id}`
+			if (await env.OAUTH_KV.get(key)) return
+			await env.OAUTH_KV.put(
+				key,
+				JSON.stringify({
+					clientId: document.client_id,
+					redirectUris: document.redirect_uris,
+					clientName: document.client_name,
+					clientUri: document.client_uri,
+					tokenEndpointAuthMethod: document.token_endpoint_auth_method,
+					grantTypes: document.grant_types,
+					responseTypes: document.response_types,
+					registrationDate: Math.floor(Date.now() / 1000),
+				}),
+			)
+		},
 	})
-	seededCliClientOrigins.set(origin, pending)
-	return pending
 }

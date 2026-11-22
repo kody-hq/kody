@@ -11,7 +11,6 @@ import {
 } from '#mcp/secrets/execution-secret-redactor.ts'
 import {
 	credentialCallMapSchema,
-	normalizeCredentialCallMap,
 	type CredentialCallMap,
 } from '#worker/credentials/credential-call-map.ts'
 import {
@@ -41,6 +40,7 @@ import {
 	commandRuntimeName,
 } from '#worker/execution-contexts/commands.ts'
 import { runCapabilityProxyGatewayFetch } from './capability-proxy-gateway-fetch.ts'
+import { capabilityProxyCallMap } from './native-operation-helpers.ts'
 import { runCapabilityProxyOauthClientCredentials } from './capability-proxy-oauth-client-credentials.ts'
 import {
 	authorizeLocalExecutePackageBinding,
@@ -274,7 +274,9 @@ async function callKodyPath(input: {
 		)
 	}
 	if (path.length === 2 && name === 'gatewayFetch') {
-		return invokeCapability(() => runCapabilityProxyGatewayFetch({ ctx, args }))
+		return invokeCapability(() =>
+			runCapabilityProxyGatewayFetch({ ctx, args, callMap }),
+		)
 	}
 	if (path.length === 2 && name === 'oauthClientCredentials') {
 		return invokeCapability(() =>
@@ -366,26 +368,6 @@ async function callKodyPath(input: {
 		throw notFound(`Unknown runtime function kody.${path.slice(1).join('.')}.`)
 	}
 	return invokeCapability(() => tool(args[0]))
-}
-
-/**
- * Local runs send their own call map. A context run's map comes from its
- * lease: Kody stored it when it routed the run, so the machine cannot pick
- * different credentials for the requester.
- */
-export function capabilityProxyCallMap(
-	ctx: Pick<ApiInvocationContext, 'principal'>,
-	credentials: CapabilityProxyCallInput['credentials'],
-): CredentialCallMap | null {
-	if (ctx.principal.kind !== 'execution-context-run') {
-		return normalizeCredentialCallMap(credentials)
-	}
-	if (credentials !== undefined && credentials !== null) {
-		throw invalidRequest(
-			'Execution context runs cannot send `credentials`: Kody applies the credential picks the run was started with.',
-		)
-	}
-	return ctx.principal.callMap ?? null
 }
 
 async function dispatchCapabilityProxyCall(input: {

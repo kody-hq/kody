@@ -38,25 +38,9 @@ synchronous, for callers that already hold the compiled permissions.
 
 1. **Signed in.** A request without a person (`request: null`) is denied.
 2. **Org binding.** The resource must belong to `request.org.id` (`wrong_org`).
-3. **Effective permissions.** `computeEffectivePermissions` compiles
-   memberships, team memberships, and grants (`access-compile.ts`): Owner holds
-   every permission; Admin holds every permission except `org:delete`
-   (`hasOwnerAuthority` is Owner or Admin); Member and Billing hold their
-   org-level basics plus any direct, team, or everyone-in-org grants
-   (`subject_type = 'org'`, whose `subject_id` must equal the grant's `org_id`,
-   a CHECK since migration 0201; it matches any live `org_memberships` row at
-   compile time, so joins and leaves need no grant rows, only the existing epoch
-   bumps); outside collaborators hold `search:read` plus grants (and
-   `org:execute` when they hold `package:execute` somewhere, the ad-hoc rule).
-   Compiled results are stored in `access_cache` and keyed by
-   `orgs.access_epoch`. A grant with `expires_at` (migration 0212; NULL never
-   expires) stops counting at that instant: every subject lookup filters it in
-   SQL, the cached row's `valid_until` holds the earliest expiry it used and is
-   a miss from then, and the per-request memo recompiles past it, so a long run
-   loses the grant mid-run. `subject_type = 'profile'` rows exist for profiles
-   and never reach a person: every lookup site excludes them. Automation (no
-   actor) acts for the org that owns the job, webhook, or subscription. The
-   result is also cached per request context.
+3. **Effective permissions.** Start with the acting person's org role and
+   applicable grants. See [Access compilation](#access-compilation) for role,
+   cache, and batch behavior.
 4. **Credential scopes.** Non-null `credential.scopes` narrow the result.
 5. **Profile chain.** A profile-bound credential (`credential.profileId`)
    intersects the result with the acting profile's grants and every ancestor's
@@ -75,6 +59,22 @@ synchronous, for callers that already hold the compiled permissions.
    `package:write`). `packageGetGitRemote` create mode mints a write remote for
    the package it just created on that check alone; it grants nothing on other
    packages. Plain repo create stays an org-level `package:create` check.
+
+### Access compilation
+
+The
+[access compiler](../../../packages/worker/src/authorization/access-compile.ts)
+uses the role preset directly for Owners and Admins. Member and Billing compiles
+combine role basics with direct, team, and everyone-in-org grants. Outside
+collaborators start with `search:read` plus applicable grants. A
+`package:execute` grant also adds `org:execute` for ad-hoc code. Automation
+compiles for its enabler; a request with no person has no compiled access.
+
+For grant-based compiles, `access_cache` rows are keyed by org access epoch and
+expire at the earliest applicable grant expiry. The per-request memo also checks
+that expiry. `compileAccessForRequests` groups requests by actor and batches
+reads across orgs, returning results in input order. Profile grants narrow
+access in the separate profile-chain step, not in the person's compile.
 
 **Member permissions.** A team org's `members_can_create_packages` (default off)
 and `members_can_create_credentials` (default on) columns on `orgs` add
@@ -375,6 +375,22 @@ discovery, platform feedback, your own tokens, and site-admin tools, which
 `requiredRole` gates instead. `registry.node.test.ts` fails when a site-admin
 capability declares an org permission, and `operations.node.test.ts` fails when
 an operation publishes no valid permission.
+
+### Agents narrow, owners widen
+
+A capability's declared permission says who may call it, not how far a call may
+change access. Use on a resource (`secret:use`, `integration:use`) lets an agent
+narrow who can reach it, never widen it. Adding a package to a grant list,
+unlocking, or binding a new consumer is an owner action on the website: the
+agent surface returns `approval_required` with an `approval_url` and writes
+nothing. `resourceLock` integration and MCP server locks decide through
+`planPackageLock`, and the secret kinds always return the owner link
+([`allowed-packages.ts`](../../../packages/worker/src/mcp/secrets/allowed-packages.ts));
+the contract test in
+[`resource-lock.node.test.ts`](../../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)
+holds one row per kind. A new capability that changes who can use a resource
+states which direction it moves and follows the same rule. See
+[security invariant 16](../security.md#invariants-for-future-agents-do-not-regress).
 
 ### Capabilities that need a live person
 

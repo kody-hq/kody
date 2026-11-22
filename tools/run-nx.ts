@@ -53,10 +53,11 @@ export function isNxRemoteCacheRejected(output: string) {
 
 /**
  * Nx prints `Failed tasks:` when a task itself failed, or when a
- * post-success remote-cache 404/401 is attributed to that task. The
- * cache-only case still has a `✔ nx run <task>` line. `Tasks stopped
- * before they finished:` means Nx killed work mid-flight (often because
- * the cache aborted the run) and still gets the local retry.
+ * post-success remote-cache 404/401/500 is attributed to that task. The
+ * cache-only case still has a `✔ nx run <task>` line, or Playwright's
+ * all-pass summary for `:test-e2e` when Nx prints ❌ instead. `Tasks
+ * stopped before they finished:` means Nx killed work mid-flight (often
+ * because the cache aborted the run) and still gets the local retry.
  */
 export function nxRunReportedFailedTasks(output: string) {
 	return stripNxAnsi(output).includes('Failed tasks:')
@@ -79,15 +80,40 @@ export function nxFailedTaskNames(output: string) {
 	return names
 }
 
+export function nxPlaywrightSuitePassed(output: string) {
+	const plain = stripNxAnsi(output)
+	const summaryCount = (label: string) =>
+		new RegExp(`(?:^|\\n)\\s+\\d+ ${label}(?:\\s+\\([^)]+\\))?(?:\\n|$)`).test(
+			plain,
+		)
+	if (
+		summaryCount('failed') ||
+		summaryCount('interrupted') ||
+		summaryCount('did not run') ||
+		/(?:^|\n)\s+1 error was not a part of any test/.test(plain) ||
+		/(?:^|\n)\s+\d+ errors were not a part of any test/.test(plain)
+	) {
+		return false
+	}
+	return summaryCount('passed')
+}
+
 export function nxTaskPrintedSuccess(output: string, task: string) {
+	const plain = stripNxAnsi(output)
 	const escaped = task.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-	return new RegExp(`✔\\s+nx run\\s+${escaped}\\b`).test(stripNxAnsi(output))
+	if (new RegExp(`✔\\s+nx run\\s+${escaped}\\b`).test(plain)) return true
+	// Nx can mark test-e2e ❌ after Playwright already printed an all-pass
+	// summary, when the remote cache then 500s (Validate #44965301568).
+	// Remove when: Nx prints ✔ nx run for a task whose command succeeded
+	// even after a remote-cache 500.
+	return task.endsWith(':test-e2e') && nxPlaywrightSuitePassed(plain)
 }
 
 /**
  * Nx can print `Failed tasks:` after a task already succeeded, when the
- * remote cache then 404s or 401s. That is not a compiler or assertion
- * failure. A listed task without a success mark stays a real failure.
+ * remote cache then 404s, 401s, or 500s. That is not a compiler or
+ * assertion failure. A listed task without a success mark or Playwright
+ * all-pass summary stays a real failure.
  */
 export function nxFailedTasksAreRemoteCacheOnly(output: string) {
 	if (!isNxRemoteCacheDegradableFailure(output)) return false

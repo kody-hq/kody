@@ -165,21 +165,23 @@ it. Refresh enforces the connection's `requiredHosts` against the token host.
 host; reconnect at `/connect/oauth` to approve a new destination. Platform-lane
 destinations are operator-pinned rows, so no user-secret allowlist applies.
 
-The website can also replace a connection's (or a Key's) hosts via
-`saveCredentialHosts` (`packages/worker/src/credentials/credential-hosts.ts`):
-requires the credential family's `:write` permission, accepts public HTTPS host
-names only, always keeps the app's API base and token hosts (refresh needs the
-token host), and commits with a `credential.hosts_updated` org audit event.
-There is no capability for it: an agent that could add a host could send the
-token anywhere. Platform-lane connections are refused: reconnect resets them to
-the app's hosts. Migration `0143` backfilled `api.dropboxapi.com`,
-`content.dropboxapi.com`, and `notify.dropboxapi.com` onto the host allowlists
-of existing connections whose app mints tokens at Dropbox's token endpoint
-([Dropbox guide](../../guides/providers/dropbox.md)). Nothing keeps them there
-afterward: `saveCredentialHosts` only pins the app's API base and token hosts,
-so a later user-lane host edit can remove `content.dropboxapi.com` and
-`notify.dropboxapi.com`. Support can check a connection's hosts with the
-`adminOauthConnectionHostsList` capability.
+The website's
+[`setCredentialHosts` handler](../../../packages/worker/src/app/credential-host-mutation.ts)
+updates a Key or user-lane connection with the credential family's `:write`
+permission. The
+[host input parser](../../../packages/worker/universal/credential-host-input.ts)
+accepts exact public hostnames, optionally prefixed with `https://`. The
+[host editor](../../../packages/worker/src/credentials/credential-hosts.ts) caps
+editable hosts at 20 unless an existing longer list stays the same size or
+shrinks. On a connection update it retains any stored API base host, includes
+the token host, and records `credential.hosts_updated`. Platform-lane
+connections use the app's hosts instead. Migration `0143` backfilled
+`api.dropboxapi.com`, `content.dropboxapi.com`, and `notify.dropboxapi.com` onto
+the host allowlists of existing connections whose app mints tokens at Dropbox's
+token endpoint ([Dropbox guide](../../guides/providers/dropbox.md)). A user-lane
+host edit can remove `content.dropboxapi.com` and `notify.dropboxapi.com`.
+Support can check a connection's hosts with the `adminOauthConnectionHostsList`
+capability.
 
 Each `/connect/oauth` token persist writes `user_integrations.refresh_policy`
 from the provider token response (`refresh-policy.ts`): `required` when it
@@ -408,35 +410,36 @@ named `apps` resolves at `/@<slug>/-/integrations/apps`). Endpoints, host
 allowlists, flow / PKCE / exchange style, and credential rotation stay behind an
 advanced disclosure. Each connection also shows a usage grant: **any context**
 (execute and every package) or **specific packages** only. Agents tighten that
-grant with `resourceLock({ kind: 'integration', name, package_id })` (switch to
-packages mode and add a saved package id; unlocking or removing a grant is
-website-only). One-click approval lives at
-`/@<slug>/-/integrations/approve?name=&package_id=`; approving a package while
-the connection is still `any` leaves it `any` so execute stays usable. Rotate
-(`rotateOauthAppCredentials`) stores a new client-secret value on the app, then
-calls `rotateOauthAppClientCredentials` so every sibling connection picks up the
-new client id on the next join. Each connection has a double-checked Disconnect
-control; user-registered integrations also have Delete integration. Both are
-delayed-commit undoable actions: the UI updates immediately, and
-`disconnectIntegration` / `deleteOauthApp` run only after the undo window (or
-when the user leaves). Built-in apps cannot be deleted; disconnect their
-connections instead.
+grant with `resourceLock({ kind: 'integration', name, package_id })`: on an
+any-context connection it switches to packages mode with that saved package id;
+on a locked connection it adds nothing and returns an owner `approval_url`
+(unlocking, removing, or adding a grant is website-only). One-click approval
+lives at `/@<slug>/-/integrations/approve?name=&package_id=`; approving a
+package while the connection is still `any` leaves it `any` so execute stays
+usable. Rotate (`rotateOauthAppCredentials`) stores a new client-secret value on
+the app, then calls `rotateOauthAppClientCredentials` so every sibling
+connection picks up the new client id on the next join. Each connection has a
+double-checked Disconnect control; user-registered integrations also have Delete
+integration. Both are delayed-commit undoable actions: the UI updates
+immediately, and `disconnectIntegration` / `deleteOauthApp` run only after the
+undo window (or when the user leaves). Built-in apps cannot be deleted;
+disconnect their connections instead.
 
 ## Capability surface
 
 Domain: `integrations`
 (`packages/worker/src/mcp/capabilities/integrations/domain.ts`).
 
-| Capability                                       | Role                                                                               |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                        |
-| `resourceLock`                                   | Integration package lock (`kind: integration`); tighten-only; website unlock       |
-| `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                           |
-| `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                  |
-| `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                  |
-| `integrationPlatformAppList`                     | Discoverable (enabled + published) built-ins; operators use the admin list         |
-| `integrationTokenRefresh`                        | Host-side OAuth refresh; returns metadata only, never token values                 |
-| `integrationDeviceConnectStart` / `_Poll`        | RFC 8628 device grant; credentials persist server-side; no token/`device_code` out |
+| Capability                                       | Role                                                                                                |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                                         |
+| `resourceLock`                                   | Integration package lock (`kind: integration`); narrow-only (security invariant 16); website unlock |
+| `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                                            |
+| `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                                   |
+| `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                                   |
+| `integrationPlatformAppList`                     | Discoverable (enabled + published) built-ins; operators use the admin list                          |
+| `integrationTokenRefresh`                        | Host-side OAuth refresh; returns metadata only, never token values                                  |
+| `integrationDeviceConnectStart` / `_Poll`        | RFC 8628 device grant; credentials persist server-side; no token/`device_code` out                  |
 
 ## Account deletion order
 

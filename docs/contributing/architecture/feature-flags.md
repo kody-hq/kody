@@ -48,9 +48,16 @@ extended by `0065-experiments-opt-in.sql`:
   rebuild cannot cascade away rollout state; overrides for deleted sources are
   inert.
 
+Every registry entry declares how it ends: `removeWhen` (the issue or metric
+that retires the flag) and/or `reviewBy` (a `YYYY-MM-DD` date). The type
+requires at least one, and `registry.node.test.ts` fails once a `reviewBy` date
+passes, so a lingering flag gets an explicit decision: remove it, or set a new
+date with an updated `removeWhen`.
+
 Removing a flag from the registry breaks the build at every remaining gate site;
 leftover DB rows for removed keys surface as **stale** in the admin UI
-(delete-only — `deleteStaleFeatureFlag` refuses keys still in the registry).
+(delete-only via the admin UI or `adminFeatureFlagDeleteStale`;
+`deleteStaleFeatureFlag` refuses keys still in the registry).
 
 ## Evaluation precedence
 
@@ -140,8 +147,12 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
   (by org handle) next to User overrides.
 - **MCP capabilities**: `adminFeatureFlagList`, `adminFeatureFlagSet`,
   `adminFeatureFlagOverride`, `adminFeatureFlagOrgOverride` (`{ key, orgId }` or
-  `{ key, orgSlug }` with `enabled` and an optional `note`, or `clear: true`)
-  (admin role required, audited, `contextRuns: 'deny'`).
+  `{ key, orgSlug }` with `enabled` and an optional `note`, or `clear: true`),
+  [`adminFeatureFlagDeleteStale({ key, dryRun? })`](../../../packages/worker/src/mcp/capabilities/admin/admin-feature-flag-delete-stale.ts).
+  Use `dryRun: true` to count the stale key's global row and user, org, and repo
+  overrides without deleting them. A deletion uses the same audited path as the
+  admin UI. Both return counts per table and the pre-delete flag, if present
+  (admin role required, `contextRuns: 'deny'`).
 - **Client**: evaluated per-request in `loadSessionInfo` (cached per request in
   `request-feature-flags-cache.ts`) and shipped as `session.featureFlags`; gate
   UI with `isFeatureFlagEnabled(session, key)` from

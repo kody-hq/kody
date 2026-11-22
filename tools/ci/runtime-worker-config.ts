@@ -116,6 +116,8 @@ function copyResourceIdentifiers(input: {
 		section: string
 		key: string
 		fields: Array<string>
+		/** The base config's value is complete when the main Worker lacks it. */
+		mainOptional?: boolean
 	}> = [
 		{
 			section: 'd1_databases',
@@ -129,13 +131,17 @@ function copyResourceIdentifiers(input: {
 			section: 'analytics_engine_datasets',
 			key: 'binding',
 			fields: ['dataset'],
+			// Analytics Engine datasets are created on first write, so a
+			// runtime-only dataset (one only this Worker writes) needs nothing
+			// provisioned by the main Worker.
+			mainOptional: true,
 		},
 		// Service bindings (the JOBS binding to the jobs worker): the main
 		// generated config carries the resolved per-environment worker name
 		// (`kody-jobs` in production, `<worker>-jobs` in preview).
 		{ section: 'services', key: 'binding', fields: ['service'] },
 	]
-	for (const { section, key, fields } of copies) {
+	for (const { section, key, fields, mainOptional } of copies) {
 		const runtimeEntries = runtimeEnv[section]
 		if (!Array.isArray(runtimeEntries)) continue
 		for (const entry of runtimeEntries) {
@@ -146,6 +152,7 @@ function copyResourceIdentifiers(input: {
 			}
 			const mainEntry = findByKey(mainEnv[section], key, bindingName)
 			if (!mainEntry) {
+				if (mainOptional) continue
 				fail(
 					`main generated config env.${envName}.${section} has no entry for binding "${bindingName}" required by the runtime worker.`,
 				)
@@ -280,6 +287,7 @@ function addPackageAppRoute(runtimeEnv: JsonRecord, envName: string) {
 	// Catch-all only on the canonical SaaS zone. Legacy dual-served hosts may
 	// sit in a shared zone (e.g. legacy-apps.example.org → example.org); a
 	// `*/*` there would steal unrelated hostnames without more-specific routes.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	const canonicalHostname = hostnames[0]
 	if (!canonicalHostname) return
 	const canonicalZoneName = readPackageAppZoneName(canonicalHostname)

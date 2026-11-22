@@ -279,7 +279,6 @@ test('website lock and unlock write locked_at and approve-publish promotes a nam
 		packageHref: '/@user/notes',
 		package: { id: 'pkg-1', lockedAt: '2026-08-28T12:00:00.000Z' },
 		listing: null,
-		listingWillLagAfterPromote: false,
 		diff: { files: [], omittedCount: 0 },
 	})
 })

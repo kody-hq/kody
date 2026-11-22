@@ -1,7 +1,7 @@
 /**
- * Website adapter for the Agent profiles page (ADR 0092). Every read and
- * write goes through the existing profile capabilities and token
- * operations, so the page has exactly the authority MCP and the API have.
+ * Website adapter for the Agent profiles page (ADR 0092). Mutations use the
+ * profile and access capabilities or token operations; the loader also reads
+ * data for the page's grant picker and display.
  */
 import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
@@ -79,7 +79,13 @@ async function loadScope(input: ScopedInput): Promise<ProfilesScope | null> {
 
 async function callProfileCapability(
 	scope: ProfilesScope,
-	name: 'profileList' | 'profileCreate' | 'profileUpdate' | 'profileRevoke',
+	name:
+		| 'profileList'
+		| 'profileCreate'
+		| 'profileUpdate'
+		| 'profileRevoke'
+		| 'accessGrant'
+		| 'accessRevoke',
 	args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
 	const registry = await getStaticRegistry()
@@ -249,6 +255,7 @@ async function toProfileItems(
 				resourceType === 'package' ? packages.get(resourceId) : undefined
 			return [
 				{
+					grantId: text(grant.grantId),
 					resourceType,
 					resourceId,
 					permissions,
@@ -504,6 +511,32 @@ export async function revokeProfileForUser(
 	return runScoped(input, async (scope) => {
 		await callProfileCapability(scope, 'profileRevoke', {
 			profile_id: input.profileId,
+		})
+		return { ok: true as const }
+	})
+}
+
+export async function grantProfileAccessForUser(
+	input: ScopedInput & { profileId: string; grant: ProfileGrantInput },
+) {
+	return runScoped(input, async (scope) => {
+		await callProfileCapability(scope, 'accessGrant', {
+			resource_type: input.grant.resourceType,
+			resource_id: input.grant.resourceId,
+			subject_type: 'profile',
+			subject_id: input.profileId,
+			permissions: input.grant.permissions,
+		})
+		return { ok: true as const }
+	})
+}
+
+export async function revokeProfileGrantForUser(
+	input: ScopedInput & { grantId: string },
+) {
+	return runScoped(input, async (scope) => {
+		await callProfileCapability(scope, 'accessRevoke', {
+			grant_id: input.grantId,
 		})
 		return { ok: true as const }
 	})

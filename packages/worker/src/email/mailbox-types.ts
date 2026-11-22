@@ -361,6 +361,8 @@ export type MailboxRunRetentionNowResult = {
 
 export type MailboxListMessagesInput = {
 	inboxId?: string | null
+	/** Only messages in these inboxes. An empty list matches nothing. */
+	inboxIds?: ReadonlyArray<string> | null
 	/** Messages on one thread only. */
 	threadId?: string | null
 	direction?: EmailDirection | null
@@ -379,6 +381,8 @@ export type MailboxListMessagesInput = {
 export type MailboxSearchMessagesInput = {
 	query: string
 	inboxId?: string | null
+	/** Only messages in these inboxes. An empty list matches nothing. */
+	inboxIds?: ReadonlyArray<string> | null
 	direction?: EmailDirection | null
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
@@ -391,6 +395,8 @@ export type MailboxSearchMessagesInput = {
 
 export type MailboxCountMessagesInput = {
 	inboxId?: string | null
+	/** Only messages in these inboxes. An empty list matches nothing. */
+	inboxIds?: ReadonlyArray<string> | null
 	direction?: EmailDirection | null
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
@@ -640,6 +646,7 @@ type MailboxCoreRpc = {
 	/**
 	 * Fence an already-missing USER message before compatibility R2/D1 cleanup.
 	 * Refuses to tombstone when Mailbox metadata became present concurrently.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	tombstoneMissingMessage: (input: {
 		ownerId: OwnerId

@@ -684,6 +684,8 @@ export const loadMcpServersPage = createServerFn({ method: 'GET' })
 		z.object({
 			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
 			serverId: z.string().optional(),
+			packageId: z.string().optional(),
+			packageName: z.string().optional(),
 		}),
 	)
 	.handler(async ({ data }) => {
@@ -691,10 +693,14 @@ export const loadMcpServersPage = createServerFn({ method: 'GET' })
 		const pathname =
 			routes.orgMcpServers.href({ orgSlug: data.orgSlug }) +
 			(data.serverId ? `/${encodeURIComponent(data.serverId)}` : '')
+		const params = new URLSearchParams()
+		if (data.packageId) params.set('package_id', data.packageId)
+		if (data.packageName) params.set('package', data.packageName)
+		const search = params.size ? `?${params}` : ''
 		const { bindings, request, user } = await loadScopedCollection({
 			orgSlug: data.orgSlug,
 			section: 'mcp-servers',
-			returnTo: pathname,
+			returnTo: pathname + search,
 		})
 		const [{ loadAccountMcpServersData }, { loadDocumentHead }, { waitUntil }] =
 			await Promise.all([

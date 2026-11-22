@@ -116,7 +116,6 @@ export function BlogRoute({ data }: { data: BlogLoaderData }) {
 function renderFeaturedPostItem(post: BlogPostSummaryLoaderData) {
 	return (
 		<li key={post.slug} css={featuredItemCss} ref={revealRef(0, 'reveal-card')}>
-			{/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- link name comes from the meta, title, and description children */}
 			<SiteLink
 				href={routes.blogPost.href({ slug: post.slug })}
 				css={featuredLinkCss}

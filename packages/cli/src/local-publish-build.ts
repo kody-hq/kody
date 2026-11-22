@@ -7,6 +7,9 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
+export const gitMissingMessage =
+	'Publish builds need git, and this machine has none on PATH. Install git, or publish on Kody cloud with `--context cloud`.'
+
 /** Matches the worker's `publishOffloadLimits.uploadChunkBytes`. */
 const publishBuildChunkBytes = 4 * 1024 * 1024
 
@@ -201,18 +204,26 @@ async function git(
 	args: Array<string>,
 	env?: Record<string, string>,
 ) {
-	const { stdout } = await execFileAsync('git', args, {
-		cwd,
-		...(env ? { env: { ...process.env, ...env } } : {}),
-		maxBuffer: 256 * 1024 * 1024,
-		encoding: 'buffer',
-	})
-	return stdout as Buffer
+	try {
+		const { stdout } = await execFileAsync('git', args, {
+			cwd,
+			...(env ? { env: { ...process.env, ...env } } : {}),
+			maxBuffer: 256 * 1024 * 1024,
+			encoding: 'buffer',
+		})
+		return stdout as Buffer
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+			throw new Error(gitMissingMessage, { cause: error })
+		}
+		throw error
+	}
 }
 
 /**
- * Refuses unless `dir` is a clean checkout whose HEAD is `commit`, so the
- * bytes built here are exactly the pushed tree the server re-checks.
+ * Refuses tracked or untracked working-tree changes in `dir`: the publish
+ * pushes and builds committed bytes only, so uncommitted edits would silently
+ * be left out.
  */
 async function assertCleanWorkingTree(dir: string) {
 	const status = (await git(dir, ['status', '--porcelain'])).toString('utf8')
@@ -228,12 +239,15 @@ async function gitText(dir: string, args: Array<string>) {
 }
 
 /**
- * 8B: refuse uncommitted changes, then push HEAD to its upstream branch (the
- * package's Kody remote) unless that branch is already at HEAD. Never
- * commits. The caller still has Kody confirm the commit before building.
+ * `--build local`: push HEAD to its upstream branch on the package's Kody
+ * repo (no new commit) before the CLI builds the confirmed commit. Git talks to a
+ * write remote Kody mints for this publish with the CLI's own login, never
+ * the checkout's remote URL or a stored git credential, which may have
+ * expired since the clone.
  */
 export async function pushHeadForPublish(
 	dir: string,
+	mintRemote: () => Promise<PublishPushRemote>,
 	log: (line: string) => void = () => {},
 ) {
 	await assertCleanWorkingTree(dir)
@@ -244,24 +258,52 @@ export async function pushHeadForPublish(
 		'--short',
 		'HEAD',
 	]).catch(() => '')
-	const remote = branch
-		? await gitText(dir, ['config', `branch.${branch}.remote`]).catch(() => '')
-		: ''
 	const mergeRef = branch
 		? await gitText(dir, ['config', `branch.${branch}.merge`]).catch(() => '')
 		: ''
-	if (!remote || !mergeRef) {
+	if (!mergeRef) {
 		throw new Error(
 			"Local publish builds push HEAD to its upstream branch on the package's Kody remote, and this checkout has none. Check out the branch and set its upstream (git push -u <kody remote> HEAD), then try again.",
 		)
 	}
+	const minted = await mintRemote()
+	const env = gitExtraHeaderEnv(minted.git_extra_header)
+	const noStoredCredential = ['-c', 'credential.helper=']
 	const remoteHead = (
-		await gitText(dir, ['ls-remote', remote, mergeRef])
-	).split(/\s/)[0]
+		await git(
+			dir,
+			[...noStoredCredential, 'ls-remote', minted.remote, mergeRef],
+			env,
+		)
+	)
+		.toString('utf8')
+		.split(/\s/)[0]
 	if (remoteHead === head) return { head, pushed: false }
-	log(`Pushing ${head.slice(0, 12)} to ${remote} ${mergeRef}…`)
-	await git(dir, ['push', '--quiet', remote, `HEAD:${mergeRef}`])
+	log(`Pushing ${head.slice(0, 12)} to ${mergeRef}…`)
+	await git(
+		dir,
+		[
+			...noStoredCredential,
+			'push',
+			'--quiet',
+			minted.remote,
+			`HEAD:${mergeRef}`,
+		],
+		env,
+	)
 	return { head, pushed: true }
+}
+
+/** The parts of `packageGetGitRemote` a publish push uses. */
+export type PublishPushRemote = { remote: string; git_extra_header: string }
+
+function gitExtraHeaderEnv(header: string) {
+	return {
+		GIT_TERMINAL_PROMPT: '0',
+		GIT_CONFIG_COUNT: '1',
+		GIT_CONFIG_KEY_0: 'http.extraHeader',
+		GIT_CONFIG_VALUE_0: header,
+	}
 }
 
 async function assertCleanCheckoutAt(dir: string, commit: string) {
@@ -456,12 +498,9 @@ export async function runLocalPublishBuild(input: {
  */
 export function contextCloneGitEnv(token: string) {
 	const password = token.split('?expires=')[0] ?? ''
-	return {
-		GIT_TERMINAL_PROMPT: '0',
-		GIT_CONFIG_COUNT: '1',
-		GIT_CONFIG_KEY_0: 'http.extraHeader',
-		GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(`x:${password}`).toString('base64')}`,
-	}
+	return gitExtraHeaderEnv(
+		`Authorization: Basic ${Buffer.from(`x:${password}`).toString('base64')}`,
+	)
 }
 
 /**

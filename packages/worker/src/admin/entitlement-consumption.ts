@@ -37,6 +37,7 @@ export const entitlementWarningThreshold = 0.8
  * overlay: inbound mail enforces `email_receives_per_day` against the base
  * (manual + Stripe) plan, never the gift overlay, so fleet / admin pressure
  * must score that one resource the same way.
+ * Remove when: no org has `entitlement_ladder = 'legacy'`.
  */
 export async function readAdminEntitlementConsumption(input: {
 	env: Env

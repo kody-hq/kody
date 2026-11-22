@@ -25,7 +25,7 @@ import { css } from '@emotion/react'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { useRouter } from '@tanstack/react-router'
 import {
-	useEffect,
+	useCallback,
 	useRef,
 	useState,
 	type ChangeEvent,
@@ -90,7 +90,8 @@ export function AdminPlatformIntegrationsPage(props: {
 		router.navigate({ href, replace: true })
 	const lifetime = useRef<AbortController | null>(null)
 	const readerRef = useRef<FileReader | null>(null)
-	useEffect(() => {
+	const trackLifetime = useCallback((node: HTMLElement | null) => {
+		if (!node) return
 		const controller = new AbortController()
 		lifetime.current = controller
 		return () => {
@@ -400,6 +401,7 @@ export function AdminPlatformIntegrationsPage(props: {
 		status === 'ready'
 	return (
 		<AccountManagementShell
+			ref={trackLifetime}
 			layout="list"
 			currentHref={currentHref}
 			busy={pending}
@@ -467,16 +469,15 @@ export function AdminPlatformIntegrationsPage(props: {
 					columns={[
 						{ key: 'slug', label: 'Slug', primary: true },
 						{ key: 'provider', label: 'Provider' },
-						{ key: 'label', label: 'Label', drop: 1 },
+						{ key: 'label', label: 'Label' },
 						{ key: 'enabled', label: 'Enabled' },
 						{ key: 'visibility', label: 'Visibility' },
 						{
 							key: 'connections',
 							label: 'Connections',
 							align: 'end',
-							drop: 2,
 						},
-						{ key: 'updated', label: 'Updated', drop: 3 },
+						{ key: 'updated', label: 'Updated' },
 					]}
 					rows={filteredApps.map((app) => ({
 						id: app.slug,

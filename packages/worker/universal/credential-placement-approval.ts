@@ -75,7 +75,10 @@ export function formatPlacementApprovalParts(
 
 type CredentialPlacementApprovalItem = {
 	name: string
-	/** The stored placement before approval. Null means not set (legacy). */
+	/**
+	 * The stored placement before approval. Null means not set (legacy).
+	 * Remove when: every secret credential row has a stored placement (null placements backfilled).
+	 */
 	placement: CredentialFillPlacementView | null
 	/** Requested parts the credential cannot fill yet. */
 	pendingParts: Array<PlacementApprovalPart>

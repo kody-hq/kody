@@ -104,12 +104,17 @@ A one-file fetch handler is a complete app (see
 
 ## Session handoff
 
-Production-hosted apps live at `https://{username}.kody.run/<package-name>/…`
-(`username` is the org handle: personal username or team slug) and on verified
-custom domains. That URL is the app. `/packages/<package-name>/…` on the same
-host resolves to the same app. `https://kody.codes/@{username}/packages/…` is
-not the hosted origin: visitors who may run the app hand off to it; everyone
-else stays on the package page (or a same-origin landing).
+Production-hosted apps open at `https://{package-name}--{username}.kody.run/…`
+(`username` is the org handle: personal username or team slug), or on a verified
+app-level custom domain. Profile packages use the owner's bare host, as
+described below. The shared-host addresses
+`https://{username}.kody.run/<package-name>/…` and `/packages/<package-name>/…`
+also resolve to the app until the
+[path-mount cutover](../contributing/environment-variables.md#hosted-package-app-origin).
+Pairs without a valid per-app host label keep the shared-host address.
+`https://kody.codes/@{username}/packages/…` is not the hosted origin: visitors
+who may run the app hand off to it; everyone else stays on the package page (or
+a same-origin landing).
 
 ### Profile package: own your whole host
 
@@ -137,6 +142,12 @@ visitor may run the app. Approved internet-visible apps can also be opened at
 the hosted origin without a session. Prefer the OAuth helper below for in-app
 Sign in / Sign out. A direct visit to `*.kody.run` or a custom domain does not
 see the kody.codes session cookie.
+
+Visitors with shared access from outside the owning organization confirm **Run
+as me** before the app first runs on their Kody account. **Not now** ends the
+visit before the app receives the request. Kody remembers approval per app and
+account. Visitors can remove an approval in **Account > Connected apps** to be
+asked again on their next visit.
 
 ### Auth with Kody (OAuth)
 
@@ -591,18 +602,28 @@ Durable Objects, the local account and its API token) lives under
 `<kody cache>/dev-state/<hash of the package root>`, outside the package, and
 survives restarts. Delete that directory to start over.
 
-`--target prod` and `execute --local` use a lighter working-tree bridge instead.
-It runs the bundle in a local workerd and sends `kody.*` calls to Kody (mock or
-prod) through the CapabilityProxy. `--target prod` does **not** give the working
-tree hosted `packageStorage` or `packageSecrets`, by design; see
+`--target prod` and mock execute code outside package exports use a lighter
+working-tree bridge instead. It runs the bundle in a local workerd and sends
+`kody.*` calls to Kody (mock or prod) through the CapabilityProxy.
+`--target prod` does **not** give the working tree hosted `packageStorage` or
+`packageSecrets`, by design; see
 [Won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod).
 
-| Command + target           | `packageStorage`                                                                         | `packageSecrets`                                                                         | Outbound network                                  |
-| -------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `kody dev` **mock**        | Real StorageRunner Durable Object, local state                                           | Placeholders only, never a real secret                                                   | `.kody/mocks.ts` (fail closed), else public hosts |
-| `kody dev` **prod**        | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
-| `execute --local` **mock** | Scratch SQLite on the CLI mock                                                           | Throws (light bridge)                                                                    | `.kody/mocks.ts` (fail closed), else public hosts |
-| `execute --local` **prod** | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
+| Command + target           | `packageStorage`                                                                                                   | `packageSecrets`                                                                         | Outbound network                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `kody dev` **mock**        | Real StorageRunner Durable Object, local state shared with mock execute package exports                            | Placeholders only, never a real secret                                                   | `.kody/mocks.ts` (fail closed), else public hosts |
+| `kody dev` **prod**        | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod))                           | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
+| `execute --local` **mock** | Package exports use the same local StorageRunner store as `kody dev`; other entry code cannot access package state | Local Kody placeholders for package exports; otherwise throws (light bridge)             | `.kody/mocks.ts` (fail closed), else public hosts |
+| `execute --local` **prod** | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod))                           | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
+
+To seed local package state, run
+`kody execute --local --target mock --invoke <export>` from the package
+directory, with the seed module declared in `package.json#exports`.
+`--file <path>` also works when the file is a declared package export. Execute
+attaches to a running `kody dev --target mock` for that package, or starts
+one-shot local Kody using the same persistent dev-state store. Inline code and
+non-export files cannot directly access local package state; put storage
+operations in a package export and invoke it instead.
 
 ### Boundary mocks in `kody dev`
 
@@ -1838,6 +1859,11 @@ Billing follows who is visiting
   shares one warm worker per app and commit.
 - Nothing changes in app code, and there is still no platform per-visitor limit;
   use `kody.appRateLimit` below for that.
+
+Package-app hosts do not run Cloudflare Browser Integrity Check, so scripts and
+agents using a library default User-Agent (Python `urllib`, `requests`, Go,
+Node) can call an internet-visible app. Put per-caller abuse limits in the app
+with `kody.appRateLimit`.
 
 ### App-owned limits and spend
 

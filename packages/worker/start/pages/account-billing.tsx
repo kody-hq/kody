@@ -62,7 +62,10 @@ type SubscriptionStatusTone = 'ok' | 'warn' | 'action' | 'muted'
 const multipleSubscriptionsMessage =
 	'You have more than one active Stripe subscription, so plan changes are handled in the Stripe portal. Opening Stripe…'
 
-/** Stripe missing → "None"; manual/effective compatibility missing → "Free". */
+/**
+ * Stripe missing → "None"; manual/effective compatibility missing → "Free".
+ * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
+ */
 function formatPlanLabel(
 	plan: AdminPlanName | null,
 	missingLabel: 'None' | 'Free',

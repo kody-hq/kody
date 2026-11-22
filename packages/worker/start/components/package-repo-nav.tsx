@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 /** @jsxRuntime automatic */
+import { revealCurrentTab } from './reveal-current-tab.ts'
 import type { CSSProperties, ReactNode } from 'react'
 import { PackageCommands } from '../commands/package-commands.tsx'
 import { packageCollaboratorsHref } from '#universal/package-collaborators.ts'
@@ -13,10 +14,14 @@ import {
 	packageCredentialsTabs,
 } from '#universal/package-credentials-page.ts'
 import { renderPackageStatusSignifiers } from './package-status-signifiers.tsx'
+import {
+	underlineLinkTabCss,
+	underlineLinkTabsCss,
+} from '#universal/styles/style-primitives.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import { withInstallOrg } from '#universal/community-search.ts'
-import { colors, mq, spacing } from '#universal/styles/tokens.ts'
+import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 
 export type PackageRepoNavActive =
 	| 'repo'
@@ -57,12 +62,17 @@ function renderPackageRepoNav(input: {
 	})
 	const showFilesNav = input.showFilesNav !== false
 	return (
-		<nav aria-label="Repository" data-testid="package-repo-nav" css={navCss}>
+		<nav
+			aria-label="Repository"
+			data-testid="package-repo-nav"
+			ref={revealCurrentTab}
+			css={underlineLinkTabsCss}
+		>
 			<SiteLink
 				href={repoHref}
 				aria-current={input.active === 'repo' ? 'page' : undefined}
 				data-testid="package-repo-nav-repo"
-				css={tabCss}
+				css={underlineLinkTabCss}
 			>
 				Repo
 			</SiteLink>
@@ -71,7 +81,7 @@ function renderPackageRepoNav(input: {
 					href={withInstallOrg(input.filesHref, input.installOrg)}
 					aria-current={input.active === 'files' ? 'page' : undefined}
 					data-testid="package-repo-nav-files"
-					css={tabCss}
+					css={underlineLinkTabCss}
 				>
 					Files
 				</SiteLink>
@@ -87,7 +97,7 @@ function renderPackageRepoNav(input: {
 							})}
 							aria-current={input.active === tab ? 'page' : undefined}
 							data-testid={`package-repo-nav-${tab}`}
-							css={tabCss}
+							css={underlineLinkTabCss}
 						>
 							{packageCredentialsTabLabel(tab)}
 						</SiteLink>
@@ -101,7 +111,7 @@ function renderPackageRepoNav(input: {
 					})}
 					aria-current={input.active === 'collaborators' ? 'page' : undefined}
 					data-testid="package-repo-nav-collaborators"
-					css={tabCss}
+					css={underlineLinkTabCss}
 				>
 					Collaborators
 				</SiteLink>
@@ -116,7 +126,7 @@ function renderPackageRepoNav(input: {
 						input.active === 'connected-people' ? 'page' : undefined
 					}
 					data-testid="package-repo-nav-connected-people"
-					css={tabCss}
+					css={underlineLinkTabCss}
 				>
 					Connected people
 				</SiteLink>
@@ -126,7 +136,7 @@ function renderPackageRepoNav(input: {
 					href={settingsHref}
 					aria-current={input.active === 'settings' ? 'page' : undefined}
 					data-testid="package-repo-nav-settings"
-					css={tabCss}
+					css={underlineLinkTabCss}
 				>
 					Settings
 				</SiteLink>
@@ -156,7 +166,7 @@ export function renderPackageRepoChrome(input: {
 	iconName?: string
 	iconTestId?: string
 	animate?: boolean
-	/** Labeled controls on the tab row; status icons stay in the title. */
+	/** Labeled controls beside the title; status icons stay in the title. */
 	actions?: ReactNode
 	/** Picked install org (`?org=`), kept on tab and catalog links. */
 	installOrg?: string | null
@@ -180,7 +190,7 @@ export function renderPackageRepoChrome(input: {
 	const hasPackage = input.hasPackage !== false
 
 	return (
-		<div data-testid="package-repo-chrome">
+		<div data-testid="package-repo-chrome" css={chromeCss}>
 			<PackageCommands {...input} />
 			<SiteLink
 				{...rise('0')}
@@ -228,6 +238,17 @@ export function renderPackageRepoChrome(input: {
 					{input.description}
 				</p>
 			) : null}
+			{input.actions ? (
+				<div
+					{...rise('2')}
+					role="group"
+					aria-label="Repository actions"
+					data-testid="package-repo-actions"
+					css={actionsCss}
+				>
+					{input.actions}
+				</div>
+			) : null}
 			<div {...rise('3')} css={navRowCss}>
 				{renderPackageRepoNav({
 					username: input.username,
@@ -242,27 +263,19 @@ export function renderPackageRepoChrome(input: {
 						input.viewerCanSeeConnectedPeople === true && hasPackage,
 					active: input.active,
 				})}
-				{input.actions ? (
-					<div
-						role="group"
-						aria-label="Repository actions"
-						data-testid="package-repo-actions"
-						css={actionsCss}
-					>
-						{input.actions}
-					</div>
-				) : null}
 			</div>
 		</div>
 	)
 }
 
 const backLinkCss = {
+	gridArea: 'back',
+	justifySelf: 'start',
 	display: 'inline-flex',
 	alignItems: 'center',
 	gap: '0.4rem',
-	fontSize: '0.95rem',
-	fontWeight: 550,
+	fontSize: typography.fontSize.sm,
+	fontWeight: typography.fontWeight.semibold,
 	color: colors.primaryText,
 	textDecoration: 'none',
 	'&:hover': {
@@ -270,8 +283,27 @@ const backLinkCss = {
 	},
 }
 
+/**
+ * Title with labeled actions at its end on wide screens. On narrow screens
+ * the actions drop under the description so the title and its description
+ * stay together.
+ */
+const chromeCss = {
+	display: 'grid',
+	gridTemplateColumns: 'minmax(0, 1fr) auto',
+	gridTemplateAreas:
+		'"back back" "head actions" "description description" "nav nav"',
+	columnGap: spacing.lg,
+	alignItems: 'center',
+	[mq.tablet]: {
+		gridTemplateColumns: 'minmax(0, 1fr)',
+		gridTemplateAreas: '"back" "head" "description" "actions" "nav"',
+	},
+}
+
 const headCss = {
-	marginTop: '1.8rem',
+	gridArea: 'head',
+	marginTop: spacing.lg,
 	display: 'flex',
 	alignItems: 'center',
 	gap: '0.85rem',
@@ -323,10 +355,11 @@ const ownerLinkCss = {
 }
 
 const descriptionCss = {
-	margin: '1rem 0 0',
+	gridArea: 'description',
+	margin: `${spacing.sm} 0 0`,
 	color: colors.textMuted,
-	fontSize: '1.05rem',
-	maxWidth: '58ch',
+	fontSize: typography.fontSize.base,
+	maxWidth: '62ch',
 }
 
 /**
@@ -345,59 +378,27 @@ const packageRepoTabPanelCss = {
 	display: 'grid',
 	gridTemplateColumns: 'minmax(0, 1fr)',
 	alignContent: 'start',
-	gap: spacing.xl,
+	gap: spacing.lg,
 	marginTop: spacing.xl,
 	minWidth: 0,
 	'& > *': { marginBlock: 0 },
 	[mq.mobile]: {
-		gap: spacing.lg,
+		gap: spacing.md,
 		marginTop: spacing.lg,
 	},
 }
 
 const navRowCss = {
-	display: 'flex',
-	alignItems: 'center',
-	justifyContent: 'space-between',
-	flexWrap: 'wrap' as const,
-	gap: '0.75rem 1rem',
-	marginTop: '1.1rem',
-	[mq.mobile]: {
-		flexDirection: 'column-reverse' as const,
-		alignItems: 'stretch',
-	},
+	gridArea: 'nav',
+	marginTop: spacing.lg,
+	minWidth: 0,
 }
 
 const actionsCss = {
+	gridArea: 'actions',
+	marginTop: spacing.lg,
 	display: 'flex',
 	alignItems: 'center',
 	flexWrap: 'wrap' as const,
-	gap: '0.5rem',
-}
-
-const navCss = {
-	display: 'flex',
-	alignItems: 'center',
-	flexWrap: 'wrap' as const,
-	// Owner chrome adds Credentials / Default mappings / Triggers — keep a
-	// clear gutter between labels so they do not read as one run-on string.
-	gap: `0.35rem ${spacing.md}`,
-}
-
-const tabCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	padding: '0.55rem 0.55rem',
-	borderBottom: '2px solid transparent',
-	color: colors.textMuted,
-	fontSize: '0.95rem',
-	fontWeight: 550,
-	textDecoration: 'none',
-	'&:hover': {
-		color: colors.text,
-	},
-	'&[aria-current="page"]': {
-		color: colors.text,
-		borderBottomColor: colors.primary,
-	},
+	gap: spacing.sm,
 }

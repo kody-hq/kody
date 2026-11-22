@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { createCookie } from 'remix/cookie'
 import { expect, test } from 'vitest'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
@@ -6,7 +7,6 @@ import {
 	createPackageAppSessionCookie,
 	destroyPackageAppSessionCookie,
 	readPackageAppSession,
-	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
 
 const cookieSecret = 'package-app-session-node-test-secret'
@@ -29,7 +29,7 @@ test('ignores unrelated cookies without requiring the package-app cookie secret'
 })
 
 test('per-app sessions on one host: logout of A leaves B signed in', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	const env = createTestEnv()
 	const now = 1_700_000_000_000
 	const expiresAt = now + 60 * 60 * 1000
@@ -121,8 +121,8 @@ test('per-app sessions on one host: logout of A leaves B signed in', async () =>
 	).resolves.toMatchObject({ session })
 })
 
-test('destroying a per-app session also clears the legacy host-wide cookie', async () => {
-	resetPackageAppSessionCookieForTests()
+test('host-wide pre-per-app cookie names are ignored', async () => {
+	resetIsolateState()
 	const env = createTestEnv()
 	const now = 1_700_000_000_000
 	const legacyCookie = createCookie('__Host-kody_pkg_session', {
@@ -156,9 +156,7 @@ test('destroying a per-app session also clears the legacy host-wide cookie', asy
 			slug: 'notes',
 			now,
 		}),
-	).resolves.toMatchObject({
-		session: { stableUserId, username: 'owner' },
-	})
+	).resolves.toBeNull()
 
 	const cleared = await destroyPackageAppSessionCookie({
 		env,
@@ -167,11 +165,14 @@ test('destroying a per-app session also clears the legacy host-wide cookie', asy
 	})
 	expect(
 		cleared.some((header) => header.startsWith('__Host-kody_pkg_session=')),
+	).toBe(false)
+	expect(
+		cleared.every((header) => header.startsWith('__Host-kody_pkg_session_')),
 	).toBe(true)
 })
 
 test('secure requests ignore unprefixed session cookie names a sibling subdomain could toss', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	const env = createTestEnv()
 	const now = 1_700_000_000_000
 	const expiresAt = now + 60 * 60 * 1000
@@ -198,14 +199,24 @@ test('secure requests ignore unprefixed session cookie names a sibling subdomain
 			now,
 		})
 
-	for (const name of [unprefixedName, 'kody_pkg_session']) {
-		await expect(
-			read('https://owner.kody.run/notes', `${name}=${signedValue}`),
-		).resolves.toBeNull()
-		await expect(
-			read('http://owner.packages.localhost/notes', `${name}=${signedValue}`),
-		).resolves.toMatchObject({ session })
-	}
+	await expect(
+		read('https://owner.kody.run/notes', `${unprefixedName}=${signedValue}`),
+	).resolves.toBeNull()
+	await expect(
+		read(
+			'http://owner.packages.localhost/notes',
+			`${unprefixedName}=${signedValue}`,
+		),
+	).resolves.toMatchObject({ session })
+	await expect(
+		read('https://owner.kody.run/notes', `kody_pkg_session=${signedValue}`),
+	).resolves.toBeNull()
+	await expect(
+		read(
+			'http://owner.packages.localhost/notes',
+			`kody_pkg_session=${signedValue}`,
+		),
+	).resolves.toBeNull()
 	await expect(
 		read('https://owner.kody.run/notes', securePair),
 	).resolves.toMatchObject({ session })

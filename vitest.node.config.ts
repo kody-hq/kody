@@ -155,6 +155,10 @@ export default mergeConfig(
 				resolve(rootDir, 'packages/worker/src/test-support/audit-log-spy.ts'),
 				resolve(
 					rootDir,
+					'packages/worker/src/test-support/mail-domain-dns-stub.ts',
+				),
+				resolve(
+					rootDir,
 					'packages/worker/src/test-support/cloudflare-global-stub.ts',
 				),
 			],

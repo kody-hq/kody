@@ -17,6 +17,7 @@ import {
 	visitorNeedKeysOfScopes,
 } from '#app/package-app-oauth-scopes.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
+import { listPackageAppRunApprovals } from '#app/package-app-run-consent.ts'
 import { deleteMcpEventSubscriptionsForOauthClient } from '#mcp/events/subscriptions-repo.ts'
 import { getSecretContextForAccountSecret } from '#app/account-secrets-data.ts'
 import { deleteSecret } from '#mcp/secrets/service.ts'
@@ -80,8 +81,9 @@ export async function loadAccountConnectedAppsData(input: {
 	user: ConnectedAppsUser
 }): Promise<AccountConnectedAppsLoaderData> {
 	const personId = input.user.mcpUser.userId
-	const [grants, agentState] = await Promise.all([
+	const [grants, runApprovals, agentState] = await Promise.all([
 		listLivePackageAppOauthGrantsForPerson({ db: input.env.APP_DB, personId }),
+		listPackageAppRunApprovals(input.env.APP_DB, personId),
 		resolveOAuthHelpers<OAuthGrantListHelpers>(input.env)
 			.then((helpers) =>
 				loadInboundMcpConnectionState(helpers, personalOrgId(personId), {
@@ -121,6 +123,14 @@ export async function loadAccountConnectedAppsData(input: {
 	return {
 		ok: true,
 		apps,
+		runApprovals: runApprovals.map(
+			({ packageId, name, publisher, publisherName }) => ({
+				packageId,
+				appName: getPackageNameLeaf(name),
+				publisher,
+				publisherName,
+			}),
+		),
 		agents: agentState.agents.map((agent) => ({
 			clientId: agent.clientId,
 			label: agent.label,

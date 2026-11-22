@@ -53,7 +53,7 @@ so a green local `validate` means CI will pass. `validate` is read-only; use
 - Local CLI execute: [guide](../docs/guides/local-execute.md)
   (`guide:local_execute`) and
   [prefer-local-cli-execute](../.agents/skills/prefer-local-cli-execute/SKILL.md)
-- [docs/contributing/testing-principles.md](../docs/contributing/testing-principles.md) -
-  Testing guidelines
+- [docs/contributing/test-runners.md](../docs/contributing/test-runners.md) -
+  Test flavors, runners, and harness
 - [docs/contributing/end-to-end-testing.md](../docs/contributing/end-to-end-testing.md) -
   E2E testing guide

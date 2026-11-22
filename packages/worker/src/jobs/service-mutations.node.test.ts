@@ -83,7 +83,6 @@ vi.mock('#worker/enablements/owner-cron-enablement.ts', () => ({
 	resolveOwnerPersonIdForCronEnablement: vi.fn(),
 }))
 
-// eslint-disable-next-line epic-web/prefer-dispose-in-tests -- this legacy suite restores global spies across many integration-style tests.
 afterEach(() => {
 	resetJobServiceMocks()
 })

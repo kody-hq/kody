@@ -86,6 +86,7 @@ export function createFakeRunLogNamespace() {
 				if (!prior) {
 					projections.set(input.id, {
 						id: input.id,
+						progress: null,
 						bindingName: input.bindingName,
 						sourceType: input.sourceType,
 						packageId: input.packageId ?? null,
@@ -137,7 +138,7 @@ export function createFakeRunLogNamespace() {
 								? row.bindingName === input.bindingName
 								: true),
 					)
-					.sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				return matches[0] ?? null
 			},
 			async listWorkflowProjections(input: {
@@ -207,6 +208,7 @@ export function createFakeRunLogNamespace() {
 				const updatedAt = input.updatedAt ?? now
 				projections.set(input.id, {
 					id: input.id,
+					progress: existing?.progress ?? null,
 					bindingName: input.bindingName,
 					sourceType: input.sourceType,
 					packageId: input.packageId ?? null,

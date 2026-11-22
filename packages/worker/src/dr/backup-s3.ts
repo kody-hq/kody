@@ -1,4 +1,9 @@
 import { AwsClient } from 'aws4fetch'
+import {
+	backupR2RetryBaseDelayMs,
+	backupR2RetryDelayMs,
+	backupR2RetryMaxAttempts,
+} from '@kody-internal/shared/backup-r2-retry.ts'
 
 export type DrBackupS3Config = {
 	accountId: string
@@ -41,10 +46,6 @@ export type DrBackupS3Client = {
 		options?: DrBackupS3PutOptions,
 	) => Promise<{ etag: string | null }>
 }
-
-/** R2/S3 platform blips observed on PutObject (and siblings) during cron ticks. */
-export const drBackupS3RetryMaxAttempts = 4
-export const drBackupS3RetryBaseDelayMs = 150
 
 function sleep(ms: number) {
 	return new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -98,8 +99,8 @@ export function createDrBackupS3Client(
 		service: 's3',
 		region: 'auto',
 	})
-	const maxAttempts = options?.maxAttempts ?? drBackupS3RetryMaxAttempts
-	const baseDelayMs = options?.baseDelayMs ?? drBackupS3RetryBaseDelayMs
+	const maxAttempts = options?.maxAttempts ?? backupR2RetryMaxAttempts
+	const baseDelayMs = options?.baseDelayMs ?? backupR2RetryBaseDelayMs
 
 	async function signedFetch(key: string, init?: RequestInit) {
 		const request = await aws.sign(objectUrl(config, key), init)
@@ -131,7 +132,7 @@ export function createDrBackupS3Client(
 				lastError = error
 				if (attempt === maxAttempts) throw error
 			}
-			await sleep(baseDelayMs * 2 ** (attempt - 1))
+			await sleep(backupR2RetryDelayMs(attempt, baseDelayMs))
 		}
 		throw lastError ?? new Error('DR backup request failed after retries')
 	}

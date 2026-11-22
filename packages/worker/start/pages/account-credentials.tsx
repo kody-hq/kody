@@ -362,6 +362,7 @@ export function AccountCredentialsRoute({
 
 			<RecordTable
 				mode="expand"
+				stackWhenNarrow
 				ariaLabel="Credentials"
 				selectedId={selectedItem ? selectedItem.id : null}
 				recordLoading={false}
@@ -513,11 +514,9 @@ export function AccountCredentialsRoute({
 				columns={[
 					{ key: 'name', label: 'Credential', primary: true },
 					{ key: 'kind', label: 'Kind' },
-					...(teamOrg
-						? [{ key: 'owner', label: 'Owner', drop: 2 as const }]
-						: []),
-					{ key: 'hosts', label: 'Hosts', drop: 1 },
-					{ key: 'package', label: 'Packages', drop: 2 },
+					...(teamOrg ? [{ key: 'owner', label: 'Owner' }] : []),
+					{ key: 'hosts', label: 'Hosts' },
+					{ key: 'package', label: 'Packages' },
 					{ key: 'status', label: 'Status' },
 				]}
 				rows={shown.map((credential) => ({
@@ -588,7 +587,7 @@ export function AccountCredentialsRoute({
 						countLabel={`${shownProviders.length} connected`}
 						columns={[
 							{ key: 'provider', label: 'Secret provider', primary: true },
-							{ key: 'package', label: 'Unlocked by', drop: 1 },
+							{ key: 'package', label: 'Unlocked by' },
 						]}
 						rows={shownProviders.map((binding) => ({
 							id: binding.id,

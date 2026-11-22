@@ -100,16 +100,21 @@ export async function resolveWebhookHmacVerificationSecrets(input: {
 			userId: input.userId,
 			packageId: endpoint.packageId,
 			secretName,
+			credentialId:
+				endpoint.hmacSecretName === secretName
+					? endpoint.hmacCredentialId
+					: null,
 		})
 		if (declared !== null) {
 			endpoint = await reconcileWebhookHmacVerificationRotation({
 				env: input.env,
 				endpoint,
 				secretName,
-				declaredPlaintext: declared,
+				credentialId: declared.credentialId,
+				declaredPlaintext: declared.value,
 				now,
 			})
-			secrets.push({ value: declared, source: 'declared' })
+			secrets.push({ value: declared.value, source: 'declared' })
 		}
 	} else if (
 		endpoint.hmacSecretName ||
@@ -124,16 +129,20 @@ export async function resolveWebhookHmacVerificationSecrets(input: {
 			userId: endpoint.userId,
 			endpointId: endpoint.id,
 			hmacSecretName: null,
+			hmacCredentialId: null,
 			hmacVerificationSecretEncrypted: null,
 			previousHmacSecretName: null,
+			previousHmacCredentialId: null,
 			previousHmacSecretEncrypted: null,
 			previousHmacSecretExpiresAt: null,
 		})
 		endpoint = cleared ?? {
 			...endpoint,
 			hmacSecretName: null,
+			hmacCredentialId: null,
 			hmacVerificationSecretEncrypted: null,
 			previousHmacSecretName: null,
+			previousHmacCredentialId: null,
 			previousHmacSecretEncrypted: null,
 			previousHmacSecretExpiresAt: null,
 		}
@@ -194,7 +203,8 @@ async function resolveDeclaredWebhookSecret(input: {
 	userId: OwnerId
 	packageId: string
 	secretName: string
-}): Promise<string | null> {
+	credentialId?: string | null
+}): Promise<{ value: string; credentialId: string | null } | null> {
 	try {
 		const resolved = await resolveCredential({
 			env: input.env,
@@ -202,9 +212,15 @@ async function resolveDeclaredWebhookSecret(input: {
 			actor: null,
 			packageStamp: attestedPackageStamp(input.packageId),
 			baseUrl: getAppBaseUrl({ env: input.env }),
-			credential: { use: 'webhook-secret', name: input.secretName },
+			credential: {
+				use: 'webhook-secret',
+				name: input.secretName,
+				credentialId: input.credentialId ?? undefined,
+			},
 		})
-		return resolved.found && resolved.value ? resolved.value : null
+		return resolved.found && resolved.value
+			? { value: resolved.value, credentialId: resolved.credentialId }
+			: null
 	} catch (error) {
 		console.warn('webhook-declared-secret-resolve-failed', {
 			packageId: input.packageId,
@@ -239,6 +255,7 @@ export async function mintPackageOwnedWebhookHmacCiphertext(input: {
  * An existing ciphertext is never replaced: destination grants approved
  * `{{webhookSecret}}` for that value, and a rotated URL's grace window still
  * receives deliveries signed with it.
+ * Remove when: no webhook endpoint still signs with a named secret instead of package-owned HMAC.
  */
 export async function resolveHmacCiphertextForMint(input: {
 	env: Env

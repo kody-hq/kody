@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Global, type CSSObject } from '@emotion/react'
-import { useLayoutEffect, useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { toast } from '#client/toast.ts'
 import type { DesktopNavigationState, DesktopShell } from '../desktop-shell.ts'
@@ -11,31 +11,12 @@ import { Input } from './input.tsx'
 const toolbarHeight = 32
 
 export function DesktopNavigation({ homeHref }: { homeHref: string }) {
-	const [shell, setShell] = useState<DesktopShell | null>(null)
-	const [state, setState] = useState<DesktopNavigationState | null>(null)
+	const { shell, state } = useSyncExternalStore(
+		subscribeNavigation,
+		readNavigation,
+		readServerNavigation,
+	)
 	const [addressOpen, setAddressOpen] = useState(false)
-	useLayoutEffect(() => {
-		const bridge = window.kodyDesktop
-		if (bridge?.version !== 1) return
-		setShell(bridge)
-		setState(bridge.navigation.initialState ?? null)
-		let active = true
-		let receivedUpdate = false
-		const unsubscribe = bridge.navigation.onChange((next) => {
-			receivedUpdate = true
-			if (active) setState(next)
-		})
-		void bridge.navigation
-			.getState()
-			.then((next) => {
-				if (active && !receivedUpdate) setState(next)
-			})
-			.catch((error: unknown) => toast.error(String(error)))
-		return () => {
-			active = false
-			unsubscribe()
-		}
-	}, [])
 	if (!shell) return null
 	const integratedTitlebar = state?.integratedTitlebar && !state.fullscreen
 	async function navigate(
@@ -241,4 +222,48 @@ const textButtonCss: CSSObject = {
 	paddingInline: 10,
 	fontFamily: 'inherit',
 	fontSize: 13,
+}
+
+type NavigationSnapshot = {
+	shell: DesktopShell | null
+	state: DesktopNavigationState | null
+}
+const serverNavigation: NavigationSnapshot = { shell: null, state: null }
+let navigation: NavigationSnapshot | null = null
+const readServerNavigation = () => serverNavigation
+
+function readNavigation() {
+	if (!navigation) {
+		const bridge = window.kodyDesktop
+		navigation =
+			bridge?.version === 1
+				? { shell: bridge, state: bridge.navigation.initialState ?? null }
+				: serverNavigation
+	}
+	return navigation
+}
+
+function subscribeNavigation(notify: () => void) {
+	const shell = readNavigation().shell
+	if (!shell) return () => {}
+	let active = true
+	let receivedUpdate = false
+	const set = (state: DesktopNavigationState | null) => {
+		navigation = { shell, state }
+		notify()
+	}
+	const unsubscribe = shell.navigation.onChange((next) => {
+		receivedUpdate = true
+		if (active) set(next)
+	})
+	void shell.navigation
+		.getState()
+		.then((next) => {
+			if (active && !receivedUpdate) set(next)
+		})
+		.catch((error: unknown) => toast.error(String(error)))
+	return () => {
+		active = false
+		unsubscribe()
+	}
 }

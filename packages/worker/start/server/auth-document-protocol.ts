@@ -9,10 +9,9 @@ import { getStartRequestEnv } from './request-env.ts'
 
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type { AuthFormError } from '../../universal/auth-form-errors.ts'
 
-function isSameOriginFormPost(request: Request) {
+export function isSameOriginFormPost(request: Request) {
 	const requestOrigin = new URL(request.url).origin
 	const origin = request.headers.get('Origin')
 	if (origin) return origin === requestOrigin
@@ -30,7 +29,7 @@ function isSameOriginFormPost(request: Request) {
 // Sign-in forms are a few short fields; anything bigger is not ours.
 const maxFormBytes = 16 * 1024
 
-async function readUrlEncodedForm(request: Request) {
+export async function readUrlEncodedForm(request: Request) {
 	const contentType = request.headers.get('Content-Type') ?? ''
 	if (!contentType.includes('application/x-www-form-urlencoded')) return null
 	const declared = Number(request.headers.get('Content-Length') ?? '0')

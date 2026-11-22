@@ -171,8 +171,9 @@ test('forwards deprecated integration locks with the legacy body and deprecation
 	const lockIntegrationToPackage = vi
 		.spyOn(integrationService, 'lockIntegrationToPackage')
 		.mockResolvedValue({
-			name: 'google',
-			allowedPackageIds: ['pkg-123'],
+			outcome: 'locked',
+			connection: { name: 'google', allowedPackageIds: ['pkg-123'] },
+			packageKodyId: 'drafts',
 		} as never)
 	const response = await api.call('POST', '/v1/integrations/google/lock', {
 		token,
@@ -193,9 +194,20 @@ test('forwards deprecated integration locks with the legacy body and deprecation
 		usage_mode: 'packages',
 		allowed_package_ids: ['pkg-123'],
 		usage_url: expect.any(String),
+		status: 'locked',
+		approval_url: expect.any(String),
+		message: expect.any(String),
 	})
 	expect(Object.keys(response.body).sort()).toEqual(
-		['name', 'usage_mode', 'allowed_package_ids', 'usage_url'].sort(),
+		[
+			'name',
+			'usage_mode',
+			'allowed_package_ids',
+			'usage_url',
+			'status',
+			'approval_url',
+			'message',
+		].sort(),
 	)
 	expect(response.body).not.toHaveProperty('kind')
 	expect(response.headers.get('Deprecation')).toBe('@1792800000')
@@ -958,4 +970,21 @@ test('MCP OAuth Bearer is rejected unless it is a valid CLI token on a local-exe
 			})
 		).status,
 	).toBe(401)
+})
+
+test('search tool route always returns the documented isError flag', async () => {
+	const api = await createApi()
+	const token = await api.mint(['search:read'])
+	for (const body of [
+		{ query: 'secrets' },
+		{ entity: 'capability:secretList' },
+	]) {
+		const response = await api.call('POST', '/v1/search/tool', { token, body })
+		expect(response.status).toBe(200)
+		expect(response.body).toMatchObject({
+			content: expect.any(Array),
+			structuredContent: expect.any(Object),
+			isError: false,
+		})
+	}
 })

@@ -321,6 +321,11 @@ export async function resolveTokenEndpointClientSecret(input: {
 	clientId: string | null
 	tokenUrl: string
 	clientSecret?: string | null
+	/**
+	 * Set when the secret also goes to a device authorization endpoint: only
+	 * an app stored with this same endpoint may supply it.
+	 */
+	deviceAuthorizationUrl?: string | null
 }): Promise<string | null> {
 	const inline = input.clientSecret?.trim()
 	if (inline) return inline
@@ -333,6 +338,14 @@ export async function resolveTokenEndpointClientSecret(input: {
 		clientId,
 		tokenUrl,
 	})
+	const deviceAuthorizationUrl = input.deviceAuthorizationUrl?.trim()
+	if (deviceAuthorizationUrl) {
+		for (let index = apps.length - 1; index >= 0; index -= 1) {
+			if (apps[index]!.deviceAuthorizationUrl !== deviceAuthorizationUrl) {
+				apps.splice(index, 1)
+			}
+		}
+	}
 	const preferred = canonicalIntegrationName(input.provider)
 	apps.sort(
 		(a, b) => Number(b.slug === preferred) - Number(a.slug === preferred),

@@ -69,6 +69,35 @@ export type WorkflowProjectionRecord = {
 	/** Package workflows: published commit resolved at enqueue (null before v14). */
 	enqueuedCommit: string | null
 	sourceRevision: WorkflowSourceRevisionPolicy | null
+	/** Latest phase a running built-in run reported; null when it reports none. */
+	progress: WorkflowProjectionProgress | null
+}
+
+/** Where a running workflow is: a phase and, when it is chunked, how far. */
+export type WorkflowProjectionProgress = {
+	phase: string
+	message: string
+	done?: number
+	total?: number
+}
+
+export function parseWorkflowProjectionProgress(
+	value: unknown,
+): WorkflowProjectionProgress | null {
+	if (typeof value !== 'string' || !value) return null
+	try {
+		const parsed = JSON.parse(value) as Partial<WorkflowProjectionProgress>
+		if (typeof parsed.phase !== 'string' || typeof parsed.message !== 'string')
+			return null
+		return {
+			phase: parsed.phase,
+			message: parsed.message,
+			...(typeof parsed.done === 'number' ? { done: parsed.done } : {}),
+			...(typeof parsed.total === 'number' ? { total: parsed.total } : {}),
+		}
+	} catch {
+		return null
+	}
 }
 
 export type WorkflowProjectionUpsertInput = {

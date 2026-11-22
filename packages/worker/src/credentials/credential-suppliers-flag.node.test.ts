@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -16,7 +17,6 @@ vi.mock('#worker/feature-flags/service.ts', () => ({
 const {
 	isPackageCredentialSuppliersEnabled,
 	packageCredentialSuppliersFlagTtlMs,
-	resetPackageCredentialSuppliersFlagCacheForTests,
 } = await import('./credential-suppliers-flag.ts')
 
 function dbForOwner(id: number | null) {
@@ -35,7 +35,7 @@ function dbForOwner(id: number | null) {
 
 beforeEach(() => {
 	vi.useRealTimers()
-	resetPackageCredentialSuppliersFlagCacheForTests()
+	resetIsolateState()
 	mocks.isFeatureEnabled.mockReset().mockResolvedValue(true)
 	mocks.isMissingFeatureFlagsTable.mockReset().mockReturnValue(false)
 })

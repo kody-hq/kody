@@ -20,8 +20,11 @@ Agent notes — for AI agents explaining or recreating this loop:
 - Do not put usage_mode on package.json. Lock the server from
   `resourceLock({ kind: 'mcp_server', server, package_id })` or
   `/@<slug>/-/mcp-servers/:serverId`.
-- Agents can lock (grant a package). Agents cannot unlock or remove a grant.
-  Unlock is website-only: switch Usage back to any context.
+- Agents can lock a server that is still any context to its first package.
+  Agents cannot add a package to a locked server, unlock, or remove a grant.
+  resourceLock with another package returns status approval_required and an
+  approval_url for the owner ([enforced by this test](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)). Unlock is website-only: switch Usage back to any
+  context.
 - After lock, search and execute hide kody.mcp["server-name"] unless the
   caller is an approved package. mcpServerList still shows the server.
 - Author a thin wrapper package. Do not lock a kitchen-sink package if the
@@ -39,8 +42,7 @@ This is the MCP counterpart to
 [Gmail drafts without send](./locked-gmail-drafts.md). OAuth tokens stay as wide
 as the provider issued them; a publish lock holds a package tree. An MCP server
 lock holds **who may call the connector**. Integration connections use the same
-tighten-only grant via
-`resourceLock({ kind: 'integration', name, package_id })`.
+grant via `resourceLock({ kind: 'integration', name, package_id })`.
 
 ## What the lock does
 
@@ -54,10 +56,10 @@ tighten-only grant via
 Tokens stay in the per-user MCP client hub. Disable still hides tools for
 everyone; lock leaves the connection up and narrows who may use it.
 
-`resourceLock({ kind: 'mcp_server', server, package_id })` switches the server
-to packages mode and adds that package id. Additional grants accumulate.
-Unlocking or removing a grant is website-only at
-`/@<slug>/-/mcp-servers/:serverId`.
+`resourceLock({ kind: 'mcp_server', server, package_id })` on a server that any
+context can use switches it to packages mode and adds that package id (status
+`locked`). Once the server is locked, agents cannot add packages. Unlocking or
+removing a grant is website-only at `/@<slug>/-/mcp-servers/:serverId`.
 
 ## The loop
 
@@ -81,8 +83,11 @@ Unlocking or removing a grant is website-only at
 ## Later grants
 
 `resourceLock({ kind: 'mcp_server', server, package_id })` with another
-`package_id` adds that package. It does not unlock. The owner removes a grant or
-returns the server to any context on the account page.
+`package_id` on a locked server adds nothing. It returns status
+`approval_required` and an `approval_url`
+(`/@<slug>/-/mcp-servers/:serverId?package_id=...`). Send the owner that link;
+the package can call the server only after they click **Approve**. The owner
+removes a grant or returns the server to any context on the same page.
 
 If a package needs the lock off, send the owner to
 `/@<slug>/-/mcp-servers/:serverId`. Do not invent an unlock capability.

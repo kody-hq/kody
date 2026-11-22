@@ -6,10 +6,11 @@ import {
 	useCallback,
 	createContext,
 	useContext,
-	useEffect,
 	useState,
+	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useActor } from '@xstate/react'
 import { desktopSetupStepState } from '#universal/desktop-setup-step-state.ts'
 import {
@@ -124,7 +125,11 @@ export function DesktopExecutionProvider({
 	orgSlug: string | null
 	pathname: string
 }) {
-	const [bridge, setBridge] = useState<DesktopExecutionBridge | null>(null)
+	const bridge = useSyncExternalStore(
+		subscribeToBridge,
+		readDesktopBridge,
+		readNoBridge,
+	)
 	const [opened, setOpened] = useState(false)
 	const [wizardSnapshot, , wizardActor] = useActor(desktopSetupStepState)
 	const wizard = uiState<{
@@ -138,7 +143,7 @@ export function DesktopExecutionProvider({
 
 	const step = wizard.status
 
-	const [name, setName] = useState('')
+	const [editedName, setEditedName] = useState('')
 	const [replace, setReplace] = useState('')
 	const [setup, setSetup] = useState<SetupData | null>(null)
 	// Team org this machine should become available to after personal registration.
@@ -166,18 +171,15 @@ export function DesktopExecutionProvider({
 	const putFirst = useServerFn(putDesktopExecutionFirst)
 	const [menuCommand, setMenuCommand] =
 		useState<DesktopMachineMenuCommand | null>(null)
-	useEffect(() => {
-		setBridge(window.kodyDesktop?.execution ?? null)
-	}, [])
-	useEffect(() => {
-		if (!bridge?.takeMenuCommand) return
+	useResourceLifetime(() => {
+		if (!bridge?.takeMenuCommand) return () => {}
 		const take = () =>
 			void bridge
 				.takeMenuCommand?.()
 				.then((command) => command && setMenuCommand(command))
 				.catch(() => {})
 		take()
-		return bridge.onMenuCommand?.(take)
+		return bridge.onMenuCommand?.(take) ?? (() => {})
 	}, [bridge])
 	const machine = useQuery({
 		queryKey: ['desktop-machine', actorKey],
@@ -192,18 +194,19 @@ export function DesktopExecutionProvider({
 		refetchInterval: (query) =>
 			query.state.data?.payload.needsOnboarding ? 4000 : false,
 	})
-	useEffect(() => {
-		if (machine.data && !name) setName(machine.data.name)
-	}, [machine.data, name])
 	const existingContext = machine.data?.contextId
 		? null
 		: (machine.data?.existingContext ?? null)
-	useEffect(() => {
-		const existing = existingContext?.name
-		if (existing && /^[a-z0-9][a-z0-9-]{0,62}$/.test(existing))
-			setName(existing)
-	}, [existingContext?.name])
-	useEffect(() => {
+	const existingName =
+		existingContext?.name &&
+		/^[a-z0-9][a-z0-9-]{0,62}$/.test(existingContext.name)
+			? existingContext.name
+			: null
+	const name = editedName || existingName || machine.data?.name || ''
+	const autoOpen = [bridge, username, pathname, onboarding.data, machine.data]
+	const [autoOpenSeen, setAutoOpenSeen] = useState<Array<unknown>>([])
+	if (autoOpen.some((value, index) => value !== autoOpenSeen[index])) {
+		setAutoOpenSeen(autoOpen)
 		if (
 			bridge &&
 			username &&
@@ -216,7 +219,7 @@ export function DesktopExecutionProvider({
 			!machine.data.onboardingSeen
 		)
 			setOpened(true)
-	}, [bridge, username, pathname, onboarding.data, machine.data])
+	}
 	async function refresh() {
 		await client.invalidateQueries({ queryKey: ['desktop-machine', actorKey] })
 	}
@@ -550,7 +553,7 @@ export function DesktopExecutionProvider({
 								onClick={() =>
 									void run(async () => {
 										await bridge.forgetSetup()
-										setName('')
+										setEditedName('')
 										setSetup(null)
 										setAttached(false)
 										transitionStep({ type: 'RESET', data: {} })
@@ -625,7 +628,7 @@ export function DesktopExecutionProvider({
 									Machine name
 									<Input
 										value={name}
-										onChange={(event) => setName(event.target.value)}
+										onChange={(event) => setEditedName(event.target.value)}
 										pattern="[a-z0-9][a-z0-9-]{0,62}"
 										maxLength={63}
 										disabled={busy || !!machine.data?.contextId}
@@ -762,4 +765,16 @@ export function DesktopExecutionProvider({
 
 export function useDesktopMachine() {
 	return useContext(DesktopMachineContext)
+}
+
+function subscribeToBridge() {
+	return () => {}
+}
+
+function readDesktopBridge(): DesktopExecutionBridge | null {
+	return window.kodyDesktop?.execution ?? null
+}
+
+function readNoBridge() {
+	return null
 }

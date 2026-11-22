@@ -1,12 +1,6 @@
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
-import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
-import type {
-	PackageBundleTarget,
-	PackageTypecheckTarget,
-	RepoCheckKind,
-	RepoCheckResult,
-} from './checks.ts'
+import type { PackageBundleTarget, PackageTypecheckTarget } from './checks.ts'
 import type {
 	CredentialTreeChunk,
 	CredentialTreeChunkRequest,
@@ -23,7 +17,6 @@ import {
 } from './isolated-runner-limit-message.ts'
 import {
 	formatPublishSizeHints,
-	publishSizeHints,
 	type PublishSizeHints,
 } from './publish-size-hints.ts'
 
@@ -130,32 +123,6 @@ type IsolatedCheckPhaseStub = {
 	): Promise<IsolatedCheckPhaseOutcome>
 }
 
-/**
- * The whole authoring publish check run (`runAuthoringPublishChecksOnFiles`)
- * for a staged in-memory tree, as `packageCheck` (`kody dev check`) asks.
- */
-export type IsolatedAuthoringChecksRequest = {
-	stagingKey: string
-	userId: OwnerId
-	baseUrl: string
-	sourceId?: string
-	expectedPackageScope?: string
-	deferBundleCheckToRebuild?: boolean
-	typecheckRanOffWorker?: boolean
-}
-
-export type IsolatedAuthoringChecksOutcome = {
-	ok: boolean
-	results: Array<RepoCheckResult>
-}
-
-type IsolatedAuthoringChecksStub = {
-	runIsolatedAuthoringChecks(
-		input: IsolatedAuthoringChecksRequest,
-	): Promise<IsolatedAuthoringChecksOutcome>
-	takeLastCheckStep(): Promise<RepoCheckStep | null>
-}
-
 export type IsolatedCheckPhaseRunner = {
 	stage(input: {
 		userId: string
@@ -200,7 +167,9 @@ function phaseLabel(request: IsolatedCheckPhaseRequest) {
 		case 'credentials-plan':
 			return 'Planning the credential stamp scan'
 		case 'credentials-chunk':
-			return `The credential stamp scan of ${request.chunk.visit.length} module(s) starting at "${request.chunk.visit[0]?.path ?? ''}"`
+			return request.chunk.visit.length === 1
+				? `The credential stamp scan of "${request.chunk.visit[0]!.path}"`
+				: `The credential stamp scan of ${request.chunk.visit.length} module(s) starting at "${request.chunk.visit[0]?.path ?? ''}"`
 		default: {
 			const exhaustive: never = request
 			throw new Error(`Unexpected check phase: ${JSON.stringify(exhaustive)}`)
@@ -299,116 +268,5 @@ export async function readLastCheckStep(stub: {
 		return isRepoCheckStep(recorded) ? recorded : null
 	} catch {
 		return null
-	}
-}
-
-function repoCheckKindForStep(step: RepoCheckStep | null): RepoCheckKind {
-	switch (step) {
-		case 'credentials':
-			return 'credentials'
-		case 'lint':
-			return 'lint'
-		case 'typecheck':
-			return 'typecheck'
-		default:
-			return 'bundle'
-	}
-}
-
-/**
- * Run the full authoring publish checks for an in-memory tree in a fresh,
- * throwaway `REPO_SESSION` isolate, the same kind of Durable Object isolate
- * publish runs its checks in. `packageCheck` used to run them inline in the
- * shared origin request isolate, where a large tree (every module parsed for
- * the credential stamp, lint, and the bundler snapshot) could push that
- * isolate over its memory limit. That reset killed the request and the API
- * edge could only answer 503 "temporarily unavailable".
- *
- * Returns null when the env lacks the bindings (unit tests, minimal envs);
- * callers then run the checks inline.
- */
-export async function runAuthoringChecksInIsolate(input: {
-	env: Env | undefined
-	userId: OwnerId
-	baseUrl: string
-	files: Record<string, string>
-	binaryFileSizes?: Record<string, number>
-	sourceId?: string
-	expectedPackageScope?: string
-	deferBundleCheckToRebuild?: boolean
-	typecheckRanOffWorker?: boolean
-	kodyIgnoredDeclarationFiles?: Array<string>
-}): Promise<IsolatedAuthoringChecksOutcome | null> {
-	const namespace = (
-		input.env as (Env & { REPO_SESSION?: DurableObjectNamespace }) | undefined
-	)?.REPO_SESSION
-	const stagingKv = (
-		input.env as (Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace }) | undefined
-	)?.BUNDLE_ARTIFACTS_KV
-	if (!namespace || !stagingKv) return null
-	const stagingKey = isolatedCheckStagingKeyForUser(input.userId)
-	await stagingKv.put(
-		stagingKey,
-		JSON.stringify({
-			sourceFiles: input.files,
-			...(input.binaryFileSizes
-				? { binaryFileSizes: input.binaryFileSizes }
-				: {}),
-			...(input.kodyIgnoredDeclarationFiles?.length
-				? { kodyIgnoredDeclarationFiles: input.kodyIgnoredDeclarationFiles }
-				: {}),
-		}),
-		{ expirationTtl: stagingTtlSeconds },
-	)
-	try {
-		const stubId = namespace.idFromName(
-			`isolated-authoring-checks-${input.userId}-${crypto.randomUUID()}`,
-		)
-		const stub = namespace.get(stubId) as unknown as IsolatedAuthoringChecksStub
-		try {
-			return await stub.runIsolatedAuthoringChecks({
-				stagingKey,
-				userId: input.userId,
-				baseUrl: input.baseUrl,
-				...(input.sourceId ? { sourceId: input.sourceId } : {}),
-				...(input.expectedPackageScope !== undefined
-					? { expectedPackageScope: input.expectedPackageScope }
-					: {}),
-				...(input.deferBundleCheckToRebuild === true
-					? { deferBundleCheckToRebuild: true }
-					: {}),
-				...(input.typecheckRanOffWorker === true
-					? { typecheckRanOffWorker: true }
-					: {}),
-			})
-		} catch (error) {
-			if (isDurableObjectResourceLimitResetError(error)) {
-				// The step marker lives in the reset instance's storage. The reset
-				// stub stays broken, so a new stub for the same id reads it.
-				const step = await readLastCheckStep(
-					namespace.get(stubId) as unknown as IsolatedAuthoringChecksStub,
-				)
-				return {
-					ok: false,
-					results: [
-						{
-							kind: repoCheckKindForStep(step),
-							ok: false,
-							message: authoringChecksResourceLimitMessage(
-								step,
-								publishSizeHints({ files: input.files }),
-							),
-						},
-					],
-				}
-			}
-			throw error
-		}
-	} finally {
-		try {
-			await stagingKv.delete(stagingKey)
-		} catch {
-			// Best effort: the staging entry expires via its TTL anyway.
-		}
 	}
 }

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useRef, useEffect } from 'react'
+import { useCallback, useRef } from 'react'
 import { useActor } from '@xstate/react'
 import {
 	clipboardFeedbackState,
@@ -45,7 +45,8 @@ export function CopyCodeBlock(props: CopyCodeBlockProps) {
 	const copyState = copyFlow.status === 'copying' ? 'idle' : copyFlow.status
 	const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const mounted = useRef(true)
-	useEffect(() => {
+	const trackMounted = useCallback((node: HTMLButtonElement | null) => {
+		if (!node) return
 		mounted.current = true
 		return () => {
 			mounted.current = false
@@ -91,6 +92,7 @@ export function CopyCodeBlock(props: CopyCodeBlockProps) {
 			)}
 			{showCopy ? (
 				<button
+					ref={trackMounted}
 					aria-busy={copyFlow.status === 'copying'}
 					disabled={copyFlow.status === 'copying'}
 					type="button"

@@ -151,6 +151,7 @@ export type UsageEvent = {
 	 * Person who triggered the metered unit. Empty for Automation. When unset
 	 * at write time, defaults to `userId` (org billing id) for backward
 	 * compatibility with P3 actor backfill.
+	 * Remove when: no webhook endpoint still signs with a named secret instead of package-owned HMAC.
 	 */
 	actorUserId?: string | null
 	/**

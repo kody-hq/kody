@@ -5,6 +5,32 @@
  */
 import { normalizeHost } from '#mcp/secrets/allowed-hosts.ts'
 
+const reservedPlacementHeaders = new Set([
+	'connection',
+	'content-encoding',
+	'content-length',
+	'content-type',
+	'host',
+	'keep-alive',
+	'proxy-authorization',
+	'te',
+	'trailer',
+	'transfer-encoding',
+	'upgrade',
+	'user-agent',
+	'x-http-method-override',
+	'x-method-override',
+])
+
+export function isCredentialPlacementHeader(name: string) {
+	const lower = name.toLowerCase()
+	return (
+		/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(name) &&
+		!reservedPlacementHeaders.has(lower) &&
+		!lower.startsWith('x-kody-')
+	)
+}
+
 export type CredentialRequestRefusal =
 	/** The request host is not in the credential's `hosts`. */
 	| 'host_not_allowed'

@@ -70,8 +70,9 @@ export const credentialStampFileName = 'credential-stamp.json'
  * prebuilt client bundles (e.g. @kentcdodds/world-builder's ~1.7MB
  * `public/client/main.js`) reset the Durable Object CPU budget when parsed.
  * Client/prebuilt assets never resolve credentials server-side, so
- * {@link omitOversizedCredentialStampModules} drops those modules from the
- * AST walks used by publish, fleet restamp, and credential-pattern-check.
+ * {@link omitOversizedClientCredentialStampModules} drops those modules from
+ * the AST walks used by publish, fleet restamp, and credential-pattern-check.
+ * Server-reachable modules are always walked, whatever their size.
  * UTF-8 byte length.
  */
 export const credentialStampMaxModuleScanBytes = 256 * 1024
@@ -83,16 +84,20 @@ export function measureCredentialStampModuleBytes(source: string): number {
 }
 
 /**
- * Drop oversized scannable modules from a package file map before stamp
- * planning / sealing. Non-module assets and package.json are kept. Returns
- * `files` itself when nothing is dropped so the credential scans of one check
- * share one module index.
+ * Drop oversized scannable modules that no server runtime root reaches
+ * (`serverPaths`, from {@link collectServerRuntimeModulePaths}) from a
+ * package file map before stamp planning / sealing. Server modules,
+ * non-module assets, and package.json are kept. Returns `files` itself when
+ * nothing is dropped so the credential scans of one check share one module
+ * index.
  */
-export function omitOversizedCredentialStampModules(
+export function omitOversizedClientCredentialStampModules(
 	files: Record<string, string>,
+	serverPaths: ReadonlySet<string>,
 ): Record<string, string> {
 	const oversized = Object.entries(files).filter(
 		([path, content]) =>
+			!serverPaths.has(path) &&
 			scannableModuleFilePattern.test(path) &&
 			measureCredentialStampModuleBytes(content) >
 				credentialStampMaxModuleScanBytes,
@@ -173,7 +178,10 @@ export type CredentialStampScan = {
 	oauthKeys: Array<string>
 	/** The credential inventory of the scanned modules, with sites. */
 	scan: PackageCredentialScan
-	/** Every 0010 legacy-pattern finding of the scanned modules. */
+	/**
+	 * Every 0010 legacy-pattern finding of the scanned modules.
+	 * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
+	 */
 	legacyFindings: Array<PackageCodemodFinding>
 }
 
@@ -209,6 +217,7 @@ const packageManifestPath = 'package.json'
  * packageSecrets.get, and plain http still fail closed. Manifest-only
  * `kody.secretMounts` is a compat finding: publish may keep it for stale
  * static dependents, and it does not fail this gate.
+ * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
  */
 const unstampableLegacyPatterns = new Set<LegacyCredentialPattern>([
 	'computed secret',
@@ -702,7 +711,7 @@ async function unparsedServerModuleFailure(
  * package source.
  */
 export const credentialStampConversionFixGuidance =
-	'Fix: declare every credential this package can use as a fixed kody.credentials slot with a real description, and call only literal keys (credential("SLOT"), createAuthenticatedFetch("SLOT"), secretJwtSign names, or {{secret:SLOT}} / {{integration-token:SLOT}}). Prefer credential("SLOT") / credentials("SLOT") so callers can pick which saved credential fills each slot with the execute credentials call map ({ "SLOT": "credential-name" }, or CLI --credential SLOT=name) or a stored/trigger mapping. Placeholders and createAuthenticatedFetch resolve the literal slot name as a saved credential name — keep a matching saved name, or migrate those call sites to credential("SLOT"). Never choose the credential name at runtime inside package code. credential.named() is only for ad hoc runs and unshared personal-org packages, which are not stamped.'
+	'Fix: declare every need with a real description in kody.credentials and call credential("SLOT") or credentials("SLOT") with its literal key. Callers can select a stable ID in the execute credentials call map ({ "SLOT": { "id": "credential-id" } }), with CLI --credential SLOT=id:credential-id, or with a stored mapping.'
 
 function nonLiteralFixMessage(kind: string) {
 	return `${kind} Publish cannot stamp a credential whose name is only known at run time. ${credentialStampConversionFixGuidance}`
@@ -902,11 +911,15 @@ async function scanServerEvalFailures(
  */
 export async function scanLiteralMcpServerKeys(
 	files: Record<string, string>,
+	serverPaths?: ReadonlySet<string>,
 ): Promise<{
 	keys: Array<string>
 	failures: Array<CredentialStampGateFailure>
 }> {
-	files = omitOversizedCredentialStampModules(files)
+	files = omitOversizedClientCredentialStampModules(
+		files,
+		serverPaths ?? (await collectServerRuntimeModulePaths(files)),
+	)
 	const keys = new Set<string>()
 	const failures: Array<CredentialStampGateFailure> = []
 	const declaredMcpKeys = declaredMcpCredentialKeys(
@@ -1692,7 +1705,8 @@ export type CredentialStampPasses = {
 
 /**
  * Walk the modules of `files` for a credential stamp. `files` must already
- * be without oversized modules ({@link omitOversizedCredentialStampModules}).
+ * be without oversized client modules
+ * ({@link omitOversizedClientCredentialStampModules}).
  * When the file map adopted a module plan, only that plan's modules are
  * walked; {@link mergeCredentialStampPasses} joins the parts.
  */
@@ -1778,7 +1792,7 @@ export async function collectCredentialStampPasses(
 					if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
 					else scanUnparsedCredentialKeys(files[path]!, keyScan)
 				}),
-			() => scanLiteralMcpServerKeys(files),
+			() => scanLiteralMcpServerKeys(files, serverPaths),
 			() =>
 				detectLegacyCredentialPatternsCodemod.detect(files, {
 					packageName: '',
@@ -1854,6 +1868,7 @@ export function mergeCredentialStampPasses(
 /**
  * Scan package source for stampable literal credential keys and publish-time
  * gate failures (non-literal uses, unstampable legacy patterns, server eval).
+ * Remove when: #1909 phase 4 drops `package_kody_id_redirects`.
  */
 export async function scanCredentialStamp(
 	files: Record<string, string>,
@@ -1862,13 +1877,11 @@ export async function scanCredentialStamp(
 		secretProviders?: ResolvedSecretProviderSlots
 	} = {},
 ): Promise<CredentialStampScan> {
-	files = omitOversizedCredentialStampModules(files)
+	const serverPaths = await collectServerRuntimeModulePaths(files)
+	files = omitOversizedClientCredentialStampModules(files, serverPaths)
 	return sealCredentialStamp(
 		files[packageManifestPath],
-		await collectCredentialStampPasses(
-			files,
-			await collectServerRuntimeModulePaths(files),
-		),
+		await collectCredentialStampPasses(files, serverPaths),
 		options,
 	)
 }

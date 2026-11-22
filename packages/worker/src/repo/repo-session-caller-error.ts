@@ -372,6 +372,7 @@ export function externalPathFromRawWorkspaceEisdirMessage(
  * prefix (in-flight DO builds, or a forgotten wrap) so they stay off Sentry.
  * The legacy `git apply patch: …` form from the first wrap stays matched via
  * the shared prefix.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export const repoApplyPatchCallerMessagePrefix = 'git apply patch'
 

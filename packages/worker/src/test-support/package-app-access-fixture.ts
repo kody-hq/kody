@@ -1,3 +1,4 @@
+import { applyD1Migrations, type D1Migration } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { createPackageAppSessionCookie } from '#app/package-app-session.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
@@ -54,6 +55,15 @@ export async function seedPackageAppAccessFixture() {
 	await ensureRbacTestSchema(env.APP_DB)
 	await ensurePackageSubscriptionTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
+	const { TEST_MIGRATIONS } = env as Env & {
+		TEST_MIGRATIONS: Array<D1Migration>
+	}
+	await applyD1Migrations(
+		env.APP_DB,
+		TEST_MIGRATIONS.filter(({ name }) =>
+			name.endsWith('-package-app-run-consents.sql'),
+		),
+	)
 	try {
 		await env.APP_DB.prepare(
 			`ALTER TABLE users ADD COLUMN password_changed_at TEXT`,

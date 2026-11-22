@@ -25,7 +25,7 @@ import {
 	packageSealedTokenRefusal,
 } from '#worker/credentials/sealed-token.ts'
 import { authorizeSecretSet } from './authorize-secret.ts'
-import { assertPackageScopedSecretWriteAvailable } from './package-scoped-secret-write.ts'
+import { resolvePackageScopedSecretWriteContext } from './package-scoped-secret-write.ts'
 import {
 	applyCredentialFieldsOnly,
 	optInCredentialInputFields,
@@ -67,6 +67,14 @@ const secretSetInputSchema = z
 			.enum(secretScopeValues)
 			.describe(
 				"Storage scope that owns the secret: 'user' (owner-level Key of this org), 'package' (bound to one package), or 'session'. A 'user' or 'package' Key reads scope 'org' in credentialList and credential(key).scope; 'personal' there means a personal credential granted to the org.",
+			),
+		package_id: z
+			.string()
+			.trim()
+			.min(1)
+			.optional()
+			.describe(
+				"With scope 'package': the saved package (id from packageList or search, in this org) that owns the secret, so only that package can use it. Needs the same secret create/write permission as the website. Package code may only name its own package; omit it there to use the running package.",
 			),
 		...optInCredentialInputFields,
 	})
@@ -111,7 +119,7 @@ export const secretSetCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: ['secret:write', 'secret:create'],
 		description:
-			'Create or update a stored secret reference for the signed-in user. Use this for API keys, PATs, webhook HMAC secrets, and other static credentials already available inside trusted execution. Do not persist OAuth access or refresh tokens of a connection here — `/connect/oauth` and `createAuthenticatedFetch` / `integrationTokenRefresh` write those on the connection. To keep a long-lived token a token exchange returned sealed (e.g. the Plaid access_token from /item/public_token/exchange), pass it as `sealed_token` instead of `value`: Kody saves the real token, bound to the hosts it was minted for, and code never sees it (from execute, not package code: a package keeps a token it refreshes as a `login` credential used through `credential(key)`). Optional expires_at is a UTC ISO timestamp or YYYY-MM-DD; null clears expiry. Updates that only change description or expiry may omit value. Optional `placement` sets which request parts placeholders may fill (headers, query, path, body; null = anywhere); new credentials default to headers-only. Distinct from `inject` (scoped credential() client). The gateway enforces placement; query, path, and body fill only after the owner opts in on the credential page, because the host may store the value. Changing inject or widening placement is website-only from execute (hosted or --local), package, and app code. Use `/connect/secret-set` for user-provided API key, PAT, and credential entry or rotation. Host use is authorized through secret policy approvals. Saved secrets are consumed in outbound `fetch` calls by placeholder, e.g. `{{secret:name}}`, resolved only for approved hosts.',
+			'Create or update a stored secret reference for the signed-in user. Use this for API keys, PATs, webhook HMAC secrets, and other static credentials already available inside trusted execution. Do not persist OAuth access or refresh tokens of a connection here — `/connect/oauth` and `createAuthenticatedFetch` / `integrationTokenRefresh` write those on the connection. To keep a long-lived token a token exchange returned sealed (e.g. the Plaid access_token from /item/public_token/exchange), pass it as `sealed_token` instead of `value`: Kody saves the real token, bound to the hosts it was minted for, and code never sees it (from execute, not package code: a package keeps a token it refreshes as a `login` credential used through `credential(key)`). Optional expires_at is a UTC ISO timestamp or YYYY-MM-DD; null clears expiry. Updates that only change description or expiry may omit value. Optional `placement` sets which request parts placeholders may fill (headers, query, path, body; null = anywhere); new credentials default to headers-only. Distinct from `inject` (scoped credential() client). The gateway enforces placement; query, path, and body fill only after the owner opts in on the credential page, because the host may store the value. Changing inject or widening placement is website-only from execute (hosted or --local), package, and app code. When the value has to come from the user (you do not have it), do not ask for it in chat and do not call secretSet: send a prefilled `/connect/secret-set` link (`guide:connect_secret`) and wait for the user to confirm they saved it. Its URL params are `name` (required), `description`, `allowedHosts` (comma-separated), `expiresAt`, `scope` (`user` or `package`), `packageId` (required for scope=package), and `allowedPackages`. The same link rotates a stored value. Host use is authorized through secret policy approvals. Saved secrets are consumed in outbound `fetch` calls by placeholder, e.g. `{{secret:name}}`, resolved only for approved hosts.',
 		keywords: [
 			'secret',
 			'persist',
@@ -133,7 +141,7 @@ export const secretSetCapability = defineDomainCapability(
 		outputSchema: secretMetadataSchema,
 		async handler(parsed, ctx: CapabilityContext) {
 			requireMcpUser(ctx.callerContext)
-			const { authorityPackageId, storageContext } =
+			const { authorityPackageId, storageContext: callerStorageContext } =
 				resolveCallerSecretAuthority({
 					storageContext: ctx.callerContext.storageContext,
 				})
@@ -149,9 +157,11 @@ export const secretSetCapability = defineDomainCapability(
 					'sealed_token saves a user-scope Key; set scope to "user".',
 				)
 			}
-			assertPackageScopedSecretWriteAvailable({
+			const storageContext = await resolvePackageScopedSecretWriteContext(ctx, {
 				scope: parsed.scope,
-				storageContext,
+				packageId: parsed.package_id,
+				authorityPackageId,
+				storageContext: callerStorageContext,
 			})
 			await authorizeSecretSet(ctx, {
 				name: parsed.name,

@@ -1,17 +1,9 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { useEffect, useRef } from 'react'
 import { businessCloudMotion } from './business-hero-motion.ts'
 export function BusinessHero() {
-	const root = useRef<HTMLElement>(null)
-	useEffect(() => {
-		if (!root.current) return
-		const controller = new AbortController()
-		businessCloudMotion(root.current, controller.signal)
-		return () => controller.abort()
-	}, [])
 	return (
-		<figure className="hero-art" ref={root}>
+		<figure className="hero-art" ref={attachCloudMotion}>
 			<svg
 				id="cloud-stage"
 				viewBox="0 0 1536 1024"
@@ -148,4 +140,11 @@ export function BusinessHero() {
 			</button>
 		</figure>
 	)
+}
+
+function attachCloudMotion(node: HTMLElement | null) {
+	if (!node) return
+	const controller = new AbortController()
+	businessCloudMotion(node, controller.signal)
+	return () => controller.abort()
 }

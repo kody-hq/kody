@@ -15,9 +15,9 @@ import {
 	buildPackageAppOpenPath,
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
-	buildPackageAppSubdomainUrl,
 	buildPackagePagePath,
 	packageAppHostEntryQueryParam,
+	resolveHostedPackageAppUrl,
 } from '@kody-internal/shared/public-urls.ts'
 import {
 	isPackageAppHostProbePath,
@@ -68,6 +68,11 @@ import {
 	packageAppHandoffQueryParam,
 } from '#app/package-app-handoff.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
+import {
+	needsPackageAppRunConsentForPerson,
+	packageAppRunConsentRequiredHeader,
+	packageAppRunConsentResponse,
+} from '#app/package-app-run-consent.ts'
 import {
 	findLivePackageAppOauthGrant,
 	notePackageAppOauthGrantUse,
@@ -186,6 +191,7 @@ import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.
  * package browser code, and moving it would widen the package-app domain's
  * surface for no benefit. It 404s here. Retired
  * `/@{username}/connectors/*` paths also 404 here.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 
 function withoutHandoffToken(url: URL) {
@@ -281,8 +287,9 @@ async function buildHandoffHostedTarget(input: {
 	})
 	const target = new URL(
 		publicLocation?.hostedUrl ??
-			buildPackageAppSubdomainUrl({
-				packageAppOrigin: input.packageAppOrigin,
+			resolveHostedPackageAppUrl({
+				packageAppBaseUrl: input.packageAppOrigin,
+				appBaseUrl: input.packageAppOrigin,
 				username: input.packagePath.username,
 				kodyId: input.kodyId,
 				restPath,
@@ -295,17 +302,18 @@ async function buildHandoffHostedTarget(input: {
 }
 
 /**
- * Sync subdomain URL (tests and call sites that already know there is no
- * custom hostname). Prefer {@link buildHandoffHostedTarget} for handoff.
+ * Sync hosted URL for call sites that already know there is no custom
+ * hostname. Prefer {@link buildHandoffHostedTarget} for handoff.
  */
-function buildSubdomainTarget(input: {
+function buildHostedTarget(input: {
 	packageAppOrigin: string
 	packagePath: PackageAppPath
 	url: URL
 }) {
 	const target = new URL(
-		buildPackageAppSubdomainUrl({
-			packageAppOrigin: input.packageAppOrigin,
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: input.packageAppOrigin,
+			appBaseUrl: input.packageAppOrigin,
 			username: input.packagePath.username,
 			kodyId: input.packagePath.kodyId,
 			restPath:
@@ -877,6 +885,22 @@ async function handleAppOriginPackageAppPath(input: {
 		})
 	}
 
+	if (
+		slugLookup?.savedPackage.hasApp &&
+		(await needsPackageAppRunConsentForPerson({
+			db: env.APP_DB,
+			packageId: slugLookup.savedPackage.id,
+			ownerId: org.userId,
+			personId: user.mcpUser.userId,
+		}))
+	) {
+		return packageAppRunConsentResponse({
+			request,
+			baseUrl: url.origin,
+			packagePath,
+		})
+	}
+
 	// A visitor who started on the app's own host returns there, even when the
 	// app also has a custom hostname: each host holds its own session.
 	const fromAppHost = url.searchParams.has(packageAppHostEntryQueryParam)
@@ -1017,7 +1041,7 @@ async function stayOnAppOriginPackagePage(input: {
 		})
 		const target = location
 			? new URL(location.hostedUrl)
-			: buildSubdomainTarget({
+			: buildHostedTarget({
 					packageAppOrigin: input.packageAppOrigin,
 					packagePath: input.packagePath,
 					url: input.url,
@@ -1101,6 +1125,7 @@ function createPackageAppOriginLinkResponse(input: {
  * The bare package-app origin serves no package code: it sends the bare origin
  * home and redirects legacy path-based package URLs to the owning user's
  * subdomain. Everything else fails closed.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 async function handleApexRequest(input: {
 	request: Request
@@ -1280,6 +1305,39 @@ async function servePackageAppForSession(input: {
 			}),
 		)
 		if (claims) {
+			const org = await resolvePackageAppOrgOwnerByHandle({ env, handle })
+			const app =
+				org &&
+				(await resolveSavedPackageForPackageAppSlug({
+					db: env.APP_DB,
+					userId: org.userId,
+					slug: packagePath.kodyId,
+				}))
+			if (!org) {
+				return createUnmatchedPackageAppPathResponse()
+			}
+			const packageId =
+				app?.savedPackage.hasApp && !app.retired ? app.savedPackage.id : null
+			if (
+				await needsPackageAppRunConsentForPerson({
+					db: env.APP_DB,
+					packageId,
+					ownerId: org.userId,
+					personId: personIdFromStored(claims.stableUserId),
+				})
+			) {
+				if (!packageId) return createUnmatchedPackageAppPathResponse()
+				const host = parsePackageAppRequestHost({ env, url })
+				return packageAppRunConsentResponse({
+					request,
+					baseUrl: appBaseUrl,
+					packagePath,
+					fromAppHost:
+						host?.kind === 'app-subdomain' ||
+						(host?.kind === 'user-subdomain' &&
+							packagePath.mount === 'custom-hostname'),
+				})
+			}
 			return redirectResponse({
 				location: withoutHandoffToken(url).toString(),
 				status: 302,
@@ -1367,6 +1425,8 @@ async function servePackageAppForSession(input: {
 			packagePath,
 			serverTiming,
 		})
+		if (response.headers.has(packageAppRunConsentRequiredHeader))
+			return response
 		const ticketCookie = await mintPackageAppTicketCookie({
 			env,
 			host: url.host,
@@ -1595,6 +1655,7 @@ async function handleUserSubdomainRequest(input: {
 	// Resolve retired slugs before the legacy `/packages` HTML 308 so a
 	// renamed leaf becomes one hop to `/{current}` instead of `/packages/old`
 	// → `/{old}` → `/{current}`.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	const retiredRedirect = await pushServerTiming(
 		packageAppServerTiming(),
 		'retiredSlug',
@@ -1614,6 +1675,7 @@ async function handleUserSubdomainRequest(input: {
 	if (retiredRedirect) {
 		// Still count legacy `/packages/{old}` hits when the retired slug
 		// redirects in one hop to `/{current}` before the legacy handler runs.
+		// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 		if (isPackageAppLegacySubdomainMountPath(url.pathname)) {
 			recordPackageAppLegacyMountHit({
 				env,

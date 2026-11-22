@@ -1,3 +1,4 @@
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import { secretProviderCacheTtlMs } from './errors.ts'
 
 type CachedProviderSecret = {
@@ -6,7 +7,7 @@ type CachedProviderSecret = {
 	expiresAtMs: number
 }
 
-const cache = new Map<string, CachedProviderSecret>()
+const cache = isolateCollection(new Map<string, CachedProviderSecret>())
 
 function cacheKey(input: {
 	userId: string
@@ -59,8 +60,4 @@ export function clearProviderSecretCacheForBinding(input: {
 	for (const key of cache.keys()) {
 		if (key.startsWith(prefix)) cache.delete(key)
 	}
-}
-
-export function clearProviderSecretCacheForTests() {
-	cache.clear()
 }

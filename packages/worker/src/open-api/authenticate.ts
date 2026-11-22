@@ -19,7 +19,6 @@ import {
 	type ApiTokenAuthenticationFailure,
 	type ApiTokenRecord,
 } from '#worker/api-tokens/service.ts'
-import { loadOrgBindingFromGrantProps } from '#worker/orgs/grant-binding.ts'
 import {
 	getOrgById,
 	getOrgBySlug,
@@ -28,9 +27,10 @@ import {
 } from '#worker/orgs/repo.ts'
 import { cliClientIdMetadataPath } from '#worker/cli-client-metadata.ts'
 import {
+	buildMcpAuthContextCached,
 	buildMcpUserContextFromGrantProps,
-	resolveGuestAliasedGrantProps,
 } from '#worker/mcp-auth-user-context.ts'
+import { evictMcpAuthCache } from '#worker/mcp-auth-cache.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
 import {
@@ -302,17 +302,19 @@ async function authenticateWithMcpOauth(input: {
 	) {
 		throw unauthorized('Invalid API token.', true)
 	}
-	const grantProps = await resolveGuestAliasedGrantProps(
-		input.env,
-		tokenSummary.grant.props as Record<string, unknown>,
-	)
-	const authContext = await buildMcpUserContextFromGrantProps(
-		input.env,
-		grantProps,
-	)
-	if (!authContext) {
+	// Same one-batch read and per-isolate cache as `/mcp`: the user row and
+	// org epochs are read fresh every call, roles and binding come from the
+	// cache while those epochs match. Sequential reads cost one D1 round trip
+	// each on every CLI and package-graph call.
+	const authed = await buildMcpAuthContextCached(input.env, {
+		grantProps: tokenSummary.grant.props as Record<string, unknown>,
+		accessToken: input.token,
+	})
+	if (!authed) {
+		evictMcpAuthCache(input.token)
 		throw unauthorized('Invalid API token.', true)
 	}
+	const { context: authContext, orgBinding } = authed
 	if (!authContext.emailVerified) {
 		throw new ApiError({
 			status: 403,
@@ -345,11 +347,6 @@ async function authenticateWithMcpOauth(input: {
 	const grantScopes =
 		tokenSummary.scope ??
 		(Array.isArray(tokenSummary.grant.scope) ? tokenSummary.grant.scope : [])
-	const orgBinding = await loadOrgBindingFromGrantProps({
-		db: input.env.APP_DB,
-		personId: authContext.user.userId,
-		grantProps,
-	})
 	if (grantHasRetiredConnectionProfile(tokenSummary.grant.props)) {
 		throw unauthorized(
 			'Access token was bound to a connection profile, which no longer exists. Run kody login again.',

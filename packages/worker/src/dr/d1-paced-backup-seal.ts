@@ -311,6 +311,7 @@ async function sealTableArtifacts(input: {
 
 	// Legacy monolithic staging bodies (pre-parts-pointer nights). Sequential
 	// verify-before-write so reseal never holds data+index together.
+	// Remove when: no retained backup night uses monolithic staging bodies.
 	await sealVerifiedStagingBytes({
 		s3: input.s3,
 		stagingKey: stagingDataKey,

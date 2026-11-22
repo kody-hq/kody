@@ -2,7 +2,8 @@
 import { Field } from './field.tsx'
 import { Button } from './button.tsx'
 import { css } from '@emotion/react'
-import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
 	loadAutomationExecution,
 	setAutomationExecution,
@@ -66,38 +67,45 @@ export function AutomationExecutionSettings(props: {
 	orgSlug: string
 	target: AutomationExecutionTarget
 }) {
-	const [loaded, setLoaded] = useState<Loaded | null>(null)
-	const [form, setForm] = useState<AutomationExecutionForm | null>(null)
 	const [status, setStatus] = useState<{
 		tone: 'error' | 'info'
 		text: string
 	} | null>(null)
 	const [saving, setSaving] = useState(false)
 	const targetKey = JSON.stringify(props.target)
-
-	useEffect(() => {
-		let cancelled = false
-		void (
-			loadAutomationExecution({
-				data: { orgSlug: props.orgSlug, target: props.target },
-			}) as Promise<Loaded | Failure>
-		)
-			.then((result) => {
-				if (cancelled || !result.ok) return
-				setLoaded(result)
-				setForm(
-					automationExecutionFormFrom(
-						result.setting.effective,
-						result.contexts,
-					),
-				)
-			})
-			.catch(() => {})
-		return () => {
-			cancelled = true
-		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [props.orgSlug, targetKey])
+	const queryClient = useQueryClient()
+	const queryKey = ['automation-execution', props.orgSlug, targetKey]
+	const loaded =
+		useQuery({
+			queryKey,
+			queryFn: async (): Promise<Loaded | null> => {
+				try {
+					const result = (await loadAutomationExecution({
+						data: {
+							orgSlug: props.orgSlug,
+							target: JSON.parse(targetKey) as typeof props.target,
+						},
+					})) as Loaded | Failure
+					return result.ok ? result : null
+				} catch {
+					return null
+				}
+			},
+			retry: false,
+			refetchOnWindowFocus: false,
+		}).data ?? null
+	const [draft, setDraft] = useState<{
+		key: string
+		form: AutomationExecutionForm
+	} | null>(null)
+	const form =
+		draft?.key === targetKey
+			? draft.form
+			: loaded
+				? automationExecutionFormFrom(loaded.setting.effective, loaded.contexts)
+				: null
+	const setForm = (next: AutomationExecutionForm) =>
+		setDraft({ key: targetKey, form: next })
 
 	if (!loaded || !form) return null
 	const nameFor = (ref: string) =>
@@ -126,10 +134,9 @@ export function AutomationExecutionSettings(props: {
 			})
 			return
 		}
-		setLoaded({ ...loaded!, setting: result.setting })
-		setForm(
-			automationExecutionFormFrom(result.setting.effective, loaded?.contexts),
-		)
+		const saved: Loaded = { ...loaded!, setting: result.setting }
+		queryClient.setQueryData(queryKey, saved)
+		setDraft(null)
 		setStatus({ tone: 'info', text: 'Saved.' })
 	}
 

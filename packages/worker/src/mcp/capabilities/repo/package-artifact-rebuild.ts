@@ -29,6 +29,7 @@ import {
 } from '#worker/repo/isolated-artifact-rebuild.ts'
 import { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
+import { uploadedBuildPersistLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	isDurableObjectIsolateResourceLimitResetError,
 	isTransientDurableObjectResetError,
@@ -660,17 +661,27 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 	}
 }): Promise<RebuildPublishedPackageArtifactsResult> {
 	if (input.uploadedBuild) {
-		const persisted = await repoSessionRpc(
-			input.env,
-			input.rpcSessionId,
-		).persistUploadedPublishBuild({
-			...(input.repoSessionId ? { sessionId: input.repoSessionId } : {}),
-			sourceId: input.sourceId,
-			userId: input.userId,
-			publishedCommit: input.publishedCommit,
-			buildId: input.uploadedBuild.buildId,
-			baseUrl: input.baseUrl,
-		})
+		const diagnosticsId = crypto.randomUUID()
+		const persisted = await repoSessionRpc(input.env, input.rpcSessionId)
+			.persistUploadedPublishBuild({
+				...(input.repoSessionId ? { sessionId: input.repoSessionId } : {}),
+				sourceId: input.sourceId,
+				userId: input.userId,
+				publishedCommit: input.publishedCommit,
+				buildId: input.uploadedBuild.buildId,
+				baseUrl: input.baseUrl,
+				diagnosticsId,
+			})
+			.catch(async (error: unknown) => {
+				if (!isDurableObjectIsolateResourceLimitResetError(error)) throw error
+				// A reset breaks the original stub. Read the checkpoint on a fresh one.
+				const sizes = await repoSessionRpc(input.env, input.rpcSessionId)
+					.getLinkedPublishArtifactSizes(diagnosticsId)
+					.catch(() => null)
+				throw new Error(uploadedBuildPersistLimitMessage(sizes), {
+					cause: error,
+				})
+			})
 		if (!persisted.ok) throw new UserCodeError(persisted.message)
 		// Every target is written: the commit is complete enough to serve.
 		await advanceServingCommit({

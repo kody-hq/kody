@@ -201,6 +201,7 @@ async function changePackageWebhook(
 		// Caller mistakes (undeclared webhook, not minted, legacy secret)
 		// carry safe messages. Anything else is an infrastructure failure
 		// whose text must not reach the browser.
+		// Remove when: no webhook endpoint still signs with a named secret instead of package-owned HMAC.
 		if (isMcpCallerError(error)) {
 			return operationResult({ ok: false, error: detail }, 400)
 		}

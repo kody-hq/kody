@@ -43,7 +43,9 @@
   [Amendment 2026-10-27](#amendment-2026-10-27-secret-provider-slots));
   2026-10-29 (Kent: placeholders and `createAuthenticatedFetch` resolve the
   actor's own granted personal credentials, the set scoped clients resolve; see
-  [Amendment 2026-10-29](#amendment-2026-10-29-placeholders-and-createauthenticatedfetch-resolve-granted-personal-credentials))
+  [Amendment 2026-10-29](#amendment-2026-10-29-placeholders-and-createauthenticatedfetch-resolve-granted-personal-credentials));
+  2026-11-19 (Kent: stable credential IDs and a gated placeholder sunset; see
+  [Amendment 2026-11-19](#amendment-2026-11-19-credential-reference-sunset))
 - **Supersedes in part:** [0021](./0021-publish-gated-package-composition.md)
   (credential authority for the opt-in types used through scoped clients), and
   credentials plan v4 section 3.3 (assignments) and section 3.4 (placeholder
@@ -54,8 +56,35 @@ v4 still holds for personal credentials (3.2), enablements, the one
 `resolveCredential` door, audit, and leak tests, except where this record
 changes them. The rule is: do not break people while improving things for the
 future. Key credentials (today's secrets and their placeholders) keep working
-exactly as they do, with the authority rules of the records this one supersedes
-in part.
+through the compatibility period, with the authority rules of the records this
+one supersedes in part.
+
+## Amendment 2026-11-19: Credential reference sunset
+
+This amendment supersedes the permanent placeholder and fill-anywhere
+commitments in the original decision. Existing Key credentials remain
+credentials. The compatibility syntax stays available during migration.
+
+Packages declare needs in `kody.credentials` and use `credential(key)`. Owners
+map each need to a stable credential ID. Credential names are labels; the picker
+resolves a legacy name at the boundary and carries the ID into the run. Stored
+settings also reference IDs. The runtime keeps the existing package, actor, Use,
+host, and placement checks.
+
+For a legacy placeholder, prefer the declared need and its credential mapping.
+Use the legacy name only where no eligible mapping exists; a denied, invalid,
+ambiguous, or intentionally cleared mapping must stay closed. Publish and
+runtime diagnostics warn about legacy use.
+[Aggregate counts](../credential-request-profiles.md#tracking-legacy-fills)
+guide the removal.
+
+[Approved request profiles](../credential-request-profiles.md) describe typed
+body, path, or composed placement at egress.
+
+The deletion gate requires zero measured legacy usage, a fresh scan of every
+published package with zero placeholder occurrences, and a credential path or an
+explicit product exclusion for every valid use. Package migrations and deletion
+are separate from this compatibility change.
 
 ## Context
 

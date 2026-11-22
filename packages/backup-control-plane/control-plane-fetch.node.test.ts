@@ -1,8 +1,8 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import assert from 'node:assert/strict'
 
 import { afterEach, test, vi } from 'vitest'
 
-import { resetAccessJwksCacheForTests } from './access-auth.ts'
 import {
 	accessClaims,
 	accessSigner,
@@ -27,7 +27,7 @@ const routes: Array<{ method: string; path: string }> = [
 
 test('fetch handler returns 403 without a valid Access JWT for every route', async () => {
 	vi.spyOn(console, 'error').mockImplementation(() => undefined)
-	resetAccessJwksCacheForTests()
+	resetIsolateState()
 	const env = environment()
 	for (const route of routes) {
 		const response = await handleControlPlaneFetch(
@@ -50,7 +50,7 @@ test('fetch handler returns 403 without a valid Access JWT for every route', asy
 })
 
 test('fetch handler serves the dashboard with a valid Access JWT', async () => {
-	resetAccessJwksCacheForTests()
+	resetIsolateState()
 	const { fetcher, sign } = accessSigner()
 	const env = environment()
 	const response = await handleControlPlaneFetch(

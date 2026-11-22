@@ -550,8 +550,8 @@ export function AccountSecretsPage({
 				columns={[
 					{ key: 'name', label: 'Secret', primary: true },
 					{ key: 'scope', label: 'Scope' },
-					{ key: 'package', label: 'Package', drop: 2 },
-					{ key: 'description', label: 'Description', drop: 1 },
+					{ key: 'package', label: 'Package' },
+					{ key: 'description', label: 'Description' },
 					{ key: 'ttl', label: 'Expires' },
 				]}
 				createRow={

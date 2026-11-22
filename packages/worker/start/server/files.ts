@@ -1,3 +1,4 @@
+import { fileStorageUsageSchema } from '#universal/file-storage.ts'
 import type { websiteCapabilityContext as WebsiteCapabilityContext } from '../../src/app/website-capability.ts'
 import { notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
@@ -18,6 +19,7 @@ const listSchema = z.object({
 	files: z.array(fileMetadataSchema.extend({ access: fileAccessSchema })),
 	can_create: z.boolean(),
 	writes_enabled: z.boolean(),
+	storage: fileStorageUsageSchema,
 })
 const getSchema = z.object({
 	file: fileDocumentSchema,

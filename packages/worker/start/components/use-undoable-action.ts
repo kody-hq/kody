@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useSelector } from '@xstate/react'
 import { uiState } from '#client/ui-actor.ts'
 import type { UndoableActionView } from '#client/routes/undoable-action-state.ts'
@@ -12,7 +13,7 @@ export function useUndoableAction(timeoutMs = 8_000) {
 		setController(createUndoableActionController())
 	const snapshot = useSelector(controller.actor, (value) => value)
 	const state = uiState<UndoableActionView>(snapshot)
-	useEffect(() => {
+	useResourceLifetime(() => {
 		controller.activate()
 		const leave = () => {
 			void controller.commit({ silent: true })

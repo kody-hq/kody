@@ -1,8 +1,5 @@
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import {
-	isProfilePackage,
-	resolveHostedPackageAppUrl,
-} from '@kody-internal/shared/public-urls.ts'
+import { resolveHostedPackageAppLocation } from '@kody-internal/shared/public-urls.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -13,6 +10,7 @@ import {
 } from '#mcp/capabilities/meta/require-user.ts'
 import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-interactive-caller.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import { authorize } from '#worker/authorization/authorize.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { resolveSavedPackageWithFreshnessCache } from '#worker/package-invocations/invoke-contract-cache.ts'
 import {
@@ -395,24 +393,31 @@ export const packageAppFetchCapability = defineDomainCapability(
 				)
 			}
 
+			// The surface check passes on a grant for any app in the org; this
+			// one is on the app being run, like the hosted app path.
+			await authorize({ env: ctx.env, request: callerRequest }, 'app:execute', {
+				type: 'app',
+				id: savedPackage.id,
+				orgId: owner.ownerUserId,
+				label: `app "${savedPackage.kodyId}"`,
+			})
+
 			const packageAppOrigin = getPackageAppBaseUrl({ env: ctx.env })
-			const hostedUrl = resolveHostedPackageAppUrl({
+			const hosted = resolveHostedPackageAppLocation({
 				packageAppBaseUrl: packageAppOrigin,
 				appBaseUrl: ctx.callerContext.baseUrl,
 				username: owner.ownerScope,
 				kodyId: savedPackage.kodyId,
 				restPath: restPath === '/' ? null : restPath,
 			})
+			const hostedUrl = hosted.hostedUrl
 			const packagePath: PackageAppPath = {
 				username: owner.ownerScope,
 				kodyId: savedPackage.kodyId,
 				restPath: restPathOnly,
 				mount: !packageAppOrigin
 					? 'username-path'
-					: isProfilePackage({
-								username: owner.ownerScope,
-								kodyId: savedPackage.kodyId,
-						  })
+					: hosted.appBasePath === ''
 						? 'custom-hostname'
 						: 'user-subdomain',
 			}

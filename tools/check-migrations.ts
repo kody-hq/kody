@@ -790,6 +790,7 @@ export async function readTrustedMigrationHistory(
 /**
  * The ledger at a trusted ref: the per-file directory, else the legacy
  * single-file ledger (refs from before #4675), else null.
+ * Permanent: stored data or clients from before this change still exist.
  */
 async function readTrustedMigrationLedger(ref: string): Promise<{
 	migrations: Array<MigrationLedgerEntry>

@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 
 /** Window rows while retaining the focused item, including across resize. */
@@ -25,26 +26,6 @@ export function VirtualCollection({
 	const [focused, setFocused] = useState<string | null>(activeKey ?? null)
 	const focusTarget = useRef<string | null>(activeKey ?? null)
 	const pending = useRef<string | null>(null)
-	useLayoutEffect(() => {
-		if (!grid || !root.current) return
-		const observer = new ResizeObserver(([entry]) => {
-			const item = (
-				document.activeElement as Element | null
-			)?.closest<HTMLElement>('[data-browser-item]')
-			if (!pending.current && item && root.current?.contains(item))
-				pending.current = focusTarget.current
-			setColumns(
-				Math.max(
-					1,
-					Math.floor(
-						((entry?.contentRect.width ?? itemWidth) + 12) / (itemWidth + 12),
-					),
-				),
-			)
-		})
-		observer.observe(root.current)
-		return () => observer.disconnect()
-	}, [grid, itemWidth])
 	const focusedIndex = focused ? keys.indexOf(focused) : -1
 	const virtual = useVirtualizer({
 		count: Math.ceil(keys.length / columns),
@@ -59,11 +40,11 @@ export function VirtualCollection({
 			return [...new Set(indexes)].sort((a, b) => a - b)
 		},
 	})
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		virtual.measure()
 	}, [rowHeight, virtual])
 
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		if (activeKey && keys.includes(activeKey)) {
 			focusTarget.current = activeKey
 			setFocused(activeKey)
@@ -92,7 +73,9 @@ export function VirtualCollection({
 		}
 	}
 
-	useLayoutEffect(() => {
+	const virtualItems = virtual.getVirtualItems()
+	const renderedRange = `${virtualItems[0]?.index}:${virtualItems.at(-1)?.index}`
+	useLayoutMeasure(() => {
 		if (!pending.current) return
 		const element = root.current?.querySelector<HTMLElement>(
 			`[data-browser-item="${CSS.escape(pending.current)}"]`,
@@ -101,35 +84,63 @@ export function VirtualCollection({
 			pending.current = null
 			element.focus({ preventScroll: true })
 		}
-	})
-	useLayoutEffect(() => {
-		const parent = root.current?.parentElement
-		if (parent?.tagName !== 'NAV') return
-		const handle = (event: KeyboardEvent) => {
-			if (
-				event.target !== parent ||
-				!keys.length ||
-				event.altKey ||
-				event.ctrlKey ||
-				event.metaKey ||
-				!['ArrowDown', 'ArrowUp', 'ArrowRight', 'Home', 'End'].includes(
-					event.key,
+	}, [focused, keys, columns, renderedRange])
+	const rootRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			root.current = node
+			if (!node) return
+			const observer = grid
+				? new ResizeObserver(([entry]) => {
+						const item = (
+							document.activeElement as Element | null
+						)?.closest<HTMLElement>('[data-browser-item]')
+						if (!pending.current && item && node.contains(item))
+							pending.current = focusTarget.current
+						setColumns(
+							Math.max(
+								1,
+								Math.floor(
+									((entry?.contentRect.width ?? itemWidth) + 12) /
+										(itemWidth + 12),
+								),
+							),
+						)
+					})
+				: null
+			observer?.observe(node)
+			const parent = node.parentElement
+			const handle = (event: KeyboardEvent) => {
+				if (
+					event.target !== parent ||
+					!keys.length ||
+					event.altKey ||
+					event.ctrlKey ||
+					event.metaKey ||
+					!['ArrowDown', 'ArrowUp', 'ArrowRight', 'Home', 'End'].includes(
+						event.key,
+					)
 				)
-			)
-				return
-			event.preventDefault()
-			event.stopPropagation()
-			const index =
-				event.key === 'End' || event.key === 'ArrowUp' ? keys.length - 1 : 0
-			focusIndex(index)
-		}
-		parent.addEventListener('keydown', handle, true)
-		return () => parent.removeEventListener('keydown', handle, true)
-	}, [keys, columns, virtual])
+					return
+				event.preventDefault()
+				event.stopPropagation()
+				const index =
+					event.key === 'End' || event.key === 'ArrowUp' ? keys.length - 1 : 0
+				focusIndex(index)
+			}
+			if (parent?.tagName === 'NAV')
+				parent.addEventListener('keydown', handle, true)
+			return () => {
+				observer?.disconnect()
+				parent?.removeEventListener('keydown', handle, true)
+			}
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- focusIndex reads only keys, columns, and virtual
+		[grid, itemWidth, keys, columns, virtual],
+	)
 
 	return (
 		<div
-			ref={root}
+			ref={rootRef}
 			aria-label={label}
 			data-virtual-collection
 			css={{

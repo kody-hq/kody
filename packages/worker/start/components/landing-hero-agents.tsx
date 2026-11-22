@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
+import { useCallback, useMemo, type CSSProperties } from 'react'
 import { stageParallaxRef } from './hero-stage.tsx'
 import { LandingLantern } from './landing-lantern.tsx'
 import {
@@ -364,19 +364,20 @@ function renderOrbLayer(agents: ReadonlyArray<LandingHeroAgent>) {
 }
 
 export function LandingHeroAgents({ hosts }: { hosts?: WalkthroughHostPick }) {
-	const stage = useRef<HTMLDivElement>(null)
 	const agents = useMemo(() => placeLandingHeroAgents(hosts), [hosts])
-	useEffect(() => {
-		const node = stage.current
-		if (!node) return
-		const controller = new AbortController()
-		attachTetherFollow(agents, node, controller.signal)
-		const cleanParallax = stageParallaxRef(node)
-		return () => {
-			controller.abort()
-			if (typeof cleanParallax === 'function') cleanParallax()
-		}
-	}, [agents])
+	const stage = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (!node) return
+			const controller = new AbortController()
+			attachTetherFollow(agents, node, controller.signal)
+			const cleanParallax = stageParallaxRef(node)
+			return () => {
+				controller.abort()
+				if (typeof cleanParallax === 'function') cleanParallax()
+			}
+		},
+		[agents],
+	)
 	return (
 		<figure
 			data-rise

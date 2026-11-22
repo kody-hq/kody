@@ -33,6 +33,7 @@ import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
  * action bodies to `/account/packages.json`. New website UI uses typed Start
  * server functions; this keeps the same auth and action behavior for the
  * asset-retention window.
+ * Remove when: the client asset-retention window has passed for assets that POST to `/account/packages.json`.
  */
 export function createAccountPackagesApiHandler(env: Env) {
 	return async ({ request }: { request: Request }) => {

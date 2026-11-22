@@ -88,6 +88,8 @@
 				"generated/guide-metadata.mjs",
 				"./generated/guide-catalog.mjs",
 				"./generated/guide-metadata.mjs",
+				"mcp/capabilities/capability-manifest.generated.mjs",
+				"./mcp/capabilities/capability-manifest.generated.mjs",
 				"node_modules/.kody-generated/worker-bundler.mjs",
 				"node_modules/.kody-generated/worker-bundler-typescript.mjs",
 				"node_modules/.kody-generated/oauth-provider.mjs",
@@ -221,9 +223,9 @@
 		"enabled": true,
 		// Workers automatic tracing (beta): OTel-standard spans for handler
 		// invocations, outbound fetches, and binding calls (D1, KV, R2, DO,
-		// queues). Spans share the Workers Logs event quota, so traces are head
-		// sampled at 10% (this Worker emits ~15 spans per request) while logs
-		// stay at 100%. Local dev and tests ignore it. The production env adds
+		// queues). Spans are billed with Workers Logs events, so traces are head
+		// sampled at 2% (about 18 spans per request, still ~7k traces a day)
+		// while logs stay at 100%. Local dev and tests ignore it. The production env adds
 		// the Sentry OTLP export destination; the preview env turns traces off.
 		"logs": {
 			"enabled": true,
@@ -232,7 +234,7 @@
 		},
 		"traces": {
 			"enabled": true,
-			"head_sampling_rate": 0.1,
+			"head_sampling_rate": 0.02,
 		},
 	},
 	// Cron scheduling moved to the jobs worker (packages/jobs-worker, ADR
@@ -275,7 +277,7 @@
 				},
 				"traces": {
 					"enabled": true,
-					"head_sampling_rate": 0.1,
+					"head_sampling_rate": 0.02,
 					"destinations": ["sentry-otlp-traces"],
 				},
 			},
@@ -658,10 +660,6 @@
 					"dataset": "kody_onboarding_funnel_events",
 				},
 				{
-					"binding": "PACKAGE_APP_LEGACY_EVENTS",
-					"dataset": "kody_package_app_legacy_events",
-				},
-				{
 					"binding": "JWT_SIGN_ANY_HOST_EVENTS",
 					"dataset": "kody_jwt_sign_any_host_events",
 				},
@@ -764,7 +762,7 @@
 				// after KODY-AQ pause). Keep false only for emergency stop.
 				"DR_D1_PACED_RESTORE_DRILL_ENABLED": "true",
 				"DR_D1_PACED_SOURCES": "[{\"binding\":\"APP_DB\",\"name\":\"kody\",\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\"},{\"binding\":\"AUDIT_DB\",\"name\":\"kody-audit\",\"id\":\"c48f9d10-e4fc-4749-9188-82d68025284e\"},{\"binding\":\"JOBS_DB\",\"name\":\"kody-jobs\",\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\"}]",
-				"SOFT_DELETE_PURGE_ENABLED": "false",
+				"SOFT_DELETE_PURGE_ENABLED": "true",
 				"DR_BACKUP_ACCOUNT_ID": "a41d50ecaf0ae0f86dd1824ef6729cb2",
 				"DR_BACKUP_BUCKET_NAME": "kody-production-backups",
 				// Public verification material shared with the DR control plane.
@@ -1185,10 +1183,6 @@
 				{
 					"binding": "ONBOARDING_FUNNEL_EVENTS",
 					"dataset": "kody_onboarding_funnel_events_preview",
-				},
-				{
-					"binding": "PACKAGE_APP_LEGACY_EVENTS",
-					"dataset": "kody_package_app_legacy_events_preview",
 				},
 				{
 					"binding": "JWT_SIGN_ANY_HOST_EVENTS",

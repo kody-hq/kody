@@ -373,12 +373,10 @@ test('a package app Open link starts on the app host and resumes as a device sig
 	const signInStart = new URL(refresh.replace(/^0; url=/, ''))
 	expect(await started.text()).toContain('Continue')
 	expect(`${signInStart.origin}${signInStart.pathname}`).toBe(
-		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.login}`,
+		`https://notes--${ownerUsername}.packages.isolated.test${packageAppOauthPaths.login}`,
 	)
 	expect(signInStart.searchParams.get('app')).toBe('notes')
-	expect(signInStart.searchParams.get('return_to')).toBe(
-		'/notes/today?view=list',
-	)
+	expect(signInStart.searchParams.get('return_to')).toBe('/today?view=list')
 	const intent = cookiePair(started, 'kody_pkg_device_intent')
 	expect(intent).toMatch(/kody_pkg_device_intent=./)
 	expect(cookiePair(started, 'kody_pkg_device')).toBe('')

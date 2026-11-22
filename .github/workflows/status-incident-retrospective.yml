@@ -1,0 +1,124 @@
+name: 📝 Status Incident Retrospective
+
+# Publishes a committed retrospective file to one or more resolved status
+# incidents through
+# POST https://status.kody.codes/__maintenance/incidents/:id/retrospective.
+# The bearer is the STATUS_INCIDENT_EVENT_SECRET Actions secret, which no
+# operator shell holds. See the Retrospectives section of
+# packages/status/readme.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      incident_ids:
+        description: Comma-separated status incident ids (from /status.json)
+        required: true
+        type: string
+      retrospective_file:
+        description:
+          Committed file, for example
+          packages/status/retrospectives/app-2026-11-20.json
+        required: true
+        type: string
+      confirm:
+        description: Type "publish status retrospective <incident_ids>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: status-incident-retrospective
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: 📝 Publish retrospective for ${{ inputs.incident_ids }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: 🛂 Check inputs and actor
+        shell: bash
+        env:
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref }}
+          INCIDENT_IDS: ${{ inputs.incident_ids }}
+          RETROSPECTIVE_FILE: ${{ inputs.retrospective_file }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "Run from main only, got $REF." >&2
+            exit 1
+          fi
+          # Cloud Agent gh cannot dispatch workflows, so agents dispatch
+          # through @kentcdodds/github as kody-bot.
+          case "$ACTOR" in
+            kentcdodds|cursor|kody-bot) ;;
+            *)
+              echo "Approved actors only (kentcdodds, cursor, or kody-bot); got $ACTOR." >&2
+              exit 1
+              ;;
+          esac
+          if ! [[ "$INCIDENT_IDS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]]; then
+            echo "incident_ids must be comma-separated positive integers with no spaces, got '$INCIDENT_IDS'." >&2
+            exit 1
+          fi
+          if ! [[ "$RETROSPECTIVE_FILE" =~ ^packages/status/retrospectives/[a-z0-9_-]+\.json$ ]]; then
+            echo "retrospective_file must be packages/status/retrospectives/<name>.json, got '$RETROSPECTIVE_FILE'." >&2
+            exit 1
+          fi
+          if [ "$CONFIRM" != "publish status retrospective $INCIDENT_IDS" ]; then
+            echo "confirm must be \"publish status retrospective $INCIDENT_IDS\"." >&2
+            exit 1
+          fi
+
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: 📝 Publish the retrospective
+        shell: bash
+        env:
+          INCIDENT_IDS: ${{ inputs.incident_ids }}
+          RETROSPECTIVE_FILE: ${{ inputs.retrospective_file }}
+          STATUS_INCIDENT_EVENT_SECRET:
+            ${{ secrets.STATUS_INCIDENT_EVENT_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STATUS_INCIDENT_EVENT_SECRET:-}" ]; then
+            echo "Missing GitHub Actions secret STATUS_INCIDENT_EVENT_SECRET." >&2
+            exit 1
+          fi
+          if [ ! -f "$RETROSPECTIVE_FILE" ]; then
+            echo "Retrospective file $RETROSPECTIVE_FILE is not committed on main." >&2
+            exit 1
+          fi
+          jq -e 'type == "object"' "$RETROSPECTIVE_FILE" > /dev/null
+          echo "## 📝 Status retrospective \`${RETROSPECTIVE_FILE}\`" >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          IFS=',' read -ra ids <<< "$INCIDENT_IDS"
+          for id in "${ids[@]}"; do
+            status=$(curl -sS -o response.json -w '%{http_code}' -X POST \
+              "https://status.kody.codes/__maintenance/incidents/${id}/retrospective" \
+              -H "Authorization: Bearer ${STATUS_INCIDENT_EVENT_SECRET}" \
+              -H "Content-Type: application/json" \
+              --data-binary "@${RETROSPECTIVE_FILE}")
+            echo "Incident ${id}: HTTP ${status}"
+            cat response.json
+            echo
+            {
+              echo ""
+              echo "### Incident ${id}: HTTP ${status}"
+              echo ""
+              echo '```json'
+              cat response.json
+              echo
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "$status" != "200" ]; then
+              failed=1
+            fi
+          done
+          exit "$failed"

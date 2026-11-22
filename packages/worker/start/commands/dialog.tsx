@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { orgSlugFromPathname } from '#universal/org-pages.ts'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useId, useRef, useState } from 'react'
 import { useHotkeys, formatForDisplay } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -42,6 +42,7 @@ export function CommandDialog({
 	const input = useRef<HTMLInputElement>(null)
 	const confirmationHeading = useRef<HTMLHeadingElement>(null)
 	const list = useRef<HTMLDivElement>(null)
+	const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 	const id = useId()
 	const [query, setQuery] = useState('')
 	const [debounced, setDebounced] = useState('')
@@ -248,9 +249,8 @@ export function CommandDialog({
 	const active = selectionId
 		? rows.find((command) => command.id === selectionId)
 		: rows[Math.min(index, Math.max(0, rows.length - 1))]
-	useEffect(() => {
-		if (selectionId === null && active) setSelectionId(active.id)
-	}, [selectionId, active?.id])
+	const activeId = active?.id
+	if (selectionId === null && activeId) setSelectionId(activeId)
 	function selectIndex(next: number) {
 		setIndex(next)
 		setSelectionId(rows[next]?.id ?? null)
@@ -261,6 +261,8 @@ export function CommandDialog({
 	}
 	function updateQuery(value: string) {
 		setQuery(value)
+		clearTimeout(debounceTimer.current)
+		debounceTimer.current = setTimeout(() => setDebounced(value), 180)
 		resetSelection()
 		setActions(null)
 		setError(null)
@@ -438,32 +440,41 @@ export function CommandDialog({
 		],
 		{ target: dialog, ignoreInputs: false, preventDefault: true },
 	)
-	useEffect(() => {
-		if (confirmation) confirmationHeading.current?.focus()
-		else if (!help) input.current?.focus()
-	}, [actions, confirmation, help])
-	useEffect(() => {
-		const timeout = setTimeout(() => setDebounced(query), 180)
-		return () => clearTimeout(timeout)
-	}, [query])
-	useEffect(() => {
+	const confirmationHeadingRef = useCallback(
+		(node: HTMLHeadingElement | null) => {
+			confirmationHeading.current = node
+			if (node) node.focus()
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- refocus when the action list changes
+		[actions],
+	)
+	const inputRef = useCallback(
+		(node: HTMLInputElement | null) => {
+			input.current = node
+			if (node) node.focus()
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- refocus when the action list changes
+		[actions],
+	)
+	const dialogRef = useCallback((node: HTMLDialogElement | null) => {
+		dialog.current = node
+		if (!node) return
 		const previous = document.activeElement
-		dialog.current?.showModal()
+		node.showModal()
 		input.current?.focus()
 		return () => {
+			dialog.current = null
+			clearTimeout(debounceTimer.current)
+			// Ref cleanup runs before removal, so leave modal mode first.
+			node.close()
 			if (previous instanceof HTMLElement && previous.isConnected)
 				previous.focus()
 		}
 	}, [])
-	useEffect(() => {
-		list.current
-			?.querySelector('[aria-selected="true"]')
-			?.scrollIntoView({ block: 'nearest' })
-	}, [index, selectionId])
 	return (
 		// oxlint-disable-next-line kody-custom/no-raw-dialog -- command palette owns its own combobox focus model.
 		<dialog
-			ref={dialog}
+			ref={dialogRef}
 			aria-label="Search and commands"
 			css={dialogCss}
 			onCancel={(event) => {
@@ -475,7 +486,7 @@ export function CommandDialog({
 			{confirmation ? (
 				<div css={{ padding: 24 }}>
 					<h2
-						ref={confirmationHeading}
+						ref={confirmationHeadingRef}
 						tabIndex={-1}
 						css={{ fontSize: 18, marginTop: 0 }}
 					>
@@ -523,7 +534,7 @@ export function CommandDialog({
 					>
 						{renderIcon('search', { size: '20px' })}
 						<Input
-							ref={input}
+							ref={inputRef}
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							placeholder={
@@ -653,6 +664,7 @@ export function CommandDialog({
 								role="option"
 								tabIndex={-1}
 								aria-selected={active?.id === command.id}
+								ref={active?.id === command.id ? scrollIntoNearest : undefined}
 								css={rowCss}
 								onMouseMove={() => selectIndex(i)}
 								onClick={() => void execute(command)}
@@ -783,4 +795,8 @@ export function CommandDialog({
 			) : null}
 		</dialog>
 	)
+}
+
+function scrollIntoNearest(node: HTMLElement | null) {
+	node?.scrollIntoView({ block: 'nearest' })
 }

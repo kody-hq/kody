@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { replaceRepoSessionDueOwner } from '#worker/repo/repo-session-due-owners.ts'
@@ -5,7 +6,6 @@ import { repoSessionIndexRpc } from '#worker/repo/repo-session-index-client.ts'
 import type { RepoSessionRow } from '#worker/repo/types.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
-	clearStorageBucketRegistrationDedupeForTests,
 	listPlatformStorageBuckets,
 	listUserStorageBucketEstimates,
 	listUserStorageBucketIds,
@@ -46,7 +46,7 @@ function catalogSessionRow(
 
 async function setup() {
 	await ensureUserStorageBucketsTestSchema(env.APP_DB)
-	clearStorageBucketRegistrationDedupeForTests()
+	resetIsolateState()
 	const pending: Array<Promise<unknown>> = []
 	const waitUntil = (promise: Promise<unknown>) => {
 		pending.push(promise)

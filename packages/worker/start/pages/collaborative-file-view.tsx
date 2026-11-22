@@ -2,14 +2,20 @@
 import {
 	lazy,
 	Suspense,
-	useEffect,
-	useLayoutEffect,
+	useCallback,
+	useEffectEvent,
 	type RefObject,
 	useRef,
 	useState,
 	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import {
+	useExternalInstanceSync,
+	useLayoutMeasure,
+	useResourceLifetime,
+} from '../lib/primitives.ts'
+import { useNow } from '../lib/use-now.ts'
 import { FileAnchorContext } from './file-anchor-context.ts'
 import * as Y from 'yjs'
 import { ContextMenuSurface } from '../components/context-menu-surface.tsx'
@@ -97,13 +103,7 @@ export default function CollaborativeFileView(props: {
 	pageChildren?: ReactNode
 	renderPreview?: (content: string) => ReactNode
 }) {
-	const [client, setClient] = useState<FileRoomClient | null>(null)
-	useEffect(() => {
-		const room = new FileRoomClient(props.orgSlug, props.fileId, props.personId)
-		setClient(room)
-		void room.start()
-		return () => room.dispose()
-	}, [props.orgSlug, props.fileId, props.personId])
+	const client = useFileRoom(props.orgSlug, props.fileId, props.personId)
 	if (!client) return <LoadingIndicator label="Connecting to file" />
 	return (
 		<DbProvider client={client.db}>
@@ -116,7 +116,7 @@ function CollaborationView({
 	...props
 }: Parameters<typeof CollaborativeFileView>[0] & { client: FileRoomClient }) {
 	const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null)
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		setToolbarHost(props.toolbarRef.current)
 	}, [props.toolbarRef])
 	const state = useSyncExternalStore(
@@ -125,18 +125,19 @@ function CollaborationView({
 		client.getSnapshot,
 	)
 	const refreshedVersion = useRef(props.revisionId)
-	useEffect(() => {
-		const revision = state.snapshot?.revisionId
+	const snapshotRevisionId = state.snapshot?.revisionId
+	const { revisionId: propsRevisionId, onVersionChange } = props
+	useExternalInstanceSync(() => {
 		if (
-			revision &&
-			revision !== props.revisionId &&
-			revision !== refreshedVersion.current &&
-			props.onVersionChange
+			snapshotRevisionId &&
+			snapshotRevisionId !== propsRevisionId &&
+			snapshotRevisionId !== refreshedVersion.current &&
+			onVersionChange
 		) {
-			refreshedVersion.current = revision
-			props.onVersionChange()
+			refreshedVersion.current = snapshotRevisionId
+			onVersionChange()
 		}
-	}, [state.snapshot?.revisionId, props.revisionId, props.onVersionChange])
+	}, [snapshotRevisionId, propsRevisionId, onVersionChange])
 	const { data: threads = [] } = useLiveQuery({
 		query: (q) => q.from({ thread: client.threads.options }),
 	})
@@ -161,18 +162,17 @@ function CollaborationView({
 	const video = useRef<HTMLMediaElement>(null)
 	const documentRoot = useRef<HTMLDivElement>(null)
 	const returnFocus = useRef<HTMLElement | null>(null)
-	useEffect(() => {
-		if (!closingComments) return
-		const timeout = window.setTimeout(
-			() => setClosingComments(false),
-			commentsSlideMs,
-		)
-		return () => window.clearTimeout(timeout)
-	}, [closingComments, open])
+	const closingTimer = useRef<number | undefined>(undefined)
 	function closeComments() {
-		setClosingComments(
-			!window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-		)
+		const animate = !window.matchMedia('(prefers-reduced-motion: reduce)')
+			.matches
+		setClosingComments(animate)
+		window.clearTimeout(closingTimer.current)
+		if (animate)
+			closingTimer.current = window.setTimeout(
+				() => setClosingComments(false),
+				commentsSlideMs,
+			)
 		setOpen(false)
 		setComposing(false)
 		setActive(null)
@@ -230,7 +230,7 @@ function CollaborationView({
 			preventDefault: false,
 		},
 	)
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const update = () => {
 			try {
 				setContent(collaborativeContent(client.doc, props.mediaType))
@@ -242,12 +242,8 @@ function CollaborationView({
 			client.doc.off('update', update)
 		}
 	}, [client, props.mediaType])
-	const [tick, setTick] = useState(0)
-	useEffect(() => {
-		const timer = setInterval(() => setTick((n) => n + 1), 5_000)
-		return () => clearInterval(timer)
-	}, [])
-	void tick
+	// Re-render so presence ages stay current.
+	useNow(5_000)
 	const access = state.snapshot?.access
 	const live = new Map(
 		[...participants]
@@ -350,8 +346,8 @@ function CollaborationView({
 			.sort()
 			.join(',') ?? ''
 	const lastRead = useRef('')
-	useEffect(() => {
-		if (!open || !active || !unreadActive) return
+	useResourceLifetime(() => {
+		if (!open || !active || !unreadActive) return () => {}
 		const read = () => {
 			if (!document.hasFocus() || document.visibilityState !== 'visible') return
 			const key = `${active}:${unreadActive}`
@@ -504,7 +500,7 @@ function CollaborationView({
 					?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 		}
 	}
-	useLayoutEffect(() => {
+	const scrollToActiveAnchor = useEffectEvent(() => {
 		if (!open || !active) return
 		const thread = commentThreads.find((item) => item.id === active)
 		if (
@@ -516,7 +512,8 @@ function CollaborationView({
 		documentRoot.current
 			?.querySelector(`[data-file-anchor-thread~="${CSS.escape(active)}"]`)
 			?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-	}, [active, open])
+	})
+	useLayoutMeasure(scrollToActiveAnchor, [active, open])
 
 	const syncStatusLabel = {
 		saved: 'Saved',
@@ -987,5 +984,36 @@ function CollaborationView({
 				)}
 			</div>
 		</>
+	)
+}
+
+const fileRooms = new Map<string, { room: FileRoomClient; holders: number }>()
+
+/** One started room per file and person, disposed when its last view unmounts. */
+function useFileRoom(orgSlug: string, fileId: string, personId: string) {
+	const key = JSON.stringify([orgSlug, fileId, personId])
+	const subscribe = useCallback(() => {
+		let entry = fileRooms.get(key)
+		if (!entry) {
+			entry = {
+				room: new FileRoomClient(orgSlug, fileId, personId),
+				holders: 0,
+			}
+			fileRooms.set(key, entry)
+			void entry.room.start()
+		}
+		entry.holders += 1
+		const held = entry
+		return () => {
+			held.holders -= 1
+			if (held.holders > 0) return
+			fileRooms.delete(key)
+			held.room.dispose()
+		}
+	}, [key, orgSlug, fileId, personId])
+	return useSyncExternalStore(
+		subscribe,
+		() => fileRooms.get(key)?.room ?? null,
+		() => null,
 	)
 }

@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import {
@@ -10,7 +11,6 @@ import {
 	asyncCheckIntervalMs,
 	gatePackageAppUsage,
 	packageAppUsageBreakerCooldownMs,
-	resetPackageAppUsageBreakerForTests,
 } from './package-app-usage-breaker.ts'
 
 const ownerId = ownerIdFromStored('org-1')
@@ -87,7 +87,7 @@ function setup(options: { limitPercent?: number | string } = {}) {
 }
 
 beforeEach(() => {
-	resetPackageAppUsageBreakerForTests()
+	resetIsolateState()
 })
 
 afterEach(() => {
@@ -154,7 +154,7 @@ test('open: another isolate reads the KV deny entry and refuses without running 
 	await t.gate({ now: start })
 	await t.flush()
 
-	resetPackageAppUsageBreakerForTests()
+	resetIsolateState()
 	t.check.mockClear()
 	const refused = await t
 		.gate({ now: start + 5_000 })
@@ -318,7 +318,7 @@ test('a KV read that overlaps a successful probe does not resurrect the closed b
 
 	// In a fresh isolate after the cooldown, one request's KV read stalls
 	// holding the open entry while another request's probe passes and closes.
-	resetPackageAppUsageBreakerForTests()
+	resetIsolateState()
 	const afterCooldown = start + packageAppUsageBreakerCooldownMs
 	const stalled = gate(afterCooldown)
 	check.mockResolvedValueOnce(undefined)

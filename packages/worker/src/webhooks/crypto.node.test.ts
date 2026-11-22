@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import {
@@ -10,9 +11,41 @@ import {
 	matchWebhookIngressUrlSecret,
 	parseWebhookReplayTimestamp,
 	providedWebhookHmacValues,
+	verifyStandardWebhookSignature,
 	verifyWebhookHmacSignature,
 	webhookUrlSecretMatches,
 } from './crypto.ts'
+
+test('Standard Webhooks verifies the raw key and binds the ID, timestamp, and unmodified body', async () => {
+	const key = Buffer.from(Array.from({ length: 32 }, (_, index) => 255 - index))
+	const deliveryId = 'msg_example'
+	const timestampToken = '1745228724'
+	const bodyText = '{ "value": 1 }'
+	const body = new TextEncoder().encode(bodyText).buffer
+	const signature = createHmac('sha256', key)
+		.update(`${deliveryId}.${timestampToken}.${bodyText}`)
+		.digest('base64')
+	const valid = {
+		secret: `whsec_${key.toString('base64')}`,
+		deliveryId,
+		timestampToken,
+		body,
+		provided: `v2a,ignored v1,${signature}`,
+	}
+	expect(await verifyStandardWebhookSignature(valid)).toBe(true)
+	for (const change of [
+		{ deliveryId: 'msg_other' },
+		{ timestampToken: '1745228725' },
+		{ body: new TextEncoder().encode('{"value":1}').buffer },
+		{ provided: `v2a,${signature}` },
+		{ secret: 'whsec_not-base64' },
+		{ secret: key.toString('base64') },
+	]) {
+		expect(await verifyStandardWebhookSignature({ ...valid, ...change })).toBe(
+			false,
+		)
+	}
+})
 
 test('webhook URL secrets hash for storage and compare in constant time', async () => {
 	const secret = await generateWebhookUrlSecret()

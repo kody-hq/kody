@@ -28,6 +28,10 @@ import { renderErrorAgentPromptStaticHtml } from '#universal/error-agent-prompt.
 import { buildPackageAppErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
 import {
+	needsPackageAppRunConsent,
+	packageAppRunConsentResponse,
+} from '#app/package-app-run-consent.ts'
+import {
 	findLivePackageAppOauthGrant,
 	notePackageAppOauthGrantUse,
 } from '#app/package-app-oauth-grants.ts'
@@ -201,6 +205,7 @@ export function parsePackageAppPath(pathname: string): PackageAppPath | null {
  * first segments (`-`, `.well-known`, ...) are Kody-owned and never parse as a
  * package, and a bare `/packages` has no leaf. The caller must already have
  * validated the subdomain's username label.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function parsePackageAppSubdomainPath(input: {
 	pathname: string
@@ -1077,13 +1082,33 @@ async function servePackageAppRequestWithId(input: {
 	// Custom hostnames are not the app origin. `getAppBaseUrl(requestUrl)`
 	// would otherwise treat the customer Host as first-party and point
 	// package runtime API calls at the custom domain.
-	const onPackageAppProductHost =
-		parsePackageAppRequestHost({ env, url: requestUrl }) !== null
+	const productHost = parsePackageAppRequestHost({ env, url: requestUrl })
 	const baseUrl =
 		packagePath.mount === 'custom-hostname' ||
-		(packagePath.mount === 'user-subdomain' && !onPackageAppProductHost)
+		(packagePath.mount === 'user-subdomain' && !productHost)
 			? getCanonicalAppBaseUrl({ env })
 			: getAppBaseUrl({ env, requestUrl: request.url })
+	if (
+		await needsPackageAppRunConsent({
+			db: env.APP_DB,
+			packageId: savedPackage.id,
+			visitor,
+		})
+	) {
+		return attachPackageAppServerTiming(
+			packageAppRunConsentResponse({
+				request,
+				baseUrl,
+				packagePath,
+				synthetic: dispatch?.synthetic === true,
+				fromAppHost:
+					productHost?.kind === 'app-subdomain' ||
+					(productHost?.kind === 'user-subdomain' &&
+						packagePath.mount === 'custom-hostname'),
+			}),
+			serverTiming,
+		)
+	}
 	const packageRealtimePath = parsePackageRealtimePath(packageRealtimeRestPath)
 	const cookiePrefix = await packageAppCookiePrefix(savedPackage.id)
 	if (packageRealtimePath && isWebSocketUpgradeRequest(request)) {

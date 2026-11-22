@@ -224,12 +224,12 @@ still auth or permission — use the Failure section below. Two workarounds for
   `subject_type: "profile"`). If the message says the token also lacks the
   scope, mint one with it after the grant. `profile_inactive` means the profile
   or a parent was revoked or expired; use a token for an active profile.
-- **Package-scoped `secretSet` / `secretSetMany` / `secretDelete` are not
-  available under `--local`.** Local CapabilityProxy does not attach package
-  secret authority (a client-supplied package id is not trusted as a hosted
-  run). Use hosted package execute, or set the secret from the account UI
-  (`/connect/secret-set`) or Open API `secretSet` with a user scope / outside
-  local execute. See [Secrets](./secrets.md#scopes).
+- **Package-scoped `secretSet` under `--local` needs `package_id`.** Local
+  CapabilityProxy does not attach package secret authority, so name the saved
+  package: `secretSet({ name, value, scope: 'package', package_id })`. See
+  [target and permission checks](../use/secrets-and-values.md#secrets). For bulk
+  changes, deletion, or disconnecting a package secret, use the package's hosted
+  runtime or the account UI.
 - Package-graph prep that exceeds the throwaway isolate's memory or CPU returns
   `400 package_graph_resource_limit` (the error names the packages). A served
   graph missing a reachable static relative import is `500 internal_error`. See

@@ -1,3 +1,7 @@
+import {
+	resetIsolateState,
+	settleIsolateState,
+} from '@kody-internal/shared/isolate-state-test-support.ts'
 import { env } from 'cloudflare:workers'
 import { runInDurableObject } from 'cloudflare:test'
 import { expect, test } from 'vitest'
@@ -7,8 +11,6 @@ import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
 import { userMeterRpc } from '#worker/entitlements/user-meter-client.ts'
 import {
-	clearStorageBucketRegistrationDedupeForTests,
-	flushStorageBucketRegistrationsForTests,
 	listUserStorageBucketEstimates,
 	listUserStorageBucketIds,
 	registerStorageBucket,
@@ -39,7 +41,7 @@ import { runStorageKvContract } from '@kody-internal/shared/storage-kv-contract.
 async function ensureStorageRunnerTestSchema() {
 	await ensureUserStorageBucketsTestSchema(env.APP_DB)
 	await ensureUsageRollupsTestSchema(env.APP_DB)
-	clearStorageBucketRegistrationDedupeForTests()
+	resetIsolateState()
 }
 
 function proStorageLimit() {
@@ -55,7 +57,7 @@ async function seedPlannedStorageUser(
 ) {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureUsageRollupsTestSchema(env.APP_DB)
-	clearStorageBucketRegistrationDedupeForTests()
+	resetIsolateState()
 	const email = `${prefix}-${crypto.randomUUID()}@example.com`
 	const userId = testStableUserIdFromEmail(email)
 	const username = `storage-${crypto.randomUUID().slice(0, 8)}`
@@ -138,7 +140,7 @@ async function entitlementRejection(promise: Promise<unknown>) {
 }
 
 async function bucketIds(userId: string) {
-	await flushStorageBucketRegistrationsForTests()
+	await settleIsolateState()
 	return listUserStorageBucketIds({ env, userId: ownerIdFromStored(userId) })
 }
 
@@ -460,7 +462,7 @@ test('storage byte entitlement composes repo-session workspace estimates', async
 		waitUntil: (promise) => pending.push(promise),
 	})
 	await Promise.all(pending)
-	await flushStorageBucketRegistrationsForTests()
+	await settleIsolateState()
 
 	const runnerBytes = (await runner.getEstimatedBytes()).estimatedBytes
 	const sessionBytes = (
@@ -865,7 +867,7 @@ test('clearStorage during account-deletion purge must not recreate ownership row
 
 	// Account deletion often runs in a fresh isolate, so in-memory dedupe
 	// cannot paper over a clearStorage registration race.
-	clearStorageBucketRegistrationDedupeForTests()
+	resetIsolateState()
 
 	// Hold any ownership upsert until after the D1 delete so a fire-and-forget
 	// clearStorage registration cannot win the race before the assertion.

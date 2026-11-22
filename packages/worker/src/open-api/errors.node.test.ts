@@ -1,6 +1,7 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { expect, test } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { ExecuteRateLimitedError } from '#mcp/execute-admission.ts'
 import { AccountDeletionWritersActiveError } from '#worker/account/deletion-state.ts'
 import {
 	AuthorizationError,
@@ -493,6 +494,23 @@ test('toApiError maps a deletion refused by active writes to a retryable 409 nam
 				{ holder: 'packagePublish', acquired_at: '2099-01-01 00:00:00' },
 			],
 			retryable: true,
+		},
+	})
+})
+
+test('the execute runaway brake answers 429 with Retry-After, not a server error', () => {
+	const brake = new ExecuteRateLimitedError({
+		limitPerMinute: 300,
+		retryAfterMs: 12_300,
+	})
+	const apiError = toApiError(new Error('execute failed', { cause: brake }))
+	expect(apiError.status).toBe(429)
+	expect(apiError.headers).toEqual({ 'Retry-After': '13' })
+	expect(apiError.toBody()).toEqual({
+		error: {
+			code: 'rate_limited',
+			message: brake.message,
+			details: { code: 'execute_rate_limited', retryAfterSeconds: 13 },
 		},
 	})
 })

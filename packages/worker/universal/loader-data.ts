@@ -1893,6 +1893,7 @@ type PackageWebhookVerification =
 			encoding: 'hex' | 'base64'
 			prefix?: string
 			signedPayload?: 'body' | 'timestamp.body'
+			profile?: 'standard-webhooks'
 	  }
 	| { type: 'url-secret' }
 	| null
@@ -2552,11 +2553,6 @@ export type AccountPackageApprovePublishLoaderData = {
 	 */
 	listing: AccountPackageListingBehindHint | null
 	/**
-	 * Always false after listing auto-follow: promote advances the catalog
-	 * pin with the runtime. Kept for loader shape compatibility.
-	 */
-	listingWillLagAfterPromote: boolean
-	/**
 	 * Names stale static dependents that still read a kept `kody.secretMounts`
 	 * alias, or that will break if this publish removes one. Null when there
 	 * is nothing to warn about.
@@ -2743,6 +2739,7 @@ export type AccountSecretDetail = AccountSecretListItem & {
 }
 
 type AccountSecretProviderBindingItem = {
+	id: string
 	provider: string
 	packageId: string
 	kodyId: string
@@ -2778,7 +2775,7 @@ export type AccountSecretProvidersLoaderData = {
 		kodyId: string
 		name: string
 	}>
-	doorSecrets: Array<string>
+	doorSecrets: Array<{ id: string; name: string }>
 	approval: AccountSecretProviderApproval | null
 }
 
@@ -2979,6 +2976,7 @@ export type AccountActivityRunListItem = {
 	/**
 	 * Who started the run. Null for legacy rows (UI shows Unknown) or when
 	 * begin had no request context.
+	 * Permanent: rows written before this field existed keep null; there is no backfill.
 	 */
 	startedBy: {
 		userId: string | null
@@ -3097,6 +3095,7 @@ export type AccountMemoriesLoaderData = {
 	/**
 	 * Team-org legacy list: read-only until cleanup. Personal org is writable.
 	 * Memory is personal-only (ADR 0072).
+	 * Remove when: the ADR 0072 cleanup has deleted every team-org memory.
 	 */
 	legacyReadOnly: boolean
 }
@@ -3822,6 +3821,12 @@ export type AccountConnectedAppView = {
 export type AccountConnectedAppsLoaderData = {
 	ok: true
 	apps: Array<AccountConnectedAppView>
+	runApprovals: Array<{
+		packageId: string
+		appName: string
+		publisher: string
+		publisherName: string
+	}>
 	agents: Array<ConnectedMcpAgent>
 	/** True when the agent list could not load; apps still show. */
 	agentsUnavailable: boolean

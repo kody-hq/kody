@@ -38,7 +38,12 @@ import {
 } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import { invokePackageExport } from '#worker/package-invocations/service.ts'
 import { sourceRevisionChangedErrorCode } from '#worker/package-invocations/common.ts'
-import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
+import {
+	getEntitySourceByIdForUser,
+	markEntitySourcePendingExternalReconcile,
+} from '#worker/repo/entity-sources.ts'
+import { isPublishConcurrencyCallerMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { packageWorkflowInvocationSource } from './package-invocation-sources.ts'
 import { resolveSavedPackageRef } from '#worker/package-registry/repo.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
@@ -57,7 +62,10 @@ import {
 	runStartedByClientFromCredentialKind,
 	normalizeRunStartedBy,
 } from '#worker/run-records/run-started-by.ts'
-import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
+import {
+	isPublishComputeLimitMessage,
+	publishOutsideCloudAdvice,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	beginRunRecord,
 	closeStoppedWorkflowAttemptRuns,
@@ -70,8 +78,16 @@ import {
 	updateRunErrorTriage,
 	upsertWorkflowProjection,
 	type WorkflowProjectionRecord,
+	setWorkflowProjectionProgress,
 	type WorkflowProjectionUpsertInput,
 } from '#worker/run-records/service.ts'
+import { packageRunResultKey } from '#worker/repo/package-run-staging-keys.ts'
+import type { McpProgressUpdate } from '#mcp/progress.ts'
+import {
+	durablePackageCheckWorkflowCode,
+	packageCheckWorkflowName,
+	packageRunWorkflowNames,
+} from './package-check-run.constants.ts'
 import {
 	creatingWorkflowProjectionStatus,
 	decodeWorkflowProjectionCursor,
@@ -81,10 +97,14 @@ import {
 	parseWorkflowProjectionSourceRevision,
 	workflowProjectionReservationStatuses,
 	type WorkflowBindingName,
+	type WorkflowProjectionProgress,
 	type WorkflowSourceRevisionPolicy,
 } from '#worker/run-records/workflow-projection.ts'
 import { runRecordMaxPageSize } from '#worker/run-records/types.ts'
-import { isTransientDurableObjectResetError } from '#worker/durable-object-reset-retry.ts'
+import {
+	getDurableObjectIsolateResourceLimitResetMessage,
+	isTransientDurableObjectResetError,
+} from '#worker/durable-object-reset-retry.ts'
 import { UserCodeError } from '#worker/user-code-error.ts'
 import { inlineWorkflowNameFallback } from '#universal/workflow-display.ts'
 import {
@@ -96,6 +116,8 @@ import {
 import { applyDynamicWorkflowSentryScope } from './package-workflows-sentry.ts'
 import {
 	compactDurablePublishResult,
+	durablePublishRefusalReason,
+	describeDurablePublishState,
 	isDurablePublishWorkflowCode,
 } from './durable-publish-result.ts'
 
@@ -233,6 +255,7 @@ export type WorkflowRunInspection = {
 	lastError: string | null
 	enqueuedCommit: string | null
 	sourceRevision: WorkflowSourceRevisionPolicy | null
+	progress: WorkflowProjectionProgress | null
 }
 
 function resolveWorkflowEngineBinding(
@@ -318,11 +341,30 @@ function isPublishWorkflow(payload: DynamicCallableWorkflowPayload) {
 	return payload.workflowName === 'packagePublishExternalPush'
 }
 
+function isPackageCheckWorkflow(
+	payload: DynamicCallableWorkflowPayload,
+): payload is Extract<
+	DynamicCallableWorkflowPayload,
+	{ sourceType: 'inline' }
+> {
+	return (
+		payload.sourceType === 'inline' &&
+		payload.workflowName === packageCheckWorkflowName &&
+		payload.code === durablePackageCheckWorkflowCode
+	)
+}
+
+function shouldSuggestOffloadingPublish(
+	payload: DynamicCallableWorkflowPayload,
+) {
+	return isPublishWorkflow(payload) && !payload.params?.['publish_build_id']
+}
+
 function isPublishComputeFailure(
 	payload: DynamicCallableWorkflowPayload,
 	error: unknown,
 ) {
-	if (!isPublishWorkflow(payload)) return false
+	if (!shouldSuggestOffloadingPublish(payload)) return false
 	const message = getErrorMessage(error)
 	if (message.includes(publishOutsideCloudAdvice())) return false
 	return /timed out|CPU time|memory limit|compute limit/i.test(message)
@@ -345,6 +387,7 @@ async function workflowRequestSource(
 	const orgId = String(payload.userId)
 	// Legacy equal-id personal orgs are owned by the person themself, and a
 	// lineage from another org carries no role here (inheritedMembership).
+	// Remove when: every secret credential row has a stored placement (null placements backfilled).
 	if (
 		!actorId ||
 		actorId === orgId ||
@@ -480,8 +523,10 @@ function isNonRetryableError(error: unknown) {
  * use `instanceof`. Passing a custom `name` to `NonRetryableError` silently
  * makes the step retryable, so this always keeps the default name.
  */
-function terminalWorkflowStepError(message: string) {
-	return new NonRetryableError(message)
+function terminalWorkflowStepError(message: string, cause?: unknown) {
+	const error = new NonRetryableError(message)
+	if (cause !== undefined) error.cause = cause
+	return error
 }
 
 function normalizeNonEmptyString(value: string, fieldName: string) {
@@ -910,6 +955,7 @@ function mapWorkflowProjectionToInspection(
 		lastError: projection.lastError,
 		enqueuedCommit: projection.enqueuedCommit ?? null,
 		sourceRevision: projection.sourceRevision ?? null,
+		progress: projection.progress ?? null,
 	}
 }
 
@@ -948,6 +994,48 @@ async function getWorkflowRunForUser(input: {
 	})
 	return projection
 		? mapWorkflowProjectionToInspection(projection, input.userId)
+		: null
+}
+
+/**
+ * A packageCheck or packagePublishExternalPush run Kody dispatched, for
+ * whoever follows it (packageRunResult). Null for any other workflow run.
+ */
+export async function getPackageRunForUser(input: {
+	env: Pick<Env, 'DYNAMIC_CALLABLE_WORKFLOWS' | 'RUN_LOG'>
+	userId: OwnerId
+	id: string
+}): Promise<{
+	status: WorkflowRunStatus
+	progress: WorkflowProjectionProgress | null
+	lastError: string | null
+} | null> {
+	const env = input.env as Env
+	const projection = await getWorkflowProjection({
+		env,
+		userId: input.userId,
+		id: input.id,
+	})
+	if (
+		!projection ||
+		projection.sourceType !== 'inline' ||
+		!packageRunWorkflowNames.has(projection.workflowName ?? '')
+	) {
+		return null
+	}
+	const run = mapWorkflowProjectionToInspection(projection, input.userId)
+	// The engine can stop a run without the run writing its own end.
+	await refreshListedWorkflowRunStatuses({
+		env,
+		userId: input.userId,
+		rows: [run],
+		forceRefresh: false,
+	})
+	// A run still being created has a reservation and no engine status yet.
+	const status =
+		run.status ?? (projection.status === 'creating' ? 'queued' : null)
+	return status
+		? { status, progress: run.progress, lastError: run.lastError }
 		: null
 }
 
@@ -990,7 +1078,7 @@ function buildWorkflowProjectionUpsert(input: {
 /**
  * Package a run belongs to: the package export itself, or the package context
  * an inline run was launched under (for example a durable publish), so
- * `package_id` filters find both after the idempotency key is released.
+ * `package_id` filters find both without parsing the idempotency key.
  */
 function workflowPayloadProvenance(payload: WorkflowPayloadFields) {
 	if (payload.sourceType === 'package') {
@@ -1323,6 +1411,13 @@ export async function createDynamicCallableWorkflow(input: {
 	 * their own published commit.
 	 */
 	enqueuedCommit?: string | null
+	/**
+	 * Id of the latest run for `body.idempotencyKey` that this create replaces
+	 * (a dead terminal run, or a complete one the caller must not replay). The
+	 * new run's id derives from it, so concurrent replacements of one run
+	 * converge on a single successor.
+	 */
+	rerunOf?: string | null
 }): Promise<PackageWorkflowCreateResult> {
 	const env = input.env as Env
 	const workflowBinding = resolveWorkflowEngineBinding(
@@ -1334,6 +1429,10 @@ export async function createDynamicCallableWorkflow(input: {
 		typeof input.body.idempotencyKey === 'string'
 			? input.body.idempotencyKey.trim()
 			: ''
+	const rerunOf = input.rerunOf?.trim() || null
+	if (rerunOf && !idempotencyKeyInput) {
+		throw new Error('rerunOf requires an idempotency key.')
+	}
 	if (idempotencyKeyInput) {
 		const existingRun = await findWorkflowRunByIdempotencyKey({
 			env,
@@ -1341,53 +1440,24 @@ export async function createDynamicCallableWorkflow(input: {
 			idempotencyKey: idempotencyKeyInput,
 			bindingName: dynamicCallableWorkflowsBindingName,
 		})
-		if (existingRun) {
+		if (existingRun && existingRun.id !== rerunOf) {
 			return createWorkflowCreateResultFromRow(existingRun)
 		}
 	}
 	const payload = await resolveWorkflowPayload(input)
-	// An explicit idempotency key must single-flight even before the
-	// RunLog projection row is written. After a key release the deterministic
-	// engine id (and any later successors) stay occupied, so walk the
-	// `:after:<occupiedId>` chain until an unused id is free or a projection
-	// still holds the semantic key.
-	const maxSuccessorGenerations = 16
-	let id = await createDynamicCallableWorkflowInstanceId(payload, {
-		includeRunAt: !idempotencyKeyInput,
-	})
-	let existing = await getExistingWorkflowInstance(workflowBinding, id)
-	if (idempotencyKeyInput) {
-		for (
-			let generation = 0;
-			generation < maxSuccessorGenerations;
-			generation += 1
-		) {
-			const projectionForId = await getWorkflowProjection({
-				env,
-				userId: input.userId,
-				id,
-			})
-			if (projectionForId?.idempotencyKey === idempotencyKeyInput) {
-				break
-			}
-			if (!projectionForId && !existing) {
-				break
-			}
-			if (!projectionForId && existing) {
-				// Engine instance without a projection — reclaim below.
-				break
-			}
-			const occupiedId = existing?.id ?? projectionForId!.id
-			id = await createDynamicCallableWorkflowInstanceId(
-				{
+	// An explicit idempotency key must single-flight even before the RunLog
+	// projection row is written, so its engine id is deterministic: the base
+	// id for a first run, or one derived from the run it replaces.
+	const id = await createDynamicCallableWorkflowInstanceId(
+		rerunOf
+			? {
 					...payload,
-					idempotencyKey: `${idempotencyKeyInput}:after:${occupiedId}`,
-				},
-				{ includeRunAt: false },
-			)
-			existing = await getExistingWorkflowInstance(workflowBinding, id)
-		}
-	}
+					idempotencyKey: `${idempotencyKeyInput}:rerun-of:${rerunOf}`,
+				}
+			: payload,
+		{ includeRunAt: !idempotencyKeyInput },
+	)
+	const existing = await getExistingWorkflowInstance(workflowBinding, id)
 	if (existing) {
 		await projectWorkflowRun({
 			env,
@@ -1986,45 +2056,52 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		)
 		let result: JsonValue
 		try {
-			result = await typedStep.do(
-				payload.sourceType === 'package'
-					? 'invoke saved package workflow export'
-					: 'execute inline workflow code',
-				workflowStepDoConfig,
-				async (stepCtx) => {
-					// An earlier attempt killed before its finish write (CPU or
-					// memory limit) left its run row `running`.
-					if ((stepCtx?.attempt ?? 1) > 1) {
-						await closeStoppedWorkflowAttemptRuns({
-							env: this.env,
-							userId: payload.userId,
-							workflowId: event.instanceId,
-							outcome: 'retried',
-						})
-					}
-					try {
-						if (payload.sourceType === 'package') {
-							return await this.invokePackageWorkflowExport(
+			if (isPackageCheckWorkflow(payload)) {
+				result = (await this.runPackageCheck(
+					payload,
+					event.instanceId,
+					typedStep,
+				)) as unknown as JsonValue
+			} else
+				result = await typedStep.do(
+					payload.sourceType === 'package'
+						? 'invoke saved package workflow export'
+						: 'execute inline workflow code',
+					workflowStepDoConfig,
+					async (stepCtx) => {
+						// An earlier attempt killed before its finish write (CPU or
+						// memory limit) left its run row `running`.
+						if ((stepCtx?.attempt ?? 1) > 1) {
+							await closeStoppedWorkflowAttemptRuns({
+								env: this.env,
+								userId: payload.userId,
+								workflowId: event.instanceId,
+								outcome: 'retried',
+							})
+						}
+						try {
+							if (payload.sourceType === 'package') {
+								return await this.invokePackageWorkflowExport(
+									payload,
+									event.instanceId,
+									stepCtx,
+								)
+							}
+							return await this.invokeInlineWorkflowCode(
 								payload,
 								event.instanceId,
 								stepCtx,
 							)
+						} catch (error) {
+							// Suspension stays in force across step retries, so fail the
+							// step once instead of waiting out the retry backoff.
+							if (isAccountSuspendedError(error)) {
+								throw terminalWorkflowStepError(error.message)
+							}
+							throw error
 						}
-						return await this.invokeInlineWorkflowCode(
-							payload,
-							event.instanceId,
-							stepCtx,
-						)
-					} catch (error) {
-						// Suspension stays in force across step retries, so fail the
-						// step once instead of waiting out the retry backoff.
-						if (isAccountSuspendedError(error)) {
-							throw terminalWorkflowStepError(error.message)
-						}
-						throw error
-					}
-				},
-			)
+					},
+				)
 		} catch (error) {
 			await updateWorkflowRunStatus({
 				env: this.env,
@@ -2039,7 +2116,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				userId: payload.userId,
 				workflowId: event.instanceId,
 				outcome: 'failed',
-				...(isPublishWorkflow(payload)
+				...(shouldSuggestOffloadingPublish(payload)
 					? { failureHint: publishOutsideCloudAdvice() }
 					: {}),
 				waitUntil: (promise) => this.ctx.waitUntil(promise),
@@ -2079,6 +2156,44 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		return result
 	}
 
+	/** A built-in `packageCheck` run: each phase is its own durable step. */
+	private async runPackageCheck(
+		payload: Extract<DynamicCallableWorkflowPayload, { sourceType: 'inline' }>,
+		instanceId: string,
+		typedStep: DynamicCallableWorkflowStep,
+	) {
+		const { runPackageCheckWorkflow, readPackageCheckRunParams } =
+			await import('./package-check-run.ts')
+		const callerContext = createMcpCallerContext({
+			baseUrl: getAppBaseUrl({ env: this.env }),
+			executionOrigin: 'background',
+			user: await resolveBackgroundMcpUser(this.env.APP_DB, payload.userId),
+			storageContext: null,
+			source: await workflowRequestSource(this.env.APP_DB, payload),
+		})
+		return await runPackageCheckWorkflow({
+			env: this.env,
+			userId: payload.userId,
+			workflowId: instanceId,
+			params: readPackageCheckRunParams(payload.params),
+			request: callerContext.request ?? null,
+			step: async (name, run) =>
+				(await typedStep.do(
+					name,
+					workflowStepDoConfig,
+					async () => (await run()) as JsonValue,
+				)) as never,
+			reportProgress: async (progress) => {
+				await setWorkflowProjectionProgress({
+					env: this.env,
+					userId: payload.userId,
+					id: instanceId,
+					progress,
+				})
+			},
+		})
+	}
+
 	private async recordWorkflowRunUsage(input: {
 		typedStep: DynamicCallableWorkflowStep
 		payload: DynamicCallableWorkflowPayload
@@ -2110,6 +2225,34 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				return { ok: true }
 			},
 		)
+	}
+
+	/**
+	 * A publish clears the source's reconcile horizon, so a newer push that is
+	 * not followed by its own publish would wait for the daily backstop. Reopen
+	 * the horizon so the next reconcile tick publishes the newest HEAD.
+	 */
+	private async markPublishSourcePendingReconcile(input: {
+		userId: OwnerId
+		sourceId: string | null | undefined
+	}) {
+		const { userId, sourceId } = input
+		if (!sourceId) return
+		try {
+			await markEntitySourcePendingExternalReconcile(this.env.APP_DB, {
+				id: sourceId,
+				userId,
+				tokenExpiresAt: new Date().toISOString(),
+			})
+		} catch (error) {
+			console.warn(
+				'durable publish reconcile mark failed; newest HEAD may wait for the daily reconcile backstop',
+				{
+					sourceId,
+					error: getErrorMessage(error),
+				},
+			)
+		}
 	}
 
 	private async markRetryableWorkflowRunIgnored(input: {
@@ -2358,15 +2501,30 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					packageContext: payload.packageContext,
 					executorTimeoutMs: backgroundExecutorTimeoutMs,
 					runSurface: 'workflow',
+					// A durable publish reports its phases on the run, where
+					// packageRunResult shows them to whoever is polling.
+					...(durablePublish
+						? {
+								reportProgress: async (update: McpProgressUpdate) => {
+									if (!update.message) return
+									await setWorkflowProjectionProgress({
+										env: this.env,
+										userId: payload.userId,
+										id: instanceId,
+										progress: { phase: 'publish', message: update.message },
+									})
+								},
+							}
+						: {}),
 				},
 			)
 			logs = result.logs
 			if (result.error) {
-				if (isTransientDurableObjectResetError(result.error)) {
-					throw new Error(getErrorMessage(result.error))
-				}
 				const message = getErrorMessage(result.error)
 				const terminalIndex = message.indexOf(terminalInlineWorkflowErrorPrefix)
+				if (isTransientDurableObjectResetError(result.error)) {
+					throw new Error(message)
+				}
 				if (terminalIndex !== -1) {
 					throw terminalWorkflowStepError(
 						message.slice(
@@ -2374,10 +2532,22 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 						),
 					)
 				}
+				// This is Kody's own publish wrapper, not user-authored code.
+				if (durablePublish) throw new Error(message, { cause: result.error })
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
 			if (durablePublish) {
+				// The full answer, refusals included, is read with
+				// packageRunResult: the compact result below drops the manifest,
+				// dependents, and hints, and a refusal fails the run.
+				await this.env.REPO_SESSION_BLOBS.put(
+					packageRunResultKey(payload.userId, instanceId),
+					JSON.stringify({ kind: 'packagePublishExternalPush', result: value }),
+					{ httpMetadata: { contentType: 'application/json' } },
+				)
+				const refusal = durablePublishRefusalReason(value)
+				if (refusal) throw terminalWorkflowStepError(refusal)
 				const publish = compactDurablePublishResult(
 					value,
 					payload.enqueuedCommit ?? null,
@@ -2399,6 +2569,42 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			})
 			return value
 		} catch (error) {
+			if (durablePublish && !isAccountSuspendedError(error)) {
+				const state = await describeDurablePublishState({
+					env: this.env,
+					userId: payload.userId,
+					sourceId: payload.packageContext?.sourceId,
+					commit: payload.enqueuedCommit,
+				})
+				const errorMessage = getErrorMessage(error)
+				const resetMessage =
+					getDurableObjectIsolateResourceLimitResetMessage(error)
+				const reason =
+					resetMessage && !errorMessage.includes(resetMessage)
+						? `${errorMessage} Caused by: ${resetMessage}`
+						: errorMessage
+				const message = `Publish workflow: ${state} ${reason}`
+				if (isPublishConcurrencyCallerMessage(errorMessage)) {
+					// A newer push or publish won the race. Retrying the pinned
+					// commit cannot succeed, so fail now as a caller error (off
+					// Sentry, KODY-DZ) and let reconcile publish the newest HEAD.
+					await this.markPublishSourcePendingReconcile({
+						userId: payload.userId,
+						sourceId: payload.packageContext?.sourceId,
+					})
+					error = terminalWorkflowStepError(
+						message,
+						new McpCallerError(errorMessage, { cause: error }),
+					)
+				} else {
+					error =
+						isNonRetryableError(error) ||
+						resetMessage ||
+						isPublishComputeLimitMessage(message)
+							? terminalWorkflowStepError(message)
+							: new Error(message, { cause: error })
+				}
+			}
 			const willRetry = attemptWillRetry(error, stepCtx)
 			await finishRunRecord({
 				env: this.env,

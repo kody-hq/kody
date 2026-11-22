@@ -397,10 +397,10 @@ export function AccountWorkflowsPage({
 				}
 				columns={[
 					{ key: 'name', label: 'Workflow', primary: true },
-					{ key: 'source', label: 'Source', drop: 2 },
+					{ key: 'source', label: 'Source' },
 					{ key: 'status', label: 'Status' },
-					{ key: 'runAt', label: 'Run at', drop: 1 },
-					{ key: 'updated', label: 'Updated', drop: 3 },
+					{ key: 'runAt', label: 'Run at' },
+					{ key: 'updated', label: 'Updated' },
 				]}
 				rows={filteredWorkflows.map((item) => ({
 					id: item.id,

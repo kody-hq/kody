@@ -31,6 +31,7 @@ export const credentialNeedSchema = z.object({
 	/**
 	 * Deprecated legacy alias for `supplier: 'publisher'`, set only by the
 	 * package that declares the need.
+	 * Remove when: no published package declares `ownerCredentialForVisitors`.
 	 */
 	ownerCredentialForVisitors: z.literal(true).optional(),
 	supplier: z.enum(['publisher', 'executor']).optional(),

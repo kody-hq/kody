@@ -609,6 +609,7 @@ test('published bundle artifact retention deletes stale rows, KV blobs, and sour
 		deletedSnapshotKvKeys: 4,
 		kvDeleteErrors: 0,
 		hasMore: false,
+		cursor: { createdAt: '2026-06-06T00:00:00.000Z', id: 'artifact-session' },
 	})
 	expect(kvDelete).toHaveBeenCalledWith('kv:artifact-delete')
 	expect(kvDelete).toHaveBeenCalledWith(
@@ -754,6 +755,7 @@ test('published bundle retention keeps the serving commit while a newer publish 
 		deletedSnapshotKvKeys: 4,
 		kvDeleteErrors: 0,
 		hasMore: false,
+		cursor: { createdAt: '2026-06-06T00:00:00.000Z', id: 'artifact-old' },
 	})
 	expect(kvDelete).toHaveBeenCalledWith('kv:artifact-old')
 	expect(kvDelete).not.toHaveBeenCalledWith('kv:artifact-serving')
@@ -806,6 +808,7 @@ test('published bundle retention keeps the commit an active community listing pi
 		deletedSnapshotKvKeys: 8,
 		kvDeleteErrors: 0,
 		hasMore: false,
+		cursor: { createdAt: '2026-06-06T00:00:00.000Z', id: 'artifact-unpinned' },
 	})
 	expect(kvDelete).not.toHaveBeenCalledWith('kv:artifact-pinned')
 	expect(kvDelete).not.toHaveBeenCalledWith(
@@ -870,6 +873,7 @@ test('published bundle artifact retention rechecks staleness before deleting sel
 		deletedSnapshotKvKeys: 0,
 		kvDeleteErrors: 0,
 		hasMore: false,
+		cursor: { createdAt: '2026-06-06T00:00:00.000Z', id: 'artifact-race' },
 	})
 	expect(refreshedBeforeDelete).toBe(true)
 	expect(kvDelete).not.toHaveBeenCalled()

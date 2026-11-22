@@ -10,7 +10,7 @@ import {
 } from '#start/server/admin-mutations'
 import type { CSSObject } from '@emotion/react'
 import {
-	useEffect,
+	useCallback,
 	useRef,
 	useState,
 	type ChangeEvent,
@@ -127,15 +127,6 @@ export function AdminProviderMarksRoute({
 	const [deleteConfirmed, setDeleteConfirmed] = useState(false)
 	const busy = useRef(false)
 	const mounted = useRef(true)
-	const editorRef = useRef<HTMLFormElement>(null)
-	useEffect(() => {
-		editorRef.current?.scrollIntoView({
-			block: 'nearest',
-			behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-				? 'auto'
-				: 'smooth',
-		})
-	}, [formRevision])
 	const captureSubmitter = useSubmitterScope()
 	const invalidate = usePageInvalidation(mutationResources)
 	const saveMutation = useMutation({
@@ -157,7 +148,8 @@ export function AdminProviderMarksRoute({
 			: 'idle'
 
 	const currentHref = useMatchedPageScope().pageLocation.href
-	useEffect(() => {
+	const trackMounted = useCallback((node: HTMLElement | null) => {
+		if (!node) return
 		mounted.current = true
 		return () => {
 			mounted.current = false
@@ -326,7 +318,7 @@ export function AdminProviderMarksRoute({
 				method="post"
 				key={formRevision}
 				data-testid="provider-mark-editor"
-				ref={editorRef}
+				ref={scrollIntoNearest}
 				css={{
 					display: 'grid',
 					gap: spacing.md,
@@ -471,6 +463,7 @@ export function AdminProviderMarksRoute({
 	const isMutating = actionState !== 'idle'
 	return (
 		<AccountManagementShell
+			ref={trackMounted}
 			layout="list"
 			currentHref={currentHref}
 			busy={actionState !== 'idle'}
@@ -631,3 +624,13 @@ const mutationResources = [
 	'loadMcpServersPage',
 	'loadOnboarding',
 ] as const
+
+// The form remounts on each revision, so this runs once per revision.
+function scrollIntoNearest(node: HTMLFormElement | null) {
+	node?.scrollIntoView({
+		block: 'nearest',
+		behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+			? 'auto'
+			: 'smooth',
+	})
+}

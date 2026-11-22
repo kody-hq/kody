@@ -318,6 +318,7 @@ async function copyOneMemoryToPerson(input: {
 	const sourceUris = parseJsonStringArray(input.source.source_uris_json)
 	if (!sourceUris.includes(provenanceUri)) sourceUris.push(provenanceUri)
 	// Keep source details intact; provenance URI records the legacy origin.
+	// Remove when: the ADR 0072 cleanup has deleted every team-org memory.
 	const details = input.source.details
 	const newId = crypto.randomUUID()
 	const row: McpMemoryRow = {

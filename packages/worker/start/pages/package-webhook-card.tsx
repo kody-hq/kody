@@ -9,7 +9,6 @@ import {
 	IdValue,
 	MetadataGrid,
 	TimestampValue,
-	noticeCardCss,
 } from './account-management-components.tsx'
 import {
 	packageWebhookCardId,
@@ -24,6 +23,7 @@ import type { PackageWebhookListItem } from '#universal/loader-data.ts'
 import { packageCredentialsTabHref } from '#universal/package-credentials-page.ts'
 import {
 	descriptionCss,
+	insetCardCss,
 	fieldCss,
 	fieldLabelCss,
 } from '#universal/styles/style-primitives.ts'
@@ -36,8 +36,10 @@ export type WebhookConfirmation = {
 	onBlur: () => void
 }
 
+/** Inset block inside the Webhooks panel, so cards never stack on cards. */
 const cardCss = {
-	...noticeCardCss,
+	...insetCardCss,
+	gap: spacing.md,
 	// The card is a hash target from the account index; give the jump some
 	// breathing room above the heading.
 	scrollMarginTop: spacing.xl,
@@ -56,7 +58,7 @@ const cardTitleCss = {
 	fontSize: typography.fontSize.lg,
 	fontWeight: typography.fontWeight.semibold,
 	color: colors.text,
-	fontFamily: 'monospace',
+	fontFamily: typography.fontFamilyMono,
 } satisfies CSSObject
 
 const statusPillCss = {

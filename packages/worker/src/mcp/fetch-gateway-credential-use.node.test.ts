@@ -11,7 +11,12 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
+import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
+import {
+	buildWriteCredentialMappingStatement,
+	noteCredentialMappingWritesCommitted,
+} from '#worker/credentials/credential-mappings.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { expandSecretPlaceholders } from '#mcp/fetch-gateway.ts'
@@ -25,7 +30,10 @@ import { insertSavedPackage } from '#worker/package-registry/repo.ts'
 import * as packageSource from '#worker/package-registry/source.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-support/apply-all-migrations.ts'
-import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
+import {
+	createAuditTestDb,
+	createTestOrgAuditWriter,
+} from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
@@ -409,6 +417,7 @@ test('ambient fetch placeholders require secret:use / integration:use for member
 async function setupDeclaredPackage(input: {
 	username: string
 	packageName: string
+	auditDb?: D1Database
 }) {
 	const db = await createOrgDb()
 	const ownerStableId = testStableUserIdFromEmail(
@@ -456,49 +465,174 @@ async function setupDeclaredPackage(input: {
 	})
 	const env = {
 		APP_DB: db,
+		AUDIT_DB: input.auditDb,
 		...createInMemoryUserMeterEnv().env,
 		COOKIE_SECRET: 'test-cookie-secret',
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
-		// Opt out of credential-resolution audit writes (#3456).
-		SENTRY_ENVIRONMENT: 'test',
+		SENTRY_ENVIRONMENT: input.auditDb ? 'local' : 'test',
 	} as unknown as Env
 	const expandAsPackage = async (url: string, init: RequestInit = {}) => {
-		const { request: expanded, bodyFillDone } = await expandSecretPlaceholders({
-			request: new Request(url, init),
-			props: {
-				baseUrl: 'https://example.com',
-				userId: ownerId,
-				email: null,
-				request: ownerRequest,
-				storageContext: {
-					sessionId: null,
-					appId: packageId,
-					packageId,
-					storageId: packageId,
-				},
-				grantedSecretAuthorityPackageIds: [packageId],
-			},
-			env,
-		})
-		// Body placeholders resolve while the body streams. Drain a clone so
-		// placement / host-denial errors surface here while the returned
-		// Request still has a readable body for assertions.
-		if (expanded.body) {
-			const peeked = expanded.clone()
-			try {
-				await peeked.arrayBuffer()
+		const auditWrites: Array<Promise<unknown>> = []
+		try {
+			const { request: expanded, bodyFillDone } =
+				await expandSecretPlaceholders({
+					request: new Request(url, init),
+					props: {
+						baseUrl: 'https://example.com',
+						userId: ownerId,
+						email: null,
+						request: ownerRequest,
+						storageContext: {
+							sessionId: null,
+							appId: packageId,
+							packageId,
+							storageId: packageId,
+						},
+						grantedSecretAuthorityPackageIds: [packageId],
+					},
+					env,
+					waitUntil: (promise) => auditWrites.push(promise),
+				})
+			// Body placeholders resolve while the body streams. Drain a clone so
+			// placement / host-denial errors surface here while the returned
+			// Request still has a readable body for assertions.
+			if (expanded.body) {
+				const peeked = expanded.clone()
+				try {
+					await peeked.arrayBuffer()
+					await bodyFillDone
+				} catch (error) {
+					await bodyFillDone.catch(() => {})
+					throw error
+				}
+			} else {
 				await bodyFillDone
-			} catch (error) {
-				await bodyFillDone.catch(() => {})
-				throw error
 			}
-		} else {
-			await bodyFillDone
+			return expanded
+		} finally {
+			await Promise.all(auditWrites)
 		}
-		return expanded
 	}
-	return { expandAsPackage }
+	return { expandAsPackage, env, db, ownerId, packageId, now }
 }
+
+test.each(['user', 'package'] as const)(
+	'legacy %s references use the mapped ID after rename and never fall back after an explicit clear',
+	async (scope) => {
+		const auditDb = createAuditTestDb()
+		mockPackageManifest('@compat/mailer', {
+			resend: {
+				kind: 'secret',
+				provider: 'resend',
+				description: 'Resend API key.',
+			},
+		})
+		vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+			{
+				key: 'resend',
+				kind: 'secret',
+				provider: 'resend',
+				description: 'Resend API key.',
+				multiple: false,
+			},
+		])
+		const { db, env, ownerId, packageId, now, expandAsPackage } =
+			await setupDeclaredPackage({
+				username: 'compat',
+				packageName: '@compat/mailer',
+				auditDb,
+			})
+		const storageContext = {
+			packageId,
+			appId: null,
+			sessionId: null,
+			storageId: null,
+		}
+		const save = (name: string, value: string) =>
+			secretService.saveSecret({
+				env,
+				userId: ownerId,
+				scope,
+				storageContext,
+				name,
+				value,
+				audit: null,
+			})
+		await save('resend', 'mapped-credential')
+		const row = await db
+			.prepare(
+				"UPDATE secret_entries SET provider = 'resend', allowed_hosts = ? WHERE name = 'resend' RETURNING id",
+			)
+			.bind('["api.resend.com"]')
+			.first<{ id: string }>()
+		const setMapping = async (credentialIds: Array<string>) => {
+			await buildWriteCredentialMappingStatement({
+				db,
+				orgId: ownerId,
+				packageId,
+				needKey: 'resend',
+				target: { target: 'org' },
+				credentialIds,
+				updatedByUserId: ownerId,
+				now,
+			}).run()
+			noteCredentialMappingWritesCommitted(db)
+		}
+		const expand = () =>
+			expandAsPackage('https://api.resend.com/emails', {
+				headers: {
+					'X-Api-Key':
+						scope === 'package'
+							? '{{secret:resend|scope=package}}'
+							: '{{secret:resend}}',
+				},
+			})
+		await setMapping([row!.id])
+		await secretService.renameSecret({
+			env,
+			userId: ownerId,
+			scope,
+			storageContext,
+			fromName: 'resend',
+			toName: 'renamed',
+			audit: null,
+		})
+		await save('resend', 'legacy-name-credential')
+		expect((await expand()).headers.get('X-Api-Key')).toBe('mapped-credential')
+		for (const ids of [[], ['stale-id'], [row!.id, 'another-id']]) {
+			await setMapping(ids)
+			await expect(expand()).rejects.toThrow(
+				/requires one available Key mapping/,
+			)
+		}
+		const usage = await auditDb
+			.prepare(
+				`SELECT result, org_id, resource_id, details_json FROM org_audit_events
+		WHERE action = 'credential.legacy_fill' ORDER BY result`,
+			)
+			.all<{
+				result: string
+				org_id: string
+				resource_id: string
+				details_json: string
+			}>()
+		expect(
+			usage.results.map(({ result, org_id, resource_id, details_json }) => ({
+				result,
+				org_id,
+				resource_id,
+				details: JSON.parse(details_json),
+			})),
+		).toEqual(
+			['denied', 'denied', 'denied', 'success'].map((result) => ({
+				result,
+				org_id: ownerId,
+				resource_id: packageId,
+				details: { surface: 'package', mode: 'need', counts: { header: 1 } },
+			})),
+		)
+	},
+)
 
 test('leak: a declared package fills its credentials anywhere on an allowed host over HTTPS, and is refused elsewhere before they resolve', async () => {
 	mockPackageManifest('@ownerp/mailer', {

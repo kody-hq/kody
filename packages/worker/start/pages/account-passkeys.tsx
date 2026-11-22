@@ -4,7 +4,7 @@ import { Button } from '../components/button.tsx'
 import { useActorRef, useActor } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import {
 	passkeyCeremonyState,
 	type PasskeyCeremonyState,
@@ -126,13 +126,17 @@ export function AccountPasskeysPage({
 		onSettled: (_data, _error, submission) => submission.invalidate(),
 	})
 
-	useEffect(() => {
-		return () => {
-			const current = getCeremony()
-			if (current.status !== 'idle') current.controller.abort()
-			WebAuthnAbortService.cancelCeremony()
-		}
-	}, [getCeremony])
+	const cancelCeremonyOnDetach = useCallback(
+		(node: HTMLElement | null) => {
+			if (!node) return
+			return () => {
+				const current = getCeremony()
+				if (current.status !== 'idle') current.controller.abort()
+				WebAuthnAbortService.cancelCeremony()
+			}
+		},
+		[getCeremony],
+	)
 
 	async function handleRegisterPasskey() {
 		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
@@ -306,6 +310,7 @@ export function AccountPasskeysPage({
 
 	return (
 		<AccountManagementShell
+			ref={cancelCeremonyOnDetach}
 			layout="form"
 			currentHref={currentHref}
 			maxWidth={layoutMaxWidths.content}

@@ -428,7 +428,7 @@ test('a profile credential denial names the profile and the credential by name',
 	expect(denied.allowed).toBe(false)
 	if (denied.allowed) return
 	expect(denied.error.message).toBe(
-		'Profile "helper" was not granted secret:use on credential "notes-api-key". The person it acts for can share the credential with it under Credentials (or accessGrant with resource_type "credential" and subject_type "profile").',
+		'Profile "helper" was not granted secret:use on credential "notes-api-key". The person it acts for can grant it under Agent profiles (/account/profiles) or with accessGrant (resource_type "credential", subject_type "profile", subject_id the profile id).',
 	)
 	expect(denied.error.mintScopes).toBeNull()
 

@@ -4,7 +4,8 @@ import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useRef, useState, type FormEvent } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useActor } from '@xstate/react'
 import { resolveSignInStatusAfterPageshow } from '#client/routes/oauth-authorize-bfcache.ts'
 import {
@@ -374,7 +375,7 @@ export function OAuthAuthorizeRoute({
 		: pickedOrgSlug === undefined
 			? (info?.selectedOrgSlug ?? null)
 			: pickedOrgSlug
-	useEffect(() => {
+	useResourceLifetime(() => {
 		mounted.current = true
 		function pageshow(event: PageTransitionEvent) {
 			const current = getInteraction()
@@ -401,9 +402,13 @@ export function OAuthAuthorizeRoute({
 			window.removeEventListener('pageshow', pageshow)
 		}
 	}, [getInteraction, transition])
-	useEffect(() => {
-		if (turnstileSiteKey) void renderTurnstileWidgets(turnstileSiteKey)
-	}, [turnstileSiteKey, session?.email, info?.requireCredentials])
+	const renderTurnstile = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (node && turnstileSiteKey)
+				void renderTurnstileWidgets(turnstileSiteKey)
+		},
+		[turnstileSiteKey],
+	)
 	function protection() {
 		const form = formRef.current
 		return form
@@ -1100,7 +1105,10 @@ export function OAuthAuthorizeRoute({
 						</>
 					) : null}
 					{!isLoggedIn && turnstileSiteKey ? (
-						<div className={turnstileWidgetClassName}></div>
+						<div
+							ref={renderTurnstile}
+							className={turnstileWidgetClassName}
+						></div>
 					) : null}
 					<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
 						<Button

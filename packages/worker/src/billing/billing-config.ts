@@ -305,6 +305,7 @@ export function getMatchingPriceIdsForPlan(
  * keeps the same reference. The raw id alone is NOT sufficient (legacy
  * accounts may be a plain SHA-256 of the email), so this is HMAC'd with the
  * deployment cookie secret.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export async function createBillingLinkReference(
 	env: Pick<Env, 'COOKIE_SECRET'>,

@@ -1,8 +1,10 @@
+import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { beforeEach, expect, test } from 'vitest'
 import { setAuthSessionSecret } from '#app/auth-session.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
+import { approvePackageAppRun } from '#app/package-app-run-consent.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import {
 	deleteSavedPackage,
@@ -212,6 +214,14 @@ test('app visibility writes bump the org access epoch; projection refreshes do n
 })
 
 test('a KV failure falls back to the full access check', async () => {
+	const collaboratorId = personIdFromStored(
+		testStableUserIdFromEmail(accessFixture.people.collaborator.email),
+	)
+	await approvePackageAppRun(
+		env.APP_DB,
+		collaboratorId,
+		accessFixture.privateApp.id,
+	)
 	silenceExpectedConsoleWarns([
 		'package-app-access-decision-read-failed',
 		'package-app-access-decision-write-failed',

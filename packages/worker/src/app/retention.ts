@@ -76,8 +76,8 @@ const millisecondsPerDay = 24 * 60 * 60 * 1000
 
 /**
  * Inventory of D1 growth-table retention policies. Keep this manifest in sync
- * with the scheduled prune implementation and data-storage.md so future growth
- * tables have an explicit retention story or a documented exemption.
+ * with the scheduled prune implementation and the data-storage contracts so
+ * future growth tables have an explicit retention story or a documented exemption.
  *
  * Explicit policy / alternate_cleanup / durable_forever dispositions also live
  * in `account-retention-dispositions.ts` and must cover the same table set
@@ -404,17 +404,20 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 	env: Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'> & RepoSessionIndexEnv
 	now?: Date
 	batchSize?: number
+	after?: { createdAt: string; id: string }
 }) {
 	const cutoff = cutoffIso(
 		input.now ?? new Date(),
 		publishedBundleArtifactRetentionDays,
 	)
 	const batchSize = input.batchSize ?? publishedBundleArtifactRetentionBatchSize
+	const after = input.after
 	const { results } = await runD1WithRetry(() =>
 		input.env.APP_DB.prepare(
-			`SELECT artifact.id, artifact.kv_key, artifact.source_id, artifact.user_id, artifact.published_commit
+			`SELECT artifact.id, artifact.kv_key, artifact.source_id, artifact.user_id, artifact.published_commit, artifact.created_at
 		FROM published_bundle_artifacts AS artifact
 		WHERE artifact.created_at < ?
+			${after ? 'AND (artifact.created_at > ? OR (artifact.created_at = ? AND artifact.id > ?))' : ''}
 			AND NOT EXISTS (
 				SELECT 1
 				FROM entity_sources AS source
@@ -434,13 +437,18 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 			)
 		ORDER BY artifact.created_at ASC, artifact.id ASC LIMIT ?`,
 		)
-			.bind(cutoff, batchSize)
+			.bind(
+				cutoff,
+				...(after ? [after.createdAt, after.createdAt, after.id] : []),
+				batchSize,
+			)
 			.all<{
 				id: string
 				kv_key: string
 				source_id: string
 				user_id: OwnerId
 				published_commit: string
+				created_at: string
 			}>(),
 	)
 	const rows = results ?? []
@@ -529,12 +537,16 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 			}
 		}
 	}
+	const lastRow = rows.at(-1)
 	return {
 		deletedRows,
 		deletedKvKeys,
 		deletedSnapshotKvKeys,
 		kvDeleteErrors,
 		hasMore: rows.length >= batchSize,
+		// Rows skipped for an active repo session stay in the table, so the
+		// next batch starts after this one instead of reselecting them.
+		cursor: lastRow ? { createdAt: lastRow.created_at, id: lastRow.id } : after,
 	}
 }
 
@@ -694,6 +706,9 @@ export async function pruneRetention(input: {
 			return batch.selected >= retentionDefaultBatchSize
 		},
 	})
+	let publishedBundleArtifactCursor:
+		| { createdAt: string; id: string }
+		| undefined
 	const tasks: Array<{
 		table: string
 		done: boolean
@@ -720,7 +735,9 @@ export async function pruneRetention(input: {
 				const batch = await prunePublishedBundleArtifactsForRetention({
 					env: input.env,
 					now,
+					after: publishedBundleArtifactCursor,
 				})
+				publishedBundleArtifactCursor = batch.cursor
 				result.publishedBundleArtifacts.deletedRows += batch.deletedRows
 				result.publishedBundleArtifacts.deletedKvKeys += batch.deletedKvKeys
 				result.publishedBundleArtifacts.deletedSnapshotKvKeys +=
@@ -806,6 +823,7 @@ export async function pruneRetention(input: {
 	// gets a second one, so a hot table cannot starve the others. The first
 	// pass always completes so each table makes progress every run; later
 	// passes stop once the time budget is exhausted.
+	const taskErrors: Array<unknown> = []
 	let pass = 0
 	while (tasks.some((task) => !task.done)) {
 		if (pass > 0 && Date.now() - startedAtMs >= timeBudgetMs) {
@@ -815,13 +833,27 @@ export async function pruneRetention(input: {
 		for (const task of tasks) {
 			if (task.done) continue
 			if (pass > 0 && Date.now() - startedAtMs >= timeBudgetMs) break
-			const hasMore = await task.run()
 			result.batchesPerTable[task.table] =
 				(result.batchesPerTable[task.table] ?? 0) + 1
-			if (!hasMore) task.done = true
+			try {
+				if (!(await task.run())) task.done = true
+			} catch (error) {
+				// One failing table must not stop the others; the run still
+				// fails below once every table had its turn.
+				task.done = true
+				taskErrors.push(error)
+				console.error('retention-prune-table-failed', {
+					table: task.table,
+					error,
+				})
+			}
 		}
 		pass += 1
 	}
 	console.info('retention-prune', JSON.stringify(result))
+	if (taskErrors.length === 1) throw taskErrors[0]
+	if (taskErrors.length > 1) {
+		throw new AggregateError(taskErrors, 'retention prune tables failed')
+	}
 	return result
 }

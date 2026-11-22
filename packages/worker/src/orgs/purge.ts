@@ -11,6 +11,7 @@
  * soft-deleted accounts). They keep the same claim, retry backoff, and failure
  * audit as soft-delete candidates. Only an explicit `dryRun: true` previews
  * them.
+ * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -49,6 +50,7 @@ export type SoftDeletePurgeCandidate = {
 	 * `deleted_at` for soft-deleted rows. For legacy deletions (`legacy: true`)
 	 * this is the `deleting_at` fence, the closest record of when the deletion
 	 * was requested or last retried.
+	 * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
 	 */
 	deletedAt: string
 	ageDays: number
@@ -75,7 +77,10 @@ export type SoftDeletePurgeOutcome = {
 export type SoftDeletePurgeResult = {
 	/** Soft-deleted (restorable) candidates were only listed. */
 	dryRun: boolean
-	/** Legacy deletion candidates were only listed. */
+	/**
+	 * Legacy deletion candidates were only listed.
+	 * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
+	 */
 	legacyDryRun: boolean
 	scanned: number
 	purged: number
@@ -94,6 +99,10 @@ function cutoffIso(now: Date, millisecondsAgo: number) {
 	return new Date(now.getTime() - millisecondsAgo).toISOString()
 }
 
+/**
+ * Personal orgs of soft-deleted or deletion-fenced people are left out: the
+ * person purge removes its personal org after reading its billing identity.
+ */
 async function listOrgCandidates(input: {
 	db: D1Database
 	ageCutoff: string
@@ -108,6 +117,14 @@ async function listOrgCandidates(input: {
 				 WHERE deleted_at IS NOT NULL
 				   AND datetime(deleted_at) < datetime(?)
 				   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+				   AND NOT EXISTS (
+				     SELECT 1 FROM users u
+				     WHERE (u.deleted_at IS NOT NULL OR u.deleting_at IS NOT NULL)
+				       AND (
+				         (NULLIF(TRIM(u.personal_org_id), '') = orgs.id)
+				         OR (NULLIF(TRIM(u.personal_org_id), '') IS NULL AND u.stable_user_id = orgs.id)
+				       )
+				   )
 				 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 				 LIMIT ?`,
 			)
@@ -292,6 +309,7 @@ async function claimUserForPurge(input: {
  * still fenced, still without `deleted_at`, and past the retry backoff are
  * claimed, so concurrent passes and in-flight deletions are left alone. The
  * restamp starts the next backoff window if this attempt fails.
+ * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 async function claimLegacyUserForPurge(input: {
 	db: D1Database
@@ -323,6 +341,7 @@ export async function pruneSoftDeleted(input: {
 	/**
 	 * When true, list only. When false, hard-delete soft-deleted rows if
 	 * writes are enabled. Legacy deletions run unless this is true.
+	 * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
 	 */
 	dryRun?: boolean
 	enableWrites?: boolean
@@ -451,6 +470,7 @@ export async function pruneSoftDeleted(input: {
 				...legacyFlag(candidate),
 				error: message,
 			})
+			// A failed audit write must not abort the rest of the batch.
 			await logOrgAuditEvent({
 				env: input.env,
 				orgId: candidate.id,
@@ -463,6 +483,21 @@ export async function pruneSoftDeleted(input: {
 					...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
 				}),
 				createdAt: nowIso,
+			}).catch((auditError: unknown) => {
+				// This failure then has no audit row, only this log and the
+				// purge_failed log above; the candidate is still retried.
+				console.warn(
+					JSON.stringify({
+						message: 'soft_delete_purge_failure_audit_failed',
+						kind: candidate.kind,
+						lane,
+						error: redactPurgeFailureDetail(
+							auditError instanceof Error
+								? auditError.message
+								: String(auditError),
+						),
+					}),
+				)
 			})
 		}
 	}

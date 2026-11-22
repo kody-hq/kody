@@ -115,10 +115,10 @@ This project uses the following resources:
     the metadata-only listing projection, acknowledges invalid or inactive
     listings, and retries transient lookup, subscription-discovery, or
     package-invocation infrastructure failures. Only first publish enqueues this
-    shape. A republish that moves the pinned commit no longer enqueues
-    `kind: 'fork_upstream_updated'`. The follow pipeline emits
-    `community.fork.upstream_updated` with the same payload. In-flight messages
-    of that kind are acknowledged without fan-out.
+    shape. For a republish that moves the pinned commit, the follow pipeline
+    emits `community.fork.upstream_updated` with the same payload. The consumer
+    acknowledges legacy `kind: 'fork_upstream_updated'` messages without
+    fan-out.
 - Cloudflare Queue for durable package-emitted event dispatch
   - Producer binding: `PACKAGE_EVENTS_DISPATCH_QUEUE`
   - Queue: `kody-package-events-dispatch`
@@ -204,6 +204,16 @@ This project uses the following resources:
     those zones (in addition to Workers deploy permissions). Forks must create
     the zone and either run `ensure` or add the records manually before the
     first per-user-subdomain deploy.
+  - **Browser Integrity Check is off on package-app zones.** Package apps are
+    public APIs as well as pages, and Browser Integrity Check answers a library
+    default User-Agent (for example Python's `Python-urllib/3.x`) with
+    Cloudflare `error code: 1010` before the request reaches the Worker.
+    Production `kody.run` has the zone setting `browser_check` set to `off`
+    (changed by API on 2026-11-20; the deploy does not manage zone security
+    settings). It was never a rate limit: abuse limits for package apps stay in
+    the Worker (`kody.appRateLimit`, the billed org's usage breaker). The
+    app-origin zone (`kody.codes`) keeps Browser Integrity Check on. Forks that
+    serve package apps should turn it off in their package-app zone.
   - **Zone routes.** `tools/ci/runtime-worker-config.ts` publishes
     `{ pattern: "kody.run/*", zone_name: "kody.run" }`,
     `{ pattern: "*.kody.run/*", zone_name: "kody.run" }`, and
@@ -430,6 +440,12 @@ resolved health-check-only incident. Those writes stay on the status worker so
 origin / `APP_DB` being down cannot block them. When the GitHub secret is unset,
 emit stays skipped and both incident maintenance routes return 503; packages can
 reconcile incident open/resolve from the public `/status.json` snapshot.
+
+Because that emit rides the main origin, the status worker also wakes a Grok Bot
+directly when the optional Worker secrets `STATUS_GROK_BOT_WAKE_URL` and
+`STATUS_GROK_BOT_WAKE_TOKEN` are set (synced from the same-named GitHub Actions
+secrets when present). See `packages/status/readme.md` for the batching, dedupe,
+and daily cap.
 
 ## Optional Cloudflare offerings
 

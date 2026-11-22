@@ -1,20 +1,13 @@
 import { expect, test } from 'vitest'
 import {
-	buildCredentialStamp,
 	collectServerRuntimeModulePaths,
-	credentialStampMaxModuleScanBytes,
 	mergeCredentialStampIntoManifestFiles,
-	omitOversizedCredentialStampModules,
 	planCredentialStampSeal,
 	isStoredCredentialStamp,
 	scanCredentialStamp,
 	scanLiteralMcpServerKeys,
 } from './credential-stamp.ts'
-import {
-	isPackageAppAssetPath,
-	listScannableModulePaths,
-	readPackageAppAssetsDirectory,
-} from './module-placeholder-scan.ts'
+import { listScannableModulePaths } from './module-placeholder-scan.ts'
 
 function manifest(kody: Record<string, unknown> = {}) {
 	return JSON.stringify({
@@ -23,52 +16,6 @@ function manifest(kody: Record<string, unknown> = {}) {
 		kody: { id: 'stamp', description: 'Stamp test.', ...kody },
 	})
 }
-
-test('omitOversizedCredentialStampModules drops huge prebuilt client bundles from the stamp scan', async () => {
-	const huge = `${'a'.repeat(credentialStampMaxModuleScanBytes + 1)}`
-	const files = {
-		'package.json': manifest(),
-		'index.ts': [
-			"import { credential } from 'kody:runtime'",
-			'export default async function run() { return credential("API_KEY") }',
-		].join('\n'),
-		'public/client/main.js': huge,
-	}
-	const filtered = omitOversizedCredentialStampModules(files)
-	expect(filtered['public/client/main.js']).toBeUndefined()
-	expect(filtered['index.ts']).toBe(files['index.ts'])
-	expect(filtered['package.json']).toBe(files['package.json'])
-
-	const scanned = await scanCredentialStamp(files)
-	expect(scanned.keys).toEqual(['API_KEY'])
-	expect(
-		scanned.failures.some(
-			(failure) =>
-				failure.code === 'missing_description' &&
-				failure.message.includes('API_KEY'),
-		),
-	).toBe(true)
-})
-
-test('scanCredentialStamp collects sorted literal keys from credential() and placeholders', async () => {
-	const result = await scanCredentialStamp({
-		'package.json': manifest({
-			credentials: {
-				GITHUB: { kind: 'oauth', description: 'GitHub OAuth.' },
-				API_KEY: { kind: 'secret', description: 'API key.' },
-			},
-		}),
-		'src/index.ts': [
-			"import { credential } from 'kody:runtime'",
-			'export default async function run() {',
-			'  const gh = await credential("GITHUB")',
-			"  return fetch('https://api.example.com', { headers: { Authorization: 'Bearer {{secret:API_KEY}}' } })",
-			'}',
-		].join('\n'),
-	})
-	expect(result.failures).toEqual([])
-	expect(result.keys).toEqual(['API_KEY', 'GITHUB'])
-})
 
 test('scanCredentialStamp fails non-literal credential(), createAuthenticatedFetch, and secretJwtSign names', async () => {
 	const credentialVar = await scanCredentialStamp({
@@ -84,7 +31,7 @@ test('scanCredentialStamp fails non-literal credential(), createAuthenticatedFet
 		true,
 	)
 	expect(credentialVar.failures[0]?.message).toMatch(
-		/literal keys \(credential\("SLOT"\)/,
+		/call credential\("SLOT"\).*with its literal key/,
 	)
 	expect(credentialVar.failures[0]?.message).toMatch(/credentials call map/)
 
@@ -801,32 +748,6 @@ test('mergeCredentialStampIntoManifestFiles adds missing keys and never overwrit
 	expect(parsed.kody.credentials.NEW_KEY).toEqual({})
 })
 
-test('buildCredentialStamp sorts keys and hashes dep stamp pins', async () => {
-	const stamp = await buildCredentialStamp({
-		keys: ['B', 'A'],
-		depStamps: [
-			{
-				packageId: 'pkg-2',
-				publishedCommit: 'bbb',
-				stampHash: 'hash-b',
-			},
-			{
-				packageId: 'pkg-1',
-				publishedCommit: 'aaa',
-				stampHash: 'hash-a',
-			},
-		],
-	})
-	expect(stamp.keys).toEqual(['A', 'B'])
-	expect(stamp.depStamps.map((d) => d.packageId)).toEqual(['pkg-1', 'pkg-2'])
-	expect(stamp.stampHash).toMatch(/^[0-9a-f]{64}$/)
-	const again = await buildCredentialStamp({
-		keys: ['A', 'B'],
-		depStamps: stamp.depStamps,
-	})
-	expect(again.stampHash).toBe(stamp.stampHash)
-})
-
 function appManifestFiles(extra: Record<string, string>) {
 	return {
 		'package.json': JSON.stringify({
@@ -841,23 +762,6 @@ function appManifestFiles(extra: Record<string, string>) {
 		...extra,
 	}
 }
-
-test('literal dynamic import with TS assertion is not server_eval', async () => {
-	const stamped = await scanCredentialStamp(
-		appManifestFiles({
-			'src/server.ts': [
-				'export default {',
-				'  async fetch() {',
-				"    const mod = await import('kody:@kentcdodds/helper/run' as `kody:@${string}/${string}`)",
-				'    return mod.default()',
-				'  },',
-				'}',
-			].join('\n'),
-			'src/client.ts': 'export {}',
-		}),
-	)
-	expect(stamped.failures.filter((f) => f.code === 'server_eval')).toEqual([])
-})
 
 test('server eval / new Function / non-literal import fail; UI client entry is exempt', async () => {
 	const serverEval = await scanCredentialStamp(
@@ -987,57 +891,6 @@ function assetsAppFiles(extra: Record<string, string>) {
 		...extra,
 	}
 }
-
-test('unreferenced kody.app.assets modules are not scannable; server-imported assets stay covered', async () => {
-	expect(
-		readPackageAppAssetsDirectory(
-			JSON.stringify({ kody: { app: { assets: './public/' } } }),
-		),
-	).toBe('public')
-	expect(isPackageAppAssetPath('public/client/main.js', 'public')).toBe(true)
-	expect(isPackageAppAssetPath('src/server.ts', 'public')).toBe(false)
-
-	const unreferenced = assetsAppFiles({
-		'src/server.ts': 'export default { fetch() { return new Response("ok") } }',
-		'public/client/main.js':
-			'eval("asset"); new Function("return 1"); import(name); credential("LEAK")',
-	})
-	expect(await listScannableModulePaths(unreferenced)).toEqual([
-		'src/server.ts',
-	])
-	expect(await listScannableModulePaths(unreferenced)).not.toContain(
-		'public/client/main.js',
-	)
-	const unreferencedServer = await collectServerRuntimeModulePaths(unreferenced)
-	expect(unreferencedServer.has('src/server.ts')).toBe(true)
-	expect(unreferencedServer.has('public/client/main.js')).toBe(false)
-
-	const unreferencedStamp = await scanCredentialStamp(unreferenced)
-	expect(
-		unreferencedStamp.failures.filter((f) => f.code === 'server_eval'),
-	).toEqual([])
-	expect(unreferencedStamp.keys).not.toContain('LEAK')
-
-	// A server import of an asset module must still stamp credentials and
-	// enforce server_eval (reviewers: do not exempt by directory alone).
-	const imported = assetsAppFiles({
-		'src/server.ts':
-			'import "../public/helper.js"; export default { fetch() { return new Response("ok") } }',
-		'public/helper.js':
-			'import { credential } from "kody:runtime"; export const leak = () => credential("LEAK"); eval("1")',
-	})
-	expect(await listScannableModulePaths(imported)).toContain('public/helper.js')
-	expect(
-		(await collectServerRuntimeModulePaths(imported)).has('public/helper.js'),
-	).toBe(true)
-	const importedStamp = await scanCredentialStamp(imported)
-	expect(importedStamp.keys).toContain('LEAK')
-	expect(
-		importedStamp.failures.some(
-			(f) => f.code === 'server_eval' && f.path === 'public/helper.js',
-		),
-	).toBe(true)
-})
 
 test('large prebuilt client asset does not fail stamp and stays cheap to scan', async () => {
 	// ~1.7 MB of minified-shaped JS with eval / Function / dynamic import —

@@ -92,7 +92,6 @@ import { planRepoSessionContentEdits } from './plan-repo-session-content-edits.t
 import { searchRepoWorkspace } from './repo-session-search.ts'
 import { repoSessionRpc as createRepoSessionRpc } from './repo-session-rpc.ts'
 // Keep serving reconciliation off the RepoSession startup graph.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type {
 	PackageServingUpdate,
 	PackageServingUpdateQueue,
@@ -111,7 +110,6 @@ import {
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
-import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
 import {
 	planCredentialTreeScan,
 	scanCredentialTreeChunk,
@@ -131,14 +129,13 @@ import {
 } from './isolated-artifact-rebuild.ts'
 import {
 	isolatedCheckStagingKeyBelongsToUser,
-	type IsolatedAuthoringChecksOutcome,
-	type IsolatedAuthoringChecksRequest,
 	type IsolatedCheckPhaseOutcome,
 	type IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
 import {
 	artifactBuildFailureMessage,
 	isRepoCheckStep,
+	type LinkedPublishArtifactSizes,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
 import type {
@@ -205,6 +202,11 @@ import {
 	purgeRepoSessionWorkspaceBlobs,
 } from './repo-session-blobs.ts'
 import {
+	prepareStagedPackageCheckUpload,
+	type PackageCheckPrepareRequest,
+	type PackageCheckPrepareResult,
+} from './package-check-upload.ts'
+import {
 	buildRepoApplyPatchParseCallerMessage,
 	buildRepoSessionDirectoryTargetMessage,
 	buildRepoSessionNotFoundForUserMessage,
@@ -258,6 +260,7 @@ import {
 const repoSessionWorkspacePrefix = '/session'
 const lastCheckStatusStorageKey = 'repo-session:last-check-status'
 const lastCheckStepStorageKey = 'repo-session:last-check-step'
+const linkedPublishSizesStorageKey = 'repo-session:linked-publish-sizes'
 const lastPublishStorageKey = 'repo-session:last-publish'
 
 type RepoSessionPublishInput = {
@@ -2019,6 +2022,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		/**
 		 * Forwarded to `runRepoChecks`. Platform codemods pass false so
 		 * legacy credential patterns stay migratable (#3836 phase 1).
+		 * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
 		 */
 		enforceCredentialStamp?: boolean
 		/**
@@ -3130,7 +3134,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
-			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -3183,94 +3186,6 @@ class RepoSessionBase extends DurableObject<Env> {
 	}
 
 	/**
-	 * The full authoring publish checks for a staged in-memory tree
-	 * (`packageCheck`, which `kody dev check` calls), invoked on a throwaway
-	 * Durable Object id so the run never shares the origin request isolate's
-	 * memory or CPU (see `runAuthoringChecksInIsolate`). No session; the
-	 * only storage is the current check step marker, which the caller reads
-	 * and clears with `takeLastCheckStep` after a memory or CPU reset. Heavy
-	 * phases still fan out to their own throwaway isolates from inside
-	 * `runRepoChecks`.
-	 */
-	async runIsolatedAuthoringChecks(
-		input: IsolatedAuthoringChecksRequest,
-	): Promise<IsolatedAuthoringChecksOutcome> {
-		if (
-			!isolatedCheckStagingKeyBelongsToUser({
-				stagingKey: input.stagingKey,
-				userId: input.userId,
-			})
-		) {
-			return {
-				ok: false,
-				results: [
-					{
-						kind: 'manifest',
-						ok: false,
-						failureOrigin: 'platform',
-						message:
-							'Publish check staging key does not belong to the requesting user.',
-					},
-				],
-			}
-		}
-		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
-			sourceFiles?: Record<string, string>
-			binaryFileSizes?: Record<string, number>
-			kodyIgnoredDeclarationFiles?: Array<string>
-		}>(input.stagingKey, 'json')
-		const sourceFiles = staged?.sourceFiles
-		if (!sourceFiles) {
-			return {
-				ok: false,
-				results: [
-					{
-						kind: 'manifest',
-						ok: false,
-						failureOrigin: 'platform',
-						message:
-							'Publish check staging data expired or is missing; run the checks again.',
-					},
-				],
-			}
-		}
-		const recordCheckStep = this.checkStepRecorder()
-		// A memory or CPU reset kills this isolate before `finally`, leaving the
-		// step for `takeLastCheckStep`; any other ending clears it.
-		const checks = await runAuthoringPublishChecksOnFiles({
-			onStep: recordCheckStep,
-			files: sourceFiles,
-			...(staged?.binaryFileSizes
-				? { binaryFileSizes: staged.binaryFileSizes }
-				: {}),
-			env: this.env,
-			baseUrl: input.baseUrl,
-			userId: input.userId,
-			...(input.sourceId ? { sourceId: input.sourceId } : {}),
-			...(input.expectedPackageScope !== undefined
-				? { expectedPackageScope: input.expectedPackageScope }
-				: {}),
-			...(input.deferBundleCheckToRebuild === true
-				? { deferBundleCheckToRebuild: true }
-				: {}),
-			...(input.typecheckRanOffWorker === true
-				? { typecheckRanOffWorker: true }
-				: {}),
-			...(staged.kodyIgnoredDeclarationFiles?.length
-				? { kodyIgnoredDeclarationFiles: staged.kodyIgnoredDeclarationFiles }
-				: {}),
-		}).finally(() => this.clearCheckStep())
-		return {
-			ok: checks.ok,
-			results: checks.results.map((result) => ({
-				kind: result.kind,
-				ok: result.ok,
-				message: result.message,
-			})),
-		}
-	}
-
-	/**
 	 * Durably records the authoring-check step about to run, so a memory or
 	 * CPU reset of this isolate can still be reported against that step.
 	 */
@@ -3290,9 +3205,9 @@ class RepoSessionBase extends DurableObject<Env> {
 	 * throwaway isolate (see `publish-work.ts`), or inline when the env lacks
 	 * the isolate bindings.
 	 */
-	private publishWorkRunner(): PublishWorkRunner {
+	private publishWorkRunner(offloadedBuild = false): PublishWorkRunner {
 		return (
-			createIsolatedPublishWorkRunner(this.env) ??
+			createIsolatedPublishWorkRunner(this.env, offloadedBuild) ??
 			createInlinePublishWorkRunner({
 				env: this.env,
 				cloneExternalRefFiles: (request) => this.cloneExternalRefFiles(request),
@@ -3404,6 +3319,16 @@ class RepoSessionBase extends DurableObject<Env> {
 	 * Throwaway-isolate half of `publishWorkRunner().run`: one heavy publish
 	 * step over a staged tree (checks, credential scans, stamps, finalize).
 	 */
+	/**
+	 * First phase of a durable `packageCheck` run, in a throwaway isolate:
+	 * turn the staged upload into the tree the later phases read.
+	 */
+	async runIsolatedPackageCheckPrepare(
+		request: PackageCheckPrepareRequest,
+	): Promise<PackageCheckPrepareResult> {
+		return await prepareStagedPackageCheckUpload({ env: this.env, request })
+	}
+
 	async runIsolatedPublishWork(request: PublishWorkRequest): Promise<unknown> {
 		return await runStagedPublishWorkStep({
 			env: this.env,
@@ -3680,11 +3605,12 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId
 		publishedCommit: string
 		buildId: string
+		diagnosticsId?: string
 		baseUrl?: string
 	}): Promise<PersistUploadedPublishBuildResult> {
 		const source = await this.resolvePublishSource(input)
 		if (source.entity_kind !== 'package') {
-			return { ok: false, message: 'Only packages can publish a build.' }
+			throw new Error('Only packages can publish a build.')
 		}
 		this.assertPublishedCommitUnchanged({
 			source,
@@ -3715,6 +3641,9 @@ class RepoSessionBase extends DurableObject<Env> {
 		const baseUrl = input.baseUrl ?? source.source_root
 		const { persistUploadedPublishBuild } =
 			await import('#worker/publish-offload/persist-uploaded.ts')
+		const { diagnosticsId } = input
+		const largest: LinkedPublishArtifactSizes['largest'] = []
+		let count = 0
 		return await persistUploadedPublishBuild({
 			env: this.env,
 			buildId: input.buildId,
@@ -3725,7 +3654,33 @@ class RepoSessionBase extends DurableObject<Env> {
 			publishedCommit: input.publishedCommit,
 			sourceFiles,
 			targets,
+			onLinkedArtifact: diagnosticsId
+				? async (artifact) => {
+						count++
+						largest.push(artifact)
+						largest.sort((a, b) => b.bytes - a.bytes)
+						largest.splice(6)
+						// Keep one bounded checkpoint. The caller reads it after an
+						// isolate reset, and only for its own attempt.
+						await this.ctx.storage
+							.put(linkedPublishSizesStorageKey, {
+								diagnosticsId,
+								sizes: { count, largest },
+							})
+							.catch(() => {})
+					}
+				: undefined,
 		})
+	}
+
+	async getLinkedPublishArtifactSizes(
+		diagnosticsId: string,
+	): Promise<LinkedPublishArtifactSizes | null> {
+		const checkpoint = await this.ctx.storage.get<{
+			diagnosticsId: string
+			sizes: LinkedPublishArtifactSizes
+		}>(linkedPublishSizesStorageKey)
+		return checkpoint?.diagnosticsId === diagnosticsId ? checkpoint.sizes : null
 	}
 
 	async rebuildPublishedPackageArtifact(input: {
@@ -4974,7 +4929,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		requestedByUserId?: string | null
 		publisherRequest?: RequestContext | null
 		deferBundleCheckToRebuild?: boolean
-		typecheckRanOffWorker?: boolean
+		uploadedBuildId?: string
 		resumeFinalize?: boolean
 	}): Promise<RepoExternalPublishResult> {
 		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
@@ -4985,7 +4940,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		// Clone, checks, credential scans, and finalize each run on a fresh
 		// throwaway isolate over one staged tree; this Durable Object only
 		// coordinates (kody-hq/kody#4078).
-		const runner = this.publishWorkRunner()
+		const runner = this.publishWorkRunner(Boolean(input.uploadedBuildId))
 		const recordCheckStep = runner.isolated ? null : this.checkStepRecorder()
 		const cloned = await runner.cloneExternalRef({
 			userId: input.userId,
@@ -5035,8 +4990,8 @@ class RepoSessionBase extends DurableObject<Env> {
 				...(input.deferBundleCheckToRebuild
 					? { deferBundleCheckToRebuild: true }
 					: {}),
-				...(input.typecheckRanOffWorker === true
-					? { typecheckRanOffWorker: true }
+				...(input.uploadedBuildId
+					? { uploadedBuildId: input.uploadedBuildId }
 					: {}),
 				...(input.resumeFinalize ? { resumeFinalize: true } : {}),
 			}).finally(() => this.clearCheckStep())

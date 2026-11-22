@@ -583,6 +583,40 @@ test('new Keys default to headers-only; placement updates audit and can clear to
 	expect((await t.entry('apiKey'))?.placement_json).toBeNull()
 })
 
+test('typed request profiles can only be set or replaced from the credential page', async () => {
+	const t = await setup()
+	await t.set({ name: 'apiKey', value: 'sk_value' })
+	const row = (await t.entry('apiKey'))!
+	const profile = {
+		kind: 'body' as const,
+		packageId: 'package-1',
+		endpoint: 'https://example.com/update',
+		method: 'POST' as const,
+		mediaType: 'application/json' as const,
+		fields: [['token']],
+		selectors: [],
+		output: { format: 'plaintext' as const },
+	}
+	const update = (inject: typeof profile | { kind: 'query'; param: string }) =>
+		credentialUpdateCapability.handler(
+			{ credential_id: row.id, inject },
+			t.owner,
+		)
+	await expect(update(profile)).rejects.toThrow("on the credential's page")
+	await expect(t.set({ name: 'apiKey', inject: profile })).rejects.toThrow(
+		"on the credential's page",
+	)
+	await t.env.APP_DB.prepare(
+		'UPDATE secret_entries SET inject_json = ? WHERE id = ?',
+	)
+		.bind(JSON.stringify(profile), row.id)
+		.run()
+	await expect(update({ kind: 'query', param: 'token' })).rejects.toThrow(
+		"on the credential's page",
+	)
+	expect(JSON.parse((await t.entry('apiKey'))!.inject_json)).toEqual(profile)
+})
+
 test('execute code cannot widen placement or change inject; narrowing and provider still work', async () => {
 	const t = await setup()
 	await t.set({ name: 'apiKey', value: 'sk_value' })

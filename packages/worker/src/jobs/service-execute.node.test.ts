@@ -93,7 +93,6 @@ vi.mock('#worker/worker-bundler-modules.ts', async () =>
 	).workerBundlerModulesMock(),
 )
 
-// eslint-disable-next-line epic-web/prefer-dispose-in-tests -- this legacy suite restores global spies across many integration-style tests.
 afterEach(() => {
 	resetJobServiceMocks()
 })
@@ -619,9 +618,6 @@ test('package-backed ESM jobs bundle the package entry and use runtime invoke to
 	expect(executeSpy).toHaveBeenCalledTimes(1)
 	expect(executeSpy.mock.calls[0]?.[4]).toMatchObject({
 		packageContext: { packageId: 'job-repo-module', kodyId: 'repo-module-job' },
-		packageEventTools: expect.objectContaining({
-			dispatch: expect.any(Function),
-		}),
 	})
 	expect(executeSpy.mock.calls[0]?.[4]).not.toHaveProperty('packageInvokeTools')
 })

@@ -9,10 +9,7 @@ export const defaultSnapshotRelativePath = path.join(
 	'file-size-ratchet.json',
 )
 
-export type FileSizeRatchetGroupId =
-	| 'agents-md'
-	| 'client-routes'
-	| 'node-tests'
+export type FileSizeRatchetGroupId = 'client-routes' | 'node-tests'
 
 export type FileSizeRatchetGroup = {
 	id: FileSizeRatchetGroupId
@@ -21,15 +18,6 @@ export type FileSizeRatchetGroup = {
 }
 
 export const fileSizeRatchetGroups: ReadonlyArray<FileSizeRatchetGroup> = [
-	{
-		id: 'agents-md',
-		description: 'AGENTS.md',
-		// Reversible: raise this deliberately when the map must grow; do not
-		// grandfather AGENTS.md via the snapshot allowlist.
-		// 23: production-deploy rule for agents (#4242).
-		// 24: blog category and series authoring rules.
-		maxLines: 24,
-	},
 	{
 		id: 'client-routes',
 		description: 'packages/worker/client/routes/*.tsx',
@@ -193,8 +181,6 @@ export async function listRatchetGroupFiles(
 	groupId: FileSizeRatchetGroupId,
 ): Promise<Array<string>> {
 	switch (groupId) {
-		case 'agents-md':
-			return ['AGENTS.md']
 		case 'client-routes':
 			return collectMatchingFiles(
 				cwd,
@@ -243,8 +229,7 @@ export async function checkFileSizeRatchet(
 				}
 				continue
 			}
-			// AGENTS.md must never be grandfathered via the snapshot allowlist.
-			if (group.id !== 'agents-md' && allowlist.has(relativePath)) continue
+			if (allowlist.has(relativePath)) continue
 			issues.push({
 				groupId: group.id,
 				file: relativePath,
@@ -279,9 +264,6 @@ function formatIssues(issues: ReadonlyArray<FileSizeRatchetIssue>) {
 			if (issue.kind === 'stale-snapshot') {
 				return `${issue.file} is listed in the ${issue.groupId} snapshot but no longer exists. Remove it from ${defaultSnapshotRelativePath}.`
 			}
-			if (issue.groupId === 'agents-md') {
-				return `${issue.file} has ${String(issue.lineCount)} lines after formatting (budget ${String(issue.maxLines)}). Keep AGENTS.md a map; put detail in docs/contributing or .agents/skills. Raise the agents-md maxLines in tools/check-file-size-ratchet.ts only when the map must grow on purpose.`
-			}
 			return `${issue.file} has ${String(issue.lineCount)} lines after formatting (budget ${String(issue.maxLines)}). Split it or add it to ${defaultSnapshotRelativePath} only when shrinking an existing grandfathered file is impossible.`
 		})
 		.join('\n')
@@ -303,7 +285,7 @@ export async function main(cwd: string = process.cwd()): Promise<void> {
 		console.error(
 			[
 				`File-size ratchet failed (${String(result.issues.length)} issue(s)).`,
-				'AGENTS.md stays at or under the agents-md budget after formatting (raise maxLines only on purpose). Client routes stay at or under 800 lines after formatting unless they are already in the snapshot. Node tests stay at or under 2000 lines after formatting unless they are already in the snapshot. The snapshot is an allowlist of existing oversized files; it must not grow except to record a file that was already over budget, and AGENTS.md must not be grandfathered there.',
+				'Client routes stay at or under 800 lines after formatting unless they are already in the snapshot. Node tests stay at or under 2000 lines after formatting unless they are already in the snapshot. The snapshot is an allowlist of existing oversized files; it must not grow except to record a file that was already over budget.',
 				'',
 				formatIssues(result.issues),
 			].join('\n'),

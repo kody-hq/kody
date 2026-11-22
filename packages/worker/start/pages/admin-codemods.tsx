@@ -5,7 +5,6 @@ import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
-	useEffect,
 	useRef,
 	useState,
 	type FormEvent,
@@ -57,7 +56,8 @@ export function AdminCodemodsPage(props: {
 	const { codemods, runs } = props.payload
 	const invalidatePages = usePageInvalidation(mutationResources)
 	const lifetime = useRef<AbortController | null>(null)
-	useEffect(() => {
+	const trackLifetime = useCallback((node: HTMLElement | null) => {
+		if (!node) return
 		const controller = new AbortController()
 		lifetime.current = controller
 		return () => {
@@ -393,6 +393,7 @@ export function AdminCodemodsPage(props: {
 		pendingConfirmKey === getConfirmKey('revert-form', selectedCodemodId)
 	return (
 		<AccountManagementShell
+			ref={trackLifetime}
 			layout="list"
 			currentHref={currentHref}
 			busy={pending}

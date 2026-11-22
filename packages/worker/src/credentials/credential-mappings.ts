@@ -25,6 +25,7 @@ export type CredentialMappingRow = {
 	target: CredentialMappingRowTarget
 	/** Ordered; `[]` is "none on purpose". */
 	credentialIds: Array<string>
+	invalidIds?: true
 	updatedByUserId: string | null
 	updatedAt: string
 }
@@ -99,6 +100,7 @@ type PendingCredentialMappingRequest = {
 	personId: string | null
 	enablementIds: ReadonlyArray<string>
 	needKey: string | undefined
+	includeInvalid?: boolean
 	resolve: (rows: Array<CredentialMappingRow>) => void
 	reject: (error: unknown) => void
 }
@@ -139,10 +141,13 @@ function mappingScopeKey(input: {
 function rowsForNeedKey(
 	rows: ReadonlyArray<CredentialMappingRow>,
 	needKey: string | undefined,
+	includeInvalid = false,
 ) {
-	return needKey === undefined
-		? [...rows]
-		: rows.filter((row) => row.needKey === needKey)
+	return rows.filter(
+		(row) =>
+			(includeInvalid || !row.invalidIds) &&
+			(needKey === undefined || row.needKey === needKey),
+	)
 }
 
 /**
@@ -209,13 +214,13 @@ async function queryCredentialMappings(input: {
 					target: row.target,
 				}),
 			)
-			return []
 		}
 		return [
 			{
 				needKey: row.need_key,
 				target,
-				credentialIds,
+				credentialIds: credentialIds ?? [],
+				...(credentialIds ? {} : { invalidIds: true as const }),
 				updatedByUserId: row.updated_by_user_id,
 				updatedAt: row.updated_at,
 			},
@@ -270,7 +275,9 @@ async function flushCredentialMappingBatch(db: D1Database) {
 							: { needKeys: uniqueNeedKeys }),
 				})
 				for (const request of requests) {
-					request.resolve(rowsForNeedKey(rows, request.needKey))
+					request.resolve(
+						rowsForNeedKey(rows, request.needKey, request.includeInvalid),
+					)
 				}
 			} catch (error) {
 				// Isolate failures per scope so one D1 error does not reject
@@ -296,6 +303,11 @@ export async function loadCredentialMappings(input: {
 	enablementIds?: ReadonlyArray<string>
 	needKey?: string
 	request?: RequestContext | null
+	/**
+	 * Compatibility fills must not fall back by name after invalid mappings.
+	 * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
+	 */
+	includeInvalid?: boolean
 }): Promise<Array<CredentialMappingRow>> {
 	const enablementIds = input.enablementIds ?? []
 	const scope = {
@@ -325,7 +337,7 @@ export async function loadCredentialMappings(input: {
 				if (byScope.get(scopeKey) === allRows) byScope.delete(scopeKey)
 			})
 		}
-		return rowsForNeedKey(await allRows, input.needKey)
+		return rowsForNeedKey(await allRows, input.needKey, input.includeInvalid)
 	}
 	const db = input.db
 	return await new Promise<Array<CredentialMappingRow>>((resolve, reject) => {
@@ -336,6 +348,7 @@ export async function loadCredentialMappings(input: {
 			personId: input.personId,
 			enablementIds,
 			needKey: input.needKey,
+			includeInvalid: input.includeInvalid,
 			resolve,
 			reject,
 		}

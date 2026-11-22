@@ -1,0 +1,63 @@
+name: 🗺️ AGENTS.md cap
+
+# Hard cap on root AGENTS.md lines. pull_request_target runs this file from
+# main, so a PR cannot raise CAP or drop the check for itself, and a PR that
+# touches this file fails. The job never checks out or runs PR code: it reads
+# AGENTS.md and the changed-file list through the API, then writes the
+# 🗺️ AGENTS.md cap check on the PR head SHA. (A pull_request_target run is
+# recorded on the base SHA; see merge-conflicts.yml.)
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: read
+
+jobs:
+  agents-md-cap:
+    runs-on: ubuntu-latest
+    name: 🗺️ AGENTS.md cap (writer)
+    timeout-minutes: 5
+    steps:
+      - name: Check AGENTS.md line count
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CAP: 20
+        run: |
+          set -euo pipefail
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          # Untouched AGENTS.md merges as main's copy, already within CAP.
+          lines=0
+          if grep -qx 'AGENTS.md' <<<"$files"; then
+            lines=$(gh api "repos/$REPO/contents/AGENTS.md?ref=$HEAD_SHA" \
+              -H 'Accept: application/vnd.github.raw' | wc -l)
+          fi
+          self=$(grep -cx '.github/workflows/agents-md-cap.yml' <<<"$files" || true)
+          conclusion=success
+          title="AGENTS.md: $lines/$CAP lines"
+          [ "$lines" -eq 0 ] && title="AGENTS.md unchanged"
+          summary="Keep AGENTS.md a pointer map; put detail in docs/."
+          if [ "$lines" -gt "$CAP" ]; then
+            conclusion=failure
+            summary="AGENTS.md has $lines lines; the cap is $CAP. Move detail into docs/ and link it. The cap is not raised in a PR."
+          fi
+          if [ "$self" -gt 0 ]; then
+            conclusion=failure
+            title="This PR edits the AGENTS.md cap workflow"
+            summary="Changes to .github/workflows/agents-md-cap.yml merge only past a red check, by a human."
+          fi
+          echo "$title ($conclusion)"
+          gh api "repos/$REPO/check-runs" -X POST \
+            -f name='🗺️ AGENTS.md cap' -f head_sha="$HEAD_SHA" \
+            -f status=completed -f conclusion="$conclusion" \
+            -f "output[title]=$title" -f "output[summary]=$summary" >/dev/null

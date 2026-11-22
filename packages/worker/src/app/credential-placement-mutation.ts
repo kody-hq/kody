@@ -8,6 +8,8 @@ import {
 } from '#worker/authorization/authorize.ts'
 import {
 	credentialFillPlacementSchema,
+	credentialInjectSchema,
+	defaultCredentialInject,
 	readCredentialFields,
 	updateCredentialFields,
 } from '#worker/credentials/credential-fields.ts'
@@ -26,6 +28,89 @@ export type SetCredentialPlacementResponse = {
 	ok: true
 	placement: CredentialFillPlacementView | null
 	changed: boolean
+}
+
+/** Approves a typed request profile on a Key, or restores its default inject. */
+export async function setCredentialRequestProfile(input: {
+	env: Env
+	user: AuthenticatedAppUser
+	credentialId: string
+	profile: string | null
+}) {
+	const { request } = input.user
+	if (request.membership?.role !== 'owner')
+		return operationResult(
+			{ ok: false, error: 'Only the owner can approve a request profile.' },
+			403,
+		)
+	let inject = defaultCredentialInject
+	if (input.profile !== null) {
+		let raw: unknown
+		try {
+			raw = JSON.parse(input.profile)
+		} catch {
+			return operationResult(
+				{ ok: false, error: 'Enter a valid JSON request profile.' },
+				400,
+			)
+		}
+		const parsed = credentialInjectSchema.safeParse(raw)
+		if (
+			!parsed.success ||
+			!['body', 'path', 'composition'].includes(parsed.data.kind)
+		)
+			return operationResult(
+				{
+					ok: false,
+					error: 'Enter a valid body, path, or composition profile.',
+				},
+				400,
+			)
+		inject = parsed.data
+	}
+	const orgId = ownerIdFromCaller({ request, user: input.user.mcpUser })
+	try {
+		const credential = await getOrgCredential(
+			input.env.APP_DB,
+			orgId,
+			input.credentialId,
+		)
+		if (!credential?.live || credential.kind !== 'secret')
+			return operationResult(
+				{ ok: false, error: 'Select a Key in this organization.' },
+				404,
+			)
+		await authorize(
+			{ env: input.env, request },
+			'secret:write',
+			credentialResource(request.org.id, credential),
+		)
+		if (input.profile === null) {
+			const before = await readCredentialFields({
+				db: input.env.APP_DB,
+				credential,
+			})
+			if (!['body', 'path', 'composition'].includes(before.inject.kind))
+				return operationResult(
+					{ ok: false, error: 'This Key has no approved request profile.' },
+					400,
+				)
+		}
+		await updateCredentialFields({
+			db: input.env.APP_DB,
+			orgId,
+			credentialId: input.credentialId,
+			update: { inject },
+			audit: orgAuditWriterFromRequest(input.env, request),
+		})
+		return operationResult({ ok: true })
+	} catch (error) {
+		if (error instanceof AuthorizationError)
+			return operationResult({ ok: false, error: error.message }, 403)
+		if (error instanceof McpCallerError)
+			return operationResult({ ok: false, error: error.message }, 400)
+		throw error
+	}
 }
 
 export async function setCredentialPlacement(input: {

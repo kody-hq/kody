@@ -5,7 +5,6 @@ import { css } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { shortCommunityCommit } from '#universal/community-display.ts'
 import { routes } from '#universal/routes.ts'
-import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -13,6 +12,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import type { AccountPackageDetail } from '#universal/loader-data.ts'
+import { AccountManagementPanel } from './account-management-components.tsx'
 
 function hasUnpublishedPackageCommit(packageDetail: AccountPackageDetail) {
 	if (!packageDetail.pendingCommitKnown) return false
@@ -110,27 +110,16 @@ export function PackagePublishingPanel(input: {
 		: []
 
 	return (
-		<section
-			data-testid="package-publishing-panel"
-			aria-labelledby={headingId}
-			css={css({
-				...getAccentCalloutCss(),
-				display: 'grid',
-				gap: spacing.sm,
-				minWidth: 0,
-			})}
-		>
-			<div css={css({ display: 'grid', gap: spacing.xs })}>
-				<h3 id={headingId} css={headingCss}>
-					Public release
-				</h3>
-				<p
-					css={css({ margin: 0, color: colors.textMuted })}
-					data-testid="package-public-release-intro"
-				>
+		<AccountManagementPanel
+			testId="package-publishing-panel"
+			headingId={headingId}
+			title="Public release"
+			description={
+				<span data-testid="package-public-release-intro">
 					Choose which version of this package is live.
-				</p>
-			</div>
+				</span>
+			}
+		>
 			<div css={css({ display: 'grid', gap: spacing.xs })}>
 				<p
 					css={css({ margin: 0, color: colors.text })}
@@ -277,16 +266,9 @@ export function PackagePublishingPanel(input: {
 					? 'Publish lock is on. Agents cannot publish without your approval.'
 					: 'Publish lock is off. Click the lock icon above so agents cannot publish without your approval.'}
 			</p>
-		</section>
+		</AccountManagementPanel>
 	)
 }
-
-const headingCss = css({
-	margin: 0,
-	fontSize: typography.fontSize.base,
-	fontWeight: typography.fontWeight.semibold,
-	color: colors.text,
-})
 
 const pickerCss = css({
 	display: 'grid',

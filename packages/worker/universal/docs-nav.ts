@@ -152,7 +152,10 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 				slug: 'secret-backed-integration',
 				label: 'Secret-backed integrations',
 			},
-			{ slug: 'account-secret-setup', label: 'Secret setup URL reference' },
+			{
+				slug: 'account-secret-setup',
+				label: 'Ask the user to save a secret',
+			},
 			{ slug: 'openapi-integrations', label: 'OpenAPI integrations' },
 			{ slug: 'local-mcp-tunnels', label: 'Connect a home MCP server' },
 			{ slug: 'locked-mcp-server', label: 'Lock an MCP server to a package' },
@@ -211,6 +214,7 @@ export const unadvertisedDocSlugs: ReadonlyArray<string> = []
  * Old slugs that no longer exist as their own page. The legacy `/guides/*`
  * redirect and the `/docs/:slug` handler send them to the doc (and heading)
  * that absorbed the content.
+ * Permanent: old public links and addresses keep resolving.
  */
 export const legacyDocSlugAliases: Readonly<
 	Record<string, { slug: string; fragment?: string }>

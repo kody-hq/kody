@@ -3,7 +3,6 @@ import { Button } from '../components/button.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import type { CSSObject } from '@emotion/react'
 import {
-	useEffect,
 	useState,
 	useRef,
 	useCallback,
@@ -11,6 +10,7 @@ import {
 	useSyncExternalStore,
 	type CSSProperties,
 } from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { useRouter } from '@tanstack/react-router'
 import type { OnboardingPayload } from '#universal/onboarding-types.ts'
 import {
@@ -78,7 +78,6 @@ export function OnboardingRoute({
 			? (readRememberedOnboardingAgentChooser() ?? initialAgentChooser)
 			: initialAgentChooser,
 	)
-	useEffect(() => rememberOnboardingAgentChooser(agentChooser), [agentChooser])
 	const storedAgent = useMemo(
 		() => (hydrated ? readRememberedOnboardingSelectedAgent() : null),
 		[hydrated],
@@ -89,12 +88,8 @@ export function OnboardingRoute({
 	const [selectedRememberedAgent, setRememberedAgent] =
 		useState<McpClientKind | null>(null)
 	const rememberedAgent = selectedRememberedAgent ?? storedAgent
-	const sectionRef = useRef<HTMLElement>(null)
 	const animationArmed = useRef(false)
 
-	useEffect(() => {
-		closeOnboardingMcpOAuthPopupIfOpened()
-	}, [])
 	const {
 		loggedIn,
 		mcpServerUrl,
@@ -160,12 +155,12 @@ export function OnboardingRoute({
 		setPreviousSelectedAgent(selectedAgent)
 		setRememberedAgent(selectedAgent)
 	}
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (activeStep === 1 && selectedAgent) {
 			rememberOnboardingSelectedAgent(selectedAgent)
 		}
 	}, [activeStep, selectedAgent])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (activeStep === 3 && selectedAgent && !visibleSelectedAgent)
 			void router.navigate({
 				to: onboardingSecondAgentHref(null, search),
@@ -173,16 +168,24 @@ export function OnboardingRoute({
 				resetScroll: false,
 			})
 	}, [activeStep, selectedAgent, visibleSelectedAgent, router, search])
-	useEffect(() => {
-		const node = sectionRef.current
-		if (!node) return
-		const arm = () => {
-			if (visibleSelectedAgent) setConnectActionAgent(visibleSelectedAgent)
-		}
-		node.addEventListener(onboardingCopiedConnectActionEvent, arm)
-		return () =>
-			node.removeEventListener(onboardingCopiedConnectActionEvent, arm)
-	}, [visibleSelectedAgent])
+	const sectionRef = useCallback(
+		(node: HTMLElement | null) => {
+			if (!node) return
+			rememberOnboardingAgentChooser(agentChooser)
+			closeOnboardingMcpOAuthPopupIfOpened()
+			const controller = new AbortController()
+			listenForOnboardingMcpOAuthDone(refresh, controller.signal)
+			const arm = () => {
+				if (visibleSelectedAgent) setConnectActionAgent(visibleSelectedAgent)
+			}
+			node.addEventListener(onboardingCopiedConnectActionEvent, arm)
+			return () => {
+				controller.abort()
+				node.removeEventListener(onboardingCopiedConnectActionEvent, arm)
+			}
+		},
+		[agentChooser, refresh, visibleSelectedAgent],
+	)
 	function noteOnboardingConnectAction(event: { target: EventTarget | null }) {
 		if (
 			event.target instanceof Element &&
@@ -195,7 +198,7 @@ export function OnboardingRoute({
 		username: payload.username,
 		connected: payload.hasMcpClient,
 	})
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		const previous = previousConnection.current
 		previousConnection.current = {
 			username: payload.username,
@@ -229,11 +232,6 @@ export function OnboardingRoute({
 		router,
 		search,
 	])
-	useEffect(() => {
-		const controller = new AbortController()
-		listenForOnboardingMcpOAuthDone(refresh, controller.signal)
-		return () => controller.abort()
-	}, [refresh])
 
 	const entrance = useCallback((node: HTMLElement | null) => {
 		if (

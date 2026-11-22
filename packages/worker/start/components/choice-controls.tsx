@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef, type ComponentProps, type Ref } from 'react'
+import { useCallback, type ComponentProps, type Ref } from 'react'
 import { useFieldControl } from './field.tsx'
 import { colors, radius } from '#universal/styles/tokens.ts'
 import { choiceControlCss } from '#universal/styles/style-primitives.ts'
@@ -13,14 +13,16 @@ export type CheckboxProps = Omit<
 }
 
 export function Checkbox({ checked, ref, ...props }: CheckboxProps) {
-	const innerRef = useRef<HTMLInputElement>(null)
-	useEffect(() => {
-		if (innerRef.current) innerRef.current.indeterminate = checked === 'mixed'
-	}, [checked])
+	const syncIndeterminate = useCallback(
+		(node: HTMLInputElement | null) => {
+			if (node) node.indeterminate = checked === 'mixed'
+		},
+		[checked],
+	)
 	const fieldProps = useFieldControl(props)
 	return (
 		<input
-			ref={mergeRefs(innerRef, ref)}
+			ref={mergeRefs(syncIndeterminate, ref)}
 			type="checkbox"
 			css={choiceControlCss}
 			checked={checked === undefined ? undefined : checked === true}

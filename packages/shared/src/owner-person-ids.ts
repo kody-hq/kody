@@ -16,6 +16,7 @@
  * **person-keyed** storage. Mixing the brands is a compile error. Ids are
  * opaque (random hex or legacy SHA-256(email)) and never public. See
  * docs/contributing/decisions/0060-owner-and-person-ids.md.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 import { toHex } from './hex.ts'
 
@@ -102,6 +103,7 @@ export function ownerIdFromStored<T extends string | null | undefined>(
  * orgs still have `orgs.id === person id`; new signups mint a distinct org id.
  * Acting in any org other than the caller's personal org must go through an
  * explicit membership or grant check.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export function personalOrgId(person: PersonId): OwnerId {
 	return person as string as OwnerId

@@ -5,6 +5,7 @@
  * `/-/` (auth, health), so a package name can never shadow a system route.
  * Exact `/.well-known/...` paths stay at their spec location and are never
  * package mounts. The legacy `/packages/{kodyId}` mount is still served.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 
 export const packageAppHostSystemPrefix = '/-'
@@ -55,6 +56,7 @@ export function isPackageAppHostReservedFirstSegment(segment: string) {
  * True when a package name leaf must not be newly created because it collides
  * with a package-app host root or system path (reserved first segments plus
  * the legacy `packages` mount prefix).
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function isPackageAppHostReservedPackageLeaf(leaf: string) {
 	const normalized = leaf.trim().toLowerCase()
@@ -99,7 +101,10 @@ WHERE deleted_at IS NULL
 ORDER BY kody_id, user_id;`
 }
 
-/** True when the pathname uses the legacy `/packages/{kodyId}` subdomain mount. */
+/**
+ * True when the pathname uses the legacy `/packages/{kodyId}` subdomain mount.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+ */
 export function isPackageAppLegacySubdomainMountPath(pathname: string) {
 	return pathname.startsWith(`/${packageAppHostLegacyMountSegment}/`)
 }
@@ -109,6 +114,7 @@ export function isPackageAppLegacySubdomainMountPath(pathname: string) {
  * segments, the legacy `packages` mount segment (a prefix, not a package
  * name), and `@handle` segments, which belong to the app-origin username
  * namespace.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function isPackageAppHostNonLeafFirstSegment(segment: string) {
 	const normalized = segment.trim().toLowerCase()

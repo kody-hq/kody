@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import { parseJsonc } from './ci/resource-utils.ts'
 import {
+	committedGeneratedEsModuleNames,
 	guideGeneratedModuleNames,
 	kodyGeneratedEsModuleNames,
 	kodyGeneratedWasmNames,
@@ -31,6 +32,7 @@ test.each(wranglerAdditionalModuleConfigPaths)(
 		const esGlobs = esModule?.globs ?? []
 		const wasmGlobs = compiledWasm?.globs ?? []
 		for (const name of [
+			...committedGeneratedEsModuleNames,
 			...guideGeneratedModuleNames,
 			...kodyGeneratedEsModuleNames,
 		]) {

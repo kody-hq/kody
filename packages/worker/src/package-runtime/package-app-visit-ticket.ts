@@ -23,6 +23,10 @@
  * visit.
  */
 import {
+	isolateCollection,
+	isolateState,
+} from '@kody-internal/shared/isolate-state.ts'
+import {
 	base64UrlToBytes,
 	bytesToBase64Url,
 	utf8ToBase64Url,
@@ -174,10 +178,10 @@ type StoredAnonymousVisitTicket = {
 	binding: string
 }
 
-const liveNonces = new Map<string, number>()
-const burnedNonces = new Map<string, number>()
-const signingKeys = new Map<string, Promise<CryptoKey>>()
-let localSigningSecret: string | null = null
+const liveNonces = isolateCollection(new Map<string, number>())
+const burnedNonces = isolateCollection(new Map<string, number>())
+const signingKeys = isolateCollection(new Map<string, Promise<CryptoKey>>())
+const localSigningSecret = isolateState((): string | null => null)
 
 export class PackageAppVisitTicketError extends Error {
 	constructor() {
@@ -186,13 +190,13 @@ export class PackageAppVisitTicketError extends Error {
 	}
 }
 
-function localSigningSecretForTests() {
-	if (!localSigningSecret) {
+function isolateLocalSigningSecret() {
+	if (!localSigningSecret.current) {
 		const bytes = new Uint8Array(32)
 		crypto.getRandomValues(bytes)
-		localSigningSecret = toHex(bytes)
+		localSigningSecret.current = toHex(bytes)
 	}
-	return localSigningSecret
+	return localSigningSecret.current
 }
 
 function signingSecret(secretStoreKey: string | undefined) {
@@ -200,7 +204,7 @@ function signingSecret(secretStoreKey: string | undefined) {
 	if (key.length >= 32) return key
 	// Local and unit tests have no usable server key. Tickets minted here
 	// only verify on this isolate, which is enough for those environments.
-	return localSigningSecretForTests()
+	return isolateLocalSigningSecret()
 }
 
 function derivationKey(secretStoreKey: string | undefined) {
@@ -394,14 +398,6 @@ function audienceMatches(
 	)
 }
 
-/** Clears the nonce registry so tests can mint and replay in isolation. */
-export function resetPackageAppVisitNoncesForTests() {
-	liveNonces.clear()
-	burnedNonces.clear()
-	localSigningSecret = null
-	signingKeys.clear()
-}
-
 /** Mark a visit nonce live for this request. Mint already does this. */
 export function beginPackageAppVisit(nonce: string, now = Date.now()) {
 	pruneNonceMaps(now)
@@ -416,11 +412,6 @@ export function endPackageAppVisit(nonce: string | null | undefined) {
 	if (!nonce) return
 	liveNonces.delete(nonce)
 	burnedNonces.set(nonce, Date.now() + packageAppVisitTicketTtlMs)
-}
-
-/** Drop the live mark without burning, as if verify ran on another isolate. */
-export function forgetPackageAppVisitLiveForTests(nonce: string) {
-	liveNonces.delete(nonce)
 }
 
 /**

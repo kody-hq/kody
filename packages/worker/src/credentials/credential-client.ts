@@ -53,6 +53,7 @@ import {
 import type {
 	CredentialCallMap,
 	CredentialPick,
+	NamedCredentialPick,
 } from './credential-call-map.ts'
 import {
 	type CredentialMappingRowTarget,
@@ -78,6 +79,7 @@ import {
 } from './credential-request.ts'
 import type {
 	CredentialTarget,
+	ClientPlacement as CredentialResolverPlacement,
 	ResolvedClientPlacement,
 	ResolveCredentialInput,
 } from './credential-resolver.ts'
@@ -113,10 +115,7 @@ export type CredentialClientOption = {
 
 /** One ready-to-retry pick: a call-map entry, or `credential.named`. */
 export type CredentialClientRetry = {
-	credentials?: Record<
-		string,
-		{ name: string; scope: UsableCredential['scope'] }
-	>
+	credentials?: Record<string, { id: string }>
 	named?: { name: string; scope: UsableCredential['scope'] }
 }
 
@@ -308,7 +307,7 @@ function readText(value: unknown, field: string) {
 	return text
 }
 
-function readScope(value: unknown): CredentialPick['scope'] {
+function readScope(value: unknown): NamedCredentialPick['scope'] {
 	if (value == null) return null
 	if (value === 'org' || value === 'personal') return value
 	throw refusal('invalid_request', 'scope must be "org" or "personal".')
@@ -333,7 +332,7 @@ function describeOptions(credentials: ReadonlyArray<UsableCredential>) {
 function retryFor(key: string | null, credential: UsableCredential) {
 	const pick = { name: credential.name, scope: credential.scope }
 	return {
-		...(key ? { credentials: { [key]: pick } } : {}),
+		...(key ? { credentials: { [key]: { id: credential.id } } } : {}),
 		named: pick,
 	}
 }
@@ -450,7 +449,7 @@ function pickOne(input: {
 			'credential_unbound',
 			`No credential you can use matches ${input.describe}.${
 				input.possibleMatches.length > 0
-					? ' Some matching credentials have no provider; pick one by name, or set its provider with credentialUpdate so it resolves on its own.'
+					? ' Some matching credentials have no provider; pick one by id, or set its provider with credentialUpdate so it resolves on its own.'
 					: ''
 			}`,
 			{
@@ -464,7 +463,7 @@ function pickOne(input: {
 	}
 	throw refusal(
 		'credential_ambiguous',
-		`More than one credential you can use matches ${input.describe}: ${describeOptions(input.candidates)}. Pick one by name and scope.`,
+		`More than one credential you can use matches ${input.describe}: ${describeOptions(input.candidates)}. Pick a credential id.`,
 		{
 			retryWith: input.candidates.map((candidate) =>
 				retryFor(input.key, candidate),
@@ -548,7 +547,7 @@ async function resolveMappedNeed(
 /** With a `link`, a name with no match carries a creation link. */
 function findByName(
 	usable: ReadonlyArray<UsableCredential>,
-	pick: CredentialPick,
+	pick: NamedCredentialPick,
 	key: string | null,
 	link?: { baseUrl: string } & CredentialCreateLinkInput,
 ) {
@@ -597,13 +596,23 @@ function pickExplicit(input: {
 	orgSlug: string | null
 }): Picked {
 	const { kind, provider, match } = input.target
-	const credential = findByName(input.usable, input.pick, input.key, {
-		baseUrl: input.baseUrl,
-		orgSlug: input.orgSlug,
-		...(match === 'exact' && kind
-			? { kind, kindMode: 'required' as const }
-			: {}),
-	})
+	const pick = input.pick
+	const credential =
+		'id' in pick
+			? input.usable.find((candidate) => candidate.id === pick.id)
+			: findByName(input.usable, pick, input.key, {
+					baseUrl: input.baseUrl,
+					orgSlug: input.orgSlug,
+					...(match === 'exact' && kind
+						? { kind, kindMode: 'required' as const }
+						: {}),
+				})
+	if (!credential) {
+		throw refusal(
+			'credential_not_found',
+			`No credential with the selected id that you can use for "${input.key}".`,
+		)
+	}
 	if (match === 'exact' && kind && credential.kind !== kind) {
 		throw refusal(
 			'invalid_request',
@@ -1052,7 +1061,10 @@ export async function validateCredentialCallMap(input: {
 	strict: boolean
 	/** Origin for creation links on a pick with no match. */
 	baseUrl: string
-}): Promise<{ warnings: Array<string> }> {
+}): Promise<{
+	warnings: Array<string>
+	map: ReadonlyMap<string, ReadonlyArray<{ id: string }>>
+}> {
 	return await withClientErrors(input, async () => {
 		const request = input.request
 		if (!request?.actor) {
@@ -1106,6 +1118,7 @@ export async function validateCredentialCallMap(input: {
 			boundLists.map(({ packageId, bound }) => [packageId, bound]),
 		)
 		const warnings: Array<string> = []
+		const map = new Map<string, Array<{ id: string }>>()
 		for (const [key, picks] of input.map) {
 			const need = needs.get(key) ?? null
 			if (need?.supplier === 'publisher') {
@@ -1139,12 +1152,13 @@ export async function validateCredentialCallMap(input: {
 							...(boundByPackage.get(packageId) ?? []),
 						])
 					: [baseUsable]
+			const resolved: Array<{ id: string }> = []
 			for (const pick of picks) {
 				let lastError: unknown
-				let ok = false
+				const candidateIds = new Set<string>()
 				for (const usable of pools) {
 					try {
-						pickExplicit({
+						const { credential } = pickExplicit({
 							key,
 							pick,
 							usable,
@@ -1152,16 +1166,23 @@ export async function validateCredentialCallMap(input: {
 							baseUrl: input.baseUrl,
 							orgSlug: request.org.slug,
 						})
-						ok = true
-						break
+						candidateIds.add(credential.id)
 					} catch (error) {
 						lastError = error
 					}
 				}
-				if (!ok) throw lastError
+				if (candidateIds.size === 0) throw lastError
+				if (candidateIds.size !== 1) {
+					throw refusal(
+						'credential_ambiguous',
+						`More than one credential matches credentials.${key} across this run's packages. Select a credential id.`,
+					)
+				}
+				resolved.push({ id: [...candidateIds][0]! })
 			}
+			map.set(key, resolved)
 		}
-		return { warnings }
+		return { warnings, map }
 	})
 }
 
@@ -1367,9 +1388,9 @@ export async function refreshCredentialClient(
 
 /** Where a client fetch's credential goes: a header, a query param, or a whole URL. */
 export type CredentialClientPlacement =
-	| { kind: 'header'; name: string; value: string }
-	| { kind: 'query'; param: string; value: string }
+	| CredentialResolverPlacement
 	| { kind: 'url'; url: URL }
+	| { kind: 'single-request-login'; headers: Headers }
 
 export type AppliedCredentialClient = {
 	placement: CredentialClientPlacement
@@ -1425,8 +1446,11 @@ export async function applyCredentialClient(input: {
 	packageAppAuthority?: PackageAppCredentialAuthority | null
 	token: string
 	requestUrl: URL
+	outboundRequest?: Request
+	attestedPackageId?: string
 	/** A login session a host answered 401 to; the door drops it and re-mints. */
 	rejectedLoginSessionId?: string | null
+	registerLogout?: (logout: () => Promise<void>) => void
 }): Promise<AppliedCredentialClient> {
 	return await withClientErrors(input, async () => {
 		const ctx = {
@@ -1456,6 +1480,12 @@ export async function applyCredentialClient(input: {
 							use: 'client-key',
 							credentialId: handle.id,
 							requestUrl,
+							...(input.outboundRequest
+								? { outboundRequest: input.outboundRequest }
+								: {}),
+							...(input.attestedPackageId
+								? { attestedPackageId: input.attestedPackageId }
+								: {}),
 						}),
 					),
 					providerLabel,
@@ -1493,9 +1523,21 @@ export async function applyCredentialClient(input: {
 						credentialId: handle.id,
 						requestUrl,
 						rejectedSessionId: input.rejectedLoginSessionId ?? null,
+						registerLogout: input.registerLogout,
 					}),
 				)
 				const { placement } = session
+				if (session.singleRequestHeaders) {
+					return {
+						placement: {
+							kind: 'single-request-login',
+							headers: session.singleRequestHeaders,
+						},
+						substitutedValues: session.substitutedValues,
+						shape: 'single-request login session',
+						providerLabel,
+					}
+				}
 				return {
 					placement,
 					substitutedValues: session.substitutedValues,

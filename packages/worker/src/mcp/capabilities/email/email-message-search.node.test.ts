@@ -114,6 +114,7 @@ test('emailMessageSearch requires a signed-in, verified user and forwards the qu
 		ownerId: ownerIdFromStored('user-1'),
 		query: 'invoice',
 		inboxId: 'inbox-1',
+		inboxIds: null,
 		direction: 'inbound',
 		processingStatus: null,
 		deliveryStatus: null,

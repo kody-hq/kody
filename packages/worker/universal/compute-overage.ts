@@ -33,6 +33,7 @@ import {
  * redirect to the signed-in person's personal-org usage Credits section.
  * Prefer `orgUsageCreditsPath` from `#universal/org-pages.ts` when the
  * organization slug is known.
+ * Remove when: legacy `/account/usage` and `/account/credits` links get no traffic.
  */
 export const accountCreditsPath = '/account/usage#credits'
 

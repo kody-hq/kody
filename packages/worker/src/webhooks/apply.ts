@@ -3,6 +3,7 @@ import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { normalizeHost } from '#mcp/secrets/allowed-hosts.ts'
 import { buildSecretHostApprovalUrl } from '#mcp/secrets/host-approval.ts'
+import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { getJoinedIntegration } from '#worker/integrations/service.ts'
@@ -196,6 +197,7 @@ async function authorizeApplyRequest(input: {
 		if (!resolved.allowedHosts.includes(host)) {
 			const approvalUrl = buildSecretHostApprovalUrl({
 				baseUrl: input.baseUrl,
+				orgSlug: secretPageOrgSlugFromCaller({ request: input.request }),
 				name: secretName,
 				scope: resolved.scope ?? 'user',
 				requestedHost: host,

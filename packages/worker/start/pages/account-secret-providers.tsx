@@ -6,6 +6,7 @@ import {
 	unbindSecretProvider,
 	grantSecretProvider,
 	revokeSecretProvider,
+	saveVaultItemCredential,
 } from '#start/server/account-mutations'
 import type { AccountSecretProvidersLoaderData } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
@@ -91,8 +92,21 @@ export function AccountSecretProvidersPage({
 			revokeSecretProvider,
 		),
 	)
+	const saveVaultItem = useMutation(
+		secretMutationOptions(
+			queryClient,
+			actorKey,
+			orgSlug,
+			mutationResources,
+			saveVaultItemCredential,
+		),
+	)
 	const status =
-		bind.isPending || unbind.isPending || grant.isPending || revoke.isPending
+		bind.isPending ||
+		unbind.isPending ||
+		grant.isPending ||
+		revoke.isPending ||
+		saveVaultItem.isPending
 			? 'saving'
 			: 'idle'
 	async function submit(run: () => Promise<unknown>, successHref: string) {
@@ -273,6 +287,70 @@ export function AccountSecretProvidersPage({
 					</ul>
 				)}
 			</AccountManagementPanel>
+			{payload.bindings.length ? (
+				<AccountManagementPanel title="Create a vault-backed Key">
+					<p css={pageDescriptionCss}>
+						Choose a binding and enter the vault item ID and field. The saved
+						Key can be mapped by ID; each package also needs a grant for the
+						item field.
+					</p>
+					<form
+						css={{ display: 'grid', gap: spacing.md }}
+						onSubmit={(event) => {
+							event.preventDefault()
+							const form = event.currentTarget
+							const data = new FormData(form)
+							const get = (name: string) => String(data.get(name) ?? '').trim()
+							void submit(
+								async () => {
+									await saveVaultItem.mutateAsync({
+										orgSlug: orgSlug ?? undefined,
+										bindingId: get('binding'),
+										itemId: get('item'),
+										field: get('field'),
+										name: get('keyName'),
+										hosts: get('hosts')
+											.split(',')
+											.map((host) => host.trim())
+											.filter(Boolean),
+										provider: get('provider') || undefined,
+									})
+									form.reset()
+								},
+								relocateAccountHref('/account/credentials', currentHref),
+							)
+						}}
+					>
+						<Field label="Provider binding">
+							<Select name="binding" required>
+								{payload.bindings.map((binding) => (
+									<option key={binding.id} value={binding.id}>
+										{binding.provider}
+									</option>
+								))}
+							</Select>
+						</Field>
+						<Field label="Vault item ID">
+							<Input name="item" required />
+						</Field>
+						<Field label="Item field">
+							<Input name="field" required />
+						</Field>
+						<Field label="Key label">
+							<Input name="keyName" required />
+						</Field>
+						<Field label="Approved hosts (comma-separated)">
+							<Input name="hosts" required />
+						</Field>
+						<Field label="API provider slug (optional)">
+							<Input name="provider" />
+						</Field>
+						<Button type="submit" disabled={disabled}>
+							Create Key
+						</Button>
+					</form>
+				</AccountManagementPanel>
+			) : null}
 			<AccountManagementPanel title="Package grants">
 				{payload.grants.length === 0 ? (
 					<p css={pageDescriptionCss}>
@@ -367,8 +445,8 @@ export function AccountSecretProvidersPage({
 						disabled={disabled}
 					>
 						<option value="">Select a user secret</option>
-						{payload.doorSecrets.map((name) => (
-							<option key={name} value={name}>
+						{payload.doorSecrets.map(({ id, name }) => (
+							<option key={id} value={id}>
 								{name}
 							</option>
 						))}
@@ -416,7 +494,7 @@ export function AccountSecretProvidersPage({
 									orgSlug: orgSlug ?? undefined,
 									provider: bindProvider,
 									packageId: bindPackageId,
-									doorSecretName: bindDoorSecret,
+									doorCredentialId: bindDoorSecret,
 									config,
 								}),
 							relocateAccountHref('/account/secret-providers', currentHref),

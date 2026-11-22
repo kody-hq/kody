@@ -65,6 +65,7 @@ export type PausedSessionPublish = {
 export type PausedExternalPublish = {
 	allowForce: boolean
 	destructiveOverwriteConfirmed: boolean
+	uploadedBuildId?: string
 }
 
 export type CredentialNeedsApprovalRequired = {
@@ -106,7 +107,10 @@ function supplierChanged(prior: CredentialNeed, next: CredentialNeed) {
 	return before !== after && !(before === 'publisher' && after === null)
 }
 
-/** Who fills the need: publisher (or its older alias), executor, or legacy. */
+/**
+ * Who fills the need: publisher (or its older alias), executor, or legacy.
+ * Remove when: no published package declares `ownerCredentialForVisitors`.
+ */
 function needSupplier(
 	need: Pick<CredentialNeed, 'supplier' | 'ownerCredentialForVisitors'>,
 ) {
@@ -295,6 +299,8 @@ export async function requireCredentialNeedsApproval(input: {
 				: {}),
 		},
 		requestedByUserId: input.requestedByUserId ?? null,
+		replaceSameCommitDetails:
+			input.pausedExternalPublish?.uploadedBuildId != null,
 	})
 	return {
 		requestId: request.id,
@@ -371,5 +377,8 @@ export function readPausedExternalPublish(
 		allowForce: options['allowForce'] === true,
 		destructiveOverwriteConfirmed:
 			options['destructiveOverwriteConfirmed'] === true,
+		...(typeof options['uploadedBuildId'] === 'string'
+			? { uploadedBuildId: options['uploadedBuildId'] }
+			: {}),
 	}
 }

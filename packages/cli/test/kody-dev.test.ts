@@ -349,40 +349,54 @@ export default async function main() {
 	}
 })
 
-test('execute --invoke local export against mock', async () => {
-	const cache = await mkdtemp(join(tmpdir(), 'kody-invoke-mock-'))
-	const previous = process.env.KODY_CACHE_DIR
-	const cwd = process.cwd()
-	process.env.KODY_CACHE_DIR = cache
-	try {
-		process.chdir(fixtureRoot)
-		let stdout = ''
-		const code = await runCli(
-			[
-				'execute',
-				'--target',
-				'mock',
-				'--invoke',
-				'./greet',
-				'--params',
-				JSON.stringify({ name: 'kent' }),
-			],
-			{
-				stdout: (text) => {
-					stdout += text
+test(
+	'mock package exports do not fall back to scratch when local Kody is unavailable',
+	{
+		skip:
+			process.env.KODY_DEV_STUB_RUNTIME !== '1' &&
+			'Requires the offline stub runtime',
+	},
+	async () => {
+		const cache = await mkdtemp(join(tmpdir(), 'kody-invoke-mock-'))
+		const previous = process.env.KODY_CACHE_DIR
+		const cwd = process.cwd()
+		process.env.KODY_CACHE_DIR = cache
+		try {
+			process.chdir(fixtureRoot)
+			let stdout = ''
+			let stderr = ''
+			const code = await runCli(
+				[
+					'execute',
+					'--target',
+					'mock',
+					'--invoke',
+					'./greet',
+					'--params',
+					JSON.stringify({ name: 'kent' }),
+				],
+				{
+					stdout: (text) => {
+						stdout += text
+					},
+					stderr: (text) => {
+						stderr += text
+					},
 				},
-				stderr: () => {},
-			},
-		)
-		assert.equal(code, 0)
-		assert.match(stdout, /kent/)
-	} finally {
-		process.chdir(cwd)
-		if (previous === undefined) delete process.env.KODY_CACHE_DIR
-		else process.env.KODY_CACHE_DIR = previous
-		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
-	}
-})
+			)
+			assert.equal(code, 1)
+			assert.match(
+				stdout + stderr,
+				/Local Kody is unavailable for package export execution/,
+			)
+		} finally {
+			process.chdir(cwd)
+			if (previous === undefined) delete process.env.KODY_CACHE_DIR
+			else process.env.KODY_CACHE_DIR = previous
+			await rm(cache, { recursive: true, force: true, maxRetries: 10 })
+		}
+	},
+)
 
 test('kody dev job --dry-run prints the plan without invoking', async () => {
 	const auth = await resolveDevAuth({

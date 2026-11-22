@@ -378,6 +378,7 @@ export type CredentialSaveBody =
  * What is wrong with the link itself, so the form cannot save it as asked.
  * Matches the legacy intake page: a bad expiry or a package Key for a
  * package this org does not have.
+ * Remove when: `/connect/secret-set` gets no traffic; then delete the redirect.
  */
 export function keyLinkProblem(input: {
 	query: ParsedCredentialCreateQuery
@@ -505,6 +506,13 @@ export function buildKeySaveBody(input: {
 				},
 			}
 		case 'login': {
+			if ('singleRequest' in form.loginExchange.rest) {
+				return {
+					ok: false,
+					error:
+						'Set up a single-request Login with secretSet as the credential owner.',
+				}
+			}
 			const body = parseExchangeBody(form.loginExchange.body)
 			if (!body) {
 				return {

@@ -11,8 +11,7 @@ Kody is a multi-worker Cloudflare app: a TanStack Start browser UI and
 OAuth-protected MCP HTTP on origin, platform Durable Objects on `kody-platform`,
 package apps on `kody-runtime`, and cron on `kody-jobs`. It is multi-user, so
 the overarching invariant is that **every read/write path is scoped by
-`userId`** (see [`AGENTS.md`](../../AGENTS.md)). Cross-user data sharing is a
-bug, not a feature. See
+`userId`**. Cross-user data sharing is a bug, not a feature. See
 [architecture](architecture/index.md#production-worker-fleet).
 
 ## Invariants for future agents (do not regress)
@@ -150,6 +149,32 @@ package-app surfaces:
     `kody.*` capability may adopt: an unadopted fork would adopt itself. Package
     apps, jobs, webhooks, and other package runtimes cannot adopt or grant
     themselves secrets.
+
+16. **Agents may narrow access; only owners widen it.** An agent or package
+    runtime holding only Use on a resource (`secret:use`, `integration:use`) may
+    lock a resource that any context can use to its first package, since that
+    only removes access. Adding a package to an existing grant list returns
+    `approval_required` with an owner `approval_url` and writes nothing.
+    Integration and MCP server locks decide through `planPackageLock`
+    ([`allowed-packages.ts`](../../packages/worker/src/mcp/secrets/allowed-packages.ts)),
+    and a table-driven contract test with one row per kind
+    ([`resource-lock.node.test.ts`](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts))
+    fails when a kind widens or a new kind has no row.
+
+## Variant check
+
+A security fix covers the pattern, not only the reported line. Before shipping,
+look for the same pattern in:
+
+- **Sibling kinds** of the same operation (for example every `resourceLock`
+  kind, every grant-list mutator, every surface that reaches the same service).
+- **The other repo.** kody-hq/kody and kody-hq/kody-celld implement many of the
+  same flows; check the matching code in the one you are not fixing.
+- **Docs** that describe the behavior, including guides that promise a security
+  property. Fix any claim the code does not back, and link the claim to its test
+  (see [Documentation](./documentation.md)).
+
+Record what you checked under **Variants checked** in the PR body.
 
 ## First-party HTTP security headers
 
@@ -684,6 +709,11 @@ guarded by a bearer secret comparison.
   stripped before the request leaves, on both the gateway and local native fetch
   paths. Policy writes (allowed hosts/capabilities/ packages) are only reachable
   through the authenticated account UI.
+- The hosted fetch gateway checks the hostname before each fetch it issues
+  directly, including redirects it follows itself. See the
+  [initial request and redirect tests](../../packages/worker/src/mcp/fetch-gateway-redirect.node.test.ts).
+  This hostname check does not inspect DNS results or redirects followed inside
+  the underlying fetch.
 - User code runs in a Cloudflare Worker Loader isolate without the parent `env`;
   capabilities are RPC'd back to handlers that enforce the caller's `userId`.
 - The DR control-plane Admin UI is protected by Cloudflare Access plus in-worker

@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
 	existsSync,
 	mkdirSync,
@@ -22,6 +23,7 @@ import {
 	recordProvenanceCheck,
 	treeShaForCommit,
 	treeShaForWorktree,
+	type GitHookProvenanceCheck,
 	type ProvenanceStore,
 } from './git-hook-provenance.ts'
 
@@ -31,7 +33,9 @@ import {
  * format checks, typechecks, runs Knip, and selects related unit tests unless
  * global inputs require the full suites. Paths whose pushed content matches
  * origin/main (merged-in main) are left to main's CI when picking unit tests.
- * Only full successful suites can record test:push provenance.
+ * Only full successful suites can record test:push provenance; a passing
+ * related-tests run records its own provenance so a retried push of the same
+ * tree (say, after the remote dropped the connection) does not rerun it.
  */
 
 export type GitHookName = 'pre-commit' | 'pre-push'
@@ -194,7 +198,7 @@ export function shouldSkipProvenanceCheck(input: {
 	git: GitRunner
 	stdin?: string | null
 	store: ProvenanceStore
-	check: 'knip' | 'test:push'
+	check: GitHookProvenanceCheck
 }): { skip: boolean; treeSha: string | null; reason: string | null } {
 	const treeSha = uniquePushedTreeSha(input)
 	if (!treeSha) {
@@ -609,11 +613,22 @@ export async function runGitHookChecks(input: {
 					)
 					log(
 						relatedPaths.length > 0
-							? `pre-push: related tests for ${relatedPaths.length} non-deleted source paths (no test:push provenance recorded)`
+							? `pre-push: related tests for ${relatedPaths.length} non-deleted source paths (a pass skips them on the next push of this tree, not test:push)`
 							: 'pre-push: skipping unit tests (no pushed source paths differ from main)',
 					)
 				}
 			}
+			scripts = scripts.filter((script) => {
+				if (!isRelatedTestScript(script)) return true
+				const skipRelated = shouldSkipProvenanceCheck({
+					git,
+					stdin: input.stdin,
+					store: provenance,
+					check: relatedTestProvenanceCheck(script, relatedPaths ?? []),
+				})
+				if (skipRelated.skip && skipRelated.reason) log(skipRelated.reason)
+				return !skipRelated.skip
+			})
 			if (scripts.includes('test:push')) {
 				log(
 					listed.unlistedReason !== null
@@ -638,7 +653,8 @@ export async function runGitHookChecks(input: {
 		// Provenance must bind to the tree that was actually tested, not
 		// whatever commit tips appear on stdin (#3745 review). Skip the
 		// fingerprint when stdin has no pushable SHAs (blank / delete-only).
-		const recordsProvenance = script === 'test:push' || script === 'knip'
+		const recordsProvenance =
+			script === 'test:push' || script === 'knip' || isRelatedTestScript(script)
 		const pushShas = recordsProvenance
 			? pushedCommitShas(input.stdin ?? null)
 			: []
@@ -655,9 +671,7 @@ export async function runGitHookChecks(input: {
 				status = await runScript(
 					script,
 					undefined,
-					script.startsWith('vitest related ')
-						? (relatedPaths ?? [])
-						: undefined,
+					isRelatedTestScript(script) ? (relatedPaths ?? []) : undefined,
 				)
 			}
 		} finally {
@@ -695,7 +709,11 @@ export async function runGitHookChecks(input: {
 				const commitTree = treeShaForCommit(git, sha)
 				if (!commitTree || commitTree !== testedTreeAfter) continue
 				recordProvenanceCheck(provenance, {
-					check: script === 'knip' ? 'knip' : 'test:push',
+					check: isRelatedTestScript(script)
+						? relatedTestProvenanceCheck(script, relatedPaths ?? [])
+						: script === 'knip'
+							? 'knip'
+							: 'test:push',
 					treeSha: commitTree,
 					source: 'pre-push',
 				})
@@ -703,6 +721,23 @@ export async function runGitHookChecks(input: {
 		}
 	}
 	return 0
+}
+
+function isRelatedTestScript(
+	script: string,
+): script is `vitest related --project ${string}` {
+	return script.startsWith('vitest related --project ')
+}
+
+/** A related run only vouches for the same tree and the same selected paths. */
+function relatedTestProvenanceCheck(
+	script: `vitest related --project ${string}`,
+	paths: ReadonlyArray<string>,
+): GitHookProvenanceCheck {
+	const selection = createHash('sha256')
+		.update(JSON.stringify([...new Set(paths)].sort()))
+		.digest('hex')
+	return `${script} paths:${selection}`
 }
 
 function planPreCommit(paths: ReadonlyArray<string> | null): GitHookCheckPlan {

@@ -14,9 +14,15 @@ const mockModule = vi.hoisted(() => ({
 	resolvePackageOwnerContext: vi.fn(),
 	servePackageAppRequest: vi.fn(),
 	findPlainRepoPromotionHint: vi.fn(),
+	authorize: vi.fn(async (..._args: Array<unknown>) => {}),
 	getPackageAppBaseUrl: vi.fn<typeof AppBaseUrl.getPackageAppBaseUrl>(
 		() => 'https://apps.example.com',
 	),
+}))
+
+vi.mock('#worker/authorization/authorize.ts', async (original) => ({
+	...(await original<object>()),
+	authorize: (...args: Array<unknown>) => mockModule.authorize(...args),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -169,7 +175,7 @@ test('packageAppFetch dispatches synthetic in-process app requests against hoste
 	)
 	const request = lastServedRequest()
 	expect(request).toBeInstanceOf(Request)
-	expect(request.url).toBe('https://kody.apps.example.com/demo-app/api/health')
+	expect(request.url).toBe('https://demo-app--kody.apps.example.com/api/health')
 	expect(
 		Object.fromEntries(
 			['Host', 'CF-Ray', 'X-Forwarded-For', 'Origin', 'X-Test', 'Accept'].map(
@@ -346,4 +352,31 @@ test('packageAppFetch truncates oversized bodies and encodes binary as base64', 
 	expect(decoded).toEqual(largeBinary.slice(0, decoded.byteLength))
 	expect(capped.body.length).toBeLessThanOrEqual(102_400)
 	expect(capped.truncated).toBe(true)
+})
+
+test('packageAppFetch checks app:execute on the app it runs', async () => {
+	invalidateDemoPackageCache()
+	mockModule.resolveSavedPackageRef.mockResolvedValue(savedPackage())
+	mockModule.servePackageAppRequest.mockClear()
+	mockModule.servePackageAppRequest.mockResolvedValue(new Response('ok'))
+
+	await fetchApp({ kody_id: 'demo-app' })
+	expect(mockModule.authorize).toHaveBeenLastCalledWith(
+		expect.anything(),
+		'app:execute',
+		expect.objectContaining({
+			type: 'app',
+			id: 'package-1',
+			orgId: ownerIdFromStored('user-1'),
+		}),
+	)
+	expect(mockModule.servePackageAppRequest).toHaveBeenCalledTimes(1)
+
+	mockModule.authorize.mockRejectedValueOnce(
+		new Error('Missing app:execute on app "demo-app".'),
+	)
+	await expect(fetchApp({ kody_id: 'demo-app' })).rejects.toThrow(
+		'Missing app:execute on app "demo-app".',
+	)
+	expect(mockModule.servePackageAppRequest).toHaveBeenCalledTimes(1)
 })

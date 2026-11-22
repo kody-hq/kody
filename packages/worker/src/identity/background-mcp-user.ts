@@ -9,19 +9,15 @@ import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { getUserRolesAndPermissions } from './permissions-db.ts'
 import { resolveDisplayName } from './username.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { createPromiseLruCacheByBinding } from '#worker/package-registry/published-package-cache.ts'
 
 const backgroundMcpUserCacheTtlMs = 60_000
 const backgroundMcpUserCacheMaxEntries = 1_000
 
-type BackgroundMcpUserCacheEntry = {
-	value: Promise<McpUserContext>
-	expiresAtMs: number
-}
-
-const backgroundMcpUserCachesByDb = new WeakMap<
-	D1Database,
-	Map<string, BackgroundMcpUserCacheEntry>
->()
+const backgroundMcpUserCaches = createPromiseLruCacheByBinding<McpUserContext>({
+	ttlMs: backgroundMcpUserCacheTtlMs,
+	limit: backgroundMcpUserCacheMaxEntries,
+})
 
 function isMissingRbacTableError(error: unknown) {
 	if (!(error instanceof Error)) return false
@@ -216,27 +212,8 @@ export async function resolveBackgroundMcpUser(
 	db: D1Database,
 	userId: string,
 ): Promise<McpUserContext> {
-	let cache = backgroundMcpUserCachesByDb.get(db)
-	if (!cache) {
-		cache = new Map()
-		backgroundMcpUserCachesByDb.set(db, cache)
-	}
-	const nowMs = Date.now()
-	const existing = cache.get(userId)
-	if (existing && existing.expiresAtMs > nowMs) {
-		return await existing.value
-	}
-	const value = loadBackgroundMcpUser(db, userId)
-	value.catch(() => {
-		if (cache.get(userId)?.value === value) cache.delete(userId)
+	return await backgroundMcpUserCaches.for(db).getOrCreate({
+		cacheKey: userId,
+		create: () => loadBackgroundMcpUser(db, userId),
 	})
-	if (cache.size >= backgroundMcpUserCacheMaxEntries) {
-		const oldestKey = cache.keys().next().value
-		if (oldestKey !== undefined) cache.delete(oldestKey)
-	}
-	cache.set(userId, {
-		value,
-		expiresAtMs: nowMs + backgroundMcpUserCacheTtlMs,
-	})
-	return await value
 }

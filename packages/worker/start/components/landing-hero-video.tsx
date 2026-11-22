@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useRef, useState, type CSSProperties } from 'react'
 import { YouTubeLightPlayer } from './youtube-light-player.tsx'
 import {
 	landingHeroChooserLabel,
@@ -83,37 +83,36 @@ export function LandingHeroVideo({
 	const selectedIndex = selection.index < videos.length ? selection.index : 0
 	const activeIndex = active < videos.length ? active : 0
 	const chosen = selection.chosen
-	useEffect(() => {
-		const node = scroller.current
-		if (!node) return
-		function sync() {
-			if (node) setHorizontalOverflow(chooserHasHorizontalOverflow(node))
-		}
-		const observer = new ResizeObserver(sync)
-		observer.observe(node)
-		node.addEventListener('scroll', sync, { passive: true })
-		sync()
-		return () => {
-			observer.disconnect()
-			node.removeEventListener('scroll', sync)
-		}
-	}, [videos.length])
-	useEffect(() => {
-		const node = scroller.current,
-			option = document.getElementById(id + '-video-' + activeIndex)
-		if (node && option)
-			node.scrollTo({
-				left: option.offsetLeft - (node.clientWidth - option.offsetWidth) / 2,
-				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-			})
-	}, [activeIndex, id])
-	useEffect(() => {
-		if (chosen)
-			document
-				.getElementById(playerId)
-				?.querySelector<HTMLIFrameElement>('iframe')
-				?.focus({ preventScroll: true })
-	}, [selectedIndex, chosen, playerId])
+	const videoCount = videos.length
+	const scrollerRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			scroller.current = node
+			if (!node || !videoCount) return
+			function sync() {
+				if (node) setHorizontalOverflow(chooserHasHorizontalOverflow(node))
+			}
+			const observer = new ResizeObserver(sync)
+			observer.observe(node)
+			node.addEventListener('scroll', sync, { passive: true })
+			sync()
+			return () => {
+				scroller.current = null
+				observer.disconnect()
+				node.removeEventListener('scroll', sync)
+			}
+		},
+		[videoCount],
+	)
+	const playerRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (node && chosen)
+				node
+					.querySelector<HTMLIFrameElement>('iframe')
+					?.focus({ preventScroll: true })
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- refocus the player when the selection changes
+		[selectedIndex, chosen],
+	)
 	function choose(index: number) {
 		if (index < 0 || index >= videos.length) return
 		setSelection({ index, chosen: true })
@@ -125,6 +124,7 @@ export function LandingHeroVideo({
 	return (
 		<div className="landing-hero-media">
 			<div
+				ref={playerRef}
 				id={playerId}
 				data-rise
 				style={{ '--rise': '1' } as CSSProperties}
@@ -151,7 +151,7 @@ export function LandingHeroVideo({
 							: 'landing-hero-chooser fade-none-x'
 					}
 					data-testid="landing-hero-chooser"
-					ref={scroller}
+					ref={scrollerRef}
 					onKeyDown={(event) => {
 						const next = nextChooserIndex(activeIndex, event.key, videos.length)
 						if (next !== null) {
@@ -168,6 +168,7 @@ export function LandingHeroVideo({
 					{videos.map((video, index) => (
 						<div
 							key={video.videoId}
+							ref={index === activeIndex ? centerInChooser : undefined}
 							id={optionId(index)}
 							role="option"
 							tabIndex={-1}
@@ -193,4 +194,13 @@ export function LandingHeroVideo({
 			) : null}
 		</div>
 	)
+}
+
+function centerInChooser(option: HTMLElement | null) {
+	const chooser = option?.parentElement
+	if (option && chooser)
+		chooser.scrollTo({
+			left: option.offsetLeft - (chooser.clientWidth - option.offsetWidth) / 2,
+			behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+		})
 }

@@ -61,9 +61,10 @@ reused, or evolved.
 Ad hoc `execute` runs with the signed-in user's ambient authority: it can call
 discovered capabilities through `kody`. A saved package is the
 declared-authority unit. Secret mounts, host approval, integration allowlists,
-and `kody.dependencies` are the request, and agents cannot widen those. Outbound
-emissions (email, paid APIs, third-party writes) are not invertible; use a
-package `dryRun` and fresh user confirmation before a live mutation.
+and `kody.dependencies` describe the requested authority. For resource locks,
+[a use-only caller's widening request returns an approval URL without changing the allowlist](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts).
+Outbound emissions (email, paid APIs, third-party writes) are not invertible;
+use a package `dryRun` and fresh user confirmation before a live mutation.
 
 ### Fork a close public package before creating
 
@@ -183,9 +184,9 @@ use one of these supported patterns:
   caller does not get the return value in the same call; read it from
   `metadata.result` (capped at 4 KiB) with `kody.runList({ workflow_id })`. See
   [Workflows](../use/workflows.md).
-- **Push an event instead of reading.** A job, subscription handler, or package
-  app in one package calls `events.dispatch` on a topic it declares in
-  `kody.emits`, and the other package subscribes. The emitter never sees the
+- **Push an event instead of reading.** Code in one package (a job, export,
+  subscription handler, or app) calls `events.dispatch` on a topic it declares
+  in `kody.emits`, and the other package subscribes. The emitter never sees the
   handler's result. See
   [Package subscriptions](./package-subscriptions.md#emitting).
 
@@ -234,13 +235,14 @@ When a normal filesystem and git client are available:
 4. Commit and push the package repository.
 5. Publish the pushed head with `packagePublishExternalPush`. That call runs the
    server-side publish checks (manifest, docs, bundle, typecheck, lint,
-   credentials). When the publish exceeds the inline budget it returns
-   `dispatched` with a `workflow_id`; poll `workflowRunList` until the run is
-   terminal. A durable run that does not publish ends `errored` and frees a
-   retry for the same commit. See [Packages](../use/packages.md) for the
-   statuses. When bundling exceeds the worker isolate, build on this machine or
-   a context you operate and have Kody verify the upload:
-   `kody package publish <package> --build local` or `--build context`. See
+   credentials). The call always returns `dispatched` with a `workflow_id`; poll
+   `packageRunResult` until its `status` is terminal; the same answer then
+   carries the full result (`kody package publish` does this). A durable run
+   that does not publish ends `errored` and frees a retry for the same commit.
+   See [Packages](../use/packages.md) for the statuses. When bundling exceeds
+   the worker isolate, build on this machine or a context you operate and have
+   Kody verify the upload: `kody package publish <package> --build local` or
+   `--build context`. See
    [Publish packages too big for Kody cloud](./publish-large-packages.md)
    (`guide:publish_large_packages`). Do **not** open a repo session to run
    `repoRunChecks` on the pushed tree — `repoOpenSession` refuses unpublished
@@ -293,14 +295,14 @@ package directory to exercise unpublished surfaces before the first publish. One
 `--target prod|mock` switch decides where server-side calls go (default **`mock`
 for `kody dev`**, **`prod` for `execute` / `search`**).
 
-| Surface           | How to test locally                                                                                                                                      |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Exports**       | `kody execute --target mock --invoke ./export --params '…'` (or `--file`) against the working tree; then `--target prod`                                 |
-| **Apps**          | `kody dev` / `kody dev fetch /path` (`--json` for agents) — see [Package apps](./package-apps.md#local-testing-with-kody-dev)                            |
-| **Schedules**     | `kody dev job <name>` — runs the job entry **once** with the scheduler’s no-arg contract; never schedules locally                                        |
-| **Webhooks**      | `kody dev webhook <name> --body fixture.json` — delivers the platform webhook envelope                                                                   |
-| **Subscriptions** | `kody dev emit <event> --body event.json` — delivers the platform subscription envelope (`synthetic: true`); on mock, any declared event type is allowed |
-| **Check**         | `kody dev check` — local bundles, then the same publish checks publish runs (`packageCheck`); `--offline` skips the server checks                        |
+| Surface           | How to test locally                                                                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Exports**       | `kody execute --target mock --invoke ./export --params '…'` (or `--file`) against the working tree; then `--target prod`                                       |
+| **Apps**          | `kody dev` / `kody dev fetch /path` (`--json` for agents) — see [Package apps](./package-apps.md#local-testing-with-kody-dev)                                  |
+| **Schedules**     | `kody dev job <name>` — runs the job entry **once** with the scheduler’s no-arg contract; never schedules locally                                              |
+| **Webhooks**      | `kody dev webhook <name> --body fixture.json` — delivers the platform webhook envelope                                                                         |
+| **Subscriptions** | `kody dev emit <event> --body event.json` — delivers the platform subscription envelope (`synthetic: true`); on mock, any declared event type is allowed       |
+| **Check**         | `kody dev check` — local bundles, then the same publish checks publish runs, as a durable run it follows (`packageCheck`); `--offline` skips the server checks |
 
 Mock first (safe iteration; scratch `packageStorage` for the working tree; fake
 or local credentials), then re-run with `--target prod` for real CapabilityProxy
@@ -354,8 +356,11 @@ npx @kodycodes/cli@latest dev --passthrough api.stripe.com
 Unmatched requests fail closed with structured `unmocked_request` (method + URL)
 and a paste-ready handler stub in `fix` / `details.handlerStub`.
 `--passthrough <host,…>` opts specific hosts into the real network; credentials
-stay fake on mock, so passthrough never carries real credentials. Private/local
-passthrough hosts also need `--allow-private-network`.
+come from mock session state. Passthrough is real network access: the
+[gateway forwards request headers and bodies](../../packages/cli/src/mock/mock-fetch-gateway.ts),
+removing only the internal `x-kody-credential-client` header. Keep real secrets
+out of mock code, inputs, and fixtures. Private/local passthrough hosts also
+need `--allow-private-network`.
 
 Example agent-facing error:
 
@@ -447,6 +452,26 @@ Require fresh confirmation if the target or scope changes.
 Keep the schedule disabled when representative testing is inconclusive,
 credentials or host approval are missing, the result is unexpected, or the live
 mutation has not been explicitly confirmed by the user.
+
+## Rename a package
+
+The package name is in `package.json#name`, and the git origin
+`https://kody.codes/@owner/{name}.git` follows it. Rename in this order:
+
+1. Set `name` to the new `@owner/new-leaf` (and `kody.id` to `new-leaf` if the
+   manifest sets it), then commit.
+2. Push to the current origin, which still uses the old name. The new git URL
+   exists only after the publish.
+3. Publish by `package_id`: `kody package publish <package_id>`. Name lookups
+   still return the old name until this publish finishes.
+4. Point origin at the new name:
+   `git remote set-url origin https://kody.codes/@owner/new-leaf.git`.
+5. Change `kody:@owner/old-leaf` to `kody:@owner/new-leaf` in each dependent
+   package, then publish each one.
+
+The publish result's `hosted_app_url` uses the new name, and the old app URL
+redirects to it. A remote from `packageGetGitRemote` does not depend on the
+name, so step 4 applies only to a `kody.codes` origin.
 
 ## Delete a package
 

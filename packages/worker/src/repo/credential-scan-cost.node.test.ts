@@ -21,7 +21,10 @@ vi.mock('#worker/module-source.ts', async (importOriginal) => {
 
 const moduleCount = 40
 
-function packageWithCommittedBuild(extraFiles: Record<string, string> = {}) {
+function packageWithCommittedBuild(
+	extraFiles: Record<string, string> = {},
+	{ serverImportsExtraFiles = true } = {},
+) {
 	const files: Record<string, string> = {
 		'package.json': JSON.stringify({
 			name: '@example/committed-build',
@@ -45,7 +48,9 @@ function packageWithCommittedBuild(extraFiles: Record<string, string> = {}) {
 	files['dist/server/server.js'] = [
 		`import{credential as e}from"kody:runtime";`,
 		...imports,
-		...Object.keys(extraFiles).map((path) => `import"../../${path}";`),
+		...(serverImportsExtraFiles
+			? Object.keys(extraFiles).map((path) => `import"../../${path}";`)
+			: []),
 		`export async function run(){const t=await e("EXAMPLE_TOKEN");return t.fetch("https://api.example.com/items?key={{secret:EXAMPLE_TOKEN}}")}`,
 	].join('')
 	return files
@@ -75,15 +80,33 @@ test('the publish credential check parses each module twice, however many scans 
 	expect(new Set(parsesPerModule(files))).toEqual(new Set([2]))
 })
 
-test('a module too large for the stamp costs one more index and walk, not one per scan', async () => {
-	parses.clear()
-	const oversized = `export const table=[${'"padding-padding-padding",'.repeat(
+function oversizedModule() {
+	return `export const table=[${'"padding-padding-padding",'.repeat(
 		Math.ceil(credentialStampMaxModuleScanBytes / 26) + 1,
 	)}];\n`
-	const files = packageWithCommittedBuild({ 'dist/server/big.js': oversized })
+}
+
+test('an oversized client module costs one more index and walk, not one per scan', async () => {
+	parses.clear()
+	const files = packageWithCommittedBuild(
+		{ 'dist/client/big.js': oversizedModule() },
+		{ serverImportsExtraFiles: false },
+	)
 	const result = await buildCredentialPatternCheck(files)
 
 	expect(result.ok).toBe(true)
 	expect(result.stampKeys).toEqual(['EXAMPLE_TOKEN'])
 	expect(Math.max(...parsesPerModule(files))).toBe(4)
+})
+
+test('an oversized server module is walked with the stamp like any other module', async () => {
+	parses.clear()
+	const files = packageWithCommittedBuild({
+		'dist/server/big.js': oversizedModule(),
+	})
+	const result = await buildCredentialPatternCheck(files)
+
+	expect(result.ok).toBe(true)
+	expect(result.stampKeys).toEqual(['EXAMPLE_TOKEN'])
+	expect(new Set(parsesPerModule(files))).toEqual(new Set([2]))
 })

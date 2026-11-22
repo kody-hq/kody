@@ -21,6 +21,7 @@ import {
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import {
+	AccountManagementPanel,
 	TimestampValue,
 	accountActionsCss,
 } from './account-management-components.tsx'
@@ -67,16 +68,12 @@ export function AccountPackageForkAdoption(props: {
 	const { communityFork } = props
 	const upstream = communityFork.listingName ?? 'a community listing'
 	return (
-		<section
+		<AccountManagementPanel
 			id={communityForkAdoptionSectionId}
-			aria-labelledby="community-fork-adoption-title"
-			data-testid="community-fork-adoption"
-			data-adopted={communityFork.adoptedAt ? 'true' : 'false'}
-			css={{ display: 'grid', gap: spacing.sm }}
+			headingId="community-fork-adoption-title"
+			testId="community-fork-adoption"
+			title="Community fork"
 		>
-			<h3 id="community-fork-adoption-title" css={headingCss}>
-				Community fork
-			</h3>
 			{communityFork.adoptedAt ? (
 				<div css={getAccentCalloutCss()}>
 					<p css={{ margin: 0 }}>
@@ -139,16 +136,9 @@ export function AccountPackageForkAdoption(props: {
 					</div>
 				</form>
 			)}
-		</section>
+		</AccountManagementPanel>
 	)
 }
-
-const headingCss = {
-	margin: 0,
-	fontSize: typography.fontSize.base,
-	fontWeight: typography.fontWeight.semibold,
-	color: colors.text,
-} satisfies CSSObject
 
 const errorTextCss = {
 	margin: 0,

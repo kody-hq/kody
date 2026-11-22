@@ -39,6 +39,7 @@ type ConnectedAgentsUser = {
  */
 function connectedAgentsScope(user: ConnectedAgentsUser) {
 	// Grants are person-keyed (legacy OwnerId brand of the person id).
+	// Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	const personId = personalOrgId(user.mcpUser.userId)
 	const personalOrgOwnerId = personalOrgIdForPerson(user.mcpUser)
 	const orgId = ownerIdFromCaller({

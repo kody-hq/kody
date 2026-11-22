@@ -6,6 +6,7 @@
  */
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
+import { loadOrgSlug } from '#worker/orgs/owner-emails.ts'
 import {
 	assertPackageCanAccessResolvedSecret,
 	loadPackageSecretMounts,
@@ -35,6 +36,7 @@ import {
 import { createUnresolvedSecretMessage } from '#mcp/secrets/unresolved-secret.ts'
 import type { StorageContext } from '#mcp/storage.ts'
 import { assertCredentialUsesDeclared } from './credential-need-enforcement.ts'
+import { pickLegacyMappedKey } from './legacy-key-pick.ts'
 import {
 	authorizeActorPersonalUse,
 	authorizeActorUse,
@@ -42,6 +44,8 @@ import {
 	type ResolverCall,
 } from './credential-resolver.ts'
 import { rememberFetchFillPlacement } from './fetch-fill-placement-cache.ts'
+import { readCredentialInject } from './credential-fields.ts'
+import { CredentialRequestRefusedError } from './credential-request.ts'
 import {
 	enforceFillPlacement,
 	resolveEffectiveFillPlacement,
@@ -57,6 +61,8 @@ type SecretNameLookup = {
 	owner: 'org' | 'personal'
 	ownerId: OwnerId
 	found: FoundSecret
+	storedName?: string
+	injectJson?: string
 	readValue: () => Promise<ResolvedSecret>
 }
 
@@ -65,6 +71,7 @@ async function findSecretByName(
 	call: ResolverCall,
 	input: {
 		name: string
+		credentialId?: string
 		scope?: Parameters<typeof findSecretForUse>[0]['scope']
 		storageContext: StorageContext
 	},
@@ -73,6 +80,7 @@ async function findSecretByName(
 		env: call.input.env,
 		userId: call.input.orgId,
 		name: input.name,
+		credentialId: input.credentialId,
 		scope: input.scope,
 		storageContext: input.storageContext,
 	})
@@ -80,8 +88,7 @@ async function findSecretByName(
 		return {
 			owner: 'org',
 			ownerId: call.input.orgId,
-			found: orgLookup.found,
-			readValue: orgLookup.readValue,
+			...orgLookup,
 		}
 	}
 	if (call.credential.use === 'secret' && call.credential.orgOnly)
@@ -108,6 +115,7 @@ async function findSecretByName(
 		env: call.input.env,
 		userId: personalOwner,
 		name: input.name,
+		credentialId: input.credentialId,
 		scope: input.scope,
 		storageContext: input.storageContext,
 	})
@@ -115,8 +123,7 @@ async function findSecretByName(
 		return {
 			owner: 'personal',
 			ownerId: personalOwner,
-			found: personalLookup.found,
-			readValue: personalLookup.readValue,
+			...personalLookup,
 		}
 	}
 	return {
@@ -166,14 +173,28 @@ export const secretResolver: CredentialResolver<'secret'> = {
 		const { input, credential } = call
 		const lookup = await findSecretByName(call, {
 			name: credential.name,
+			credentialId: credential.credentialId,
 			scope: credential.scope,
 			storageContext: credential.storageContext,
 		})
 		const found = lookup.found
+		const storedName = lookup.storedName ?? credential.name
 		return {
 			async authorize() {
 				await authorizeSecretNameUse(call, lookup)
 				if (!found.found) return
+				const injectKind = readCredentialInject(lookup.injectJson)?.kind
+				if (
+					credential.fillSites?.length &&
+					(injectKind === 'body' ||
+						injectKind === 'path' ||
+						injectKind === 'composition')
+				) {
+					throw new CredentialRequestRefusedError(
+						'invalid_request',
+						'This credential has an approved request profile. Use credential(key).fetch.',
+					)
+				}
 				await assertPackageCanAccessResolvedSecret({
 					env: input.env,
 					baseUrl: input.baseUrl,
@@ -185,7 +206,7 @@ export const secretResolver: CredentialResolver<'secret'> = {
 					storageContext: credential.storageContext,
 					authorityPackageId: input.packageStamp?.packageId ?? null,
 					runContextPackageId: input.runContextPackageId,
-					secretName: credential.name,
+					secretName: storedName,
 					resolved: found,
 				})
 				if (
@@ -193,9 +214,18 @@ export const secretResolver: CredentialResolver<'secret'> = {
 					!found.allowedHosts.includes(credential.requestHost)
 				) {
 					throw new SecretHostNotApprovedError({
-						secretName: credential.name,
+						secretName: storedName,
 						host: credential.requestHost,
 						scope: found.scope ?? credential.scope ?? 'user',
+						// A granted personal Key is approved in its owner's personal org.
+						orgSlug:
+							lookup.owner === 'org'
+								? credential.orgSlug?.trim() ||
+									refusalLinkOrgSlug({
+										actor: call.input.actor,
+										orgId: call.input.orgId,
+									})
+								: await loadOrgSlug(call.input.env.APP_DB, lookup.ownerId),
 					})
 				}
 				const placement = await resolveEffectiveFillPlacement({
@@ -215,7 +245,7 @@ export const secretResolver: CredentialResolver<'secret'> = {
 								}),
 							approvalSecretName:
 								(found.scope ?? credential.scope ?? 'user') === 'user'
-									? credential.name
+									? storedName
 									: null,
 							requestHost: credential.requestHost ?? null,
 						}
@@ -268,6 +298,7 @@ export const webhookSecretResolver: CredentialResolver<'webhook-secret'> = {
 			env: input.env,
 			userId: input.orgId,
 			name: credential.name,
+			credentialId: credential.credentialId,
 			storageContext,
 		})
 		const found = lookup.found
@@ -350,13 +381,29 @@ export const packageSecretMountResolver: CredentialResolver<'package-secret-moun
 				packageId,
 				storageId: callerContext.storageContext?.storageId ?? null,
 			}
-			const lookup = await findSecretForUse({
+			const credentialId = await pickLegacyMappedKey({
 				env: input.env,
-				userId: input.orgId,
+				request: input.actor,
+				packageId,
+				reference: { name: mount.name, scope: mount.scope },
+			})
+			const mountLookup = {
 				name: mount.name,
+				credentialId: credentialId ?? undefined,
 				scope: mount.scope,
 				storageContext,
-			})
+			}
+			const lookup = credentialId
+				? await findSecretByName(call, mountLookup)
+				: {
+						owner: 'org' as const,
+						ownerId: input.orgId,
+						...(await findSecretForUse({
+							...mountLookup,
+							env: input.env,
+							userId: input.orgId,
+						})),
+					}
 			const found = lookup.found
 			const missing = async () =>
 				new PackageSecretMissingError(
@@ -374,17 +421,17 @@ export const packageSecretMountResolver: CredentialResolver<'package-secret-moun
 			const scope = found.scope ?? mount.scope ?? 'user'
 			return {
 				async authorize() {
-					await authorizeActorUse(call, found.credentialId)
+					await authorizeSecretNameUse(call, lookup)
 					if (!found.found) throw await missing()
 					await assertPackageCanAccessResolvedSecret({
 						env: input.env,
 						baseUrl: input.baseUrl,
 						orgSlug: secretPageOrgSlugFromCaller(callerContext),
-						userId: input.orgId,
+						userId: lookup.ownerId,
 						storageContext,
 						authorityPackageId: packageId,
 						runContextPackageId: input.runContextPackageId,
-						secretName: mount.name,
+						secretName: lookup.storedName ?? mount.name,
 						resolved: found,
 					})
 				},

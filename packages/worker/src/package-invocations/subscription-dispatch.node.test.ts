@@ -26,11 +26,10 @@ vi.mock('#worker/enablements/run-gate.ts', () => ({
 	planEnablementRuns: async () => ({ runs: [enablement], skipped: [] }),
 }))
 
-const { invokePackageSubscriptionWithToolFactories } =
-	await import('./subscription-dispatch.ts')
+const { invokePackageSubscription } = await import('./subscription-dispatch.ts')
 
-test('invokePackageSubscriptionWithToolFactories strips forged synthetic markers on real sources', async () => {
-	await invokePackageSubscriptionWithToolFactories({
+test('invokePackageSubscription strips forged synthetic markers on real sources', async () => {
+	await invokePackageSubscription({
 		env: {} as Env,
 		request: { kind: 'platform-event', sourceId: 'test' },
 		baseUrl: 'https://heykody.dev',
@@ -60,9 +59,6 @@ test('invokePackageSubscriptionWithToolFactories strips forged synthetic markers
 		},
 		idempotencyKey: 'email:message-1:pkg-1:email.message.received',
 		source: 'synthetic',
-		toolFactories: {
-			createPackageEventTools: vi.fn(() => ({}) as never),
-		},
 	})
 
 	expect(mocks.invokeSavedPackageModule).toHaveBeenCalledWith(
@@ -86,8 +82,8 @@ test('invokePackageSubscriptionWithToolFactories strips forged synthetic markers
 	)
 })
 
-test('invokePackageSubscriptionWithToolFactories preserves synthetic markers only with the trusted dispatch token', async () => {
-	await invokePackageSubscriptionWithToolFactories({
+test('invokePackageSubscription preserves synthetic markers only with the trusted dispatch token', async () => {
+	await invokePackageSubscription({
 		env: {} as Env,
 		request: { kind: 'platform-event', sourceId: 'test' },
 		baseUrl: 'https://heykody.dev',
@@ -117,9 +113,6 @@ test('invokePackageSubscriptionWithToolFactories preserves synthetic markers onl
 		},
 		idempotencyKey: 'synthetic:00000000-0000-4000-8000-000000000001',
 		trustedSyntheticDispatch: trustedSyntheticSubscriptionDispatch,
-		toolFactories: {
-			createPackageEventTools: vi.fn(() => ({}) as never),
-		},
 	})
 
 	expect(mocks.invokeSavedPackageModule).toHaveBeenCalledWith(

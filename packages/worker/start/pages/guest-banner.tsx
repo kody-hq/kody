@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { useEffect, useState } from 'react'
+import { useNow } from '../lib/use-now.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { noticeCardCss } from './account-management-components.tsx'
 
@@ -32,15 +32,6 @@ export function formatGuestDate(iso: string) {
 	}).format(new Date(iso))
 }
 
-function useNow(intervalMs = 30_000) {
-	const [now, setNow] = useState(() => Date.now())
-	useEffect(() => {
-		const id = setInterval(() => setNow(Date.now()), intervalMs)
-		return () => clearInterval(id)
-	}, [intervalMs])
-	return now
-}
-
 function claimPath(claimUrl: string) {
 	try {
 		return new URL(claimUrl).pathname
@@ -52,7 +43,7 @@ function claimPath(claimUrl: string) {
 /** Countdown and Claim button shown across the dashboard for guests. */
 export function GuestBanner(props: { guest: GuestBannerInfo }) {
 	const { guest } = props
-	const now = useNow()
+	const now = useNow(30_000)
 	const active =
 		guest.phase === 'active' && Date.parse(guest.fullAccessUntil) > now
 	const title = active

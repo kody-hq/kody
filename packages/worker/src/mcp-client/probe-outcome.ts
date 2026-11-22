@@ -53,6 +53,7 @@ export function classifyOutboundMcpProbeSignal(input: {
  * A stored `server_options` blob is not a probe. Client 2.0 persists a 2025
  * session after HeaderMismatch fallback; that is not confirmed-legacy
  * evidence, so restore must re-probe.
+ * Remove when: MCP protocol metrics show no 2025-era lane traffic.
  */
 export function classifyPersistedMcpSession(input: {
 	discoverResult?: unknown

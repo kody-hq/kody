@@ -45,6 +45,7 @@ export async function getOwnerEmailMessageById(
 export async function listOwnerEmailMessages(
 	input: OwnerReadBase & {
 		inboxId?: string | null
+		inboxIds?: ReadonlyArray<string> | null
 		direction?: EmailDirection | null
 		processingStatus?: EmailProcessingStatus | null
 		deliveryStatus?: EmailDeliveryStatus | null
@@ -55,6 +56,7 @@ export async function listOwnerEmailMessages(
 ): Promise<Array<EmailMessageRecord>> {
 	const listed = await ownerMailbox(input).listMessages({
 		inboxId: input.inboxId,
+		inboxIds: input.inboxIds,
 		direction: input.direction,
 		processingStatus: input.processingStatus,
 		deliveryStatus: input.deliveryStatus,
@@ -71,6 +73,7 @@ export async function searchOwnerEmailMessages(
 	input: OwnerReadBase & {
 		query: string
 		inboxId?: string | null
+		inboxIds?: ReadonlyArray<string> | null
 		direction?: EmailDirection | null
 		processingStatus?: EmailProcessingStatus | null
 		deliveryStatus?: EmailDeliveryStatus | null
@@ -82,6 +85,7 @@ export async function searchOwnerEmailMessages(
 	const searched = await ownerMailbox(input).searchMessages({
 		query: input.query,
 		inboxId: input.inboxId,
+		inboxIds: input.inboxIds,
 		direction: input.direction,
 		processingStatus: input.processingStatus,
 		deliveryStatus: input.deliveryStatus,
@@ -98,6 +102,7 @@ export async function listOwnerEmailMessagesPage(
 	input: OwnerReadBase & {
 		query: string
 		view: EmailMessageView
+		inboxIds?: ReadonlyArray<string> | null
 		pageSize: number
 		offset: number
 	},
@@ -106,6 +111,7 @@ export async function listOwnerEmailMessagesPage(
 	const filters = {
 		view: input.view,
 		query: input.query || null,
+		inboxIds: input.inboxIds,
 	}
 	const [{ total }, listed] = await Promise.all([
 		mailbox.countMessages(filters),
@@ -113,11 +119,13 @@ export async function listOwnerEmailMessagesPage(
 			? mailbox.searchMessages({
 					query: input.query,
 					view: input.view,
+					inboxIds: input.inboxIds,
 					limit: input.pageSize,
 					offset: input.offset,
 				})
 			: mailbox.listMessages({
 					view: input.view,
+					inboxIds: input.inboxIds,
 					limit: input.pageSize,
 					offset: input.offset,
 				}),

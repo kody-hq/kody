@@ -204,6 +204,11 @@ export const ecpHostOperatorOnlyFeature = 'host-operator-only'
  * daemons run it as plain JavaScript, so TypeScript skips them.
  */
 export const ecpTypeScriptSourceFeature = 'typescript-source'
+/**
+ * The daemon can take `publish-build` runs: it found `git`, which the builder
+ * clones with. Kody routes publish builds only to contexts that advertise it.
+ */
+export const ecpPublishBuildFeature = 'publish-build'
 
 export type EcpRunRequestBody = {
 	runId: string

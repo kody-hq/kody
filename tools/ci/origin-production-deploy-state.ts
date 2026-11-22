@@ -603,6 +603,7 @@ export function stripOriginBindingsForLocallyOwnedClasses(
  * Preview always strips. Steady-state and fresh production slim uploads
  * strip too; the full-entry bootstrap config keeps the history so
  * `new_sqlite_classes` can create classes before transfer.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function stripOriginDurableObjectMigrations(
 	config: Record<string, unknown>,

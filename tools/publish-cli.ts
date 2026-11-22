@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { waitForNpmPackage } from './npm-release-readiness.ts'
 import {
 	cliBaselineTag,
 	cliBaselineVersion,
@@ -254,6 +255,17 @@ try {
 				],
 				{ cwd: repoRoot, stdio: 'inherit' },
 			)
+		}
+		console.log(
+			`Waiting for ${devRuntimePackageName}@${plan.version} to resolve on npm.`,
+		)
+		try {
+			await waitForNpmPackage(devRuntimePackageName, plan.version)
+		} catch (error) {
+			console.error(
+				`::error::${error instanceof Error ? error.message : String(error)}`,
+			)
+			throw error
 		}
 		execFileSync('npm', ['run', 'build', '-w', cliPackageName], {
 			cwd: repoRoot,

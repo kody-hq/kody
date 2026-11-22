@@ -6,7 +6,6 @@ import {
 	type LandingPointerState,
 } from '#client/routes/landing-pointer-state.ts'
 import { publicAsset } from '../public-assets.ts'
-import { useEffect, useRef } from 'react'
 import { SiteLink } from './site-link.tsx'
 import { isElementNearViewport } from '#client/deferred-turnstile.ts'
 import { revealRef } from './reveal.ts'
@@ -45,13 +44,6 @@ const USER_NUDGE_RESUME_MS = 500
  * pager (one card, no rAF). No-JS keeps a stacked static list.
  */
 export function LandingTestimonialsCarousel() {
-	const fade = useRef<HTMLDivElement>(null)
-	useEffect(() => {
-		if (!fade.current) return
-		const controller = new AbortController()
-		armTestimonialsEnhance(fade.current, controller.signal)
-		return () => controller.abort()
-	}, [])
 	const items: Array<LandingTestimonial> = [...landingTestimonials]
 
 	return (
@@ -78,7 +70,7 @@ export function LandingTestimonialsCarousel() {
 					{renderChevron('next')}
 				</button>
 			</div>
-			<div className="landing-testimonials-fade" ref={fade}>
+			<div className="landing-testimonials-fade" ref={armFade}>
 				<div className="landing-testimonials-track">
 					{items.map((item) => renderTestimonialCard(item))}
 				</div>
@@ -693,4 +685,11 @@ function renderTestimonialCard(item: LandingTestimonial) {
 			</footer>
 		</article>
 	)
+}
+
+function armFade(node: HTMLDivElement | null) {
+	if (!node) return
+	const controller = new AbortController()
+	armTestimonialsEnhance(node, controller.signal)
+	return () => controller.abort()
 }

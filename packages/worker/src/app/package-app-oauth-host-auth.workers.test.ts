@@ -1,9 +1,9 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { env, exports } from 'cloudflare:workers'
 import { beforeEach, expect, test } from 'vitest'
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
-	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
@@ -53,7 +53,7 @@ function remainingCookiesAfterLogout(
 }
 
 test('shared-host logout clears only the requesting app session', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	configureOrigins()
 
 	const expiresAt = Date.now() + 60 * 60 * 1000
@@ -87,6 +87,21 @@ test('shared-host logout clears only the requesting app session', async () => {
 	)
 	expect(logout.status).toBe(302)
 	expect(logout.headers.get('Location')).toBe('/packages/notes')
+	for (const returnTo of [
+		`${ownerPackageAppOrigin}//elsewhere.example`,
+		'/\t/elsewhere.example',
+	]) {
+		const offSite = await workerFetch(
+			`${ownerPackageAppOrigin}${packageAppOauthPaths.logout}?app=notes&return_to=${encodeURIComponent(returnTo)}`,
+		)
+		expect(offSite.headers.get('Location')).toBe('/')
+	}
+	const withFragment = await workerFetch(
+		`${ownerPackageAppOrigin}${packageAppOauthPaths.logout}?app=notes&return_to=${encodeURIComponent('/packages/notes#/documents/42')}`,
+	)
+	expect(withFragment.headers.get('Location')).toBe(
+		'/packages/notes#/documents/42',
+	)
 	const cleared = logout.headers.getSetCookie()
 	const clearedNames = new Set(
 		cleared.map((header) => header.split('=')[0]?.trim()).filter(Boolean),
@@ -116,7 +131,7 @@ test('shared-host logout clears only the requesting app session', async () => {
 })
 
 test('shared-host logout prefers Referer leaf over a sibling ?app=', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	configureOrigins()
 	const expiresAt = Date.now() + 60 * 60 * 1000
 	const session = { stableUserId, username: ownerUsername }
@@ -170,8 +185,8 @@ test('shared-host logout prefers Referer leaf over a sibling ?app=', async () =>
 	).resolves.toMatchObject({ session })
 })
 
-test('shared-host logout without Referer clears legacy only (not ?app=)', async () => {
-	resetPackageAppSessionCookieForTests()
+test('shared-host logout without Referer does not guess a per-app cookie', async () => {
+	resetIsolateState()
 	configureOrigins()
 	const expiresAt = Date.now() + 60 * 60 * 1000
 	const cookies = await createPackageAppSessionCookie({
@@ -191,7 +206,7 @@ test('shared-host logout without Referer clears legacy only (not ?app=)', async 
 	const cleared = response.headers.getSetCookie()
 	expect(
 		cleared.some((header) => header.startsWith('__Host-kody_pkg_session=')),
-	).toBe(true)
+	).toBe(false)
 	expect(
 		cleared.some((header) => header.startsWith(`${pair.split('=')[0]}=`)),
 	).toBe(false)

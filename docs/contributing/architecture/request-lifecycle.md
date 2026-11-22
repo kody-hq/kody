@@ -129,7 +129,11 @@ Requests are handled in this order:
 7. Public `@username` ingress handled in `packages/worker/src/index.ts` before
    the OAuth provider / app router (needs `ExecutionContext` for background
    work). Production forwards package-app paths to `kody-runtime` via
-   `RUNTIME_WORKER`; webhook ingress stays on origin:
+   `RUNTIME_WORKER`; webhook ingress stays on origin. A D1 storage blip
+   (overload, lock, export, network drop) that escapes a `kody-runtime` request
+   is answered with a `503` and `Retry-After: 5` carrying the shared "briefly
+   unavailable" message, so the forward never surfaces it as a Cloudflare 1101.
+   Other runtime errors still throw:
    - `POST /@{username}/webhooks/:packageKodyId/:webhookName/:urlSecret` —
      inbound package webhooks (see [Inbound webhooks](./webhooks.md))
    - Retired `/@{username}/connectors/...` paths return `404`. Use outbound MCP
@@ -452,10 +456,14 @@ documented in [setup-manifest.md](../setup-manifest.md), and the
 duplicate SDK traces) in
 [environment-variables.md](../environment-variables.md).
 
-Billing note: each span is one observability event sharing the Workers Logs
-quota (10M events/month included on Workers Paid). Sampling is controlled by
-`observability.traces.head_sampling_rate` (defaults to full sampling, fine at
-current traffic).
+Billing note: logs and spans are billed together by ingested GB (Workers Paid
+includes 50 GB ingested and 10 GB-month stored). Each span is one event of about
+1.7 KB and a `kody-production` request emits about 18, so production traces are
+head sampled at 2% via `observability.traces.head_sampling_rate`;
+`tools/ci/worker-observability.node.test.ts` pins every Worker's rates. Log
+`console.info` only for rare events: per-request success logs (for example one
+line per Cloudflare REST call) cost more than they help, so log those calls on
+failure with `console.warn`.
 
 ### Browser errors and session replay
 

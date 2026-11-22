@@ -228,11 +228,9 @@ Contract: `packages/shared/src/backup-staging.ts`.
    `JobsHost.readD1PacedRestoreDrillCheckpoint` for the source and phase when
    the RPC itself dies. Graduated production restore and the isolated paced
    drill replay the same sealed paced chains for schema-v3 days; the admin UI
-   REST drill and schema-v1/v2 days use the REST SQL objects.
-   `GET`/`POST /__maintenance/dr-paced-status` (bearer `DR_RESTORE_SECRET`,
-   optional `?day=YYYY-MM-DD`) reports staging/sealed presence per source plus
-   `restoreDrill`: the latest drill run with per-source status, active
-   table/phase, interruption count, and per-table results. `DR_D1_PACED_SOURCES`
+   REST drill and schema-v1/v2 days use the REST SQL objects. The
+   [paced status endpoint](../../packages/worker/src/dr/d1-paced-status.ts)
+   reports backup freshness and the latest restore drill. `DR_D1_PACED_SOURCES`
    commits APP_DB + AUDIT_DB + JOBS_DB (deploy still expands live D1 UUIDs from
    resource bindings).
 2. **Other canonical stores (production worker)** — When
@@ -306,9 +304,8 @@ Contract: `packages/shared/src/backup-staging.ts`.
      replacing it. A per-owner Mailbox or RunLog dump larger than the 16 MiB
      buffer is split the same way, into `mailbox-parts/{owner}/{sha256}.ndjson`
      or `run-log-parts/{owner}/{sha256}.ndjson` entries that carry `part` in the
-     owner index. Mailbox import validates and streams an owner's parts one at a
-     time, holding only ids, references and attachment metadata in memory. No
-     owner dump is skipped for size.
+     owner index. See [Mailbox re-import](#automated-mailbox-re-import) for how
+     recovery reads split dumps.
 3. **Seal** — Control plane verifies staged checksums against
    `staging/{day}/exporter/summary.json`, requires the sealed paced D1 night for
    every `D1_PACED_SOURCES` entry (APP_DB, AUDIT_DB, JOBS_DB) when sealing a new
@@ -693,8 +690,12 @@ its exact storage id.
 `POST /__maintenance/dr-mailbox-import` is the normal recovery path after
 object/class/account loss. It is `DR_RESTORE_SECRET`-gated, verifies the sealed
 full-manifest signature, verifies the mailbox index bytes and SHA-256, and
-verifies each selected owner dump's bytes and SHA-256 before writing that owner.
-Each tick writes parent threads, then messages with attachments through
+verifies each selected owner's dump parts before writing that owner (see the
+[media verifier](../../packages/worker/src/dr/mailbox-import-media.ts) and
+[importer](../../packages/worker/src/dr/mailbox-importer.ts)). It reads and
+parses one part at a time, checks for duplicate IDs and missing references
+across parts, then rereads the parts needed for each write phase. Each tick
+writes parent threads, then messages with attachments through
 `upsertMessageGraph`, then delivery events through `upsertDeliveryEvents`.
 Returned cursors are authenticated and bound to the day, owner selection,
 conflict policy, and drill flag; repeat the same request with `cursor` until
@@ -801,22 +802,23 @@ the correctness spec and incident-only fallback:
 
 ## Schedules and freshness
 
-| When (UTC)                      | Who               | What                                                                                                                                                                                                                                                                           |
-| ------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `*/5` during 00:30–06:10        | Production worker | Staging export: resume the oldest stranded day (progress without summary, today − ≤14 days), else stage today (cheap no-op once complete)                                                                                                                                      |
-| Every 5 min outside 00:30–06:10 | Production worker | Staging catch-up: resume the oldest stranded day (progress without summary, today − ≤14 days); cheap no-op otherwise                                                                                                                                                           |
-| 06:15                           | Production worker | Staging watchdog: missing today's summary with no older stranded days, today complete while earlier days are stranded, catch-up with no advance for 2h, or the oldest stranded day 2+ UTC days behind, fails → Sentry. A one-day backlog that is still advancing does not page |
-| 02:15                           | Control plane     | Primary D1 export Workflow per configured database (APP_DB and JOBS_DB)                                                                                                                                                                                                        |
-| 02:45–05:45 hourly              | Control plane     | Catch-up create/restart of same-day D1 Workflows                                                                                                                                                                                                                               |
-| Hourly `:45`                    | Control plane     | D1 freshness for every REST-enabled source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                               |
-| On failure                      | Control plane     | REST D1 export Workflow failure → Sentry, fingerprint `dr / rest-d1-export-failed / <database>:<code>`                                                                                                                                                                         |
-| Hourly `:45`                    | Control plane     | Yesterday's full seal still blocked (any reason except a missing staging summary) → Sentry, fingerprint `dr / full-seal-blocked / <reason>` or `<reason>:<source>`                                                                                                             |
-| On skip                         | Production worker | A storage identity left out after 3 aborted attempts → Sentry, fingerprint `dr / export-storage-identity-skipped`                                                                                                                                                              |
-| `*/5` during 00:30–06:10        | Production worker | Paced D1 walk (`dr_d1_paced_backup`): APP_DB, AUDIT_DB, and JOBS_DB when `DR_D1_PACED_BACKUP_ENABLED=true`                                                                                                                                                                     |
-| Every 5 min outside 00:30–06:10 | Production worker | Paced D1 catch-up: resume the oldest incomplete paced night (today − ≤14 days)                                                                                                                                                                                                 |
-| 06:15                           | Production worker | Paced D1 watchdog: tonight's paced staging/sealed manifests still missing → Sentry                                                                                                                                                                                             |
-| Hourly `:45`                    | Production worker | Paced D1 freshness: sealed paced night for yesterday (or today after 06:15) must exist for every bound source                                                                                                                                                                  |
-| Sunday 07:00–08:59              | Production worker | Paced D1 restore drill: resumable per source, verify tip checksums; failure → Sentry                                                                                                                                                                                           |
+| When (UTC)                      | Who               | What                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `*/5` during 00:30–06:10        | Production worker | Staging export: resume the oldest stranded day (progress without summary, today − ≤14 days), else stage today (cheap no-op once complete)                                                                                                                                                                                                                                  |
+| Every 5 min outside 00:30–06:10 | Production worker | Staging catch-up: resume the oldest stranded day (progress without summary, today − ≤14 days); cheap no-op otherwise                                                                                                                                                                                                                                                       |
+| 06:15                           | Production worker | Staging watchdog: missing today's summary with no older stranded days, today complete while earlier days are stranded, catch-up with no advance for 2h, or the oldest stranded day 2+ UTC days behind, fails → Sentry. A one-day backlog that is still advancing does not page                                                                                             |
+| 02:15                           | Control plane     | Primary D1 export Workflow per configured database (APP_DB and JOBS_DB)                                                                                                                                                                                                                                                                                                    |
+| 02:45–05:45 hourly              | Control plane     | Catch-up create/restart of same-day D1 Workflows                                                                                                                                                                                                                                                                                                                           |
+| Hourly `:45`                    | Control plane     | D1 freshness for every REST-enabled source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                                                                                                                           |
+| On failure                      | Control plane     | REST D1 export Workflow failure → Sentry, fingerprint `dr / rest-d1-export-failed / <database>:<code>`                                                                                                                                                                                                                                                                     |
+| Hourly `:45`                    | Control plane     | Yesterday's full seal still blocked (any reason except a missing staging summary) → Sentry, fingerprint `dr / full-seal-blocked / <reason>` or `<reason>:<source>`                                                                                                                                                                                                         |
+| Hourly `:45`                    | Control plane     | Seal scan stops at its 20,000 R2 call budget (`full-backup-seal-scan-stopped`, `r2-call-budget-exhausted`) and the next hour resumes; stopping on yesterday reports `dr / full-seal-blocked / r2-call-budget-exhausted`. Hitting the Workers subrequest limit stops the scan at the first failed call → Sentry `dr / seal-scan-subrequest-limit / worker-subrequest-limit` |
+| On skip                         | Production worker | A storage identity left out after 3 aborted attempts → Sentry, fingerprint `dr / export-storage-identity-skipped`                                                                                                                                                                                                                                                          |
+| `*/5` during 00:30–06:10        | Production worker | Paced D1 walk (`dr_d1_paced_backup`): APP_DB, AUDIT_DB, and JOBS_DB when `DR_D1_PACED_BACKUP_ENABLED=true`                                                                                                                                                                                                                                                                 |
+| Every 5 min outside 00:30–06:10 | Production worker | Paced D1 catch-up: resume the oldest incomplete paced night (today − ≤14 days)                                                                                                                                                                                                                                                                                             |
+| 06:15                           | Production worker | Paced D1 watchdog: tonight's paced staging/sealed manifests still missing → Sentry                                                                                                                                                                                                                                                                                         |
+| Hourly `:45`                    | Production worker | Paced D1 freshness: sealed paced night for yesterday (or today after 06:15) must exist for every bound source                                                                                                                                                                                                                                                              |
+| Sunday 07:00–08:59              | Production worker | Paced D1 restore drill: resumable per source, verify tip checksums; failure → Sentry                                                                                                                                                                                                                                                                                       |
 
 ### Stranded staging days (manual finish)
 

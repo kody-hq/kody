@@ -130,8 +130,8 @@ function renderLedgerTable(entries: Array<OrgCreditsLedgerEntry>) {
 			scrollHeight="none"
 			columns={[
 				{ key: 'description', label: 'Entry', primary: true },
-				{ key: 'type', label: 'Type', drop: 1 },
-				{ key: 'date', label: 'Date', drop: 3 },
+				{ key: 'type', label: 'Type' },
+				{ key: 'date', label: 'Date' },
 				{ key: 'amount', label: 'Amount', align: 'end' },
 				{ key: 'balance', label: 'Balance after', align: 'end' },
 			]}

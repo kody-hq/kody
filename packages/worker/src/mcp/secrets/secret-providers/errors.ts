@@ -76,15 +76,3 @@ export function createProviderErrorMessage(providerId: string) {
 export function createSealedSecretProviderExportDeniedMessage() {
 	return 'Sealed secret-provider exports can only run at the fetch boundary. Ordinary execute and kody:@ imports cannot call them or observe resolved values.'
 }
-
-export function createSecretProviderGrantRequiresWebsiteMessage(input: {
-	approvalUrl: string
-}) {
-	return `Agents cannot grant a provider ref to a saved package. Only the account owner can add that grant on the website. Send the user this approval link and wait: ${input.approvalUrl}`
-}
-
-export function createSecretProviderGrantAlreadyPresentMessage(input: {
-	packageName: string
-}) {
-	return `Package "${input.packageName}" already has a grant for this provider ref.`
-}

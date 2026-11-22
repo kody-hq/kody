@@ -38,6 +38,15 @@ import type { ResolvedCredentialUrl } from './url-resolver.ts'
 export type ClientPlacement =
 	| { kind: 'header'; name: string; value: string }
 	| { kind: 'query'; param: string; value: string }
+	| { kind: 'body'; body: string; sealed: boolean }
+	| { kind: 'path'; url: URL }
+	| {
+			kind: 'composition'
+			url: URL
+			headers: Headers
+			body?: string
+			sealed: boolean
+	  }
 
 /**
  * Where the fetch gateway filled or refused a placeholder. The audit row
@@ -101,6 +110,8 @@ export type CredentialTarget =
 			/** Platform connections must never fall back to a personal credential. */
 			orgOnly?: boolean
 			name: string
+			/** An ID selected by the host; name remains the declared need for authorization. */
+			credentialId?: string
 			scope?: SecretScope | null
 			storageContext: StorageContext
 			/** Org slug for approval links in denial messages. */
@@ -132,7 +143,7 @@ export type CredentialTarget =
 	 * Webhook `verification.secretName`, challenge `secretName`, and the apply
 	 * `destination.secretName`. Read in the stamped package's buckets.
 	 */
-	| { use: 'webhook-secret'; name: string }
+	| { use: 'webhook-secret'; name: string; credentialId?: string }
 	/** `{{secret/provider:ref}}` vault references. */
 	| {
 			use: 'provider-secret'
@@ -194,8 +205,13 @@ export type CredentialTarget =
 			use: 'login'
 			credentialId: string
 			requestUrl: URL
+			expectedInject?:
+				| { kind: 'header'; name: string; format: string }
+				| { kind: 'query'; param: string }
 			/** The session a host just answered 401 to; it is dropped first. */
 			rejectedSessionId?: string | null
+			/** Only the fetch gateway owns the lifetime of a single-request session. */
+			registerLogout?: (logout: () => Promise<void>) => void
 	  }
 	/**
 	 * A `signing` credential picked by id: a JWT or HMAC signature made with
@@ -216,7 +232,13 @@ export type CredentialTarget =
 	 * must be one of its hosts. Package allowlists do not apply; the actor's
 	 * Use is the only grant.
 	 */
-	| { use: 'client-key'; credentialId: string; requestUrl: URL }
+	| {
+			use: 'client-key'
+			credentialId: string
+			requestUrl: URL
+			outboundRequest?: Request
+			attestedPackageId?: string
+	  }
 	/**
 	 * An OAuth connection picked by id through a `credential()` client: its
 	 * access token as a Bearer header for the HTTPS request to `requestUrl`,

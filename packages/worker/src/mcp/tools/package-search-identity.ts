@@ -87,12 +87,14 @@ function parsePackageUrl(input: {
 	// Canonical and dual-served legacy package-app origins are this deployment's
 	// own origins; anything else is another site's URL and must not resolve to
 	// one of this user's packages.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 
 	const parts = url.pathname.split('/').filter(Boolean)
 
 	// Per-user subdomain form: `https://{username}.<package-app host>/{kodyId}`
 	// (legacy `/packages/{kodyId}` still recognized). Deep links with a rest
 	// path are not package identity — same rule as username-path mounts.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	for (const packageAppOrigin of input.packageAppOrigins) {
 		const packageAppBase = new URL(packageAppOrigin)
 		const hostname = url.hostname.toLowerCase()

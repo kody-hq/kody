@@ -66,6 +66,7 @@
     "es-module-lexer": "^3.0.3",
     "msw": "3.0.3",
     "oauth4webapi": "^3.8.6",
+    "publish-builder-typescript-libs": "npm:typescript@6.0.2",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

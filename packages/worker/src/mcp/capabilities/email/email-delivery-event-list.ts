@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
+import { authorizeOrgWide } from '#worker/authorization/authorize.ts'
+import { authorizeEmailMessageChange } from '#worker/email/authorize-email-message.ts'
 import { listOwnerEmailDeliveryEvents } from '#worker/email/owner-email-reader.ts'
 import { emailDeliveryEventTypeValues } from '#worker/email/types.ts'
 import {
@@ -62,6 +64,22 @@ export const emailDeliveryEventListCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			const user = await requireVerifiedEmailAccountUser(ctx)
+			const authorization = {
+				env: ctx.env,
+				request: ctx.callerContext.request,
+			}
+			if (args.message_id) {
+				// Events of one message need read on that message's inbox.
+				await authorizeEmailMessageChange({
+					...authorization,
+					ownerId: emailOwnerOrgId(ctx, user),
+					messageId: args.message_id,
+					permission: 'email:read',
+				})
+			} else {
+				// Events across the whole mailbox need read org-wide.
+				await authorizeOrgWide(authorization, 'email:read')
+			}
 			const events = await listOwnerEmailDeliveryEvents({
 				env: ctx.env,
 				ownerId: emailOwnerOrgId(ctx, user),

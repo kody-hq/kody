@@ -11,7 +11,6 @@ import { documentCache } from '../document-cache.ts'
 import { routeMethods } from '../route-method-middleware.ts'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildUnauthorizedErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
-import { createScarfPageTracker } from '#client/scarf-analytics.ts'
 import { FathomTracker } from '../components/fathom-tracker.tsx'
 import {
 	isPresentationNavigation,
@@ -32,7 +31,8 @@ import {
 	useRouter,
 	useRouterState,
 } from '@tanstack/react-router'
-import { useEffect, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useSuspenseQuery, type QueryClient } from '@tanstack/react-query'
 import { readDocumentActor } from '../document-actor.ts'
 import {
@@ -253,11 +253,12 @@ function Root() {
 
 function LoadedAppLayout() {
 	const { shellLocation, appShell } = Route.useLoaderData()
+	const pathname = shellLocation.pathname
 	const { session, youtubeWatch } = useShellData()
 	const router = useRouter()
 	const { queryClient, actorKey, pageNavigation, pageLocation } =
 		Route.useRouteContext()
-	useEffect(
+	useResourceLifetime(
 		() =>
 			refreshOnActivation({
 				window,
@@ -283,29 +284,6 @@ function LoadedAppLayout() {
 			}),
 		[actorKey, queryClient, router],
 	)
-	// Loader data commits with the displayed matches, unlike the pending URL.
-	const pathname = shellLocation.pathname
-	const previousPathname = useRef(pathname)
-	const fileColumnNavigation = useRouterState({
-		select: (state) =>
-			(state.resolvedLocation ?? state.location).state.fileColumnNavigation,
-	})
-	useEffect(() => {
-		if (previousPathname.current === pathname) return
-		previousPathname.current = pathname
-		const frame = requestAnimationFrame(() => {
-			if (
-				fileColumnNavigation &&
-				document.activeElement?.closest('[data-file-column-browser]')
-			)
-				return
-			const target =
-				document.querySelector<HTMLElement>('[data-docs-heading]') ??
-				document.getElementById('main')
-			target?.focus({ preventScroll: true })
-		})
-		return () => cancelAnimationFrame(frame)
-	}, [pathname, fileColumnNavigation])
 	const illustratedError = useRouterState({
 		select: (state) =>
 			state.matches.some(
@@ -402,13 +380,6 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				(match) => match.routeId === '/' && match.status === 'success',
 			),
 	})
-	const scarfTracker = useRef<ReturnType<typeof createScarfPageTracker> | null>(
-		null,
-	)
-	const scarfLocation = useRouterState({
-		select: (state) =>
-			state.status === 'idle' ? state.resolvedLocation?.href : undefined,
-	})
 
 	// Limited browsers get sign-in pages as plain HTML (ADR 0094).
 	const plainDocument = useRouterState({
@@ -418,11 +389,6 @@ function DocumentShell({ children }: { children: ReactNode }) {
 	const failure = useRouterState({
 		select: (state) => state.matches.find((match) => match.error)?.error,
 	})
-	useEffect(() => {
-		if (failure || scarfLocation === undefined) return
-		scarfTracker.current ??= createScarfPageTracker()
-		scarfTracker.current()
-	}, [scarfLocation, failure])
 	const identity = isNotFound(failure)
 		? failure.data
 		: failure instanceof Error
@@ -449,11 +415,8 @@ function DocumentShell({ children }: { children: ReactNode }) {
 								: 'Something went wrong | Kody',
 				}
 			: undefined
-	useEffect(() => {
-		document.documentElement.dataset.hydrated = 'true'
-	}, [])
 	return (
-		<html lang="en" suppressHydrationWarning>
+		<html lang="en" ref={markHydrated} suppressHydrationWarning>
 			<head>
 				<meta charSet={documentCharset} />
 				{homeDocument ? (
@@ -570,4 +533,8 @@ function UnauthorizedAgentPrompt() {
 			prompt={buildUnauthorizedErrorAgentPrompt({ path: pathname })}
 		/>
 	)
+}
+
+function markHydrated(node: HTMLHtmlElement | null) {
+	if (node) node.dataset.hydrated = 'true'
 }

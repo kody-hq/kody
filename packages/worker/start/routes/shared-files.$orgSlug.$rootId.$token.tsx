@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { createFileRoute } from '@tanstack/react-router'
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { lazy, Suspense } from 'react'
 import { z } from 'zod'
 import { loadPublicFile } from '#start/server/public-files'
 import {
@@ -80,22 +81,22 @@ function SharedFile() {
 }
 
 function PublicEmbed({ id, depth }: { id: string; depth: number }) {
-	const params = Route.useParams(),
-		[result, setResult] = useState<Result | null>(null)
-	useEffect(() => {
-		let active = true
-		void loadPublicFile({ data: { ...params, itemId: id } }).then(
-			(value) => {
-				if (active) setResult(value)
-			},
-			() => {
-				if (active) setResult({ ok: false })
-			},
-		)
-		return () => {
-			active = false
-		}
-	}, [params.orgSlug, params.rootId, params.token, id])
+	const { orgSlug, rootId, token } = Route.useParams()
+	const embed = useQuery({
+		queryKey: ['public-file-embed', orgSlug, rootId, token, id],
+		queryFn: async (): Promise<Result> => {
+			try {
+				return await loadPublicFile({
+					data: { orgSlug, rootId, token, itemId: id },
+				})
+			} catch {
+				return { ok: false }
+			}
+		},
+		retry: false,
+		refetchOnWindowFocus: false,
+	})
+	const result = embed.data ?? null
 	if (!result) return <LoadingIndicator label="Loading file" />
 	if (!result.ok) return <span>File unavailable</span>
 	return (

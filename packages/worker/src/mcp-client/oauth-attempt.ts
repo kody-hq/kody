@@ -149,6 +149,7 @@ export function buildMcpOAuthAttemptIdentity(input: {
 /**
  * Full fence used at callback and again immediately before persisting tokens.
  * Requires a complete pending record (legacy attempts without ids fail closed).
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function oauthAttemptMatchesLiveServer(input: {
 	pending: McpOAuthAttemptIdentity | null | undefined

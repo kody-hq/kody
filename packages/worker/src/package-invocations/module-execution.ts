@@ -56,7 +56,6 @@ import {
 	type PackageInvocationActor,
 	type PackageInvocationResponse,
 	type PackageModuleSelector,
-	type PackageRuntimeToolFactories,
 	type PackageSourceRevisionOptions,
 } from './common.ts'
 import {
@@ -135,7 +134,6 @@ export type SavedPackageModuleRunInput = {
 	topic: string | null
 	notFoundCode: 'export_not_found' | 'subscription_not_found'
 	runtimeInvokeDepth?: number
-	toolFactories: PackageRuntimeToolFactories
 	waitUntil?: (promise: Promise<unknown>) => void
 	/**
 	 * Artifact already prepared by a host invoke check phase moments
@@ -457,6 +455,7 @@ export async function runSavedPackageModuleOnce(
 				// the registry must not begin/finish a second one for this run.
 				// Still pass the observed surface so UWD is not inferred as
 				// package_export for subscription / webhook keyed runs.
+				// Permanent: stored data or clients from before this change still exist.
 				runRecord: externalHandle ? null : runRecord,
 				runSurface:
 					runRecord?.surface ??
@@ -562,15 +561,7 @@ export async function runSavedPackageModuleOnce(
 					},
 				},
 				packageContext,
-				packageEventTools: input.toolFactories.createPackageEventTools({
-					env: input.env,
-					baseUrl: input.baseUrl,
-					callerContext,
-					packageContext,
-					parentRunRecord: runRecord,
-					packageInvokeDepth: input.runtimeInvokeDepth ?? 0,
-					waitUntil: input.waitUntil,
-				}),
+				packageInvokeDepth: input.runtimeInvokeDepth ?? 0,
 				waitUntil: input.waitUntil,
 			},
 		)

@@ -1,6 +1,27 @@
 import type { z } from 'zod'
+import {
+	normalizeCredentialCallMap,
+	type CredentialCallMap,
+	type CredentialCallMapInput,
+} from '#worker/credentials/credential-call-map.ts'
 import type { ApiInvocationContext, ApiPrincipal } from './context.ts'
 import { ApiError, invalidRequest } from './errors.ts'
+
+/** Use the lease's picks for context runs and normalize request picks otherwise. */
+export function capabilityProxyCallMap(
+	ctx: Pick<ApiInvocationContext, 'principal'>,
+	credentials: CredentialCallMapInput | null | undefined,
+): CredentialCallMap | null {
+	if (ctx.principal.kind !== 'execution-context-run') {
+		return normalizeCredentialCallMap(credentials)
+	}
+	if (credentials !== undefined && credentials !== null) {
+		throw invalidRequest(
+			'Execution context runs cannot send `credentials`: Kody applies the credential picks the run was started with.',
+		)
+	}
+	return ctx.principal.callMap ?? null
+}
 
 export type NativeApiOperationDefinition = {
 	summary: string
@@ -44,9 +65,9 @@ export function requireTokenPrincipal(ctx: ApiInvocationContext) {
 }
 
 /**
- * CapabilityProxy and package-graph accept either a scoped `kody_at_` token
- * or CLI MCP OAuth (`mcp-oauth`). The MCP `api` tool principal is not used
- * on these HTTP routes.
+ * CapabilityProxy and package-graph accept scoped API tokens, CLI MCP OAuth,
+ * and execution-context run lease tokens. The MCP `api` tool uses a separate
+ * principal.
  */
 export function requireLocalExecuteHttpPrincipal(
 	ctx: ApiInvocationContext,

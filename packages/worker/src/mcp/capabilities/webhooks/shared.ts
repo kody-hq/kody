@@ -26,6 +26,7 @@ export const webhookVerificationPublicSchema = z
 			encoding: z.enum(['hex', 'base64']),
 			prefix: z.string().optional(),
 			signedPayload: z.enum(['body', 'timestamp.body']).optional(),
+			profile: z.literal('standard-webhooks').optional(),
 		}),
 		z.object({ type: z.literal('url-secret') }),
 	])

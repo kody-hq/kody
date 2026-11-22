@@ -2,11 +2,11 @@
 import {
 	createContext,
 	useContext,
-	useEffect,
-	useRef,
 	useState,
+	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useRouter } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { saveFile } from '#start/server/files'
@@ -67,101 +67,25 @@ const action = {
 	'&:hover': { background: colors.borderSubtle },
 }
 export function WorkspaceUploads({ children }: { children: ReactNode }) {
-	const [jobs, setJobs] = useState<UploadJob[]>([]),
-		[open, setOpen] = useState(true)
-	const active = useRef(new Map<string, AbortController>())
+	const [open, setOpen] = useState(true)
 	const router = useRouter(),
 		query = useQueryClient()
-	const patch = (id: string, changes: Partial<UploadJob>) =>
-		setJobs((items) =>
-			items.map((job) => (job.id === id ? { ...job, ...changes } : job)),
-		)
-	useEffect(() => {
-		for (const job of jobs) {
-			if (active.current.size >= 2) break
-			if (job.status !== 'queued' || active.current.has(job.id)) continue
-			const controller = new AbortController()
-			active.current.set(job.id, controller)
-			patch(job.id, { status: 'preparing', error: undefined })
-			void (async () => {
-				try {
-					if (!job.file) throw new Error('Choose this file again.')
-					if (job.size > fileByteLimit)
-						throw new Error('File exceeds the 16 MiB limit.')
-					const bytes = new Uint8Array(await job.file.arrayBuffer())
-					controller.signal.throwIfAborted()
-					const mime = fileMediaTypeSchema.safeParse(job.file.type)
-					const type = detectFileMediaType(
-						job.name,
-						mime.success ? mime.data : 'application/octet-stream',
-					)
-					let content: string | undefined
-					if (
-						type.startsWith('text/') ||
-						/\.(json|ya?ml|xml|[cm]?[jt]sx?|css)$/i.test(job.name)
-					) {
-						try {
-							content = new TextDecoder('utf-8', {
-								fatal: true,
-								ignoreBOM: true,
-							}).decode(bytes)
-						} catch {
-							/* Preserve original bytes. */
-						}
-					}
-					patch(job.id, { status: 'uploading', progress: 0 })
-					const result = await saveFile({
-						data: {
-							orgSlug: job.org,
-							input: {
-								file_id: job.id,
-								write_id: job.writeId,
-								name: job.name,
-								parent_id: job.parentId,
-								media_type: type,
-								encoding: content === undefined ? 'base64' : 'utf8',
-								content: content ?? bytesToBase64(bytes),
-							},
-						},
-						signal: controller.signal,
-						fetch: uploadFetch(
-							(fraction) =>
-								!controller.signal.aborted &&
-								patch(job.id, {
-									progress: fraction,
-									status: fraction >= 1 ? 'saving' : 'uploading',
-								}),
-						),
-					})
-					if (!result.ok)
-						throw new Error(
-							'message' in result ? result.message : 'Could not upload file.',
-						)
-					patch(job.id, { status: 'complete', progress: 1, file: undefined })
-					void query.invalidateQueries({
-						predicate: (q) =>
-							q.queryKey[0] === 'page' && q.queryKey[2] === 'loadFilesPage',
-					})
-					void router.invalidate().catch(() => {})
-				} catch (error) {
-					patch(job.id, {
-						status: controller.signal.aborted ? 'canceled' : 'failed',
-						error:
-							error instanceof Error ? error.message : 'Could not upload file.',
-					})
-				} finally {
-					active.current.delete(job.id)
-					setJobs((items) => [...items])
-				}
-			})()
-		}
-	}, [jobs, query, router])
-	useEffect(
-		() => () => {
-			for (const controller of active.current.values()) controller.abort()
-		},
-		[],
+	const [queue] = useState(() =>
+		createUploadQueue(() => {
+			void query.invalidateQueries({
+				predicate: (q) =>
+					q.queryKey[0] === 'page' && q.queryKey[2] === 'loadFilesPage',
+			})
+			void router.invalidate().catch(() => {})
+		}),
 	)
+	const jobs = useSyncExternalStore(queue.subscribe, queue.read, queue.read)
+	const setJobs = queue.update
+	const patch = queue.patch
+	useResourceLifetime(() => {
+		queue.resume()
+		return queue.stop
+	}, [queue])
 	const running = jobs.filter((job) => activeStatus(job.status)).length
 	const failed = jobs.filter((job) => job.status === 'failed').length
 	const complete = jobs.filter((job) => job.status === 'complete').length
@@ -176,14 +100,8 @@ export function WorkspaceUploads({ children }: { children: ReactNode }) {
 			: complete
 				? 'Uploads complete'
 				: 'Uploads canceled'
-	useEffect(() => {
-		if (!running) return
-		const warn = (event: BeforeUnloadEvent) => event.preventDefault()
-		window.addEventListener('beforeunload', warn)
-		return () => window.removeEventListener('beforeunload', warn)
-	}, [running])
 	const cancel = (id: string) => {
-		active.current.get(id)?.abort()
+		queue.abort(id)
 		patch(id, { status: 'canceled' })
 	}
 	return (
@@ -429,4 +347,130 @@ export function WorkspaceUploads({ children }: { children: ReactNode }) {
 			)}
 		</Context>
 	)
+}
+
+/** Runs at most two uploads at a time and starts the next as each settles. */
+function createUploadQueue(onUploaded: () => void) {
+	let jobs: UploadJob[] = []
+	let scheduled = false
+	let stopped = false
+	const listeners = new Set<() => void>()
+	const active = new Map<string, AbortController>()
+	let warning = false
+	const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+	function set(next: UploadJob[]) {
+		jobs = next
+		const running = !stopped && jobs.some((job) => activeStatus(job.status))
+		if (running !== warning) {
+			warning = running
+			if (running) window.addEventListener('beforeunload', warn)
+			else window.removeEventListener('beforeunload', warn)
+		}
+		for (const listener of listeners) listener()
+		if (scheduled) return
+		scheduled = true
+		queueMicrotask(() => {
+			scheduled = false
+			pump()
+		})
+	}
+	function patch(id: string, changes: Partial<UploadJob>) {
+		set(jobs.map((job) => (job.id === id ? { ...job, ...changes } : job)))
+	}
+	function pump() {
+		if (stopped) return
+		for (const job of jobs) {
+			if (active.size >= 2) break
+			if (job.status !== 'queued' || active.has(job.id)) continue
+			const controller = new AbortController()
+			active.set(job.id, controller)
+			patch(job.id, { status: 'preparing', error: undefined })
+			void (async () => {
+				try {
+					if (!job.file) throw new Error('Choose this file again.')
+					if (job.size > fileByteLimit)
+						throw new Error('File exceeds the 16 MiB limit.')
+					const bytes = new Uint8Array(await job.file.arrayBuffer())
+					controller.signal.throwIfAborted()
+					const mime = fileMediaTypeSchema.safeParse(job.file.type)
+					const type = detectFileMediaType(
+						job.name,
+						mime.success ? mime.data : 'application/octet-stream',
+					)
+					let content: string | undefined
+					if (
+						type.startsWith('text/') ||
+						/\.(json|ya?ml|xml|[cm]?[jt]sx?|css)$/i.test(job.name)
+					) {
+						try {
+							content = new TextDecoder('utf-8', {
+								fatal: true,
+								ignoreBOM: true,
+							}).decode(bytes)
+						} catch {
+							/* Preserve original bytes. */
+						}
+					}
+					patch(job.id, { status: 'uploading', progress: 0 })
+					const result = await saveFile({
+						data: {
+							orgSlug: job.org,
+							input: {
+								file_id: job.id,
+								write_id: job.writeId,
+								name: job.name,
+								parent_id: job.parentId,
+								media_type: type,
+								encoding: content === undefined ? 'base64' : 'utf8',
+								content: content ?? bytesToBase64(bytes),
+							},
+						},
+						signal: controller.signal,
+						fetch: uploadFetch(
+							(fraction) =>
+								!controller.signal.aborted &&
+								patch(job.id, {
+									progress: fraction,
+									status: fraction >= 1 ? 'saving' : 'uploading',
+								}),
+						),
+					})
+					if (!result.ok)
+						throw new Error(
+							'message' in result ? result.message : 'Could not upload file.',
+						)
+					patch(job.id, { status: 'complete', progress: 1, file: undefined })
+					onUploaded()
+				} catch (error) {
+					patch(job.id, {
+						status: controller.signal.aborted ? 'canceled' : 'failed',
+						error:
+							error instanceof Error ? error.message : 'Could not upload file.',
+					})
+				} finally {
+					active.delete(job.id)
+					set([...jobs])
+				}
+			})()
+		}
+	}
+	return {
+		subscribe(listener: () => void) {
+			listeners.add(listener)
+			return () => listeners.delete(listener)
+		},
+		read: () => jobs,
+		update: (change: (items: UploadJob[]) => UploadJob[]) => set(change(jobs)),
+		patch,
+		abort: (id: string) => active.get(id)?.abort(),
+		resume() {
+			stopped = false
+			set(jobs)
+		},
+		stop() {
+			stopped = true
+			for (const controller of active.values()) controller.abort()
+			set(jobs)
+		},
+	}
 }

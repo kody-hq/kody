@@ -2,7 +2,7 @@
 import { Button } from './button.tsx'
 import { LoadingIndicator } from './loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
-import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useContext, useState, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
 	isNotFound,
@@ -94,7 +94,6 @@ function FollowProvider({
 			open: typeof value === 'function' ? value(open) : value,
 		})
 	}
-	const panelRef = useRef<HTMLElement>(null)
 	const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
 	const [draft, setDraft] = useState<{
 		slug: string
@@ -155,9 +154,6 @@ function FollowProvider({
 		),
 	)
 	const submitting = followMutation.isPending || unfollowMutation.isPending
-	useEffect(() => {
-		if (open) panelRef.current?.focus()
-	}, [open])
 	function toggle() {
 		if (!open && read.isError) void read.refetch()
 		setOpen((previous) => !previous)
@@ -219,7 +215,7 @@ function FollowProvider({
 	const panel =
 		open && follow?.loggedIn ? (
 			<section
-				ref={panelRef}
+				ref={focusPanel}
 				id={PACKAGE_FOLLOW_PANEL_ID}
 				tabIndex={-1}
 				aria-labelledby="package-follow-title"
@@ -551,4 +547,8 @@ const actionsCss = {
 	display: 'flex',
 	flexWrap: 'wrap' as const,
 	gap: spacing.sm,
+}
+
+function focusPanel(node: HTMLElement | null) {
+	node?.focus()
 }

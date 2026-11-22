@@ -47,17 +47,24 @@ Authoring flow:
    `packages/worker/src/mcp/capabilities/define-domain.ts`. Validates that every
    capability’s `domain` matches `name` and that names are unique within the
    domain.
-3. **`builtinDomains`** — in
+3. **`builtinDomainModuleLoaders`**: in
    `packages/worker/src/mcp/capabilities/builtin-domains.ts`, list all domains
    you want in the default server. Order controls the flattening order of
    capabilities in the static registry (capabilities from earlier domains come
    first).
-4. **`registry.ts`** — memoizes `buildCapabilityRegistry(builtinDomains)` via
-   **`getStaticRegistry()`** on first use per isolate, providing access to
-   builtin capabilities, handlers, tool descriptors, and domain metadata. At
-   request time, **`getCapabilityRegistryForContext()`** merges MCP client
-   servers, then applies caller role/permission/feature-flag filtering for
-   search and execute.
+4. **`capability-manifest.generated.mjs`**: the committed manifest of every
+   builtin capability's metadata, JSON Schemas, and type definitions. Run
+   `npm run capabilities:manifest` after adding, removing, or changing a builtin
+   capability or domain. The drift test in `capability-manifest.node.test.ts`
+   fails until the manifest matches the definitions.
+5. **`registry.ts`**: memoizes
+   `buildCapabilityRegistry(await loadBuiltinDomains())` via
+   **`getStaticRegistry()`** on first use per isolate. `loadBuiltinDomains()`
+   reads the manifest, so search, listings, docs, and access filtering never
+   evaluate a domain module; each builtin handler loads only its own domain
+   module on first call. At request time,
+   **`getCapabilityRegistryForContext()`** merges MCP client servers, then
+   applies caller role/permission/feature-flag filtering for search and execute.
 
 To merge extra domains later (e.g. plugins), the seam is:
 `buildCapabilityRegistry([...builtinDomains, ...extraDomains])` with real
@@ -333,7 +340,8 @@ domain when you introduce a new system boundary or ownership area (e.g.
    plain `string` so runtime MCP domains stay valid).
 2. Add `packages/worker/src/mcp/capabilities/<name>/domain.ts`, capability
    files, and direct imports from those files in `domain.ts`.
-3. Append the new domain to the `builtinDomains` array in `builtin-domains.ts`.
+3. Add the new domain to `builtinDomainModuleLoaders` in `builtin-domains.ts`,
+   then run `npm run capabilities:manifest`.
 
 You do not edit `registry.ts` for routine additions—only `builtin-domains` and
 the domain modules.
@@ -346,9 +354,8 @@ the domain modules.
 3. Add helpful `tags`/`keywords` when they improve search.
 4. Include the capability in that domain’s **`domain.ts`**:
    `capabilities: [..., yourCapability]`.
-5. Import the domain directly from **`<domain>/domain.ts`** in
-   `builtin-domains.ts`; import individual capabilities from their defining
-   files wherever they are used.
+5. Import individual capabilities from their defining files wherever they are
+   used, then run `npm run capabilities:manifest`.
 6. Add or update focused `*.node.test.ts` or `*.workers.test.ts` coverage beside
    the implementation for most MCP-visible behavior. Touch
    `packages/worker/src/mcp/*.mcp-e2e.test.ts` only when the behavior truly
@@ -456,8 +463,8 @@ Public MCP behavior should be verified through the compact tool surface:
 Prefer `*.node.test.ts` and `*.workers.test.ts` for capability behavior. Reserve
 `packages/worker/src/mcp/*.mcp-e2e.test.ts` for a very small number of real MCP
 contract smoke tests. See the
-[test flavor decision matrix](./testing-principles.md#test-flavor-decision-matrix)
-for when each flavor is appropriate.
+[test flavor decision matrix](./test-runners.md#test-flavor-decision-matrix) for
+when each flavor is appropriate.
 
 Registry invariants (duplicate capability names, domain/capability mismatches,
 duplicate domain registration) are covered in

@@ -12,11 +12,19 @@ on:
       - 'tools/generate-cli-openapi-client.ts'
       - 'tools/cli-release-plan.ts'
       - 'tools/publish-cli.ts'
+      - 'tools/npm-release-readiness.ts'
       - '.github/workflows/publish-cli.yml'
 
 permissions:
   contents: write
   id-token: write
+
+# Two merges in a row used to plan the same version and race to npm (409).
+# Queue instead; a newer pending run supersedes an older one since it checks
+# out a later main that already contains the older changes.
+concurrency:
+  group: publish-cli
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -24,7 +32,7 @@ jobs:
     # Actions runner environment: self-hosted"). Keep this job on
     # GitHub-hosted ubuntu-latest even if vars.CI_RUNNER points elsewhere.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 55
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2
