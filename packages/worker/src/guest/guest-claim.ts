@@ -1,4 +1,5 @@
 import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { onEmailVerified } from '#worker/identity/email-verified.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -264,6 +265,7 @@ export async function convertGuestInPlace(
 		stableUserId: guest.personId,
 	})
 	await recordWhatsNewVerifiedAccount({ env, stableUserId: guest.personId })
+	await onEmailVerified({ env, stableUserId: guest.personId })
 	return {
 		mode: 'new',
 		username,

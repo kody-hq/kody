@@ -385,6 +385,45 @@ test('held rewards release for every pending referee when the referrer verifies'
 	expect(await creditExpiry(db, referrer)).toBe(secondCreditExpiresAt)
 })
 
+test('concurrent and repeated held-reward releases grant one month each', async () => {
+	const db = await createDb()
+	const owner = await insertUser(db, 'raceowner', { verified: false })
+	const team = await insertTeamOrg(db, 'raceteam', [
+		{ user: owner, role: 'owner' },
+	])
+	const referee = await insertUser(db, 'racereferee', { verified: false })
+	await attribute(db, referee, 'raceteam')
+	expect(await reward(db, referee, 'in_race')).toEqual({
+		outcome: 'held_unverified',
+	})
+
+	await verifyEmail(db, owner)
+	await verifyEmail(db, referee)
+	// The owner and the referee verify at once (two tabs, two providers).
+	await Promise.all(
+		[owner, referee, owner, referee].map((user) =>
+			maybeRewardHeldReferralAfterEmailVerified({
+				db,
+				stableUserId: user.stableUserId,
+				now,
+			}),
+		),
+	)
+	await maybeRewardHeldReferralAfterEmailVerified({
+		db,
+		stableUserId: referee.stableUserId,
+		now,
+	})
+
+	expect(await referralRow(db, referee)).toMatchObject({
+		status: 'rewarded',
+		reward_invoice_id: 'in_race',
+		held_invoice_id: null,
+	})
+	expect(await orgCreditExpiry(db, team)).toBe(firstCreditExpiresAt)
+	expect(await creditExpiry(db, referee)).toBe(firstCreditExpiresAt)
+})
+
 test('held rewards stay pending when the referrer period resolver fails', async () => {
 	const db = await createDb()
 	const referrer = await insertUser(db, 'heldfailref', { verified: false })

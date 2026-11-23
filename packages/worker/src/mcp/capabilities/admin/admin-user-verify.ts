@@ -1,4 +1,5 @@
 import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { onEmailVerified } from '#worker/identity/email-verified.ts'
 import { z } from 'zod'
 import {
 	AdminEmailVerificationError,
@@ -86,6 +87,10 @@ export const adminUserVerifyCapability = defineDomainCapability(
 								target,
 							)
 							await recordWhatsNewVerifiedAccount({
+								env: ctx.env,
+								stableUserId: user.stableUserId,
+							})
+							await onEmailVerified({
 								env: ctx.env,
 								stableUserId: user.stableUserId,
 							})

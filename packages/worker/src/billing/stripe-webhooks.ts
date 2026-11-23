@@ -21,10 +21,7 @@ import { waitUntil } from 'cloudflare:workers'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { sendPaymentFailedEmail } from '#app/user-account-emails.ts'
 import { readSignupOrgSlug } from '#worker/orgs/signup-org-slug.ts'
-import {
-	isBillingConfigured,
-	selectKodyPlanRetainingSubscriptions,
-} from './billing-config.ts'
+import { isBillingConfigured } from './billing-config.ts'
 import { recordCheckoutFunnelEvent } from '#worker/identity/onboarding-funnel.ts'
 import {
 	BillingLinkError,
@@ -33,11 +30,7 @@ import {
 	refreshStripePlanForStripeCustomer,
 	refreshStripePlanForUser,
 } from './subscription-sync.ts'
-import {
-	listSubscriptions,
-	planTransferMetadataKey,
-	readStripeSubscriptionPeriodEndUnix,
-} from './stripe-client.ts'
+import { planTransferMetadataKey } from './stripe-client.ts'
 import {
 	isQualifyingPaidReferralInvoice,
 	readStripeInvoiceCustomerId,
@@ -46,7 +39,7 @@ import {
 	readStripeInvoiceSubscriptionId,
 	rewardReferralForPaidInvoice,
 } from '#worker/entitlements/referral-program.ts'
-import { unixSecondsToIso } from '#universal/referral-program.ts'
+import { latestReferrerPaidPeriodEnd } from './referrer-paid-period.ts'
 import {
 	StripeWebhookSignatureError,
 	verifyStripeWebhookSignature,
@@ -382,32 +375,6 @@ async function handleInvoicePaymentFailed(input: {
 			console.warn('billing-payment-failed-email-failed', error)
 		}),
 	)
-}
-
-export async function latestReferrerPaidPeriodEnd(input: {
-	env: Env
-	referrerOrgId: string
-}): Promise<string | null> {
-	const row = await input.env.APP_DB.prepare(
-		`SELECT stripe_customer_id FROM orgs WHERE id = ? AND deleted_at IS NULL`,
-	)
-		.bind(input.referrerOrgId)
-		.first<{ stripe_customer_id: string | null }>()
-	const customerId = row?.stripe_customer_id?.trim()
-	if (!customerId) return null
-	const subscriptions = selectKodyPlanRetainingSubscriptions(
-		input.env,
-		await listSubscriptions(input.env, customerId),
-	)
-	let latest: string | null = null
-	for (const subscription of subscriptions) {
-		const iso = unixSecondsToIso(
-			readStripeSubscriptionPeriodEndUnix(subscription),
-		)
-		if (!iso) continue
-		if (!latest || Date.parse(iso) > Date.parse(latest)) latest = iso
-	}
-	return latest
 }
 
 async function handleInvoicePaid(input: {
