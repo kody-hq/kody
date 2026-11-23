@@ -78,14 +78,14 @@ boundary, on the final serialized request, and only for hosts you approved.
   handle in a fetch header or body and Kody fills the JWT on egress. HMAC
   (`HS256` / `HS384` / `HS512`) reads key material from the saved secret
   (`key_encoding` defaults to `base64`) and rejects keys shorter than 32, 48, or
-  64 bytes (JWA). `RS*`, `PS*`, `ES*`, and `EdDSA` use a PKCS#8 PEM private key.
-  Pass the secret as `private_key_secret_name` (a saved secret name **or** the
-  opaque ref from `packageSecrets.get`). When `aud` is not an https URL, pass
-  **`send_to_host`** (bare host) so the sealed JWT fills on that host's
-  registrable domain. An https `aud` already names the fill domain. A token a
-  token endpoint returns for the JWT (Google's `oauth2.googleapis.com/token`)
-  fills on the exact hosts approved on the signing key; `send_to_host` does not
-  change where that token goes. See
+  64 bytes (JWA). `RS*`, `PS*`, `ES*`, and `EdDSA` use a PEM private key
+  (PKCS#8, PKCS#1 RSA, or SEC1 EC). Pass the secret as `private_key_secret_name`
+  (a saved secret name **or** the opaque ref from `packageSecrets.get`). When
+  `aud` is not an https URL, pass **`send_to_host`** (bare host) so the sealed
+  JWT fills on that host's registrable domain. An https `aud` already names the
+  fill domain. A token a token endpoint returns for the JWT (Google's
+  `oauth2.googleapis.com/token`) fills on the exact hosts approved on the
+  signing key; `send_to_host` does not change where that token goes. See
   [Signing JWTs with saved secrets](../use/secrets-and-values.md#signing-jwts-with-saved-secrets).
 
 - **Saving a token from a token exchange**: a token response (`access_token`,

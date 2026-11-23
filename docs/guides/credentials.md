@@ -697,9 +697,9 @@ const signature = await partner.sign({
 })
 ```
 
-JWTs support `RS*`, `PS*`, `ES*`, `EdDSA` (PKCS#8 PEM private keys), and `HS256`
-/ `HS384` / `HS512`. Kody signs only for one of the credential's hosts; pass
-`host` to pick one, or it uses the first exact host.
+JWTs support `RS*`, `PS*`, `ES*`, `EdDSA` (PKCS#8, PKCS#1 RSA, or SEC1 EC PEM
+private keys), and `HS256` / `HS384` / `HS512`. Kody signs only for one of the
+credential's hosts; pass `host` to pick one, or it uses the first exact host.
 
 For APIs that sign whole HTTP requests with an RSA key, like Oracle Cloud, use
 `http-signature`. Code describes the request; Kody builds the draft-cavage

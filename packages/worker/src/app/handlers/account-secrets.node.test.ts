@@ -15,6 +15,7 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { generateKeyPairSync } from 'node:crypto'
 import { expect, test, vi } from 'vitest'
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn<
@@ -277,6 +278,10 @@ const mockModule = vi.hoisted(() => ({
 		},
 	),
 }))
+
+const signingKeyPem = generateKeyPairSync('ec', {
+	namedCurve: 'prime256v1',
+}).privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
 
 vi.mock('#app/authenticated-user.ts', () => ({
 	readAuthenticatedAppUser: mockModule.readAuthenticatedAppUser,
@@ -1007,7 +1012,7 @@ test('account secrets save stores url, login, and signing credentials with their
 			await save({
 				kind: 'signing',
 				hosts: ['*.example.com'],
-				value: '-----BEGIN PRIVATE KEY-----',
+				value: signingKeyPem,
 			})
 		).status,
 	).toBe(200)

@@ -4,6 +4,8 @@ import {
 	bytesToBase64Url,
 	utf8ToBase64Url,
 } from '@kody-internal/shared/base64.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
+import { importPrivateKeyPem } from '#worker/credentials/private-key-pem.ts'
 
 export const jwtAlgorithms = [
 	'RS256',
@@ -98,7 +100,7 @@ export async function signJwtWithSecret(
 		})
 	}
 	if (input.keyEncoding !== undefined) {
-		throw new Error(
+		throw new McpCallerError(
 			'key_encoding is only valid when algorithm is HS256, HS384, or HS512.',
 		)
 	}
@@ -119,14 +121,14 @@ export function extractSecretMaterial(input: {
 	try {
 		parsed = JSON.parse(input.secretValue)
 	} catch {
-		throw new Error('Signing key secret is not valid JSON.')
+		throw new McpCallerError('Signing key secret is not valid JSON.')
 	}
 	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-		throw new Error('Signing key secret JSON must be an object.')
+		throw new McpCallerError('Signing key secret JSON must be an object.')
 	}
 	const value = (parsed as Record<string, unknown>)[input.jsonField]
 	if (typeof value !== 'string' || value.trim() === '') {
-		throw new Error(
+		throw new McpCallerError(
 			`Signing key secret JSON field "${input.jsonField}" must be a non-empty string.`,
 		)
 	}
@@ -165,7 +167,9 @@ function decodeHmacKeyBytes(input: {
 	switch (input.encoding) {
 		case 'utf8': {
 			if (input.secretValue === '') {
-				throw new Error('HMAC signing key secret must be a non-empty string.')
+				throw new McpCallerError(
+					'HMAC signing key secret must be a non-empty string.',
+				)
 			}
 			return new TextEncoder().encode(input.secretValue)
 		}
@@ -190,7 +194,7 @@ function assertHmacKeyLength(
 ) {
 	const minBytes = hmacMinKeyByteLength(algorithm)
 	if (hmacKeyBytes.byteLength < minBytes) {
-		throw new Error(
+		throw new McpCallerError(
 			`HMAC signing key for ${algorithm} must be at least ${minBytes} bytes.`,
 		)
 	}
@@ -203,16 +207,22 @@ function decodeEncodedHmacKey(
 ) {
 	const normalized = secretValue.replace(/\s/g, '')
 	if (!normalized) {
-		throw new Error('HMAC signing key secret must be a non-empty string.')
+		throw new McpCallerError(
+			'HMAC signing key secret must be a non-empty string.',
+		)
 	}
 	let bytes: Uint8Array
 	try {
 		bytes = decode(normalized)
 	} catch {
-		throw new Error(`HMAC signing key secret is not valid ${encoding}.`)
+		throw new McpCallerError(
+			`HMAC signing key secret is not valid ${encoding}.`,
+		)
 	}
 	if (bytes.byteLength === 0) {
-		throw new Error('HMAC signing key secret must be a non-empty string.')
+		throw new McpCallerError(
+			'HMAC signing key secret must be a non-empty string.',
+		)
 	}
 	return bytes
 }
@@ -222,7 +232,9 @@ function buildJwtHeader(
 	header: Record<string, unknown>,
 ) {
 	if (header.alg !== undefined && header.alg !== algorithm) {
-		throw new Error('JWT header alg must match the requested algorithm.')
+		throw new McpCallerError(
+			'JWT header alg must match the requested algorithm.',
+		)
 	}
 	return {
 		typ: 'JWT',
@@ -248,7 +260,7 @@ async function importHmacKey(
 			['sign'],
 		)
 	} catch {
-		throw new Error('HMAC signing key secret could not be imported.')
+		throw new McpCallerError('HMAC signing key secret could not be imported.')
 	}
 }
 
@@ -256,18 +268,32 @@ async function importPrivateKey(
 	privateKeyPem: string,
 	algorithm: AsymmetricJwtAlgorithm,
 ) {
-	try {
-		return await crypto.subtle.importKey(
-			'pkcs8',
-			pemToArrayBuffer(privateKeyPem),
-			getImportAlgorithm(algorithm),
-			false,
-			['sign'],
-		)
-	} catch {
-		throw new Error(
-			'Private key secret must contain a valid PKCS#8 PEM key for the requested algorithm.',
-		)
+	return await importPrivateKeyPem({
+		value: privateKeyPem,
+		algorithm: getImportAlgorithm(algorithm),
+		fits: `${algorithm}, which needs ${privateKeyKindFor(algorithm)}`,
+	})
+}
+
+function privateKeyKindFor(algorithm: AsymmetricJwtAlgorithm) {
+	switch (algorithm) {
+		case 'RS256':
+		case 'RS384':
+		case 'RS512':
+		case 'PS256':
+		case 'PS384':
+		case 'PS512':
+			return 'an RSA key'
+		case 'ES256':
+		case 'ES384':
+		case 'ES512':
+			return `an EC ${ecdsaCurveName(algorithm)} key`
+		case 'EdDSA':
+			return 'an Ed25519 key'
+		default: {
+			const exhaustive: never = algorithm
+			throw new Error(`Unsupported JWT algorithm: ${exhaustive}`)
+		}
 	}
 }
 
@@ -390,15 +416,4 @@ function pssSaltLength(algorithm: 'PS256' | 'PS384' | 'PS512') {
 			throw new Error(`Unsupported JWT algorithm: ${exhaustive}`)
 		}
 	}
-}
-
-function pemToArrayBuffer(pem: string) {
-	const base64 = pem
-		.replace(/-----BEGIN PRIVATE KEY-----/g, '')
-		.replace(/-----END PRIVATE KEY-----/g, '')
-		.replace(/\s/g, '')
-	if (!base64) {
-		throw new Error('Private key PEM is empty.')
-	}
-	return base64ToBytes(base64).buffer
 }

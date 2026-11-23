@@ -222,10 +222,11 @@ missing host.
 The caller supplies the JWT header and claims, then performs any provider-
 specific token exchange with ordinary **`fetch`**. Pass the saved secret as
 **`private_key_secret_name`** — a saved secret name **or** an opaque
-`{{secret:…}}` ref from `packageSecrets.get` (PKCS#8 PEM for asymmetric
-algorithms, HMAC key material for HS*). For service-account JSON secrets, pass
-**`private_key_json_field: "private_key"`** to sign with that field. Supported
-algorithms:
+`{{secret:…}}` ref from `packageSecrets.get` (a PEM private key for asymmetric
+algorithms: PKCS#8 `BEGIN PRIVATE KEY`, PKCS#1 `BEGIN RSA PRIVATE KEY`, or SEC1
+`BEGIN EC PRIVATE KEY`; HMAC key material for HS*). For service-account JSON
+secrets, pass **`private_key_json_field: "private_key"`** to sign with that
+field. Supported algorithms:
 
 - **HMAC:** `HS256`, `HS384`, `HS512` — **`key_encoding`** is **`base64`**
   (default, DoorDash Drive `signing_secret`), **`utf8`**, or **`base64url`**.
@@ -234,6 +235,10 @@ algorithms:
 - **RSA-PSS:** `PS256`, `PS384`, `PS512`
 - **ECDSA:** `ES256`, `ES384`, `ES512`
 - **EdDSA:** Ed25519 PKCS#8 keys (Cursor Origin app JWTs)
+
+A key Kody cannot use (an encrypted, OpenSSH, or public-key PEM, or one that
+does not fit the algorithm) fails with a message naming the PEM label it found
+and the formats Kody accepts.
 
 HMAC-signed JWTs (`HS256`, `HS384`, `HS512`) use this primitive. Standalone HMAC
 signatures, RSA HTTP request signatures (`http-signature`), and owner-opt-in raw

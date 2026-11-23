@@ -5,6 +5,7 @@ import {
 import {
 	constants,
 	createHmac,
+	createPrivateKey,
 	createVerify,
 	generateKeyPairSync,
 	timingSafeEqual,
@@ -460,6 +461,120 @@ test('secretJwtSign signs RS, PS, and ES JWTs from PKCS#8 PEM secrets', async ()
 	).rejects.toThrow(
 		'key_encoding is only valid when algorithm is HS256, HS384, or HS512.',
 	)
+})
+
+test('secretJwtSign signs with PKCS#1 RSA and SEC1 EC PEM secrets', async () => {
+	lookupSecretsThroughResolveSecret()
+	const claims = { iss: 'app-123', aud: 'example' }
+	const rsa = createKeyPair()
+	const rsaPkcs1 = createPrivateKey(rsa.privateKey).export({
+		type: 'pkcs1',
+		format: 'pem',
+	}) as string
+	expect(rsaPkcs1).toContain('BEGIN RSA PRIVATE KEY')
+	const rs256 = await signWith(rsaPkcs1, {
+		private_key_secret_name: 'githubAppKey',
+		algorithm: 'RS256',
+		claims,
+	})
+	expect(verifyRsaJwt(rs256.jwt, rsa.publicKey, 'SHA256')).toBe(true)
+	const escaped = await signWith(rsaPkcs1.replace(/\n/g, '\\n'), {
+		private_key_secret_name: 'githubAppKey',
+		algorithm: 'RS256',
+		claims,
+	})
+	expect(verifyRsaJwt(escaped.jwt, rsa.publicKey, 'SHA256')).toBe(true)
+
+	const curves = [
+		['prime256v1', 'ES256', 'sha256'],
+		['secp384r1', 'ES384', 'sha384'],
+		['secp521r1', 'ES512', 'sha512'],
+	] as const
+	for (const [curve, algorithm, hash] of curves) {
+		const ec = createEcKeyPair(curve)
+		const sec1 = createPrivateKey(ec.privateKey).export({
+			type: 'sec1',
+			format: 'pem',
+		}) as string
+		expect(sec1).toContain('BEGIN EC PRIVATE KEY')
+		const signed = await signWith(sec1, {
+			private_key_secret_name: 'ecKey',
+			algorithm,
+			claims,
+		})
+		const { data, signature } = jwtParts(signed.jwt)
+		expect(
+			verify(
+				hash,
+				Buffer.from(data),
+				{ key: ec.publicKey, dsaEncoding: 'ieee-p1363' },
+				signature,
+			),
+		).toBe(true)
+	}
+})
+
+test('secretJwtSign refuses unusable key material as a caller error without leaking it', async () => {
+	lookupSecretsThroughResolveSecret()
+	const rsa = createKeyPair()
+	const body = rsa.privateKey.split('\n')[1]!
+	const sign = (
+		value: string,
+		algorithm: SignInput['algorithm'] = 'RS256',
+		extra: Partial<SignInput> = {},
+	) =>
+		signWith(value, {
+			private_key_secret_name: 'signingKey',
+			algorithm,
+			claims: { aud: 'example' },
+			...extra,
+		}).then(
+			() => {
+				throw new Error('expected secretJwtSign to refuse')
+			},
+			(error: unknown) => error as Error,
+		)
+	const cases: Array<[() => Promise<Error>, string]> = [
+		[
+			() =>
+				sign(
+					'-----BEGIN PRIVATE KEY-----\ngarbage!!\n-----END PRIVATE KEY-----',
+				),
+			'is not valid base64',
+		],
+		[
+			() =>
+				sign(
+					`-----BEGIN OPENSSH PRIVATE KEY-----\n${body}\n-----END OPENSSH PRIVATE KEY-----`,
+				),
+			'BEGIN OPENSSH PRIVATE KEY',
+		],
+		[
+			() => sign(rsa.privateKey, 'ES256'),
+			'could not be imported for ES256, which needs an EC P-256 key',
+		],
+		[
+			() =>
+				sign(rsa.privateKey, 'RS256', {
+					private_key_json_field: 'private_key',
+				}),
+			'not valid JSON',
+		],
+		[
+			() => sign(rsa.privateKey, 'RS256', { header: { alg: 'none' } }),
+			'header alg must match',
+		],
+		[
+			() => sign('short', 'HS256', { key_encoding: 'utf8' }),
+			'at least 32 bytes',
+		],
+	]
+	for (const [run, expected] of cases) {
+		const error = await run()
+		expect(isMcpCallerError(error)).toBe(true)
+		expect(error.message).toContain(expected)
+		expect(error.message).not.toContain(body)
+	}
 })
 
 test('decodeHmacKeyMaterial accepts encodings and rejects invalid input without leaking the key', () => {
