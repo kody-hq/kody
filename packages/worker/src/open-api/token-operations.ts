@@ -1,3 +1,4 @@
+import { reportHandledError } from '#worker/outbound/typed-failure.ts'
 import { z } from 'zod'
 import {
 	apiTokenScopeDescriptions,
@@ -604,7 +605,12 @@ export const tokenOperationDefinitions: Record<
 				}
 			} catch (error) {
 				await revokeProfile(caller, { profileId: profile.id }).catch(
-					() => undefined,
+					(rollbackError: unknown) => {
+						reportHandledError(
+							'api_token.revoke_profile_rollback',
+							rollbackError,
+						)
+					},
 				)
 				throw error
 			}

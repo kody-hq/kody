@@ -2,6 +2,7 @@ import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { McpCallerError } from '#worker/mcp/caller-error.ts'
 import {
 	assertNever,
+	parseJsonText,
 	reportHandledError,
 } from '#worker/outbound/typed-failure.ts'
 import {
@@ -16,6 +17,7 @@ import {
 	publishBuildRejectionHint,
 	publishBuildRetentionMs,
 	publishBuildTicketTtlMs,
+	publishOffloadLimits,
 	type PublishBuildOrigin,
 } from './policy.ts'
 import type {
@@ -40,6 +42,8 @@ export type PublishBuildRow = {
 	ticket_sha256: string
 	status: PublishBuildStatus
 	document_sha256: string | null
+	uploaded_chunks: number
+	uploaded_bytes: number
 	message: string | null
 	created_at: string
 	updated_at: string
@@ -202,6 +206,91 @@ export async function authenticatePublishBuildTicket(input: {
 	return row
 }
 
+export type PublishBuildChunkReservation =
+	| { kind: 'reserved' }
+	| { kind: 'not_uploading'; status: string }
+	| { kind: 'too_many_chunks' }
+	| { kind: 'upload_too_large' }
+
+/**
+ * Count one chunk against the build's limits before it is written. The
+ * conditional UPDATE is atomic in D1, so concurrent PUTs cannot pass
+ * `maxBlobsPerBuild` or `maxUploadBytes` together.
+ */
+export async function reservePublishBuildChunk(input: {
+	db: D1Database
+	buildId: string
+	bytes: number
+	clock?: DeadlineClock
+}): Promise<PublishBuildChunkReservation> {
+	const { maxBlobsPerBuild, maxUploadBytes } = publishOffloadLimits
+	const result = await withDeadline(
+		{
+			label: 'publish_builds.reserve_chunk',
+			timeoutMs: outboundTimeoutMs.d1,
+			clock: input.clock,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE publish_builds
+					SET uploaded_chunks = uploaded_chunks + 1,
+						uploaded_bytes = uploaded_bytes + ?
+					WHERE id = ? AND status = 'uploading'
+						AND uploaded_chunks < ? AND uploaded_bytes + ? <= ?`,
+				)
+				.bind(
+					input.bytes,
+					input.buildId,
+					maxBlobsPerBuild,
+					input.bytes,
+					maxUploadBytes,
+				)
+				.run(),
+	)
+	if ((result.meta.changes ?? 0) > 0) return { kind: 'reserved' }
+	const row = await getPublishBuild(input.db, input.buildId, input.clock)
+	if (!row || row.status !== 'uploading') {
+		return { kind: 'not_uploading', status: row?.status ?? 'expired' }
+	}
+	if (row.uploaded_chunks >= maxBlobsPerBuild)
+		return { kind: 'too_many_chunks' }
+	return { kind: 'upload_too_large' }
+}
+
+/** Give back a reservation whose chunk write failed. */
+export async function releasePublishBuildChunk(input: {
+	db: D1Database
+	buildId: string
+	bytes: number
+	clock?: DeadlineClock
+}) {
+	await withDeadline(
+		{
+			label: 'publish_builds.release_chunk',
+			timeoutMs: outboundTimeoutMs.d1,
+			clock: input.clock,
+		},
+		() =>
+			input.db
+				.prepare(
+					`UPDATE publish_builds
+					SET uploaded_chunks = MAX(uploaded_chunks - 1, 0),
+						uploaded_bytes = MAX(uploaded_bytes - ?, 0)
+					WHERE id = ?`,
+				)
+				.bind(input.bytes, input.buildId)
+				.run(),
+	)
+}
+
+/** The content address of a sealed document; the same document seals to the same sha. */
+export async function publishBuildDocumentSha256(
+	document: PublishBuildDocument,
+) {
+	return await sha256Hex(JSON.stringify(document))
+}
+
 export async function sealPublishBuild(input: {
 	db: D1Database
 	bucket: R2Bucket
@@ -210,7 +299,7 @@ export async function sealPublishBuild(input: {
 	clock?: DeadlineClock
 }) {
 	const body = JSON.stringify(input.document)
-	const sha256 = await sha256Hex(body)
+	const sha256 = await publishBuildDocumentSha256(input.document)
 	await withDeadline(
 		{
 			label: 'publish_build_document.put',
@@ -366,7 +455,7 @@ export async function readPublishBuildDocument(input: {
 	row: Pick<PublishBuildRow, 'id' | 'document_sha256'>
 }) {
 	const sha256 = input.row.document_sha256
-	if (!sha256) return null
+	if (!sha256) return { kind: 'missing' as const }
 	const text = await withDeadline(
 		{ label: 'publish_build_document.get', timeoutMs: outboundTimeoutMs.r2 },
 		async () => {
@@ -376,8 +465,8 @@ export async function readPublishBuildDocument(input: {
 			return object ? await object.text() : null
 		},
 	)
-	if (text === null) return null
-	return JSON.parse(text) as PublishBuildDocument
+	if (text === null) return { kind: 'missing' as const }
+	return parseJsonText(text)
 }
 
 /** 11B: where the serving build of a commit was made, for package info. */

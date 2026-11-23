@@ -1,8 +1,9 @@
 import { ApiError, invalidRequest } from '#worker/open-api/errors.ts'
+import { decodeJsonRequestBody } from '#worker/decode-request-body.ts'
 import {
 	assertNever,
 	deadlineFailure,
-	parseJsonText,
+	reportHandledError,
 	type DeadlineFailure,
 } from '#worker/outbound/typed-failure.ts'
 import {
@@ -11,12 +12,17 @@ import {
 	withDeadline,
 } from '#worker/outbound/with-deadline.ts'
 import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
+import { publishBuildDocumentSchema } from './document-schema.ts'
 import { sha256Hex } from './module-hashes.ts'
 import { publishOffloadLimits } from './policy.ts'
 import {
 	authenticatePublishBuildTicket,
+	getPublishBuild,
 	publishBuildBlobKey,
 	publishBuildBlobPrefix,
+	publishBuildDocumentSha256,
+	releasePublishBuildChunk,
+	reservePublishBuildChunk,
 	sealPublishBuild,
 	type PublishBuildRow,
 } from './store.ts'
@@ -85,10 +91,13 @@ export type PublishBuildRouteFailure =
 	| { kind: 'chunk_too_large' }
 	| { kind: 'chunk_hash_mismatch' }
 	| { kind: 'too_many_chunks' }
+	| { kind: 'upload_too_large' }
+	| { kind: 'document_too_large' }
 	| { kind: 'invalid_json' }
 	| { kind: 'invalid_document'; message: string }
 	| { kind: 'missing_chunks'; missing: Array<string> }
 	| { kind: 'seal_lost_race' }
+	| { kind: 'sealed_with_other_document' }
 	| DeadlineFailure
 
 /** The ApiError (or the 409 missing-chunks body) for a route failure. */
@@ -125,6 +134,14 @@ export function mapPublishBuildRouteFailure(
 			return invalidRequest(
 				`A build may upload at most ${publishOffloadLimits.maxBlobsPerBuild} chunks.`,
 			)
+		case 'upload_too_large':
+			return invalidRequest(
+				`A build may upload at most ${publishOffloadLimits.maxUploadBytes} bytes.`,
+			)
+		case 'document_too_large':
+			return invalidRequest(
+				`The build document is at most ${publishOffloadLimits.maxSealDocumentBytes} bytes.`,
+			)
 		case 'invalid_json':
 			return invalidRequest('Request body must be valid JSON.')
 		case 'invalid_document':
@@ -137,6 +154,13 @@ export function mapPublishBuildRouteFailure(
 				code: 'invalid_request',
 				message:
 					'This publish build was sealed or finished by another request.',
+			})
+		case 'sealed_with_other_document':
+			return new ApiError({
+				status: 409,
+				code: 'invalid_request',
+				message:
+					'This publish build is already sealed with a different build document. Start a new build with `kody package publish --build local`.',
 			})
 		case 'deadline_exceeded':
 			return new ApiError({
@@ -184,43 +208,11 @@ function referencedChunks(document: PublishBuildDocument) {
 	return chunks
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** Each target must carry a modules map of chunk lists to count chunks. */
-function hasChunkedTargets(targets: Array<unknown>) {
-	return targets.every(
-		(target) =>
-			isRecord(target) &&
-			isRecord(target.modules) &&
-			Object.values(target.modules).every(
-				(module) =>
-					isRecord(module) &&
-					Array.isArray(module.chunks) &&
-					module.chunks.every((chunk) => typeof chunk === 'string'),
-			),
-	)
-}
-
-/** Shape-only checks; the real verification runs at publish time. */
+/** Version and commit checks; the shape is decoded at the edge and verified at publish time. */
 export function checkSealedDocument(
-	raw: unknown,
+	document: PublishBuildDocument,
 	row: Pick<PublishBuildRow, 'commit_sha'>,
-): PublishBuildDocument | { kind: 'invalid_document'; message: string } {
-	const document = raw as Partial<PublishBuildDocument> | null
-	if (
-		!document ||
-		typeof document !== 'object' ||
-		!Array.isArray(document.files) ||
-		!Array.isArray(document.targets) ||
-		!hasChunkedTargets(document.targets)
-	) {
-		return {
-			kind: 'invalid_document',
-			message: 'The build document needs files and targets.',
-		}
-	}
+): { kind: 'invalid_document'; message: string } | null {
 	if (document.builderVersion !== publishBuilderVersion) {
 		return {
 			kind: 'invalid_document',
@@ -230,10 +222,10 @@ export function checkSealedDocument(
 	if (document.commit !== row.commit_sha) {
 		return {
 			kind: 'invalid_document',
-			message: `The build document is for ${String(document.commit)}, but this build is for ${row.commit_sha}.`,
+			message: `The build document is for ${document.commit}, but this build is for ${row.commit_sha}.`,
 		}
 	}
-	return document as PublishBuildDocument
+	return null
 }
 
 export async function handlePublishBuildRoute(input: {
@@ -283,34 +275,46 @@ async function runPublishBuildRoute(input: {
 			uploaded_chunks: await listUploadedChunks(bucket, row.id, clock),
 		})
 	}
+	if (route.kind === 'seal') {
+		return await sealRoute({
+			request: input.request,
+			env: input.env,
+			row,
+			clock,
+		})
+	}
 	if (row.status !== 'uploading') {
 		return { kind: 'not_uploading', status: row.status }
 	}
-	if (route.kind === 'blob') {
-		const key = publishBuildBlobKey(row.id, route.sha256)
-		// Content-addressed: a retried chunk is already there.
-		const existing = await withDeadline(
-			{
-				label: 'publish_build_blob.head',
-				timeoutMs: outboundTimeoutMs.r2,
-				clock,
-			},
-			() => bucket.head(key),
-		)
-		if (existing) return json({ ok: true, sha256: route.sha256 })
-		const read = await readRequestBodyUpTo(
-			input.request,
-			publishOffloadLimits.chunkBytes,
-		)
-		if (!read.ok) return { kind: 'chunk_too_large' }
-		const bytes = read.bytes
-		if ((await sha256Hex(bytes)) !== route.sha256) {
-			return { kind: 'chunk_hash_mismatch' }
-		}
-		const uploaded = await listUploadedChunks(bucket, row.id, clock)
-		if (uploaded.length >= publishOffloadLimits.maxBlobsPerBuild) {
-			return { kind: 'too_many_chunks' }
-		}
+	const key = publishBuildBlobKey(row.id, route.sha256)
+	// Content-addressed: a retried chunk is already there.
+	const existing = await withDeadline(
+		{
+			label: 'publish_build_blob.head',
+			timeoutMs: outboundTimeoutMs.r2,
+			clock,
+		},
+		() => bucket.head(key),
+	)
+	if (existing) return json({ ok: true, sha256: route.sha256 })
+	const read = await readRequestBodyUpTo(
+		input.request,
+		publishOffloadLimits.chunkBytes,
+	)
+	if (!read.ok) return { kind: 'chunk_too_large' }
+	const bytes = read.bytes
+	if ((await sha256Hex(bytes)) !== route.sha256) {
+		return { kind: 'chunk_hash_mismatch' }
+	}
+	const reservation = {
+		db: input.env.APP_DB,
+		buildId: row.id,
+		bytes: bytes.byteLength,
+		clock,
+	}
+	const reserved = await reservePublishBuildChunk(reservation)
+	if (reserved.kind !== 'reserved') return reserved
+	try {
 		await withDeadline(
 			{
 				label: 'publish_build_blob.put',
@@ -319,12 +323,60 @@ async function runPublishBuildRoute(input: {
 			},
 			() => bucket.put(key, bytes),
 		)
-		return json({ ok: true, sha256: route.sha256 })
+	} catch (error) {
+		await releasePublishBuildChunk(reservation).catch(
+			(releaseError: unknown) => {
+				reportHandledError('publish_builds.release_chunk', releaseError)
+			},
+		)
+		throw error
 	}
-	const parsed = parseJsonText(await input.request.text())
-	if (parsed.kind === 'invalid_json') return { kind: 'invalid_json' }
-	const document = checkSealedDocument(parsed.value, row)
-	if ('kind' in document) return document
+	return json({ ok: true, sha256: route.sha256 })
+}
+
+async function sealRoute(input: {
+	request: Request
+	env: Env
+	row: PublishBuildRow
+	clock?: DeadlineClock
+}): Promise<Response | PublishBuildRouteFailure> {
+	const { row, clock } = input
+	const bucket = input.env.REPO_SESSION_BLOBS
+	const decoded = await decodeJsonRequestBody(input.request, {
+		schema: publishBuildDocumentSchema,
+		maxBytes: publishOffloadLimits.maxSealDocumentBytes,
+	})
+	switch (decoded.kind) {
+		case 'ok':
+			break
+		case 'body_too_large':
+			return { kind: 'document_too_large' }
+		case 'invalid_json':
+			return { kind: 'invalid_json' }
+		case 'invalid_shape':
+			return {
+				kind: 'invalid_document',
+				message: `The build document is malformed: ${decoded.message}`,
+			}
+		default:
+			return assertNever(decoded, 'seal body decode')
+	}
+	const document = decoded.value
+	const invalid = checkSealedDocument(document, row)
+	if (invalid) return invalid
+	const sealedResponse = json({ ok: true, build_id: row.id, status: 'sealed' })
+	const sealedAs = async (current: PublishBuildRow) =>
+		current.status === 'sealed' &&
+		current.document_sha256 === (await publishBuildDocumentSha256(document))
+	if (row.status === 'sealed') {
+		// A retried seal (the response was lost) succeeds again.
+		return (await sealedAs(row))
+			? sealedResponse
+			: { kind: 'sealed_with_other_document' }
+	}
+	if (row.status !== 'uploading') {
+		return { kind: 'not_uploading', status: row.status }
+	}
 	const uploaded = new Set(await listUploadedChunks(bucket, row.id, clock))
 	const missing = [...referencedChunks(document)].filter(
 		(chunk) => !uploaded.has(chunk),
@@ -337,7 +389,9 @@ async function runPublishBuildRoute(input: {
 		document,
 		clock,
 	})
-	// `false` means another request moved the build out of `uploading` first.
-	if (sealed === false) return { kind: 'seal_lost_race' }
-	return json({ ok: true, build_id: row.id, status: 'sealed' })
+	if (sealed) return sealedResponse
+	// Another request moved the build out of `uploading` first.
+	const current = await getPublishBuild(input.env.APP_DB, row.id, clock)
+	if (current && (await sealedAs(current))) return sealedResponse
+	return { kind: 'seal_lost_race' }
 }

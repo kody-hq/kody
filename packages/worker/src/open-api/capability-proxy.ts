@@ -1,3 +1,4 @@
+import { reportHandledError } from '#worker/outbound/typed-failure.ts'
 import { z } from 'zod'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
@@ -212,7 +213,10 @@ export function createCapabilityProxyCredentialClientTools(
 					org: ownerIdFromCaller(ctx.callerContext),
 					actor: request.actor?.userId ?? null,
 				},
-			}).catch(() => ({ entryPackageIds: [] as Array<string> }))
+			}).catch((error: unknown) => {
+				reportHandledError('capability_proxy.binding_claims', error)
+				return { entryPackageIds: [] as Array<string> }
+			})
 			if (entryPackageIds.length === 0) return null
 			const cacheKey = entryPackageIds.join('\n')
 			let entries = runEntriesByKey.get(cacheKey)

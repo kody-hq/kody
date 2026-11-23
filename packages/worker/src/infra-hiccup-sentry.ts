@@ -68,6 +68,23 @@ export async function hashStorageIdForSentry(storageId: string) {
  * isolate per minute, capped globally per isolate. Never throws.
  */
 export async function reportInfraHiccup(report: InfraHiccupReport) {
+	let storageIdHash: string | null = null
+	try {
+		if (report.storageId) {
+			storageIdHash = await hashStorageIdForSentry(report.storageId)
+		}
+	} catch (error) {
+		console.warn('infra-hiccup-report-failed', error)
+		return
+	}
+	captureInfraHiccup(report, storageIdHash)
+}
+
+/** Synchronous form of {@link reportInfraHiccup} for reports with no storage id. */
+export function captureInfraHiccup(
+	report: Omit<InfraHiccupReport, 'storageId'>,
+	storageIdHash: string | null = null,
+) {
 	try {
 		const fingerprint = [
 			'infra-hiccup',
@@ -76,9 +93,6 @@ export async function reportInfraHiccup(report: InfraHiccupReport) {
 			report.errorClass,
 		]
 		if (!allowInfraHiccupEvent(fingerprint.join('|'), Date.now())) return
-		const storageIdHash = report.storageId
-			? await hashStorageIdForSentry(report.storageId)
-			: null
 		Sentry.withScope((scope) => {
 			scope.setLevel('warning')
 			scope.setFingerprint(fingerprint)

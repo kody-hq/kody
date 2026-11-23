@@ -111,11 +111,16 @@ const openApiResponseMemo = new Map<
 function openApiResponseBody(serverUrl: string) {
 	let memo = openApiResponseMemo.get(serverUrl)
 	if (!memo) {
-		memo = buildOpenApiDocument({ serverUrl }).then(async (document) => {
-			const text = JSON.stringify(document)
-			return { text, etag: `"${await sha256Hex(text)}"` }
-		})
-		memo.catch(() => openApiResponseMemo.delete(serverUrl))
+		memo = buildOpenApiDocument({ serverUrl }).then(
+			async (document) => {
+				const text = JSON.stringify(document)
+				return { text, etag: `"${await sha256Hex(text)}"` }
+			},
+			(error: unknown) => {
+				openApiResponseMemo.delete(serverUrl)
+				throw error
+			},
+		)
 		openApiResponseMemo.set(serverUrl, memo)
 	}
 	return memo

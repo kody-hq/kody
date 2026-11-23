@@ -24,6 +24,8 @@ import {
 	outboundTimeoutMs,
 	withDeadline,
 } from '#worker/outbound/with-deadline.ts'
+import { decodeUntrusted } from '#worker/decode-request-body.ts'
+import { publishBuildDocumentSchema } from './document-schema.ts'
 import {
 	publishBuildArtifactWriteDeadlineMs,
 	publishBuildDependencyResolveDeadlineMs,
@@ -79,6 +81,11 @@ async function readModule(input: {
 		}
 		parts.push(bytes)
 		size += bytes.byteLength
+		if (size > input.entry.size) {
+			throw new PublishBuildVerificationError(
+				'an uploaded module is larger than its manifest size.',
+			)
+		}
 	}
 	const joined = new Uint8Array(size)
 	let offset = 0
@@ -232,12 +239,25 @@ export async function persistUploadedPublishBuild(input: {
 	}
 	try {
 		const row = await getPublishBuild(db, input.buildId)
-		const document = row
+		const stored = row
 			? await readPublishBuildDocument({
 					bucket: input.env.REPO_SESSION_BLOBS,
 					row,
 				})
-			: null
+			: ({ kind: 'missing' } as const)
+		if (stored.kind === 'invalid_json') {
+			return await reject('the sealed build document is not valid JSON.')
+		}
+		const decoded =
+			stored.kind === 'ok'
+				? decodeUntrusted(publishBuildDocumentSchema, stored.value)
+				: null
+		if (decoded?.kind === 'invalid_shape') {
+			return await reject(
+				`the sealed build document is malformed: ${decoded.message}`,
+			)
+		}
+		const document = decoded?.value
 		if (
 			!row ||
 			!document ||

@@ -1,12 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import {
-	access,
-	mkdtemp,
-	readdir,
-	readFile,
-	rm,
-	writeFile,
-} from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
@@ -178,7 +171,7 @@ test('no-swallowed-error flags catch blocks and .catch handlers that drop the er
 	expect(result.count('no-swallowed-error')).toBe(5)
 })
 
-test('no-swallowed-error allows rethrow, typed failures, failure builders, collectors and reportHandledError', async () => {
+test('no-swallowed-error allows rethrow, typed failures, failure builders, edge error responses, collectors and reportHandledError', async () => {
 	const result = await lint([
 		'async function audit() {}',
 		'export async function step(warnings: Array<string>) {',
@@ -202,13 +195,23 @@ test('no-swallowed-error allows rethrow, typed failures, failure builders, colle
 		'	} catch (error) {',
 		'		warnings.push(String(error))',
 		'	}',
+		'	try {',
+		'		await audit()',
+		'	} catch (error) {',
+		'		return apiErrorResponse(error)',
+		'	}',
 		"	await audit().catch((error) => reportHandledError('step.audit', error))",
 		'}',
 	])
 	expect(result.count('no-swallowed-error')).toBe(0)
 })
 
-test('the request-path rules are errors for every file in the path list, and every listed file exists', async () => {
+const requestPathDirectories = [
+	'**/packages/worker/src/open-api/**',
+	'**/packages/worker/src/publish-offload/**',
+]
+
+test('the request-path rules are errors for the request-path directories and every listed file exists', async () => {
 	const config = JSON.parse(
 		await readFile(
 			path.join(repoRoot, 'tools/oxlint/oxlint-rules.json'),
@@ -218,46 +221,17 @@ test('the request-path rules are errors for every file in the path list, and eve
 		overrides: Array<{ files: Array<string>; rules: Record<string, string> }>
 	}
 	const pathOverride = config.overrides.find(
-		(override) => 'kody-custom/require-outbound-deadline' in override.rules,
+		(override) =>
+			override.rules['kody-custom/require-outbound-deadline'] === 'error',
 	)
-	expect(pathOverride?.files).toContain(
-		'**/packages/worker/src/publish-offload/http.ts',
-	)
+	for (const directory of requestPathDirectories) {
+		expect(pathOverride?.files).toContain(directory)
+	}
 	for (const rule of rules) {
 		expect(pathOverride?.rules[`kody-custom/${rule}`]).toBe('error')
 	}
 	for (const file of pathOverride?.files ?? []) {
+		if (file.endsWith('/**')) continue
 		await access(path.join(repoRoot, file.replace(/^\*\*\//, '')))
 	}
-})
-
-const publishOffloadFilesOutsideWorkerPath = new Set([
-	'builder-entry.ts',
-	'builder-workerd-entry.ts',
-	'source-tree.ts',
-])
-
-test('every new publish-offload source file is either in the path list or explicitly outside the Worker path', async () => {
-	const config = JSON.parse(
-		await readFile(
-			path.join(repoRoot, 'tools/oxlint/oxlint-rules.json'),
-			'utf8',
-		),
-	) as {
-		overrides: Array<{ files: Array<string>; rules: Record<string, string> }>
-	}
-	const listed = new Set(
-		config.overrides.find(
-			(override) => 'kody-custom/require-outbound-deadline' in override.rules,
-		)?.files ?? [],
-	)
-	const dir = path.join(repoRoot, 'packages/worker/src/publish-offload')
-	const unlisted = (await readdir(dir)).filter(
-		(name) =>
-			name.endsWith('.ts') &&
-			!/\.(node|workers)\.test\.ts$/.test(name) &&
-			!publishOffloadFilesOutsideWorkerPath.has(name) &&
-			!listed.has(`**/packages/worker/src/publish-offload/${name}`),
-	)
-	expect(unlisted).toEqual([])
 })

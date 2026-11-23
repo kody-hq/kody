@@ -1,3 +1,4 @@
+import { reportHandledError } from '#worker/outbound/typed-failure.ts'
 import { loadProfileChain } from '#worker/profiles/store.ts'
 import { profileStatus } from '#worker/profiles/rules.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
@@ -239,7 +240,7 @@ async function authenticateWithApiToken(input: {
 		input.waitUntil(
 			touchApiToken({ db: input.env.APP_DB, record: slid }).catch(
 				(error: unknown) => {
-					console.warn('api-token-touch-failed', record.id, error)
+					reportHandledError('api_token.touch', error)
 				},
 			),
 		)
@@ -433,7 +434,9 @@ async function authenticateWithExecutionContextLease(input: {
 		input.waitUntil(
 			session
 				.endLeases({ userIds: [lease.requester.userId], reason: 'access_lost' })
-				.catch(() => {}),
+				.catch((error: unknown) => {
+					reportHandledError('execution_context.end_leases', error)
+				}),
 		)
 		return new ApiError({
 			status: 403,

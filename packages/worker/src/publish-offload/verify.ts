@@ -486,7 +486,7 @@ export async function verifyUploadedTargetModules(input: {
 }) {
 	const { uploaded } = input
 	const referencedLinkedImports = new Set<string>()
-	if (!(uploaded.mainModule in input.modules)) {
+	if (!Object.hasOwn(input.modules, uploaded.mainModule)) {
 		fail(
 			`target "${uploaded.entryPoint}" names main module "${uploaded.mainModule}", which it did not upload.`,
 		)

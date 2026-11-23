@@ -62,6 +62,8 @@ style, tests, MCP capabilities, and runtime architecture.
 ## Code and tooling
 
 - [Code style](./code-style.md), [TypeScript setup](./typescript-setup.md)
+- [Request handlers](./request-handlers.md) (zod at the edge, deadlines, typed
+  failures)
 - [Import boundaries](./import-boundaries.md) (enforced app / MCP / worker /
   universal layering)
 - [Oxlint JS plugins](./oxlint-js-plugins.md) (custom lint rules, file-size

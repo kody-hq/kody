@@ -71,6 +71,8 @@ const ERROR_COLLECTORS = new Set(['warnings', 'failures'])
 const FAILURE_CALL_PATTERN = /Failure$/
 /** Local collectors that gather errors the caller later throws, e.g. `recordInventoryError`. */
 const ERROR_RECORDER_PATTERN = /^record\w*Error$/
+/** Edge mappers that turn an error into the error response, e.g. `apiErrorResponse`. */
+const ERROR_RESPONSE_PATTERN = /ErrorResponse$/
 
 const importAliases = [
 	['#worker/', 'packages/worker/src/'],
@@ -286,7 +288,8 @@ function handlesError(node) {
 	if (
 		name === ERROR_REPORTER ||
 		FAILURE_CALL_PATTERN.test(name ?? '') ||
-		ERROR_RECORDER_PATTERN.test(name ?? '')
+		ERROR_RECORDER_PATTERN.test(name ?? '') ||
+		ERROR_RESPONSE_PATTERN.test(name ?? '')
 	) {
 		return true
 	}
@@ -441,7 +444,7 @@ export const noSwallowedErrorRule = {
 		schema: [],
 		messages: {
 			swallowed:
-				'This handler swallows the error. Rethrow it, return a typed failure ({ kind: ... } or a ...Failure(...) builder) for the edge mapper, push it onto warnings/failures, or report it with reportHandledError from #worker/outbound/typed-failure.ts.',
+				'This handler swallows the error. Rethrow it, return a typed failure ({ kind: ... } or a ...Failure(...) builder) for the edge mapper, map it with an ...ErrorResponse(...) edge mapper, push it onto warnings/failures, or report it with reportHandledError from #worker/outbound/typed-failure.ts.',
 		},
 	},
 	createOnce(context) {

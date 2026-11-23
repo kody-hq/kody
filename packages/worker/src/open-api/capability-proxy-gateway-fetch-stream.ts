@@ -1,3 +1,4 @@
+import { parseJsonText } from '#worker/outbound/typed-failure.ts'
 import {
 	executeGatewayFetch,
 	secretResolutionHeaderName,
@@ -81,13 +82,10 @@ export function parseCapabilityProxyGatewayFetchStreamHeaders(
 }
 
 function parsePinnedCredentials(raw: string) {
-	let parsed: unknown
-	try {
-		parsed = JSON.parse(raw)
-	} catch {
-		// The schema check below reports the malformed input.
-	}
-	const result = credentialCallMapSchema.safeParse(parsed)
+	const parsed = parseJsonText(raw)
+	const result = credentialCallMapSchema.safeParse(
+		parsed.kind === 'ok' ? parsed.value : undefined,
+	)
 	if (
 		!result.success ||
 		Object.values(result.data).some(

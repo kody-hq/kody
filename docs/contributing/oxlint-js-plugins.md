@@ -95,10 +95,13 @@ does not trip it. When the condition already holds, delete the path.
 `tools/oxlint/require-exit-condition-comment.node.test.ts` runs the linter on a
 fixture.
 
-The publish offload request path has three rules in `request-path-safety.js`,
-turned on as errors for the files in the request-path override in
-`tools/oxlint/oxlint-rules.json`. Widen them by adding paths to that `files`
-list.
+Request handlers have three rules in `request-path-safety.js`, turned on as
+errors for `packages/worker/src/open-api/`,
+`packages/worker/src/publish-offload/`, and the publish build entry points in
+the request-path override in `tools/oxlint/oxlint-rules.json`. Widen them by
+adding a directory to that `files` list.
+[Request handlers](./request-handlers.md) says how to write code that passes
+them.
 
 - `kody-custom/require-outbound-deadline`: D1, KV, R2, `fetch`, `*Rpc`
   factories, Durable Object stub calls, Artifacts repo handles, and the boundary
@@ -110,9 +113,10 @@ list.
   to `waitUntil`. `void promise` is reported, and so are calls to async
   functions imported from relative or `#worker/` modules.
 - `kody-custom/no-swallowed-error`: a `catch` or `.catch` handler rethrows,
-  returns a `{ kind }` failure, calls a `...Failure` builder or mapper, records
-  into `warnings` / `failures` / `record...Error`, or calls `reportHandledError`
-  from `#worker/outbound/typed-failure.ts`.
+  returns a `{ kind }` failure, calls a `...Failure` builder or mapper or an
+  `...ErrorResponse` edge mapper, records into `warnings` / `failures` /
+  `record...Error`, or calls `reportHandledError` from
+  `#worker/outbound/typed-failure.ts`.
 
 The rules are syntactic: a deliberate exception takes an
 `oxlint-disable-next-line` with the reason after `--`.

@@ -6,8 +6,12 @@ import {
 	d1ImportMaxStatementBytes,
 	utf8ByteLength,
 } from '@kody-internal/shared/backup-restore-safety.ts'
-import { publishBuildRetentionMs } from './policy.ts'
+import { publishBuildRetentionMs, publishOffloadLimits } from './policy.ts'
+import { sha256Hex } from './module-hashes.ts'
 import {
+	authenticatePublishBuildTicket,
+	releasePublishBuildChunk,
+	reservePublishBuildChunk,
 	publishBuildBlobKey,
 	publishBuildDocumentKey,
 	purgeExpiredPublishBuilds,
@@ -184,7 +188,7 @@ test('a sealed document too large for a D1 import statement stays in R2', async 
 			bucket: bucket as unknown as R2Bucket,
 			row,
 		}),
-	).toEqual(document)
+	).toEqual({ kind: 'ok', value: document })
 })
 
 test('a committed build that still had a document before 0289 is purged after it', async () => {
@@ -219,4 +223,58 @@ test('a committed build that still had a document before 0289 is purged after it
 	expect(
 		sqlite.prepare(`SELECT document_sha256 FROM publish_builds`).get(),
 	).toEqual({ document_sha256: null })
+})
+
+test('an expired ticket is refused; the same ticket works before expiry', async () => {
+	using sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(
+		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, ticket_sha256 TEXT, expires_at TEXT)`,
+	)
+	const ticket = 'kpb_expiring'
+	const expiresAt = Date.parse('2026-11-22T12:00:00.000Z')
+	sqlite
+		.prepare(
+			`INSERT INTO publish_builds (id, status, ticket_sha256, expires_at) VALUES (?, 'uploading', ?, ?)`,
+		)
+		.run('pb_1', await sha256Hex(ticket), new Date(expiresAt).toISOString())
+	const db = createD1FromSqlite(sqlite)
+	const authenticate = (now: number) =>
+		authenticatePublishBuildTicket({ db, buildId: 'pb_1', ticket, now })
+	expect(await authenticate(expiresAt - 1)).toMatchObject({ id: 'pb_1' })
+	expect(await authenticate(expiresAt)).toBeNull()
+	expect(await authenticate(expiresAt + 60_000)).toBeNull()
+})
+
+test('chunk reservations are atomic per build and are given back on release', async () => {
+	using sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(
+		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, uploaded_chunks INTEGER NOT NULL DEFAULT 0, uploaded_bytes INTEGER NOT NULL DEFAULT 0)`,
+	)
+	const { maxBlobsPerBuild, maxUploadBytes } = publishOffloadLimits
+	sqlite
+		.prepare(
+			`INSERT INTO publish_builds (id, status, uploaded_chunks) VALUES ('pb_1', 'uploading', ?)`,
+		)
+		.run(maxBlobsPerBuild - 2)
+	const db = createD1FromSqlite(sqlite)
+	const reserve = (bytes: number) =>
+		reservePublishBuildChunk({ db, buildId: 'pb_1', bytes })
+	const kinds = (
+		await Promise.all(Array.from({ length: 5 }, () => reserve(10)))
+	).map((result) => result.kind)
+	expect(kinds.filter((kind) => kind === 'reserved')).toHaveLength(2)
+	expect(kinds.filter((kind) => kind === 'too_many_chunks')).toHaveLength(3)
+	await releasePublishBuildChunk({ db, buildId: 'pb_1', bytes: 10 })
+	expect(
+		sqlite.prepare(`SELECT * FROM publish_builds WHERE id = 'pb_1'`).get(),
+	).toMatchObject({ uploaded_chunks: maxBlobsPerBuild - 1, uploaded_bytes: 10 })
+	sqlite
+		.prepare(
+			`UPDATE publish_builds SET uploaded_chunks = 0, uploaded_bytes = ?`,
+		)
+		.run(maxUploadBytes - 5)
+	expect(await reserve(6)).toEqual({ kind: 'upload_too_large' })
+	expect(await reserve(5)).toEqual({ kind: 'reserved' })
+	sqlite.prepare(`UPDATE publish_builds SET status = 'sealed'`).run()
+	expect(await reserve(1)).toEqual({ kind: 'not_uploading', status: 'sealed' })
 })

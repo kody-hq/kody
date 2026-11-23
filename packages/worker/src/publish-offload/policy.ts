@@ -55,6 +55,8 @@ export const publishOffloadLimits = {
 	/** Build manifest + all target files, generous but bounded. */
 	maxUploadBytes: 512 * 1024 * 1024,
 	maxBlobsPerBuild: 4096,
+	/** The sealed build document: file manifest plus every target's chunk list. */
+	maxSealDocumentBytes: 8 * 1024 * 1024,
 	/** Execution-context publish builds get more room than a normal run. */
 	contextMemoryMb: 2048,
 	contextTimeoutMs: 10 * 60 * 1000,

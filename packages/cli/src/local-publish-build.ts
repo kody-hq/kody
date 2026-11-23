@@ -477,8 +477,14 @@ export async function runLocalPublishBuild(input: {
 		}),
 	})
 	if (sealed.status === 409) {
+		if (Array.isArray(sealed.body.missing_chunks)) {
+			throw new Error(
+				'Kody is missing some uploaded chunks (they may have expired). Run the build again; it resumes from what is already uploaded.',
+			)
+		}
+		const error = sealed.body.error as { message?: string } | undefined
 		throw new Error(
-			'Kody is missing some uploaded chunks (they may have expired). Run the build again; it resumes from what is already uploaded.',
+			`Publish build seal failed: ${error?.message ?? 'HTTP 409'}`,
 		)
 	}
 	return {

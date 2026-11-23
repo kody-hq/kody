@@ -38,7 +38,7 @@ import {
 	readD1RetryAttempts,
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
-import { reportInfraHiccup } from '#worker/infra-hiccup-sentry.ts'
+import { captureInfraHiccup } from '#worker/infra-hiccup-sentry.ts'
 import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { readRemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
@@ -492,7 +492,7 @@ export function toApiError(
 			isRetryableD1LockMessage(getErrorMessage(entry)),
 	)
 	if (transientD1Entry !== undefined) {
-		void reportInfraHiccup({
+		captureInfraHiccup({
 			kind: 'd1_transient',
 			operation: context?.operation ?? 'open_api',
 			attempts: readD1RetryAttempts(error),
