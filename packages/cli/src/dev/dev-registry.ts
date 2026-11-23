@@ -27,6 +27,8 @@ export type DevRegistration = {
 	basePath: string
 	target: KodyTarget
 	root: string
+	/** Org slug the server was started for; absent for the default org. */
+	org?: string
 	localKody?: { origin: string; apiToken: string }
 }
 
@@ -60,7 +62,11 @@ export type DevServerStatus = {
 				at: string
 		  }
 		| null
+	/** Recent server-side errors (build, runtime, error logs), oldest first. */
+	serverErrors: Array<DevServerError>
 }
+
+export type DevServerError = { seq: number; message: string; at: string }
 
 export function devRegistryPath(
 	root: string,
@@ -186,6 +192,7 @@ async function readRegistration(path: string): Promise<DevRegistration | null> {
 			basePath: typeof parsed.basePath === 'string' ? parsed.basePath : '',
 			target: parsed.target,
 			root: parsed.root,
+			...(typeof parsed.org === 'string' ? { org: parsed.org } : {}),
 			...(parsed.localKody &&
 			typeof parsed.localKody.origin === 'string' &&
 			typeof parsed.localKody.apiToken === 'string' &&

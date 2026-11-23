@@ -43,7 +43,11 @@ import {
 	isPublishedPackageInvokeSpecifier,
 	resolveExecuteInvokeCode,
 } from './invoke-passthrough.js'
-import { assertLocalExecuteNodeEngine } from './node-engine.js'
+import {
+	appCheckNodeEngine,
+	assertNodeEngine,
+	localExecuteNodeEngine,
+} from './node-engine.js'
 import {
 	isPackageCollaboratorAction,
 	packageCollaboratorUsage,
@@ -1239,7 +1243,7 @@ async function dispatch(
 					'--invoke cannot be combined with --code, --file, or a module string.',
 				)
 			}
-			if (local) assertLocalExecuteNodeEngine()
+			if (local) assertNodeEngine(localExecuteNodeEngine)
 			const positionalFile =
 				!hasCodeFlag && !hasFileFlag && invoke === undefined
 					? positionalModuleFile(positionalModule)
@@ -1545,6 +1549,7 @@ async function dispatch(
 					'Usage: kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--json]',
 				)
 			}
+			assertNodeEngine(appCheckNodeEngine)
 			const [{ resolveTarget }, { runAppCheck }] = await Promise.all([
 				import('./target.js'),
 				import('./app-check/run-app-check.js'),
@@ -1867,7 +1872,11 @@ async function dispatch(
 								: {}),
 							...(target === 'mock' && process.env.KODY_DEV_STUB_RUNTIME !== '1'
 								? {
-										startLocalKody: async (manifest, packageAppPort) => {
+										startLocalKody: async (
+											manifest,
+											packageAppPort,
+											onEvent,
+										) => {
 											const local = await import('./dev/local-kody.js')
 											const kody = await local.startLocalKody({
 												manifest,
@@ -1881,6 +1890,7 @@ async function dispatch(
 													clock: parsed.values.clock,
 												}),
 												onStatus: (message) => io.stderr(`${message}\n`),
+												onEvent,
 											})
 											return {
 												api: { origin: kody.origin, apiToken: kody.apiToken },

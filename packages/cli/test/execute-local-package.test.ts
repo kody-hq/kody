@@ -421,3 +421,16 @@ test('local export files match the runtime import target before default', async 
 		await rm(root, { recursive: true, force: true })
 	}
 })
+
+test('localKodyStateDir honors KODY_DEV_STATE_DIR so a second stack gets its own ports', () => {
+	const root = '/tmp/some-package'
+	const shared = localKodyStateDir(root, { KODY_CACHE_DIR: '/tmp/kody-cache' })
+	assert.equal(shared.startsWith(join('/tmp/kody-cache', 'dev-state')), true)
+	assert.equal(
+		localKodyStateDir(root, {
+			KODY_CACHE_DIR: '/tmp/kody-cache',
+			KODY_DEV_STATE_DIR: `${shared}-app-check`,
+		}),
+		`${shared}-app-check`,
+	)
+})

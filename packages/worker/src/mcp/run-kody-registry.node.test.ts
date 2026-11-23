@@ -1126,7 +1126,7 @@ test('runModuleWithRegistry begins a run before bundling and records a clear tim
 		).toEqual({
 			type: 'run_locally',
 			command: executeLocallyCommand,
-			requires: ['node>=22', 'kody_cli_signed_in'],
+			requires: ['node>=22.19', 'kody_cli_signed_in'],
 		})
 		expect(result.runId).toBe('run-bundle-timeout')
 		expect(finishSpy).toHaveBeenCalledWith(
@@ -1273,7 +1273,7 @@ export default async function main() { return z.string().parse('ok') }`,
 		suggestedAction: {
 			type: 'run_locally',
 			command: executeLocallyCommand,
-			requires: ['node>=22', 'kody_cli_signed_in'],
+			requires: ['node>=22.19', 'kody_cli_signed_in'],
 		},
 	})
 	finishSpy.mockRestore()

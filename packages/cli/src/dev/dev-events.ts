@@ -50,6 +50,47 @@ const logLevels = new Set<DevLogLevel>([
 	'debug',
 ])
 
+const ansiEscape = /\u001b\[[0-9;]*m/g
+const wranglerErrorLine = /^(?:\u2718\s+)?\[ERROR\]\s+(.+)$/
+
+/**
+ * Local Kody (`--target mock`) runs the app inside wrangler, which prints a
+ * worker's `console.error` as `✘ [ERROR] <message>`. Turn those lines into
+ * error log events; everything else stays in `runtime.log` only.
+ */
+export function parseLocalKodyLogLine(
+	line: string,
+): Extract<DevEvent, { type: 'log' }> | null {
+	const match = wranglerErrorLine.exec(line.replace(ansiEscape, '').trim())
+	const message = match?.[1]?.trim()
+	if (!message) return null
+	return {
+		type: 'log',
+		source: 'workerd',
+		level: 'error',
+		message,
+		request: null,
+	}
+}
+
+/** The server-side error an event reports, as one line, or null. */
+export function devEventServerError(event: DevEvent): string | null {
+	switch (event.type) {
+		case 'runtime_error':
+			return event.request
+				? `${event.message} (${event.request.method} ${event.request.path})`
+				: event.message
+		case 'build_error':
+			return event.file
+				? `Build error in ${event.file}${event.line !== null ? `:${event.line}` : ''}: ${event.message}`
+				: `Build error: ${event.message}`
+		case 'log':
+			return event.level === 'error' ? event.message : null
+		default:
+			return null
+	}
+}
+
 /** Parse one workerd stdout line; plain lines become untagged `log` events. */
 export function parseWorkerdStdoutLine(
 	line: string,

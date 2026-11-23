@@ -89,7 +89,7 @@ denormalized topic-index table.
 MCP-only agents validate unpublished subscription wiring with `repoRunChecks`,
 publish, then smoke with `packageSubscriptionDispatch` (below).
 
-When Node ≥22 and `@kodycodes/cli` are available, you can also exercise the
+When Node ≥22.19 and `@kodycodes/cli` are available, you can also exercise the
 handler locally before publish with `kody dev emit`:
 
 ```bash

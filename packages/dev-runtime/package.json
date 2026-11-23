@@ -16,7 +16,7 @@
     "test": "node --test test/*.test.ts"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19"
   },
   "author": "Kent C. Dodds <me@kentcdodds.com> (https://kentcdodds.com)",
   "license": "MIT",

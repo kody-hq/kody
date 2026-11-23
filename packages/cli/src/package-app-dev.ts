@@ -44,6 +44,7 @@ import {
 import { assertLocalPackageScopedSecretWriteAllowed } from './local-package-secret-write.js'
 import { createDevBundler, type DevBundle } from './dev/dev-bundler.js'
 import {
+	devEventServerError,
 	parseWorkerdStdoutLine,
 	runtimeErrorFix,
 	type DevEvent,
@@ -62,6 +63,7 @@ import {
 	devCallPath,
 	devOutboxPath,
 	devStatusPath,
+	type DevServerError,
 	type DevServerStatus,
 } from './dev/dev-registry.js'
 import { createDevWatcher, type DevWatcher } from './dev/dev-watcher.js'
@@ -234,6 +236,8 @@ export type PackageAppDevServer = {
 	}>
 	/** Same JSON as `GET /__kody/dev/status`. */
 	status: () => DevServerStatus
+	/** Report an event from a companion process (local Kody) as this server's. */
+	emit: (event: DevEvent) => void
 	close: () => Promise<void>
 }
 
@@ -298,6 +302,8 @@ const failedPrebuildAbsorbMs = 1500
 const rebuildGateMs = 10_000
 /** Longest a retired generation may keep draining in-flight requests. */
 const drainTimeoutMs = 10_000
+/** `status().serverErrors` keeps this many, so `kody app check` can attach. */
+const maxServerErrors = 100
 
 export async function startPackageAppDev(
 	options: PackageAppDevOptions,
@@ -326,7 +332,20 @@ export async function startPackageAppDev(
 	}
 	const root = options.manifest.root
 	const runSecret = randomBytes(32).toString('hex')
-	const emit = (event: DevEvent) => options.onEvent?.(event)
+	const serverErrors: Array<DevServerError> = []
+	let serverErrorSeq = 0
+	const emit = (event: DevEvent) => {
+		const message = devEventServerError(event)
+		if (message !== null) {
+			serverErrors.push({
+				seq: ++serverErrorSeq,
+				message,
+				at: new Date().toISOString(),
+			})
+			if (serverErrors.length > maxServerErrors) serverErrors.shift()
+		}
+		options.onEvent?.(event)
+	}
 	const liveReload = options.liveReload ?? options.watch !== false
 	const errorPageTail = liveReload
 		? `<script>globalThis.__kodyDevErrorPage = true</script>${liveReloadScriptTag}`
@@ -986,6 +1005,7 @@ export async function startPackageAppDev(
 						at: buildFailureAt,
 					}
 				: lastRuntimeError,
+			serverErrors: [...serverErrors],
 		}
 	}
 
@@ -1469,6 +1489,7 @@ export async function startPackageAppDev(
 		},
 		fetchPath,
 		status,
+		emit,
 		close,
 	}
 }

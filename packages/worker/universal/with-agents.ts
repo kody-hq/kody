@@ -440,7 +440,7 @@ export const withAgents = [
 			'Bring your team\u2019s tools and connected accounts to Instinct, the personal assistant you text or call.',
 		steps: [
 			{
-				text: 'Ask Instinct to install the Kody CLI on its computer (Node 22 or later):',
+				text: 'Ask Instinct to install the Kody CLI on its computer (Node 22.19 or later):',
 				code: kodyCliGlobalInstallCommand,
 			},
 			{

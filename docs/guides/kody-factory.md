@@ -22,7 +22,7 @@ also registers **api** for HTTPS operations and token minting — see
   integrations, connected MCP servers, and relevant memories. Unscoped results
   rank the MCP server, not every remote tool. Search before building so the
   agent can reuse what you already have.
-- **`execute`** runs a temporary TypeScript module. When Node ≥22 and the CLI
+- **`execute`** runs a temporary TypeScript module. When Node ≥22.19 and the CLI
   are available, run it with local CLI execute
   ([Local CLI execute](./local-execute.md)). Do not use hosted MCP `execute`
   when a local or Open API path exists.
@@ -113,8 +113,8 @@ the owner operates the process. See
 
 1. Search for the outcome and inspect the exact capability shape.
 2. Connect the needed secret, integration, or remote MCP server.
-3. Run a one-off composition and authenticated smoke test. When Node ≥22 and the
-   CLI are available, use local CLI execute
+3. Run a one-off composition and authenticated smoke test. When Node ≥22.19 and
+   the CLI are available, use local CLI execute
    ([Local CLI execute](./local-execute.md)).
 4. Fork a close public package or author an owned package when the behavior
    should be reusable, reviewed, or scheduled.

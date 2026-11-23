@@ -2,7 +2,7 @@
 id: local_execute
 title: Local CLI execute
 summary:
-  Prefer @kodycodes/cli execute --local when Node ≥22 and the CLI are available.
+  Prefer @kodycodes/cli execute --local when Node ≥22.19 and the CLI are available.
   Orthogonal to Open API: use this guide for CLI setup and --local usage; see
   guide:open_api for HTTPS / MCP api fallback.
 category: platform
@@ -10,7 +10,7 @@ category: platform
 
 # Local CLI execute
 
-When **Node ≥22** and `@kodycodes/cli` are available, prefer
+When **Node ≥22.19** and `@kodycodes/cli` are available, prefer
 `npx @kodycodes/cli execute --local` for one-off modules, smoke tests, and
 composition. Local execute is **orthogonal** to Open API: the CLI runs your
 module in a local workerd and forwards each `kody:runtime` call through the
@@ -201,7 +201,7 @@ still auth or permission — use the Failure section below. Two workarounds for
 
 ## Failure
 
-- Node is below 22, the CLI is missing, or the host cannot run workerd. Use
+- Node is below 22.19, the CLI is missing, or the host cannot run workerd. Use
   [Open API](./open-api.md) / MCP `api`, or fix the environment. Hosted MCP
   `execute` stays banned for that failure case.
 - Not authenticated (missing or invalid credentials). Agents on MCP: call

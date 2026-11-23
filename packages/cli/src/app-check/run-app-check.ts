@@ -13,7 +13,17 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
-import type { DevEvent } from '../dev/dev-events.js'
+import { devEventServerError, type DevEvent } from '../dev/dev-events.js'
+import {
+	devStatusPath,
+	findRunningDevServer,
+	type DevServerError,
+	type DevServerStatus,
+} from '../dev/dev-registry.js'
+import {
+	localKodyStateDir,
+	localKodyStateDirEnvVar,
+} from '../dev/local-kody.js'
 import { loadPackageManifest } from '../package-manifest.js'
 import { StructuredCliError } from '../structured-error.js'
 import type { KodyTarget } from '../target.js'
@@ -109,15 +119,39 @@ export async function runAppCheck(input: {
 	if (ownsOutputDir) await writeFile(join(outputDir, '.gitignore'), '*\n')
 
 	const consoleEntries: Array<AppCheckConsoleEntry> = []
-	status(`kody app check: starting the kody dev preview for ${manifest.name}…`)
-	const preview = await startDevPreview({
-		packageRoot: manifest.root,
+	const onServerError = (message: string) =>
+		consoleEntries.push({ source: 'server', message })
+	const running = await findRunningDevServer({
+		root: manifest.root,
 		target: input.target,
-		...(input.org ? { org: input.org } : {}),
-		...(input.env ? { env: input.env } : {}),
-		onServerError: (message) =>
-			consoleEntries.push({ source: 'server', message }),
 	})
+	let preview: DevPreview
+	if (
+		running &&
+		(running.registration.org === input.org ||
+			(input.target === 'mock' && input.org === undefined))
+	) {
+		status(
+			`kody app check: using the running kody dev preview for ${manifest.name} (pid ${running.registration.pid})…`,
+		)
+		preview = attachDevPreview({
+			origin: running.registration.origin,
+			status: running.status,
+			onServerError,
+			onStatus: status,
+		})
+	} else {
+		status(
+			`kody app check: starting the kody dev preview for ${manifest.name}…`,
+		)
+		preview = await startDevPreview({
+			packageRoot: manifest.root,
+			target: input.target,
+			...(input.org ? { org: input.org } : {}),
+			...(input.env ? { env: input.env } : {}),
+			onServerError,
+		})
+	}
 	let report: AppCheckReport
 	try {
 		status(`kody app check: rendering ${preview.url}…`)
@@ -144,6 +178,7 @@ export async function runAppCheck(input: {
 		}
 		status('kody app check: running Lighthouse…')
 		const lighthouse = await runLighthouse({ tools, url: preview.url })
+		await preview.collectServerErrors()
 		report = buildAppCheckReport({
 			package: { name: manifest.name, root: manifest.root },
 			url: preview.url,
@@ -192,6 +227,57 @@ async function freePort(): Promise<number> {
 	})
 }
 
+type DevPreview = {
+	url: string
+	/** Record server errors that happened during the check, before the report. */
+	collectServerErrors: () => Promise<void>
+	close: () => Promise<void>
+}
+
+/**
+ * Render a `kody dev` that is already running for this package instead of
+ * starting a second stack. Its server errors stream to that terminal, so the
+ * check reads the ones its status recorded while the check ran.
+ */
+function attachDevPreview(input: {
+	origin: string
+	status: DevServerStatus
+	onServerError: (message: string) => void
+	onStatus: (message: string) => void
+}): DevPreview {
+	const seenSeq = lastSeq(input.status.serverErrors ?? [])
+	return {
+		url: input.status.url,
+		async collectServerErrors() {
+			const status = await fetch(new URL(devStatusPath, input.origin), {
+				signal: AbortSignal.timeout(5_000),
+			})
+				.then((response) =>
+					response.ok ? (response.json() as Promise<DevServerStatus>) : null,
+				)
+				.catch(() => null)
+			if (!status?.serverErrors) {
+				input.onStatus(
+					'kody app check: could not read server errors from the running kody dev, so the report lists browser errors only. Restart kody dev with this CLI version to include them.',
+				)
+				return
+			}
+			const fresh = status.serverErrors.filter((error) => error.seq > seenSeq)
+			if (fresh[0] && fresh[0].seq > seenSeq + 1) {
+				input.onStatus(
+					`kody app check: the running kody dev logged more server errors than it keeps, so the report lists the latest ${fresh.length}.`,
+				)
+			}
+			for (const error of fresh) input.onServerError(error.message)
+		},
+		async close() {},
+	}
+}
+
+function lastSeq(errors: Array<DevServerError>): number {
+	return errors.at(-1)?.seq ?? 0
+}
+
 /**
  * Run this same CLI's `kody dev serve` on a free port, so the check renders
  * exactly the preview `kody dev` serves. Its NDJSON events carry server-side
@@ -203,7 +289,7 @@ async function startDevPreview(input: {
 	org?: string
 	env?: NodeJS.ProcessEnv
 	onServerError: (message: string) => void
-}): Promise<{ url: string; close: () => Promise<void> }> {
+}): Promise<DevPreview> {
 	const cliEntry = process.argv[1]
 	if (!cliEntry) {
 		throw new StructuredCliError({
@@ -231,7 +317,7 @@ async function startDevPreview(input: {
 		],
 		{
 			cwd: input.packageRoot,
-			env: input.env ?? process.env,
+			env: appCheckPreviewEnv(input.packageRoot, input.env ?? process.env),
 			stdio: ['ignore', 'pipe', 'pipe'],
 			windowsHide: true,
 		},
@@ -289,32 +375,29 @@ async function startDevPreview(input: {
 				resolveReady(event.url)
 				return
 			}
-			const message = serverErrorMessage(event)
+			const message = devEventServerError(event)
 			if (message) input.onServerError(message)
 		})
 	})
 	try {
-		return { url: await ready, close }
+		return { url: await ready, collectServerErrors: async () => {}, close }
 	} catch (error) {
 		await close()
 		throw error
 	}
 }
 
-function serverErrorMessage(event: DevEvent): string | null {
-	switch (event.type) {
-		case 'runtime_error':
-			return event.request
-				? `${event.message} (${event.request.method} ${event.request.path})`
-				: event.message
-		case 'build_error':
-			return event.file
-				? `Build error in ${event.file}${event.line !== null ? `:${event.line}` : ''}: ${event.message}`
-				: `Build error: ${event.message}`
-		case 'log':
-			return event.level === 'error' ? event.message : null
-		default:
-			return null
+/**
+ * The check's own local Kody state, so its stack never reuses the ports a
+ * `kody dev` started later (or with `--port`) holds for the same package.
+ */
+function appCheckPreviewEnv(
+	packageRoot: string,
+	env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+	return {
+		...env,
+		[localKodyStateDirEnvVar]: `${localKodyStateDir(packageRoot, env)}-app-check`,
 	}
 }
 

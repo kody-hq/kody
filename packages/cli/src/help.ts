@@ -287,7 +287,7 @@ ${orgBlock}
              \`--org\` / ${orgEnvVar} as \`?org=\` on API calls.
 
   --local    Run the execute module on this machine (workerd, Linux/macOS/Windows).
-             Requires Node.js 22 or newer. \`--file\` entries are bundled
+             Requires Node.js 22.19 or newer. \`--file\` entries are bundled
              (relative imports and npm packages; \`kody:*\` stays external)
              before workerd loads them — same shape as hosted execute /
              publish. Unresolvable imports fail with a clear bundle error.

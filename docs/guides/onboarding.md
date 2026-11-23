@@ -155,7 +155,7 @@ heading that page names. When you write the checklist, open
 runs, commit statuses, reviews, and `mergeable` are separate reads. Then
 `search({ entity: "guide:package_lifecycle" })` and
 `search({ entity: "guide:package_authoring" })`. Smoke-test the module with
-local CLI execute when Node ≥22 and the CLI are available
+local CLI execute when Node ≥22.19 and the CLI are available
 (`search({ entity: "guide:local_execute" })`) — that runs the module in a local
 workerd, not hosted `Execute` in Kody's cloud — then save the package they own.
 

@@ -641,9 +641,9 @@ export function renderPanelContent(
 						</SiteLink>
 						). It has no official MCP support, but it can use a computer the way
 						you do, so it connects through the Kody CLI. Ask Instinct to run
-						these commands on its computer (Node 22 or later). The login prints
-						a link and a short code: ask Instinct to send them to you, check
-						that the code matches, and approve.
+						these commands on its computer (Node 22.19 or later). The login
+						prints a link and a short code: ask Instinct to send them to you,
+						check that the code matches, and approve.
 					</p>
 					<ConnectCopyCard
 						highlights={highlights}

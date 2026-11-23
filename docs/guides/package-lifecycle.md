@@ -49,8 +49,8 @@ owned by its existing capability or package.
 
 Use `execute` when the code is disposable: inspect an API response, test an
 assumption, transform a small result, or run a one-time operation after any
-required confirmation. When Node ≥22 and the CLI are available, run that module
-with local CLI execute ([Local CLI execute](./local-execute.md),
+required confirmation. When Node ≥22.19 and the CLI are available, run that
+module with local CLI execute ([Local CLI execute](./local-execute.md),
 `guide:local_execute`). Do not use hosted MCP `execute` when a local or Open API
 path exists.
 
@@ -276,11 +276,11 @@ continuing in the tool-only lane.
 Every authoring lane must validate before publish. The gate depends on the
 **lane**, not only whether a shell exists:
 
-| Lane / host                                  | Before publish                                                                                                                                                                                               |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Tool-only / session** (MCP, no local git)  | `repoRunChecks` on the active repo session — required. Then `repoPublishSession`. No local mock runtime.                                                                                                     |
-| **Git lane** (filesystem + git)              | Local tests (`kody dev` / `kody dev check` when CLI available), push, then `packagePublishExternalPush` (server-side publish checks). Do **not** require `repoRunChecks` — sessions refuse unpublished HEAD. |
-| **CLI extras** (Node ≥22 + `@kodycodes/cli`) | Optional unpublished surface tests below (`kody dev`, `.kody/mocks.ts`, `execute --local` / `--target mock`) on top of the lane gate above.                                                                  |
+| Lane / host                                     | Before publish                                                                                                                                                                                               |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Tool-only / session** (MCP, no local git)     | `repoRunChecks` on the active repo session — required. Then `repoPublishSession`. No local mock runtime.                                                                                                     |
+| **Git lane** (filesystem + git)                 | Local tests (`kody dev` / `kody dev check` when CLI available), push, then `packagePublishExternalPush` (server-side publish checks). Do **not** require `repoRunChecks` — sessions refuse unpublished HEAD. |
+| **CLI extras** (Node ≥22.19 + `@kodycodes/cli`) | Optional unpublished surface tests below (`kody dev`, `.kody/mocks.ts`, `execute --local` / `--target mock`) on top of the lane gate above.                                                                  |
 
 Do **not** assume every agent can run the CLI. Mobile MCP-only agents stop at
 `repoRunChecks`, then publish, then use post-publish smoke surfaces
@@ -290,7 +290,7 @@ session).
 
 ### Local CLI testing (when the host can run code)
 
-When Node ≥22 and `@kodycodes/cli` are available, use `kody dev` from the
+When Node ≥22.19 and `@kodycodes/cli` are available, use `kody dev` from the
 package directory to exercise unpublished surfaces before the first publish. One
 `--target prod|mock` switch decides where server-side calls go (default **`mock`
 for `kody dev`**, **`prod` for `execute` / `search`**).

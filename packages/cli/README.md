@@ -326,9 +326,12 @@ kody app check --json             # one JSON line: result, summary, report paths
 The report covers accessibility violations (axe-core), Lighthouse scores, and
 console errors from the browser and the dev server. Pass or fail is in the
 report; the command exits non-zero only when the preview or the browser cannot
-start. The first run installs Playwright, axe-core, Lighthouse, and the
-Playwright Chromium browser into the Kody cache (`KODY_CACHE_DIR`) and reuses
-them after that, so nothing extra ships with the CLI. See
+start. When `kody dev` (without `--port`) is already running for the package,
+the check renders that preview, including any mock data you seeded; otherwise it
+starts its own with separate local state. The first run installs Playwright,
+axe-core, Lighthouse, and the Playwright Chromium browser into the Kody cache
+(`KODY_CACHE_DIR`) and reuses them after that, so nothing extra ships with the
+CLI. See
 [Check app quality](https://kody.codes/docs/package-apps#check-app-quality-with-kody-app-check).
 
 ### Testing from other devices (`--host`)
@@ -507,8 +510,8 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   other clients is never read. Paired `kody login` OAuth is accepted as Bearer
   on CapabilityProxy and package-graph. Unpaired API origins need bootstrap or a
   `kody_at_…` token.
-- **Node.js:** 22 or newer (`package.json` `engines` is `>=22`). Older Node
-  fails immediately with that requirement, before workerd is downloaded or
+- **Node.js:** 22.19 or newer (`package.json` `engines` is `>=22.19`). Older
+  Node fails immediately with that requirement, before workerd is downloaded or
   started.
 - **Bundling:** `--file` entries are bundled with esbuild before workerd loads
   `main.js` (relative local imports and bare npm packages from `node_modules`;

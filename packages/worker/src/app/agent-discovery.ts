@@ -104,7 +104,7 @@ land on kody.codes and need to add the MCP server.
    approves access. Their email must be verified before authorize can finish.
 4. After the connection works, call \`search\` first. If you can run shell
    commands, prefer local execute:
-   \`npx -y @kodycodes/cli@latest execute --local\` (Node 22+). If the CLI is
+   \`npx -y @kodycodes/cli@latest execute --local\` (Node 22.19+). If the CLI is
    not signed in, call \`api\` with \`cliCredentialBootstrap\` and run its
    \`cli_command\`. Without a shell, use \`execute\`. Start with
    \`search({ query: "what can you do" })\` or fetch \`/docs.md\` for the
@@ -118,7 +118,7 @@ or passwords into chat.
 
 const kodyCliSkillBody = `# Kody CLI
 
-Prefer \`npx -y @kodycodes/cli@latest execute --local\` (Node 22+) for one-off
+Prefer \`npx -y @kodycodes/cli@latest execute --local\` (Node 22.19+) for one-off
 modules, smoke tests, and composition. Local execute uses zero Worker compute
 days. Use MCP \`search\` and \`api\` from any host; use hosted \`execute\` only
 when you cannot run shell commands.

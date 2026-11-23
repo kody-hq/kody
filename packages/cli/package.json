@@ -28,7 +28,7 @@
     "validate": "npm run typecheck && npm run test && npm run build"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19"
   },
   "keywords": [
     "kody",

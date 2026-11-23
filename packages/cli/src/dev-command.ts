@@ -166,6 +166,8 @@ export async function runDevServe(input: {
 		manifest: Awaited<ReturnType<typeof loadPackageManifest>>,
 		/** Port the app will be served on; local Kody builds its origin from it. */
 		packageAppPort: number,
+		/** Dev events from the local workers (their `console.error` lines). */
+		onEvent: (event: DevEvent) => void,
 	) => Promise<{
 		upstream: LocalKodyUpstream
 		close: () => Promise<void>
@@ -200,6 +202,9 @@ export async function runDevServe(input: {
 		: (event: DevEvent) => writeDevEvent(input.io, event)
 	let registered = false
 	let server: Awaited<ReturnType<typeof startPackageAppDev>>
+	// Until the dev server is up, local Kody events go straight to the terminal;
+	// after that they also land in its status for `kody app check` to read.
+	let localKodyEvent = onEvent
 	// Local Kody is configured with the app's origin, so the port is settled
 	// before it starts and the dev server then binds exactly that port.
 	const localKodyPort = input.startLocalKody
@@ -211,7 +216,9 @@ export async function runDevServe(input: {
 		: undefined
 	const localKody =
 		input.startLocalKody && localKodyPort !== undefined
-			? await input.startLocalKody(manifest, localKodyPort)
+			? await input.startLocalKody(manifest, localKodyPort, (event) =>
+					localKodyEvent(event),
+				)
 			: null
 	try {
 		server = await startPackageAppDev({
@@ -253,11 +260,13 @@ export async function runDevServe(input: {
 					basePath: appBasePath,
 					target: input.target,
 					root: manifest.root,
+					...(input.auth.org ? { org: input.auth.org } : {}),
 					...(localKody?.api ? { localKody: localKody.api } : {}),
 				})
 				registered = true
 			},
 		})
+		localKodyEvent = server.emit
 	} catch (error) {
 		if (registered) {
 			await removeDevRegistration(

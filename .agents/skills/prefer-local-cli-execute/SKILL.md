@@ -2,7 +2,7 @@
 name: prefer-local-cli-execute
 description: >
   Prefer @kodycodes/cli execute --local over hosted MCP execute for one-off
-  modules and smoke tests when Node ≥22 and the CLI are available. Agents
+  modules and smoke tests when Node ≥22.19 and the CLI are available. Agents
   already on Kody MCP: cliCredentialBootstrap then CLI auth bootstrap (no second
   OAuth, no tokenCreate). Interactive humans: kody login. Scoped KODY_API_TOKEN
   remains for CI/headless. Use when running Kody execute from Cursor (including
@@ -12,8 +12,8 @@ description: >
 
 # Prefer local CLI execute
 
-When Node is 22 or newer and `@kodycodes/cli` is available, run one-off modules
-with local execute. Do not use hosted MCP `execute`. This skill and
+When Node is 22.19 or newer and `@kodycodes/cli` is available, run one-off
+modules with local execute. Do not use hosted MCP `execute`. This skill and
 [Local CLI execute](https://kody.codes/docs/local-execute)
 (`guide:local_execute`,
 [docs/guides/local-execute.md](../../../docs/guides/local-execute.md)) are the
@@ -63,8 +63,9 @@ The CLI errors name the fix for a rejected bootstrap code and
 [ADR 0056](../../../docs/contributing/decisions/0056-cli-credential-bootstrap.md)).
 Follow the message. Judgment calls the CLI cannot make:
 
-- Node is below 22, the CLI is missing, or the host cannot run workerd. Use Open
-  API / MCP `api`, or fix the environment. Hosted MCP `execute` stays banned.
+- Node is below 22.19, the CLI is missing, or the host cannot run workerd. Use
+  Open API / MCP `api`, or fix the environment. Hosted MCP `execute` stays
+  banned.
 - While an MCP session exists, remint with `cliCredentialBootstrap` instead of
   switching to `kody login` or `tokenCreate`.
 - Credential priority is `--token` / `KODY_API_TOKEN`, then the one saved CLI

@@ -71,7 +71,7 @@ export function buildRepositoryStartPrompt(input: {
 	return [
 		`You're working in my Kody repository ${ref}. It's new, empty, and private.`,
 		'',
-		'With a shell and git (Node 22 or newer):',
+		'With a shell and git (Node 22.19 or newer):',
 		`1. Sign in with \`npx @kodycodes/cli@latest login${org}\`, then run \`npx @kodycodes/cli@latest auth setup-git\` once so git can use my Kody credentials.`,
 		`2. Clone it: \`git clone ${cloneUrl}\``,
 		'3. Commit and `git push` to `main`. Pushes go live right away; there is no publish step for a plain repo.',

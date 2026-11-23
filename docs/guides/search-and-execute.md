@@ -144,7 +144,7 @@ has outcome `expired` (a queued context run that never started). See
 1. **Search** for the outcome — a query, a domain list, or a known entity ref.
 2. **Read** the ranked hit or entity detail. Capability detail includes the
    execute module and input type.
-3. **Execute** with that adapted snippet. When Node ≥22 and the CLI are
+3. **Execute** with that adapted snippet. When Node ≥22.19 and the CLI are
    available, use local CLI execute ([Local CLI execute](./local-execute.md),
    `guide:local_execute`). Put varying capability args in `params` so the same
    `code` graph is reused.

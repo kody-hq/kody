@@ -350,7 +350,7 @@ commented Cloudflare always-pass test values in `.env.example` are enough.
 
 ## Local Kody execute (CLI)
 
-When this VM has Node ≥22 (Cloud Agents use Node 26) and `@kodycodes/cli`,
+When this VM has Node ≥22.19 (Cloud Agents use Node 26) and `@kodycodes/cli`,
 prefer `npx @kodycodes/cli execute --local` over hosted MCP `execute` for
 one-off modules and smoke tests — including modules with static `kody:@…`
 imports (CLI downloads stamped modules via
