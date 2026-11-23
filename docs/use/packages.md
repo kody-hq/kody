@@ -1474,10 +1474,10 @@ publish checks run.
    a Worker isolate, `kody package publish --build local` or `--build context`
    builds outside Kody cloud. See
    [Submit an off-cloud publish build](#submit-an-off-cloud-publish-build) for
-   the underlying build API. Successful results include `build_origin` (`cloud`,
-   `cli`, or `context`). `packageGet` also returns `provenance` for each stored
-   artifact of the published commit, with the build origin and a SHA-256 of its
-   modules. See
+   the underlying build API. Results for uploaded builds can report
+   `build_origin.origin` as `cli` or `context`. `packageGet` also returns
+   `provenance` for each stored artifact of the published commit, with the build
+   origin and a SHA-256 of its modules. See
    [upload verification](../guides/publish-large-packages.md#what-runs-where)
    for what the build checks cover. Builds outside Kody cloud need the
    `publish-offload` feature flag. See
