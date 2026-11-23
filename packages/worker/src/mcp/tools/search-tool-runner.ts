@@ -350,6 +350,7 @@ async function runSearchToolWithoutGuestBlock(input: {
 					budgetMs: SEARCH_APP_STARTERS_BUDGET_MS,
 				}).catch((error: unknown) => {
 					// Search still links the guide, without starter recommendations.
+					// Permanent: starter reads can fail and search must still answer.
 					console.error('search-app-starters-failed', error)
 					return []
 				})
