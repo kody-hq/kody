@@ -128,7 +128,8 @@ export async function runAppCheck(input: {
 	let preview: DevPreview
 	if (
 		running &&
-		(input.org === undefined || running.registration.org === input.org)
+		(running.registration.org === input.org ||
+			(input.target === 'mock' && input.org === undefined))
 	) {
 		status(
 			`kody app check: using the running kody dev preview for ${manifest.name} (pid ${running.registration.pid})…`,
