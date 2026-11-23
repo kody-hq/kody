@@ -3676,35 +3676,42 @@ function WorkspaceDocumentPanel({
 			/>
 		)
 	const stale = query.data.file.id !== metadata.id
+	const keptCss: CSSObject = stale
+		? {
+				display: 'flex',
+				flexDirection: 'column',
+				flex: 1,
+				minWidth: 0,
+				minHeight: 0,
+			}
+		: { display: 'contents' }
 	return (
+		// While the next file loads, this wrapper stands for the file still on
+		// screen, so its context menu acts on what the reader sees.
 		<div
 			aria-busy={stale ? 'true' : undefined}
 			data-stale-preview={stale ? '' : undefined}
-			// The kept file is read-only: no pointer, keyboard, or tab stops.
-			inert={stale}
-			css={
-				stale
-					? {
-							display: 'flex',
-							flexDirection: 'column',
-							flex: 1,
-							minWidth: 0,
-							minHeight: 0,
-							animation: 'stale-preview-dim 0.2s ease 300ms forwards',
-							'@media (prefers-reduced-motion: reduce)': {
-								animationDuration: '0s',
-							},
-						}
-					: { display: 'contents' }
-			}
+			data-workspace-item={stale ? query.data.file.id : undefined}
+			css={{
+				...keptCss,
+				...(stale && {
+					animation: 'stale-preview-dim 0.2s ease 300ms forwards',
+					'@media (prefers-reduced-motion: reduce)': {
+						animationDuration: '0s',
+					},
+				}),
+			}}
 		>
-			<FilesPage
-				key={query.data.file.id}
-				embedded
-				data={{ ...data, selected: query.data }}
-				collapsed={new Set()}
-				onToggleBranch={() => {}}
-			/>
+			{/* Inert, because its buttons would act on a file the reader has left. */}
+			<div inert={stale} css={keptCss}>
+				<FilesPage
+					key={query.data.file.id}
+					embedded
+					data={{ ...data, selected: query.data }}
+					collapsed={new Set()}
+					onToggleBranch={() => {}}
+				/>
+			</div>
 		</div>
 	)
 }
