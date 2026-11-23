@@ -50,7 +50,6 @@ const logLevels = new Set<DevLogLevel>([
 	'debug',
 ])
 
-/** Parse one workerd stdout line; plain lines become untagged `log` events. */
 const ansiEscape = /\u001b\[[0-9;]*m/g
 const wranglerErrorLine = /^(?:\u2718\s+)?\[ERROR\]\s+(.+)$/
 
@@ -74,6 +73,25 @@ export function parseLocalKodyLogLine(
 	}
 }
 
+/** The server-side error an event reports, as one line, or null. */
+export function devEventServerError(event: DevEvent): string | null {
+	switch (event.type) {
+		case 'runtime_error':
+			return event.request
+				? `${event.message} (${event.request.method} ${event.request.path})`
+				: event.message
+		case 'build_error':
+			return event.file
+				? `Build error in ${event.file}${event.line !== null ? `:${event.line}` : ''}: ${event.message}`
+				: `Build error: ${event.message}`
+		case 'log':
+			return event.level === 'error' ? event.message : null
+		default:
+			return null
+	}
+}
+
+/** Parse one workerd stdout line; plain lines become untagged `log` events. */
 export function parseWorkerdStdoutLine(
 	line: string,
 ): Extract<DevEvent, { type: 'log' }> {

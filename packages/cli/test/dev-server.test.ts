@@ -129,6 +129,19 @@ test('kody dev streams tagged console logs and source-maps runtime errors', asyn
 		)
 		assert.ok(runtimeError.type === 'runtime_error')
 		assert.equal(runtimeError.request?.path, '/boom')
+		server.emit({
+			type: 'log',
+			source: 'workerd',
+			level: 'error',
+			message: 'local kody: db down',
+			request: null,
+		})
+		const serverErrors = server.status().serverErrors.map((e) => e.message)
+		assert.ok(
+			serverErrors.some((message) => /kaboom \(GET \/boom\)/.test(message)),
+			'status keeps the runtime error for kody app check',
+		)
+		assert.equal(serverErrors.at(-1), 'local kody: db down')
 
 		const log = await waitFor(
 			async () =>

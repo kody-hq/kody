@@ -13,10 +13,11 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
-import type { DevEvent } from '../dev/dev-events.js'
+import { devEventServerError, type DevEvent } from '../dev/dev-events.js'
 import {
 	devStatusPath,
 	findRunningDevServer,
+	type DevServerError,
 	type DevServerStatus,
 } from '../dev/dev-registry.js'
 import {
@@ -125,7 +126,7 @@ export async function runAppCheck(input: {
 		target: input.target,
 	})
 	let preview: DevPreview
-	if (running) {
+	if (running && running.registration.org === input.org) {
 		status(
 			`kody app check: using the running kody dev preview for ${manifest.name} (pid ${running.registration.pid})…`,
 		)
@@ -133,6 +134,7 @@ export async function runAppCheck(input: {
 			origin: running.registration.origin,
 			status: running.status,
 			onServerError,
+			onStatus: status,
 		})
 	} else {
 		status(
@@ -172,6 +174,7 @@ export async function runAppCheck(input: {
 		}
 		status('kody app check: running Lighthouse…')
 		const lighthouse = await runLighthouse({ tools, url: preview.url })
+		await preview.collectServerErrors()
 		report = buildAppCheckReport({
 			package: { name: manifest.name, root: manifest.root },
 			url: preview.url,
@@ -220,44 +223,55 @@ async function freePort(): Promise<number> {
 	})
 }
 
-type DevPreview = { url: string; close: () => Promise<void> }
+type DevPreview = {
+	url: string
+	/** Record server errors that happened during the check, before the report. */
+	collectServerErrors: () => Promise<void>
+	close: () => Promise<void>
+}
 
 /**
  * Render a `kody dev` that is already running for this package instead of
  * starting a second stack. Its server errors stream to that terminal, so the
- * report picks up whichever error it records last during the check.
+ * check reads the ones its status recorded while the check ran.
  */
 function attachDevPreview(input: {
 	origin: string
 	status: DevServerStatus
 	onServerError: (message: string) => void
+	onStatus: (message: string) => void
 }): DevPreview {
-	const before = lastErrorAt(input.status)
+	const seenSeq = lastSeq(input.status.serverErrors ?? [])
 	return {
 		url: input.status.url,
-		close: async () => {
+		collectServerErrors: async () => {
 			const status = await fetch(new URL(devStatusPath, input.origin), {
-				signal: AbortSignal.timeout(1_500),
+				signal: AbortSignal.timeout(5_000),
 			})
 				.then((response) =>
 					response.ok ? (response.json() as Promise<DevServerStatus>) : null,
 				)
 				.catch(() => null)
-			const error = status?.lastError
-			if (!error || lastErrorAt(status) === before) return
-			input.onServerError(
-				error.kind === 'build'
-					? `Build error${error.file ? ` in ${error.file}` : ''}: ${error.message}`
-					: error.request
-						? `${error.message} (${error.request.method} ${error.request.path})`
-						: error.message,
-			)
+			if (!status?.serverErrors) {
+				input.onStatus(
+					'kody app check: could not read server errors from the running kody dev, so the report lists browser errors only. Restart kody dev with this CLI version to include them.',
+				)
+				return
+			}
+			const fresh = status.serverErrors.filter((error) => error.seq > seenSeq)
+			if (fresh[0] && fresh[0].seq > seenSeq + 1) {
+				input.onStatus(
+					`kody app check: the running kody dev logged more server errors than it keeps, so the report lists the latest ${fresh.length}.`,
+				)
+			}
+			for (const error of fresh) input.onServerError(error.message)
 		},
+		close: async () => {},
 	}
 }
 
-function lastErrorAt(status: DevServerStatus): string | null {
-	return status.lastError?.at ?? null
+function lastSeq(errors: Array<DevServerError>): number {
+	return errors.at(-1)?.seq ?? 0
 }
 
 /**
@@ -357,12 +371,12 @@ async function startDevPreview(input: {
 				resolveReady(event.url)
 				return
 			}
-			const message = serverErrorMessage(event)
+			const message = devEventServerError(event)
 			if (message) input.onServerError(message)
 		})
 	})
 	try {
-		return { url: await ready, close }
+		return { url: await ready, collectServerErrors: async () => {}, close }
 	} catch (error) {
 		await close()
 		throw error
@@ -380,23 +394,6 @@ function appCheckPreviewEnv(
 	return {
 		...env,
 		[localKodyStateDirEnvVar]: `${localKodyStateDir(packageRoot, env)}-app-check`,
-	}
-}
-
-function serverErrorMessage(event: DevEvent): string | null {
-	switch (event.type) {
-		case 'runtime_error':
-			return event.request
-				? `${event.message} (${event.request.method} ${event.request.path})`
-				: event.message
-		case 'build_error':
-			return event.file
-				? `Build error in ${event.file}${event.line !== null ? `:${event.line}` : ''}: ${event.message}`
-				: `Build error: ${event.message}`
-		case 'log':
-			return event.level === 'error' ? event.message : null
-		default:
-			return null
 	}
 }
 

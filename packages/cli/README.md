@@ -326,9 +326,12 @@ kody app check --json             # one JSON line: result, summary, report paths
 The report covers accessibility violations (axe-core), Lighthouse scores, and
 console errors from the browser and the dev server. Pass or fail is in the
 report; the command exits non-zero only when the preview or the browser cannot
-start. The first run installs Playwright, axe-core, Lighthouse, and the
-Playwright Chromium browser into the Kody cache (`KODY_CACHE_DIR`) and reuses
-them after that, so nothing extra ships with the CLI. See
+start. When `kody dev` is already running for the package, the check renders
+that preview, including any mock data you seeded; otherwise it starts its own
+with separate local state. The first run installs Playwright, axe-core,
+Lighthouse, and the Playwright Chromium browser into the Kody cache
+(`KODY_CACHE_DIR`) and reuses them after that, so nothing extra ships with the
+CLI. See
 [Check app quality](https://kody.codes/docs/package-apps#check-app-quality-with-kody-app-check).
 
 ### Testing from other devices (`--host`)
