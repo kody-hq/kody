@@ -235,11 +235,17 @@ async function buildDestHeadRewriteFiles(input: {
 			repoId: input.repoId,
 			commit: input.destHead,
 		}).catch((error: unknown) => {
-			// Keep the fork going with the manifest rewrite; the source
-			// references then fail the fork's own checks, not the fork itself.
+			// Permanent: an unreadable tree must not fail the fork. The user
+			// loses the source-side topic rewrite and fixes those emit calls
+			// before the fork's first publish.
 			console.warn(
-				`Forked artifact repo "${input.repoId}" tree at ${input.destHead} is unreadable; renamed kody.emits topics are rewritten in package.json only.`,
-				error,
+				JSON.stringify({
+					message: 'fork dest head tree unreadable',
+					repoId: input.repoId,
+					destHead: input.destHead,
+					impact: 'kody.emits renames applied to package.json only',
+					error: error instanceof Error ? error.message : String(error),
+				}),
 			)
 			return null
 		})
