@@ -963,6 +963,72 @@ export function getFieldControlCss(options: FieldControlStyleOptions = {}) {
 	}
 }
 
+/**
+ * One joined control: an addon (`kody.codes/@`) and an input inside a single
+ * bordered, rounded box. The group owns the border, corners, background, and
+ * focus ring; the input inside draws none of them.
+ */
+export function getInputGroupCss(options: FieldControlStyleOptions = {}) {
+	const field = getFieldControlCss(options)
+	return {
+		display: 'flex',
+		alignItems: 'stretch',
+		minWidth: 0,
+		width: '100%',
+		maxWidth: '100%',
+		boxSizing: 'border-box' as const,
+		overflow: 'hidden',
+		backgroundColor: field.backgroundColor,
+		border: field.border,
+		...getSquircleCss(controlSizes[options.size ?? 'md'].squircle),
+		transition: field.transition,
+		'&:focus-within': field['&:focus'],
+		'&:has([aria-invalid="true"])': field['&[aria-invalid="true"]'],
+		'&:has(:disabled)': field['&:disabled'],
+	}
+}
+
+/** Static text joined to the start of an `InputGroup` input. */
+export function getInputAddonCss(options: FieldControlStyleOptions = {}) {
+	const size = controlSizes[options.size ?? 'md']
+	return {
+		display: 'inline-flex',
+		alignItems: 'center',
+		flex: 'none',
+		minWidth: 0,
+		paddingInline: `var(--control-padding-x, ${size.paddingX})`,
+		borderInlineEnd: `1px solid ${colors.fieldBorder}`,
+		backgroundColor:
+			options.background === 'canvas' ? colors.surface : colors.background,
+		color: colors.textMuted,
+		fontSize: typography.fontSize.sm,
+		whiteSpace: 'nowrap' as const,
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+	}
+}
+
+/** The field control as the input of an `InputGroup`: no box of its own. */
+export function getInputGroupControlCss(
+	options: FieldControlStyleOptions = {},
+) {
+	return {
+		...getFieldControlCss(options),
+		flex: '1 1 auto',
+		width: 'auto',
+		border: 'none',
+		borderRadius: 0,
+		'@supports (corner-shape: squircle)': {
+			borderRadius: 0,
+			cornerShape: 'round',
+		},
+		backgroundColor: 'transparent',
+		'&:focus': { boxShadow: 'none' },
+		'&[aria-invalid="true"]': {},
+		'&:disabled': { cursor: 'not-allowed' },
+	}
+}
+
 export function getTextareaControlCss(options: FieldControlStyleOptions = {}) {
 	return {
 		...getFieldControlCss(options),

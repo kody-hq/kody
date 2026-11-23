@@ -34,7 +34,7 @@ import {
 	AccountPageHeader,
 	accountActionsCss,
 } from './account-management-components.tsx'
-import { Input, Select } from '../components/input.tsx'
+import { Input, InputAddon, InputGroup, Select } from '../components/input.tsx'
 
 type Props = {
 	payload: RepositoryCreateOptions
@@ -189,13 +189,12 @@ function RepositoryCreateForm(props: {
 				</Field>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Repository name</span>
-					<span css={nameFieldCss}>
-						<span css={namePrefixCss} aria-hidden="true">
+					<InputGroup>
+						<InputAddon css={namePrefixCss} aria-hidden="true">
 							@{owner}/
-						</span>
+						</InputAddon>
 						<Input
 							name="name"
-							css={nameInputCss}
 							value={name}
 							required
 							autoComplete="off"
@@ -216,7 +215,7 @@ function RepositoryCreateForm(props: {
 							}}
 							onBlur={() => setShowNameError(name.length > 0)}
 						/>
-					</span>
+					</InputGroup>
 					{nameError ? (
 						<span
 							id={nameErrorId}
@@ -291,33 +290,8 @@ const formCss: CSSObject = {
 	gap: spacing.lg,
 }
 
-const nameFieldCss: CSSObject = {
-	display: 'flex',
-	alignItems: 'stretch',
-	minWidth: 0,
-}
-
 const namePrefixCss: CSSObject = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	paddingInline: '0.85rem',
-	borderRadius: '12px 0 0 12px',
-	border: `1.5px solid ${colors.fieldBorder}`,
-	borderRight: 'none',
-	backgroundColor: colors.background,
-	color: colors.textMuted,
-	fontSize: typography.fontSize.sm,
 	maxWidth: '50%',
-	overflow: 'hidden',
-	textOverflow: 'ellipsis',
-	whiteSpace: 'nowrap',
-}
-
-const nameInputCss: CSSObject = {
-	flex: '1 1 auto',
-	minWidth: 0,
-	borderTopLeftRadius: 0,
-	borderBottomLeftRadius: 0,
 }
 
 const nameErrorCss: CSSObject = {

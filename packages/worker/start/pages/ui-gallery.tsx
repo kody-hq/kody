@@ -11,7 +11,13 @@ import {
 } from '../components/dialog.tsx'
 import { Field } from '../components/field.tsx'
 import { HandleSuggestion } from '../components/handle-suggestion.tsx'
-import { Input, Select, Textarea } from '../components/input.tsx'
+import {
+	Input,
+	InputAddon,
+	InputGroup,
+	Select,
+	Textarea,
+} from '../components/input.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import {
 	Menu,
@@ -130,6 +136,42 @@ const uiGallerySections: ReadonlyArray<{
 						<option value="free">Free</option>
 						<option value="team">Team</option>
 					</Select>
+				</Field>
+			</div>
+		),
+	},
+	{
+		id: 'input-group',
+		title: 'InputGroup, InputAddon',
+		render: () => (
+			<div css={fieldGridCss}>
+				<Field label="Handle">
+					<InputGroup>
+						<InputAddon aria-hidden="true">kody.codes/@</InputAddon>
+						<Input name="gallery-group-default" defaultValue="acme-labs" />
+					</InputGroup>
+				</Field>
+				<Field label="Handle with error" error="Use 3 to 32 characters.">
+					<InputGroup>
+						<InputAddon aria-hidden="true">kody.codes/@</InputAddon>
+						<Input name="gallery-group-error" defaultValue="a" />
+					</InputGroup>
+				</Field>
+				<Field label="Locked repository">
+					<InputGroup>
+						<InputAddon aria-hidden="true">@jane/</InputAddon>
+						<Input
+							name="gallery-group-disabled"
+							defaultValue="notes"
+							disabled
+						/>
+					</InputGroup>
+				</Field>
+				<Field label="Small, canvas background">
+					<InputGroup size="sm" background="canvas">
+						<InputAddon aria-hidden="true">@jane/</InputAddon>
+						<Input name="gallery-group-small" placeholder="my-project" />
+					</InputGroup>
 				</Field>
 			</div>
 		),
