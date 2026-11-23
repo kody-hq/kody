@@ -276,7 +276,7 @@ async function createBuild(
 			bucket: ctx.env.REPO_SESSION_BLOBS,
 		})
 	} catch (error) {
-		// Start the new build even if this cleanup attempt fails.
+		// The new build can proceed and a later sweep can retry leftover uploads.
 		reportHandledError('publish_builds.purge_expired', error)
 	}
 	const created = await createPublishBuild({
