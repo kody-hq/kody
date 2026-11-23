@@ -901,7 +901,7 @@ test('a Free user can add an org as referrer after signup, but not an org they b
 			db,
 			refereeStableUserId: user.stableUserId,
 			referrerInput,
-			listPaidInvoices: async () => [],
+			listPaidInvoices: async () => ({ invoices: [], hasMore: false }),
 			now,
 		})
 
