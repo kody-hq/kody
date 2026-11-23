@@ -52,8 +52,11 @@ cannot bypass edge Access.
 
 ### Isolated restore drill
 
-The UI selects the most recent day in the last week with a sealed paced night
-for every `D1_PACED_SOURCES` database. Before making D1 requests, the drill
+The drill replays the day entered in the UI's drill day field, or, when it is
+empty, the most recent day in the last week with a sealed paced night for every
+`D1_PACED_SOURCES` database. A chosen day must be sealed for every paced source.
+Drill the day you plan to restore before a graduated production restore of an
+older day. Before making D1 requests, the drill
 [checks that `DRILL_ACCOUNT_ID` differs from `SOURCE_ACCOUNT_ID`](../../../packages/backup-control-plane/restore-drill.ts).
 For each source the
 [drill Workflow](../../../packages/backup-control-plane/paced-restore-drill.ts)

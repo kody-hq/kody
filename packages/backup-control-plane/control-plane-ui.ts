@@ -573,10 +573,13 @@ ${options.flashHtml ?? ''}
 			<button type="submit">Seal day</button>
 		</form>
 		<form method="post" action="/actions/run-paced-drill" class="actions" onsubmit="return confirm('Start an isolated paced restore drill for APP, AUDIT and JOBS?');">
+			<label>Drill day
+				<input type="text" name="day" placeholder="newest sealed" pattern="\\d{4}-\\d{2}-\\d{2}"/>
+			</label>
 			<button type="submit">Run isolated paced restore drill</button>
 		</form>
 	</div>
-	<p>Seal day queues the work and returns immediately. The status page shows progress, success, or why the day is not ready.</p>
+	<p>Seal day queues the work and returns immediately. The status page shows progress, success, or why the day is not ready. Leave the drill day empty to drill the newest day from the last week that every paced source sealed, or enter the day you plan to restore.</p>
 </section>
 <section class="panel danger">
 	<h2>Production restore (dangerous)</h2>

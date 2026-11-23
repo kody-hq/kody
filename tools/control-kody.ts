@@ -142,6 +142,8 @@ const usageLines = [
 	'  --params-file <p>    Optional JSON object passed to execute or api',
 	'  --operation <id>     Required for api (operationId, e.g. cliCredentialBootstrap)',
 	'  --execute-args-file <p>  Optional JSON object merged into the execute call (e.g. credentials)',
+	'  --idempotency-key <k>    execute: read or resume the run with this key',
+	'  --follow-minutes <n>     execute: re-read an in-progress run for n minutes (default 15, 0 returns the handle)',
 	'  --query <text>       search query',
 	'  --domain <id>        Optional search domain',
 	'  --entity <ref>       Optional search entity ref',
@@ -233,6 +235,8 @@ export type ControlKodyOptions = {
 	codeFile: string | null
 	paramsFile: string | null
 	executeArgsFile: string | null
+	idempotencyKey: string | null
+	followMinutes: number | null
 	query: string | null
 	operationId: string | null
 	domain: string | null
@@ -307,6 +311,8 @@ export function parseControlArgs(argv: Array<string>): ControlKodyOptions {
 		codeFile: null,
 		paramsFile: null,
 		executeArgsFile: null,
+		idempotencyKey: null,
+		followMinutes: null,
 		query: null,
 		operationId: null,
 		domain: null,
@@ -554,6 +560,26 @@ function parseSharedFlags(
 					argv[index + 1],
 					'--execute-args-file',
 				)
+				index += 1
+				break
+			}
+			case '--idempotency-key': {
+				options.idempotencyKey = requireValue(
+					argv[index + 1],
+					'--idempotency-key',
+				)
+				index += 1
+				break
+			}
+			case '--follow-minutes': {
+				const raw = requireValue(argv[index + 1], '--follow-minutes')
+				const minutes = Number(raw)
+				if (!Number.isFinite(minutes) || minutes < 0) {
+					throw new ControlKodyError(
+						'--follow-minutes must be a non-negative number',
+					)
+				}
+				options.followMinutes = minutes
 				index += 1
 				break
 			}
@@ -1883,6 +1909,12 @@ async function runCommand(options: ControlKodyOptions) {
 				code: readFileSync(options.codeFile, 'utf8'),
 				params,
 				extraArguments,
+				...(options.idempotencyKey
+					? { idempotencyKey: options.idempotencyKey }
+					: {}),
+				...(options.followMinutes !== null
+					? { followTimeoutMs: options.followMinutes * 60_000 }
+					: {}),
 				cookieHeader: cached.cookieHeader,
 				oauth: cached.oauth,
 				orgSlug: cached.orgSlug,

@@ -28,6 +28,7 @@ import {
 import {
 	dayFromPacedDrillRunId,
 	latestPacedSealedDay,
+	requirePacedSealedDay,
 	pacedDrillRunId,
 	readPacedDrillProgress,
 } from './paced-restore-drill.ts'
@@ -208,7 +209,10 @@ async function handleAuthenticated(
 		}
 		case '/actions/run-paced-drill': {
 			const now = new Date()
-			const day = await latestPacedSealedDay(env, now)
+			const requestedDay = form.get('day')?.trim() ?? ''
+			const day = requestedDay
+				? await requirePacedSealedDay(env, requireDay(requestedDay))
+				: await latestPacedSealedDay(env, now)
 			const runId = pacedDrillRunId(day, now)
 			await enqueueWorkflow(env.PACED_DRILL_WORKFLOW, runId, { runId, day })
 			safeLog({

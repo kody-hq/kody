@@ -183,11 +183,16 @@ plus an optional JSON `--params-file`. Use it for api-only operations that
 refuse `execute`, such as `cliCredentialBootstrap`. `execute` reads an ESM
 module from `--code-file` (default export) and optional JSON `--params-file`.
 `--execute-args-file` merges a JSON object into the execute call, such as a
-`credentials` call map. `search` takes `--query`, and optionally `--domain`,
-`--entity`, and `--limit`. Both refuse `https://kody.codes`. Do not hand-write a
-throwaway MCP client script for preview fixtures. Modules that call
-`packageSave`, publish, or `packageGetGitRemote` can run against the local
-origin (mock Artifacts) or a PR preview (real Artifacts namespace).
+`credentials` call map. When execute returns `inProgress` with an
+`idempotencyKey` (the run outlived the transport budget), the CLI re-reads that
+key every 5 seconds for up to 15 minutes and prints the finished result. Change
+the window with `--follow-minutes <n>` (`0` prints the in-progress handle), and
+resume a run later with `--idempotency-key <key>`. `search` takes `--query`, and
+optionally `--domain`, `--entity`, and `--limit`. Both refuse
+`https://kody.codes`. Do not hand-write a throwaway MCP client script for
+preview fixtures. Modules that call `packageSave`, publish, or
+`packageGetGitRemote` can run against the local origin (mock Artifacts) or a PR
+preview (real Artifacts namespace).
 
 After the seed user belongs to more than one organization, OAuth authorize
 refuses to approve until an org is chosen. Pass `--org <slug>` on `execute`,
