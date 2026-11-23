@@ -201,7 +201,7 @@ still auth or permission — use the Failure section below. Two workarounds for
 
 ## Failure
 
-- Node is below 22, the CLI is missing, or the host cannot run workerd. Use
+- Node is below 22.19, the CLI is missing, or the host cannot run workerd. Use
   [Open API](./open-api.md) / MCP `api`, or fix the environment. Hosted MCP
   `execute` stays banned for that failure case.
 - Not authenticated (missing or invalid credentials). Agents on MCP: call
