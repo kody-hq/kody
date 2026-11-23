@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
 import { sessionStub } from '#worker/execution-contexts/store.ts'
 import { serveLocalExecutePackageGraph } from '#worker/package-runtime/isolated-local-execute-package-graph.ts'
 import {
@@ -174,11 +178,19 @@ export const localExecutePackageGraphOperationDefinitions: Record<
 					packageIds.length > 0
 				) {
 					// Before the response: the run cannot load a package Kody has not recorded.
-					await sessionStub(ctx.env, ctx.principal.ecid).recordRunPackages({
-						runId: ctx.principal.runId,
-						entryPackageIds,
-						packageIds,
-					})
+					const { ecid, runId } = ctx.principal
+					await withDeadline(
+						{
+							label: 'execution_context.record_run_packages',
+							timeoutMs: outboundTimeoutMs.durableObject,
+						},
+						() =>
+							sessionStub(ctx.env, ecid).recordRunPackages({
+								runId,
+								entryPackageIds,
+								packageIds,
+							}),
+					)
 				}
 				return graph
 			} catch (error) {

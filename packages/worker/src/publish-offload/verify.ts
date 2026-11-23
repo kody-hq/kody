@@ -209,10 +209,18 @@ function readPlainLiteral(node: unknown) {
 
 function matchesMarker(pattern: RegExp, specifier: string) {
 	if (pattern.test(specifier)) return true
+	const decoded = decodeSpecifier(specifier)
+	// An undecodable specifier could hide a marker, so it counts as one.
+	return decoded.kind === 'malformed_uri' || pattern.test(decoded.value)
+}
+
+function decodeSpecifier(
+	specifier: string,
+): { kind: 'ok'; value: string } | { kind: 'malformed_uri' } {
 	try {
-		return pattern.test(decodeURIComponent(specifier))
+		return { kind: 'ok', value: decodeURIComponent(specifier) }
 	} catch {
-		return true
+		return { kind: 'malformed_uri' }
 	}
 }
 
@@ -240,8 +248,11 @@ async function inspectUploadedModule(input: { source: string; label: string }) {
 	let program: unknown
 	try {
 		program = await parseModuleSource(source)
-	} catch {
-		fail(`${label} does not parse as a module.`)
+	} catch (error) {
+		throw new PublishBuildVerificationError(
+			`${label} does not parse as a module.`,
+			{ cause: error },
+		)
 	}
 	const specifiers: Array<string> = []
 	const boundIds: Array<string | null> = []
@@ -475,7 +486,7 @@ export async function verifyUploadedTargetModules(input: {
 }) {
 	const { uploaded } = input
 	const referencedLinkedImports = new Set<string>()
-	if (!(uploaded.mainModule in input.modules)) {
+	if (!Object.hasOwn(input.modules, uploaded.mainModule)) {
 		fail(
 			`target "${uploaded.entryPoint}" names main module "${uploaded.mainModule}", which it did not upload.`,
 		)

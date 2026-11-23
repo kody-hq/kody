@@ -1,3 +1,8 @@
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '#worker/outbound/with-deadline.ts'
+import { reportHandledError } from '#worker/outbound/typed-failure.ts'
 import { loadProfileChain } from '#worker/profiles/store.ts'
 import { profileStatus } from '#worker/profiles/rules.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
@@ -239,7 +244,8 @@ async function authenticateWithApiToken(input: {
 		input.waitUntil(
 			touchApiToken({ db: input.env.APP_DB, record: slid }).catch(
 				(error: unknown) => {
-					console.warn('api-token-touch-failed', record.id, error)
+					// The request still succeeds; the token keeps its previous idle expiry.
+					reportHandledError('api_token.touch', error)
 				},
 			),
 		)
@@ -414,13 +420,21 @@ async function authenticateWithExecutionContextLease(input: {
 	const url = new URL(input.request.url)
 	const body = new Uint8Array(await input.request.clone().arrayBuffer())
 	const session = sessionStub(input.env, signature.ec)
-	const verdict = await session.authorizeRunCall({
-		runId: input.runId,
-		signature,
-		method: input.request.method,
-		pathAndQuery: `${url.pathname}${url.search}`,
-		bodySha256: await sha256Base64Url(body),
-	})
+	const bodySha256 = await sha256Base64Url(body)
+	const verdict = await withDeadline(
+		{
+			label: 'execution_context.authorize_run_call',
+			timeoutMs: outboundTimeoutMs.durableObject,
+		},
+		async () =>
+			await session.authorizeRunCall({
+				runId: input.runId,
+				signature,
+				method: input.request.method,
+				pathAndQuery: `${url.pathname}${url.search}`,
+				bodySha256,
+			}),
+	)
 	if (!verdict.ok) {
 		throw leaseDenied(
 			verdict.code === 'lease_ended'
@@ -431,9 +445,19 @@ async function authenticateWithExecutionContextLease(input: {
 	const { lease } = verdict
 	const accessLost = async (message: string) => {
 		input.waitUntil(
-			session
-				.endLeases({ userIds: [lease.requester.userId], reason: 'access_lost' })
-				.catch(() => {}),
+			withDeadline(
+				{
+					label: 'execution_context.end_leases',
+					timeoutMs: outboundTimeoutMs.durableObject,
+				},
+				() =>
+					session.endLeases({
+						userIds: [lease.requester.userId],
+						reason: 'access_lost',
+					}),
+			).catch((error: unknown) => {
+				reportHandledError('execution_context.end_leases', error)
+			}),
 		)
 		return new ApiError({
 			status: 403,

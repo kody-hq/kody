@@ -69,6 +69,30 @@
 	},
 	"overrides": [
 		{
+			"files": [
+				"**/packages/worker/src/open-api/**",
+				"**/packages/worker/src/publish-offload/**",
+				"**/packages/worker/src/mcp/capabilities/packages/publish-build-create.ts",
+				"**/packages/worker/src/execution-contexts/route-publish-build.ts"
+			],
+			"rules": {
+				"kody-custom/require-outbound-deadline": "error",
+				"kody-custom/no-floating-promise": "error",
+				"kody-custom/no-swallowed-error": "error"
+			}
+		},
+		{
+			"files": [
+				"**/packages/worker/src/open-api/**/*.test.ts",
+				"**/packages/worker/src/publish-offload/**/*.test.ts"
+			],
+			"rules": {
+				"kody-custom/require-outbound-deadline": "off",
+				"kody-custom/no-floating-promise": "off",
+				"kody-custom/no-swallowed-error": "off"
+			}
+		},
+		{
 			"files": ["**/packages/worker/client/event-mixin.ts"],
 			"rules": {
 				"typescript/no-explicit-any": "off"

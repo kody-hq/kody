@@ -62,6 +62,27 @@ test('org hard purge is the org-owned slice of the account inventory plus the or
 		expect(parentIndex).toBeGreaterThan(childIndex)
 	}
 
+	const publishChunks = orgTargets.findIndex(
+		(target) =>
+			target.kind === 'bucket_parent' &&
+			target.table === 'publish_build_chunks' &&
+			target.parentUserColumn === 'owner_user_id',
+	)
+	const publishBuilds = orgTargets.findIndex(
+		(target) =>
+			target.kind === 'user_columns' && target.table === 'publish_builds',
+	)
+	expect(publishChunks).toBeGreaterThanOrEqual(0)
+	expect(publishBuilds).toBeGreaterThan(publishChunks)
+	expect(
+		orgTargets.some(
+			(target) =>
+				target.kind === 'bucket_parent' &&
+				target.table === 'publish_build_chunks' &&
+				target.parentUserColumn === 'requester_user_id',
+		),
+	).toBe(false)
+
 	const listingChild = orgTargets.findIndex(
 		(target) => target.kind === 'community_listing_child',
 	)

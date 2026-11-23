@@ -184,6 +184,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	execution_context_notices: keep(
 		'Notices are about a person and a context that stays in the owning org; nothing to move.',
 	),
+	publish_build_chunks: keep(
+		'Publish build chunk rows count one upload job toward its limits and go away with the build.',
+	),
 	publish_builds: keep(
 		'Publish builds are short-lived upload jobs for one commit; they expire on their own and are not resources a transfer moves.',
 	),

@@ -1,4 +1,9 @@
 import {
+	noFloatingPromiseRule,
+	noSwallowedErrorRule,
+	requireOutboundDeadlineRule,
+} from './request-path-safety.js'
+import {
 	findOversizedOfficialGuideSections,
 	isOfficialGuideCatalogFile,
 } from './guide-section-budget.js'
@@ -743,7 +748,7 @@ const noBareEffectRule = {
 		function allowed() {
 			const filename = context.filename
 			return (
-				/\/start\/lib\/primitives\.ts$/.test(filename) ||
+				filename.endsWith('/start/lib/primitives.ts') ||
 				/\.test\.tsx?$/.test(filename)
 			)
 		}
@@ -1087,6 +1092,7 @@ const plugin = {
 	rules: {
 		'enforce-import-boundaries': enforceImportBoundariesRule,
 		'no-example-identifier': noExampleIdentifierRule,
+		'no-floating-promise': noFloatingPromiseRule,
 		'no-inline-type-only-import': noInlineTypeOnlyImportRule,
 		'no-literal-frame-src': noLiteralFrameSrcRule,
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
@@ -1097,9 +1103,11 @@ const plugin = {
 		'no-raw-overlay': noRawOverlayRule,
 		'no-raw-table': noRawTableRule,
 		'no-raw-form-control': noRawFormControlRule,
+		'no-swallowed-error': noSwallowedErrorRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'no-test-hooks-in-production': noTestHooksInProductionRule,
 		'require-exit-condition-comment': requireExitConditionCommentRule,
+		'require-outbound-deadline': requireOutboundDeadlineRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
 		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,
 	},

@@ -1,4 +1,7 @@
 import { isRecord } from '@kody-internal/shared/is-record.ts'
+import { z } from 'zod'
+import { decodeUntrusted } from '#worker/decode-request-body.ts'
+import { parseJsonText } from '#worker/outbound/typed-failure.ts'
 import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
 import { maxApiRequestBodyBytes } from './api-body-limits.ts'
 import { invalidRequest } from './errors.ts'
@@ -6,6 +9,9 @@ import { invalidRequest } from './errors.ts'
 export { maxApiRequestBodyBytes }
 
 type JsonSchema = Record<string, unknown>
+
+/** Operation input arrives as one JSON object; the capability's own schema checks its fields. */
+const jsonObjectBodySchema = z.record(z.string(), z.unknown())
 
 function schemaTypes(schema: JsonSchema | undefined): Set<string> {
 	const types = new Set<string>()
@@ -98,16 +104,15 @@ export async function readJsonBody(
 	if (!/^application\/(?:[\w.+-]+\+)?json\b/i.test(contentType.trim())) {
 		return { kind: 'unsupported_media_type' as const }
 	}
-	let body: unknown
-	try {
-		body = JSON.parse(text) as unknown
-	} catch {
+	const parsed = parseJsonText(text)
+	if (parsed.kind === 'invalid_json') {
 		throw invalidRequest('Request body must be valid JSON.')
 	}
-	if (!isRecord(body)) {
+	const decoded = decodeUntrusted(jsonObjectBodySchema, parsed.value)
+	if (decoded.kind === 'invalid_shape') {
 		throw invalidRequest('Request body must be a JSON object.')
 	}
-	return { kind: 'ok' as const, body }
+	return { kind: 'ok' as const, body: decoded.value }
 }
 
 /** Path params win; a conflicting body/query value is a caller error. */

@@ -168,10 +168,14 @@ export default {
 				})),
 			})
 		} catch (error) {
-			return Response.json({
-				ok: false,
-				message: error instanceof Error ? error.message : String(error),
-			})
+			return builderErrorResponse(error)
 		}
 	},
+}
+
+function builderErrorResponse(error: unknown) {
+	return Response.json({
+		ok: false,
+		message: error instanceof Error ? error.message : String(error),
+	})
 }

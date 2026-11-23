@@ -537,3 +537,28 @@ test('targets that share a build must upload the same bytes', () => {
 		assertSameBuildUploadMatches({ kept: upload('a'), uploaded: upload('b') }),
 	).toThrow(PublishBuildVerificationError)
 })
+
+test('a main module name inherited from Object.prototype is refused', async () => {
+	const module = {
+		js: 'export default { fetch() { return new Response("ok") } }',
+	}
+	const bytes = workerLoaderModuleBytes(module)
+	const sha256 = await sha256Hex(bytes)
+	await expect(
+		verifyUploadedTargetModules({
+			uploaded: {
+				kind: 'app',
+				bundleKind: 'app',
+				artifactName: null,
+				entryPoint: 'src/index.ts',
+				mainModule: 'toString',
+				modules: {
+					'index.js': { sha256, size: bytes.byteLength, chunks: [sha256] },
+				},
+			},
+			modules: { 'index.js': module },
+			ownPackageId: 'pkg_1',
+			linkedImports: new Map(),
+		}),
+	).rejects.toThrow(/did not upload/)
+})

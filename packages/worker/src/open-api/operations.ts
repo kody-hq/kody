@@ -834,14 +834,9 @@ function matchRoute(route: CompiledRoute, pathSegments: ReadonlyArray<string>) {
 			if (segment.value !== value) return null
 			continue
 		}
-		let decoded: string
-		try {
-			decoded = decodeURIComponent(value)
-		} catch {
-			return null
-		}
-		if (!decoded) return null
-		params[segment.name] = decoded
+		const decoded = decodePathSegment(value)
+		if (decoded.kind === 'invalid_encoding' || !decoded.value) return null
+		params[segment.name] = decoded.value
 	}
 	return params
 }
@@ -894,5 +889,15 @@ export function matchApiRoute(method: string, pathname: string): ApiRouteMatch {
 		kind: 'match',
 		operation: best.route.operation,
 		pathParams: best.params,
+	}
+}
+
+function decodePathSegment(
+	value: string,
+): { kind: 'ok'; value: string } | { kind: 'invalid_encoding' } {
+	try {
+		return { kind: 'ok', value: decodeURIComponent(value) }
+	} catch {
+		return { kind: 'invalid_encoding' }
 	}
 }

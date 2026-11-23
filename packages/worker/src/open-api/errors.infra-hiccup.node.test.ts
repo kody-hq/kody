@@ -4,17 +4,17 @@ import { EntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 
 const mocks = vi.hoisted(() => ({
-	reportInfraHiccup: vi.fn(async (_report: unknown) => undefined),
+	captureInfraHiccup: vi.fn((_report: unknown) => undefined),
 }))
 
 vi.mock('#worker/infra-hiccup-sentry.ts', () => ({
-	reportInfraHiccup: mocks.reportInfraHiccup,
+	captureInfraHiccup: mocks.captureInfraHiccup,
 }))
 
 const { toApiError } = await import('./errors.ts')
 
 beforeEach(() => {
-	mocks.reportInfraHiccup.mockClear()
+	mocks.captureInfraHiccup.mockClear()
 })
 
 test('the retryable D1 "briefly unavailable" remap reports an infra hiccup', async () => {
@@ -34,7 +34,7 @@ test('the retryable D1 "briefly unavailable" remap reports an infra hiccup', asy
 	)
 
 	expect(apiError.status).toBe(503)
-	expect(mocks.reportInfraHiccup).toHaveBeenCalledExactlyOnceWith({
+	expect(mocks.captureInfraHiccup).toHaveBeenCalledExactlyOnceWith({
 		kind: 'd1_transient',
 		operation: 'capability:kody.packageStorageSet',
 		attempts: 2,
@@ -61,5 +61,5 @@ test('caller errors, bad SQL, and limits are not reported as infra hiccups', () 
 	for (const error of notReported) {
 		expect(toApiError(error).status).not.toBe(503)
 	}
-	expect(mocks.reportInfraHiccup).not.toHaveBeenCalled()
+	expect(mocks.captureInfraHiccup).not.toHaveBeenCalled()
 })

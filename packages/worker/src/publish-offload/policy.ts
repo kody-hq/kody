@@ -55,10 +55,35 @@ export const publishOffloadLimits = {
 	/** Build manifest + all target files, generous but bounded. */
 	maxUploadBytes: 512 * 1024 * 1024,
 	maxBlobsPerBuild: 4096,
+	/** The sealed build document: file manifest plus every target's chunk list. */
+	maxSealDocumentBytes: 8 * 1024 * 1024,
 	/** Execution-context publish builds get more room than a normal run. */
 	contextMemoryMb: 2048,
 	contextTimeoutMs: 10 * 60 * 1000,
 } as const
+
+/**
+ * Deadline for the routed context run. `routeExecute` waits up to
+ * `contextTimeoutMs` and then answers `pending`; this sits past that so the
+ * `pending` answer (and its message) still wins when the context is slow.
+ */
+export const publishBuildContextRunDeadlineMs =
+	publishOffloadLimits.contextTimeoutMs + 60 * 1000
+
+/**
+ * Deadline for writing every verified target (one KV value per target, then
+ * the batched D1 rows); large packages have about 100 targets.
+ */
+export const publishBuildArtifactWriteDeadlineMs = 10 * 60 * 1000
+
+/**
+ * Deadline for resolving one target's Kody package dependencies (registry
+ * reads and package source loads through the RepoSession).
+ */
+export const publishBuildDependencyResolveDeadlineMs = 2 * 60 * 1000
+
+/** Deadline for loading one linked Kody package's published artifact. */
+export const publishBuildLinkedArtifactDeadlineMs = 2 * 60 * 1000
 
 /** Per-build upload ticket lifetime. */
 export const publishBuildTicketTtlMs = 30 * 60 * 1000

@@ -14,6 +14,7 @@ import {
 	publishComputeLimitMessage,
 	uploadedBuildPersistLimitMessage,
 } from '#worker/repo/isolated-runner-limit-message.ts'
+import { DeadlineExceededError } from '#worker/outbound/with-deadline.ts'
 import { RemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
 	ApiError,
@@ -61,6 +62,20 @@ function artifactsGitHttpError(statusCode: number) {
 	}
 	return error
 }
+
+test('toApiError maps an outbound deadline to a retryable 503', () => {
+	const error = toApiError(
+		new Error('authorize failed', {
+			cause: new DeadlineExceededError(
+				'execution_context.authorize_run_call',
+				150_000,
+			),
+		}),
+	)
+	expect(error).toMatchObject({ status: 503, code: 'internal_error' })
+	expect(error.message).toContain('execution_context.authorize_run_call')
+	expect(error.headers).toMatchObject({ 'Retry-After': '5' })
+})
 
 test('toApiError maps a quarantined inbound reply refusal to 409 quarantined_inbound_reply', () => {
 	const refused = new QuarantinedInboundReplyError()

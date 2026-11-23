@@ -1,3 +1,4 @@
+import { withDeadline } from '#worker/outbound/with-deadline.ts'
 import {
 	ecpRunHeader,
 	ecpSignatureHeader,
@@ -86,6 +87,8 @@ const seededCliClientOrigins = new PromiseLruCache<void>({
 	ttlMs: Number.POSITIVE_INFINITY,
 })
 
+const localCliClientKvDeadlineMs = 5_000
+
 /**
  * The OAuth provider only fetches HTTPS Client ID Metadata Documents, so on
  * a plain-HTTP loopback origin the CLI's `<origin>/oauth/cli-client-metadata.json`
@@ -98,19 +101,30 @@ export function ensureLocalCliClientRegistration(env: Env, origin: string) {
 		create: async () => {
 			const document = buildCliClientIdMetadataDocument(origin)
 			const key = `client:${document.client_id}`
-			if (await env.OAUTH_KV.get(key)) return
-			await env.OAUTH_KV.put(
-				key,
-				JSON.stringify({
-					clientId: document.client_id,
-					redirectUris: document.redirect_uris,
-					clientName: document.client_name,
-					clientUri: document.client_uri,
-					tokenEndpointAuthMethod: document.token_endpoint_auth_method,
-					grantTypes: document.grant_types,
-					responseTypes: document.response_types,
-					registrationDate: Math.floor(Date.now() / 1000),
-				}),
+			const existing = await withDeadline(
+				{
+					label: 'oauth_kv.get_cli_client',
+					timeoutMs: localCliClientKvDeadlineMs,
+				},
+				() => env.OAUTH_KV.get(key),
+			)
+			if (existing) return
+			const registration = JSON.stringify({
+				clientId: document.client_id,
+				redirectUris: document.redirect_uris,
+				clientName: document.client_name,
+				clientUri: document.client_uri,
+				tokenEndpointAuthMethod: document.token_endpoint_auth_method,
+				grantTypes: document.grant_types,
+				responseTypes: document.response_types,
+				registrationDate: Math.floor(Date.now() / 1000),
+			})
+			await withDeadline(
+				{
+					label: 'oauth_kv.put_cli_client',
+					timeoutMs: localCliClientKvDeadlineMs,
+				},
+				() => env.OAUTH_KV.put(key, registration),
 			)
 		},
 	})

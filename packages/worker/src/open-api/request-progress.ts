@@ -1,3 +1,5 @@
+import { withDeadline } from '#worker/outbound/with-deadline.ts'
+import { reportHandledError } from '#worker/outbound/typed-failure.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import {
 	apiRequestProgressKvKey,
@@ -6,6 +8,8 @@ import {
 	parseApiRequestProgress,
 	type ApiRequestProgress,
 } from '@kody-internal/shared/api-request-progress.ts'
+
+const progressKvDeadlineMs = 2_000
 
 type ApiRequestProgressScope = { requestId: string; kv: KVNamespace }
 
@@ -44,13 +48,17 @@ export async function recordApiRequestProgress(progress: ApiRequestProgress) {
 	const scope = apiRequestProgressStorage.getStore()
 	if (!scope) return
 	try {
-		await scope.kv.put(
-			apiRequestProgressKvKey(scope.requestId, progress.step),
-			JSON.stringify(progress),
-			{ expirationTtl: progressTtlSeconds },
+		await withDeadline(
+			{ label: 'api_request_progress.write', timeoutMs: progressKvDeadlineMs },
+			() =>
+				scope.kv.put(
+					apiRequestProgressKvKey(scope.requestId, progress.step),
+					JSON.stringify(progress),
+					{ expirationTtl: progressTtlSeconds },
+				),
 		)
 	} catch (error) {
-		console.warn('api-request-progress-write-failed', error)
+		reportHandledError('api_request_progress.write', error)
 	}
 }
 
@@ -63,9 +71,13 @@ export async function readApiRequestProgress(input: {
 	if (!kv || !isApiRequestId(input.requestId)) return null
 	const recorded = await Promise.all(
 		apiRequestProgressSteps.map((step) =>
-			kv
-				.get(apiRequestProgressKvKey(input.requestId, step), 'json')
-				.catch(() => null),
+			withDeadline(
+				{ label: 'api_request_progress.read', timeoutMs: progressKvDeadlineMs },
+				() => kv.get(apiRequestProgressKvKey(input.requestId, step), 'json'),
+			).catch((error: unknown) => {
+				reportHandledError('api_request_progress.read', error)
+				return null
+			}),
 		),
 	)
 	for (let index = recorded.length - 1; index >= 0; index -= 1) {

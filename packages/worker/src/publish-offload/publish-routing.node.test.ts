@@ -4,8 +4,24 @@ import {
 	parsePublishBinding,
 	publishBindingUnavailableMessage,
 	publishContextFlagsOffMessage,
+	publishRouteDeps,
 	type PublishRouteDeps,
 } from './publish-routing.ts'
+
+const dispatch = vi.hoisted(() => ({
+	result: { kind: 'cloud' } as { kind: string; contextName?: string },
+	discard: vi.fn(async (_db: unknown, _buildId: string) => {}),
+}))
+
+vi.mock('./context-dispatch.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('./context-dispatch.ts')>()),
+	dispatchContextPublishBuild: async () => dispatch.result,
+}))
+vi.mock('./store.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('./store.ts')>()),
+	createPublishBuild: async () => ({ buildId: 'pb_1', ticket: 'kpb_1' }),
+	discardUnstartedPublishBuild: dispatch.discard,
+}))
 
 function deps(overrides: Partial<PublishRouteDeps> = {}) {
 	const buildOnContext = vi.fn<PublishRouteDeps['buildOnContext']>(
@@ -173,4 +189,50 @@ test('the binding message trims a trailing period from the reason', () => {
 			reason: 'offline.',
 		}),
 	).toContain('that context is not available: offline. Nothing')
+})
+
+function buildOnContextDeps(db: unknown) {
+	return publishRouteDeps({
+		env: { APP_DB: db } as never,
+		callerContext: {} as never,
+		request: { org: { id: 'org_1' } } as never,
+		personId: 'user_1',
+		packageId: 'pkg_1',
+		packageName: '@kody/pkg',
+		ownerUserId: 'user_1',
+		source: {
+			id: 'src_1',
+			repo_id: 'repo_1',
+			source_root: '/',
+			manifest_path: 'package.json',
+		},
+		commit: 'c'.repeat(40),
+	})
+}
+
+test('a context build that falls back to cloud discards its unstarted build', async () => {
+	const db = {}
+	dispatch.discard.mockClear()
+	await expect(
+		buildOnContextDeps(db).buildOnContext({
+			context: null,
+			fallbackToCloud: true,
+		}),
+	).resolves.toEqual({ kind: 'cloud' })
+	expect(dispatch.discard).toHaveBeenCalledExactlyOnceWith(db, 'pb_1')
+})
+
+test('a cloud fallback still builds on cloud when the discard fails', async () => {
+	dispatch.discard.mockRejectedValueOnce(new Error('d1 down'))
+	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+	await expect(
+		buildOnContextDeps({}).buildOnContext({
+			context: null,
+			fallbackToCloud: true,
+		}),
+	).resolves.toEqual({ kind: 'cloud' })
+	expect(info).toHaveBeenCalledWith(
+		expect.stringContaining('publish_builds.discard_unstarted'),
+	)
+	info.mockRestore()
 })
