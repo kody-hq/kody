@@ -80,8 +80,8 @@ runs:
     # Restores node_modules from the Actions cache (installed offline, no
     # registry). A miss restores ~/.npm, runs npm ci, and saves node_modules
     # once for the sibling jobs. npm ci talks to the public registry even with
-    # a warm ~/.npm, and a single ECONNRESET used to fail the whole Validate
-    # job (seen on E2E #40035153787), so it runs through
+    # a warm ~/.npm, and a single ECONNRESET would fail the whole Validate
+    # job, so it runs through
     # tools/ci/npm-ci-with-retry.ts: retry only registry transport blips;
     # lockfile/engine errors stay terminal. The helper is Node built-ins only
     # so it can run before node_modules.
