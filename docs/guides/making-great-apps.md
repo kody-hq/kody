@@ -44,6 +44,11 @@ Every starter is an ordinary package with a `kody.starter` manifest in
 - `customize.routes`: the folder of pages.
 - `customize.content`: the copy, names, and sample data to replace.
 
+Starters work with no local build step. Kody bundles the source files when you
+publish, so you can fork, edit, and republish with Kody tools alone, without a
+sandbox or build environment. Keep your app that way: edit the source files
+directly and leave out bundler config and build scripts.
+
 ## Fill in content and logic
 
 Change the content and add your pages. Keep what makes the starter feel
