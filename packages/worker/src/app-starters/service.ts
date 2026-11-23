@@ -350,6 +350,7 @@ export async function listRecommendedAppStarters(
 			deadline - performance.now(),
 		)
 		// Out of time or failed: keep the starters already validated.
+		// Permanent: starter packages can fail to load and search must still answer.
 		if (!entries) break
 		recommended.push(
 			...entries.filter(
