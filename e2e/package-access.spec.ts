@@ -142,13 +142,32 @@ test('private package source and settings stay isolated across owner, granted gu
 		await expect(fullFile).toBeFocused()
 		await fullFile.press('Escape')
 		await expect(sourceFile).toBeFocused()
+		// Switching files keeps the previous file readable until the next one
+		// arrives, instead of blanking the preview behind a loading indicator.
+		let releaseFile = () => {}
+		const fileHeld = new Promise<void>((resolve) => (releaseFile = resolve))
+		await page.route('**/_serverFn/**', async (route) => {
+			await fileHeld
+			await route.continue()
+		})
 		await page
 			.getByRole('navigation', { name: 'Package root', exact: true })
 			.getByRole('link', { name: 'README.md', exact: true })
 			.click()
+		const stalePreview = page.locator('[data-stale-preview]')
+		await expect(stalePreview).toHaveAttribute('aria-busy', 'true')
+		await expect(
+			stalePreview.getByRole('heading', { name: 'index.ts', exact: true }),
+		).toBeVisible()
+		await expect(
+			page.getByRole('status', { name: 'Loading file', exact: true }),
+		).toHaveCount(0)
+		releaseFile()
+		await expect(stalePreview).toHaveCount(0)
 		await expect(page.getByTestId('package-files-markdown')).toContainText(
 			marker,
 		)
+		await page.unroute('**/_serverFn/**')
 		await page.getByRole('link', { name: 'Settings', exact: true }).click()
 		await expect(page.getByTestId('package-owner-details')).toBeVisible()
 		await expect(page.locator('html')).toHaveAttribute(

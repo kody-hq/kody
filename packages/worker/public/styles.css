@@ -598,6 +598,12 @@ html.is-settled {
 	}
 }
 
+@keyframes stale-preview-dim {
+	to {
+		opacity: 0.5;
+	}
+}
+
 .visually-hidden {
 	position: absolute;
 	width: 1px;

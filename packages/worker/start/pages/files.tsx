@@ -316,9 +316,17 @@ export function FilesPage({
 	)
 	const explorer = useCallback(
 		(node: HTMLElement | null) => {
-			node
+			// Only the explorer's own scroller moves. scrollIntoView also scrolls
+			// the window whenever the explorer is not fully on screen.
+			const box = node?.parentElement
+			const row = node
 				?.querySelector<HTMLElement>('[aria-current="page"]')
-				?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+				?.getBoundingClientRect()
+			if (!box || !row) return
+			const view = box.getBoundingClientRect()
+			if (row.top < view.top) box.scrollTop += row.top - view.top
+			else if (row.bottom > view.bottom)
+				box.scrollTop += row.bottom - view.bottom
 		},
 		// oxlint-disable-next-line react/exhaustive-deps -- a new selection scrolls its explorer row into view
 		[selected?.file.id, selected?.file.parentId, selected?.file.name],
