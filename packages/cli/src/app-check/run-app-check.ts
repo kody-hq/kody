@@ -71,7 +71,7 @@ const previewReadyTimeoutMs = 180_000
 const pageTimeoutMs = 30_000
 
 /** Default report directory, inside the package and ignored by git. */
-export function defaultAppCheckOutputDir(packageRoot: string): string {
+function defaultAppCheckOutputDir(packageRoot: string): string {
 	return join(packageRoot, '.kody', 'app-check')
 }
 

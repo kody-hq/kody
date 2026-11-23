@@ -15,7 +15,7 @@ export type AppCheckScreenshot = {
 	status: number | null
 }
 
-export type AxeNode = {
+type AxeNode = {
 	target: Array<string>
 	html: string
 	failureSummary: string
@@ -39,7 +39,7 @@ export type AppCheckVariantAxe = {
 }
 
 /** A rule merged across the four variants it was checked in. */
-export type AppCheckAccessibilityRule = {
+type AppCheckAccessibilityRule = {
 	id: string
 	impact: AxeImpact
 	help: string
@@ -62,7 +62,7 @@ export const lighthouseCategories: ReadonlyArray<LighthouseCategory> = [
 ]
 
 /** Lowest passing score (0 to 100). Performance is lower: the preview is a dev build. */
-export const lighthouseThresholds: Record<LighthouseCategory, number> = {
+const lighthouseThresholds: Record<LighthouseCategory, number> = {
 	performance: 50,
 	accessibility: 90,
 	'best-practices': 90,
@@ -74,7 +74,7 @@ export type AppCheckLighthouse = {
 	error?: string
 }
 
-export type AppCheckConsoleSource = 'browser' | 'page' | 'server'
+type AppCheckConsoleSource = 'browser' | 'page' | 'server'
 
 export type AppCheckConsoleEntry = {
 	source: AppCheckConsoleSource
@@ -84,13 +84,13 @@ export type AppCheckConsoleEntry = {
 	url?: string
 }
 
-export type AppCheckConsoleError = {
+type AppCheckConsoleError = {
 	message: string
 	sources: Array<AppCheckConsoleSource>
 	count: number
 }
 
-export type AppCheckIssue = {
+type AppCheckIssue = {
 	kind: 'page_status' | 'console' | 'accessibility' | 'lighthouse'
 	message: string
 }
@@ -130,7 +130,7 @@ const markdownListLimit = 10
 const markdownSelectorLimit = 3
 
 /** Merge per-variant axe results by rule, most severe first. */
-export function mergeAccessibilityRules(
+function mergeAccessibilityRules(
 	variants: ReadonlyArray<AppCheckVariantAxe>,
 ): Array<AppCheckAccessibilityRule> {
 	const byId = new Map<string, AppCheckAccessibilityRule>()
@@ -165,7 +165,7 @@ export function mergeAccessibilityRules(
 }
 
 /** Deduplicate console errors by message, most frequent first. */
-export function dedupeConsoleErrors(
+function dedupeConsoleErrors(
 	entries: ReadonlyArray<AppCheckConsoleEntry>,
 ): Array<AppCheckConsoleError> {
 	const byMessage = new Map<string, AppCheckConsoleError>()
@@ -206,7 +206,7 @@ function sentence(text: string): string {
 }
 
 /** Failing issues, most important first. */
-export function collectIssues(input: {
+function collectIssues(input: {
 	screenshots: ReadonlyArray<AppCheckScreenshot>
 	rules: ReadonlyArray<AppCheckAccessibilityRule>
 	lighthouse: AppCheckLighthouse
@@ -266,7 +266,7 @@ export function collectIssues(input: {
 	return issues
 }
 
-export function summarize(input: {
+function summarize(input: {
 	issues: ReadonlyArray<AppCheckIssue>
 	rules: ReadonlyArray<AppCheckAccessibilityRule>
 }): string {

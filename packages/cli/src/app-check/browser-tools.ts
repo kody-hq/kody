@@ -17,7 +17,7 @@ import { StructuredCliError } from '../structured-error.js'
 import { userCacheDir } from '../workerd-binary.js'
 
 /** Exact pins: bump deliberately and together. */
-export const appCheckDependencies = {
+const appCheckDependencies = {
 	'playwright-core': '1.63.0',
 	lighthouse: '13.6.0',
 	'axe-core': '4.14.0',
@@ -66,7 +66,7 @@ export type AppCheckTools = {
 	}) => Promise<{ port: number; kill: () => void | Promise<void> }>
 }
 
-export type LighthouseResult = {
+type LighthouseResult = {
 	categories: Record<string, { score: number | null } | undefined>
 	runtimeError?: { code?: string; message?: string }
 }
