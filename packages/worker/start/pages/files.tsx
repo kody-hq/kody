@@ -3676,15 +3676,15 @@ function WorkspaceDocumentPanel({
 			/>
 		)
 	const stale = query.data.file.id !== metadata.id
-	const keptCss: CSSObject = stale
-		? {
+	const keptCss = stale
+		? ({
 				display: 'flex',
 				flexDirection: 'column',
 				flex: 1,
 				minWidth: 0,
 				minHeight: 0,
-			}
-		: { display: 'contents' }
+			} as const)
+		: ({ display: 'contents' } as const)
 	return (
 		// While the next file loads, this wrapper stands for the file still on
 		// screen, so its context menu acts on what the reader sees.
