@@ -611,11 +611,15 @@ Non-secret vars:
 - `ENABLE_PRODUCTION_D1_BACKUPS` / `BACKUP_BENCHMARK_APPROVED` — both must be
   exactly `"true"` for the control-plane seal cron to run.
 - `SOURCE_ACCOUNT_ID` / `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` plus
-  `SOURCE_DATABASES` (JSON array of `{ id, name }` objects for dashboard D1 size
-  lookups) and `ALLOWED_SOURCE_ACCOUNT_IDS` / `ALLOWED_SOURCE_DATABASE_IDS`.
-  `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` are the primary APP_DB (`kody`)
-  identity and the single-database fallback when `SOURCE_DATABASES` is unset.
+  `SOURCE_DATABASES` (JSON array of `{ id, name }` objects) and
+  `ALLOWED_SOURCE_ACCOUNT_IDS` / `ALLOWED_SOURCE_DATABASE_IDS`. The dashboard
+  uses `SOURCE_DATABASES` for D1 size lookups. Restore progress notes which
+  configured sources are absent from the backup day; this list does not select
+  restore targets. `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` are the primary
+  APP_DB (`kody`) identity and the single-database fallback when
+  `SOURCE_DATABASES` is unset.
   [Source configuration validation](../../packages/backup-control-plane/backup-policy.ts)
+  runs before the full seal and production restore use the paced source list. It
   requires the primary id/name pair in `SOURCE_DATABASES` when set, every
   `SOURCE_DATABASES` id in `ALLOWED_SOURCE_DATABASE_IDS`, and the account id in
   `ALLOWED_SOURCE_ACCOUNT_IDS`. Deploy resolves the live production `kody-jobs`
