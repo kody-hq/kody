@@ -18,9 +18,12 @@ Making a new app? Start with [Making a great app](./making-great-apps.md)
 (`guide:making_great_apps`) and fork a recommended starter.
 
 Use this doc when authoring or debugging a package **app**, a community fork of
-an app, or a hosted-app load. Package shape, README / AGENTS.md, Intent, and
-export JSDoc stay in [Package authoring](./package-authoring.md)
-(`guide:package_authoring`). Proving the integration first stays in
+an app, or a hosted-app load. For automatic 404 pages, head tags, and request
+limits, see [Platform defaults](#platform-defaults).
+
+Package shape, README / AGENTS.md, Intent, and export JSDoc stay in
+[Package authoring](./package-authoring.md) (`guide:package_authoring`). Proving
+the integration first stays in
 [Integration bootstrap](./integration-bootstrap.md)
 (`guide:integration_bootstrap`).
 
@@ -877,32 +880,38 @@ CLI is available).
 
 ## Platform defaults
 
-Every hosted package app gets these from Kody, so an app is complete even before
-you add them yourself. Anything your app sets wins.
+Hosted apps get a [fallback 404 and HTML head tags](#page-response-defaults),
+plus
+[write rate limits and asset path checks](#write-requests-and-static-assets).
+Use the `x-kody-default` response header to identify the default Kody applied.
 
-- **404 page.** When a page visit gets a 404 that is not HTML (for example
-  `new Response('Not found', { status: 404 })`), visitors see a friendly page
-  that links to the app home. API calls and your own HTML 404 pages are served
-  exactly as you send them.
-- **Meta tags.** HTML pages get the tags they are missing at the end of
-  `<head>`: `viewport`, `<title>` (the package name), `description` and
-  `og:description` (from `kody.description`), and `og:title` (your page title).
-- **Favicon.** Pages without a `<link rel="icon">` get the package's generated
-  icon. Link your own icon from `kody.app.assets` to replace it.
-- **Rate limiting.** Each visitor IP can send 300 writes (POST, PUT, PATCH,
-  DELETE) per minute to one app; after that Kody answers 429 with `Retry-After`.
-  Page loads, assets, and realtime sockets are not counted. Use
-  `kody.appRateLimit` for tighter or per-person limits, such as sign-up or
-  contact forms.
-- **Secret files.** Files and folders whose names start with a dot (`.env`,
-  `.dev.vars`, `.git/`) are never served from `kody.app.assets`; `.well-known/`
-  is. Keep secrets in Kody secrets and reference them with `{{secret:name}}`.
+### Page response defaults
 
-Kody marks its work with an `x-kody-default` header: `not-found` and
-`rate-limit` responses come from Kody, and `head` means Kody checked the HTML
-`<head>` and added any missing tags. Local `kody dev` serves your app as
-written, so run `kody app check` during development and fix what it shows to get
-the same quality locally.
+- **`not-found`.** Kody replaces a non-HTML 404 on an HTML page visit with a
+  page that links home and preserves the app's cookies. A page visit is a `GET`
+  or `HEAD` that accepts HTML and either has `Sec-Fetch-Dest: document` or omits
+  that header. Apps can supply a custom HTML 404 body.
+- **`head`.** For HTML bodies on successful `GET` responses and HTML 404s on
+  `GET`, Kody looks for a `<head>` and fills in missing viewport, title,
+  description, Open Graph tags, and favicon. The unscoped package name fills an
+  absent or empty title and supplies the generated icon. Kody uses
+  `kody.description` for a missing description. Default `og:title` follows the
+  page title, and default `og:description` uses the page's description or falls
+  back to `kody.description` when available. Supply `<link rel="icon">` to use
+  your own icon.
+
+### Write requests and static assets
+
+- **`rate-limit`.** The hosted limiter tracks 300 write requests per minute per
+  app and visitor IP. It responds to excess requests with 429 and `Retry-After`.
+  `GET`, `HEAD`, `OPTIONS`, WebSocket upgrades, and synthetic smoke fetches
+  bypass the limiter. Use `kody.appRateLimit` for tighter or per-person limits.
+  [Write limiter implementation](../../packages/worker/src/package-runtime/package-app-default-rate-limit.ts).
+- **Dot-prefixed paths.** The `kody.app.assets` path resolver rejects
+  dot-prefixed path segments such as `.env` and `.git`, with an exception for
+  `.well-known`. Keep secrets in Kody secrets and reference them with
+  `{{secret:name}}`.
+  [Asset path resolver](../../packages/worker/src/package-runtime/package-app-assets-directory.ts).
 
 ## Smoke with packageAppFetch
 

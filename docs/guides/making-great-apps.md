@@ -15,7 +15,8 @@ Use this guide when you are about to make a package app. Do these four things in
 order. Each one has more detail below.
 
 1. **Ask who the app is for.** Check in with the person before you build.
-2. **Fork a recommended starter.** Search lists them under "Making an app".
+2. **[Fork a recommended starter](#fork-a-recommended-starter).** Search lists
+   them under "Making an app".
 3. **Fill in content and logic.** Keep the starter's design system and states.
 4. **Check it.** Run `kody app check` and fix what it shows.
 
@@ -32,12 +33,19 @@ Write the answers into the app's README so the next agent sees them too.
 ## Fork a recommended starter
 
 Run `search({ query: "make an app" })`. The "Making an app" section lists the
-starters Kody recommends, best first, with what each one is for and the
-`communityFork` call to copy it. Pick the one whose "Use when" matches the
-person's answers.
+recommended starters in rank order, with a `communityFork` call for each. Pick
+the one whose "Use when" matches the person's answers.
 
-Every starter is an ordinary package with a `kody.starter` manifest in
-`package.json`. Its `customize` field tells you where to work:
+Search shows up to five enabled starters that pass the checks below. If the
+starter lookup runs out of time, search shows the recommendations it has
+validated and still links this guide.
+
+### What a starter includes
+
+Kody checks that each starter has a published app entry, an active Community
+listing, and a valid `kody.starter` manifest with customization paths and shared
+light and dark theme tokens. The manifest's `customize` field tells you where to
+work:
 
 - `customize.themeTokens`: the CSS custom properties for color, type, spacing,
   and radius in light and dark.

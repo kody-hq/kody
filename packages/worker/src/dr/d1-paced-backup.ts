@@ -83,7 +83,7 @@ export {
 	type SealPacedD1SourceNightResult,
 } from '#worker/dr/d1-paced-backup-seal.ts'
 
-/** Wall budget for one paced D1 cron tick (same order as DR exporter). */
+/** Default wall budget for a paced D1 tick. Full-base nights use a larger budget. */
 export const d1PacedBackupRunTimeBudgetMs = 45_000
 
 /**
@@ -102,11 +102,8 @@ export const d1PacedBackupPartMaxBytes = 4 * 1024 * 1024
 export const d1PacedBackupTickByteBudget = 32 * 1024 * 1024
 
 /**
- * Full-base nights (Sunday weekly bases and forced bases) copy every row
- * instead of a delta, about 1.5x a delta night's tick work, which 45s ticks
- * every 5 minutes cannot finish before the 07:00 DR health check. 4x longer
- * ticks with 4x the emitted bytes seal a full base hours before that check.
- * See docs/contributing/disaster-recovery.md for the measured budget.
+ * Sunday UTC and operator-requested full-base nights use a larger wall
+ * budget and per-table byte budget because the walk copies every row.
  */
 export const d1PacedBackupFullBaseRunTimeBudgetMs =
 	4 * d1PacedBackupRunTimeBudgetMs
@@ -445,8 +442,8 @@ async function loadPreviousNight(input: {
 }
 
 /**
- * Stream previous-night index parts one file at a time so AUDIT-sized indexes
- * never load into the worker heap for a delta merge-join.
+ * Reads the previous night's multipart index one part at a time, starting
+ * at the saved part on resume.
  */
 function createPartsIndexReader(input: {
 	s3: DrBackupS3Client
@@ -1618,7 +1615,7 @@ export async function runD1PacedBackupWatchdogTick(input: {
 	return result
 }
 
-/** Mid-day freshness: sealed paced night for yesterday must exist. */
+/** Hourly check for yesterday's staged sources that are still waiting to seal. */
 export async function runD1PacedFreshnessTick(input: {
 	env: Env
 	now: Date

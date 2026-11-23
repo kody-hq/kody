@@ -58,7 +58,7 @@ const inputSchema = z.object({
 		.min(1)
 		.optional()
 		.describe(
-			'Execution context name or id for `origin: context`. Defaults to the first online context you operate.',
+			'Execution context name or id for `origin: context`. Omit to try eligible contexts in your execution chain. A context must take the build.',
 		),
 	expected_commit: z
 		.string()
@@ -167,7 +167,7 @@ export const publishBuildCreateCapability = defineDomainCapability(
 		walletGuard: 'publish',
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
-		description: `Publish offload (publish-offload feature flag; off by default). Start a build of the package's pushed Artifacts HEAD outside Kody cloud, for packages too large to bundle inside a Worker. \`origin: cli\` returns a per-build upload ticket so the Kody CLI builds on this machine and uploads content-addressed chunks; \`origin: context\` runs the build on an execution context you operate. Then publish with \`packagePublishExternalPush({ publish_build_id })\`: the server re-runs the cheap checks, verifies the uploaded tree and every bundle against the pushed commit, and only then serves the commit. The upload is the published artifact: Kody does not build it again, so Kody cloud build limits do not apply to it. Use \`kody package publish --build local|context\` instead of calling this by hand. Docs: ${publishLargePackagesDocsUrl}`,
+		description: `Prepare an off-cloud build of the package's pushed Artifacts HEAD. Prefer \`kody package publish --build local|context\`. Requires the publish-offload flag. \`origin: cli\` returns a ticket for uploading and sealing the build. \`origin: context\` waits for a context you operate to build and seal it. Pass the sealed build ID to \`packagePublishExternalPush({ publish_build_id })\` to validate the file manifest and uploaded targets, link dependencies, and publish. Details: ${publishLargePackagesDocsUrl}`,
 		keywords: [
 			'package',
 			'publish',
@@ -276,8 +276,7 @@ async function createBuild(
 			bucket: ctx.env.REPO_SESSION_BLOBS,
 		})
 	} catch (error) {
-		// Opportunistic: a failed purge never blocks a new build. Expired
-		// uploads stay in storage until a later build start sweeps them.
+		// Start the new build even if this cleanup attempt fails.
 		reportHandledError('publish_builds.purge_expired', error)
 	}
 	const created = await createPublishBuild({

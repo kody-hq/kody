@@ -3,18 +3,8 @@ import { createHtmlResponse } from 'remix/response/html'
 import { buildCommunityIconFallbackSvg } from '#worker/community/community-icon-fallback.ts'
 
 /**
- * Platform defaults for hosted package app responses, so an app is complete
- * even when its author never thought about these:
- *
- * - A friendly HTML 404 when the app answers a page visit with a non-HTML
- *   404 (for example `new Response('Not found', { status: 404 })`). API
- *   calls and app-made HTML 404 pages are served as the app sent them.
- * - `<head>` tags the document is missing: viewport, title, description,
- *   Open Graph title and description, and a favicon (the package's
- *   generated icon). Tags the app already sets always win.
- *
- * Kody-made responses and HTML documents whose head Kody checked carry
- * {@link packageAppDefaultHeader}.
+ * Marks responses handled by the platform defaults. See
+ * {@link applyPackageAppDefaults} for page responses.
  */
 
 export const packageAppDefaultHeader = 'x-kody-default'
@@ -322,8 +312,8 @@ function injectPackageAppHeadDefaults(
 }
 
 /**
- * Apply the platform defaults to one app response. Returns the response
- * unchanged when no default applies.
+ * Supplies a fallback for non-HTML 404 page visits and fills missing HTML
+ * head tags on successful and 404 GET responses.
  */
 export async function applyPackageAppDefaults(
 	input: PackageAppDefaultsInput,

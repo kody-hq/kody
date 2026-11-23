@@ -64,13 +64,11 @@ export function mapRoutePublishBuildFailure(
 }
 
 /**
- * Publish offload: send a builder run to an execution context through the
- * same chain, lease, and dispatch path as `execute`. The run carries the
- * daemon's builder (not user code), no credential picks, and only contexts
- * the requester operates may take it (4A). A named context never falls back.
- * Without `fallbackToCloud`, nothing falls back to Kody cloud (the caller
- * asked for a context build); with it, a chain that ends in Kody cloud
- * returns `{ kind: 'cloud' }` so the caller publishes on Kody cloud.
+ * Routes a publish builder run through the `execute` chain and lease path.
+ *
+ * See `routeExecute` for eligibility checks. A named context is the sole
+ * target. When the chain selects cloud, `fallbackToCloud` lets the caller
+ * handle that outcome.
  */
 export async function routePublishBuild(input: {
 	env: Env

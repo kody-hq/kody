@@ -1,9 +1,7 @@
 /**
- * Decisions on approval bundle items. Each approve runs the item's own
- * approval code (the same calls its per-package page makes), so approving
- * from a bundle is the same as approving the item where it lives. A denial
- * changes nothing except superseding a paused publish. Every decision is
- * recorded once per bundle item and audited.
+ * Applies approval bundle decisions through the per-item approval paths.
+ * A denial also supersedes the request when the item is a paused publish.
+ * Successful actions enqueue an audit entry and finalize any matching claim.
  */
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
@@ -520,11 +518,10 @@ const samePackageOrder: Record<ApprovalItemType, number> = {
 }
 
 /**
- * Approve all. Each item runs `decideApprovalBundleItem`, so it does exactly
- * what approving it alone does and is audited the same way. Items on one
- * package run one at a time (credential picks, then capabilities, then the
- * publish), so they never race; packages run in parallel, at most
- * `concurrency` at once. `onEvent` reports each item as it starts and ends.
+ * Approves items in bounded groups and reports each item's progress.
+ *
+ * Each group runs its items in order through `decideApprovalBundleItem`.
+ * See `approveAllLanes` for package and dependency ordering.
  */
 export async function approveApprovalBundleItems(input: {
 	viewer: ApprovalViewer
