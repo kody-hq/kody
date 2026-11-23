@@ -10,7 +10,6 @@ import { publishBuildRetentionMs, publishOffloadLimits } from './policy.ts'
 import { sha256Hex } from './module-hashes.ts'
 import {
 	authenticatePublishBuildTicket,
-	releasePublishBuildChunk,
 	reservePublishBuildChunk,
 	publishBuildBlobKey,
 	publishBuildDocumentKey,
@@ -38,6 +37,9 @@ test('seal and finish preserve their source restrictions including committed rew
 	using sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(
 		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, document_sha256 TEXT, updated_at TEXT, message TEXT, committed_at TEXT)`,
+	)
+	sqlite.exec(
+		`CREATE TABLE publish_build_chunks (build_id TEXT NOT NULL, sha256 TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY (build_id, sha256))`,
 	)
 	const db = createD1FromSqlite(sqlite)
 	const bucket = memoryBucket() as unknown as R2Bucket
@@ -136,17 +138,24 @@ test('expired builds lose their chunks; committed rows stay for build origin', a
 	expect(select!.args[0]).toBe(
 		new Date(now - publishBuildRetentionMs).toISOString(),
 	)
-	expect(writes.map((write) => write.sql.trim().split(/\s+/)[0])).toEqual([
-		'DELETE',
-		'UPDATE',
+	expect(
+		writes.map((write) => write.sql.trim().split(/\s+/).slice(0, 3).join(' ')),
+	).toEqual([
+		'DELETE FROM publish_builds',
+		'DELETE FROM publish_build_chunks',
+		'UPDATE publish_builds SET',
+		'DELETE FROM publish_build_chunks',
 	])
-	expect(writes[1]!.sql).toContain('document_sha256 = NULL')
+	expect(writes[2]!.sql).toContain('document_sha256 = NULL')
 })
 
 test('a sealed document too large for a D1 import statement stays in R2', async () => {
 	using sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(
 		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, document_sha256 TEXT, updated_at TEXT)`,
+	)
+	sqlite.exec(
+		`CREATE TABLE publish_build_chunks (build_id TEXT NOT NULL, sha256 TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY (build_id, sha256))`,
 	)
 	sqlite
 		.prepare(
@@ -196,6 +205,9 @@ test('a committed build that still had a document before 0289 is purged after it
 	sqlite.exec(
 		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, document_json TEXT, updated_at TEXT, expires_at TEXT)`,
 	)
+	sqlite.exec(
+		`CREATE TABLE publish_build_chunks (build_id TEXT NOT NULL, sha256 TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY (build_id, sha256))`,
+	)
 	sqlite
 		.prepare(
 			`INSERT INTO publish_builds (id, status, document_json, expires_at) VALUES ('pb_old', 'committed', '{}', '2026-11-01T00:00:00Z')`,
@@ -230,6 +242,9 @@ test('an expired ticket is refused; the same ticket works before expiry', async 
 	sqlite.exec(
 		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, ticket_sha256 TEXT, expires_at TEXT)`,
 	)
+	sqlite.exec(
+		`CREATE TABLE publish_build_chunks (build_id TEXT NOT NULL, sha256 TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY (build_id, sha256))`,
+	)
 	const ticket = 'kpb_expiring'
 	const expiresAt = Date.parse('2026-11-22T12:00:00.000Z')
 	sqlite
@@ -245,36 +260,46 @@ test('an expired ticket is refused; the same ticket works before expiry', async 
 	expect(await authenticate(expiresAt + 60_000)).toBeNull()
 })
 
-test('chunk reservations are atomic per build and are given back on release', async () => {
+test('chunk reservations are atomic per build and count each chunk once', async () => {
 	using sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT)`)
 	sqlite.exec(
-		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, uploaded_chunks INTEGER NOT NULL DEFAULT 0, uploaded_bytes INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE publish_build_chunks (build_id TEXT NOT NULL, sha256 TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY (build_id, sha256))`,
 	)
 	const { maxBlobsPerBuild, maxUploadBytes } = publishOffloadLimits
-	sqlite
-		.prepare(
-			`INSERT INTO publish_builds (id, status, uploaded_chunks) VALUES ('pb_1', 'uploading', ?)`,
-		)
-		.run(maxBlobsPerBuild - 2)
+	sqlite.exec(
+		`INSERT INTO publish_builds (id, status) VALUES ('pb_1', 'uploading')`,
+	)
+	const seed = sqlite.prepare(
+		`INSERT INTO publish_build_chunks (build_id, sha256, bytes) VALUES ('pb_1', ?, 1)`,
+	)
+	for (let index = 0; index < maxBlobsPerBuild - 2; index++)
+		seed.run(`seed-${index}`)
 	const db = createD1FromSqlite(sqlite)
-	const reserve = (bytes: number) =>
-		reservePublishBuildChunk({ db, buildId: 'pb_1', bytes })
+	const reserve = (sha256: string, bytes = 10) =>
+		reservePublishBuildChunk({ db, buildId: 'pb_1', sha256, bytes })
 	const kinds = (
-		await Promise.all(Array.from({ length: 5 }, () => reserve(10)))
+		await Promise.all(
+			Array.from({ length: 5 }, (_, index) => reserve(`new-${index}`)),
+		)
 	).map((result) => result.kind)
 	expect(kinds.filter((kind) => kind === 'reserved')).toHaveLength(2)
 	expect(kinds.filter((kind) => kind === 'too_many_chunks')).toHaveLength(3)
-	await releasePublishBuildChunk({ db, buildId: 'pb_1', bytes: 10 })
+	expect(await reserve('new-0')).toEqual({ kind: 'reserved' })
 	expect(
-		sqlite.prepare(`SELECT * FROM publish_builds WHERE id = 'pb_1'`).get(),
-	).toMatchObject({ uploaded_chunks: maxBlobsPerBuild - 1, uploaded_bytes: 10 })
+		sqlite.prepare(`SELECT COUNT(*) AS chunks FROM publish_build_chunks`).get(),
+	).toEqual({ chunks: maxBlobsPerBuild })
+	sqlite.exec(`DELETE FROM publish_build_chunks`)
 	sqlite
 		.prepare(
-			`UPDATE publish_builds SET uploaded_chunks = 0, uploaded_bytes = ?`,
+			`INSERT INTO publish_build_chunks (build_id, sha256, bytes) VALUES ('pb_1', 'big', ?)`,
 		)
 		.run(maxUploadBytes - 5)
-	expect(await reserve(6)).toEqual({ kind: 'upload_too_large' })
-	expect(await reserve(5)).toEqual({ kind: 'reserved' })
-	sqlite.prepare(`UPDATE publish_builds SET status = 'sealed'`).run()
-	expect(await reserve(1)).toEqual({ kind: 'not_uploading', status: 'sealed' })
+	expect(await reserve('a', 6)).toEqual({ kind: 'upload_too_large' })
+	expect(await reserve('a', 5)).toEqual({ kind: 'reserved' })
+	sqlite.exec(`UPDATE publish_builds SET status = 'sealed'`)
+	expect(await reserve('b', 1)).toEqual({
+		kind: 'not_uploading',
+		status: 'sealed',
+	})
 })

@@ -3,7 +3,6 @@ import { decodeJsonRequestBody } from '#worker/decode-request-body.ts'
 import {
 	assertNever,
 	deadlineFailure,
-	reportHandledError,
 	type DeadlineFailure,
 } from '#worker/outbound/typed-failure.ts'
 import {
@@ -21,7 +20,6 @@ import {
 	publishBuildBlobKey,
 	publishBuildBlobPrefix,
 	publishBuildDocumentSha256,
-	releasePublishBuildChunk,
 	reservePublishBuildChunk,
 	sealPublishBuild,
 	type PublishBuildRow,
@@ -306,31 +304,22 @@ async function runPublishBuildRoute(input: {
 	if ((await sha256Hex(bytes)) !== route.sha256) {
 		return { kind: 'chunk_hash_mismatch' }
 	}
-	const reservation = {
+	const reserved = await reservePublishBuildChunk({
 		db: input.env.APP_DB,
 		buildId: row.id,
+		sha256: route.sha256,
 		bytes: bytes.byteLength,
 		clock,
-	}
-	const reserved = await reservePublishBuildChunk(reservation)
+	})
 	if (reserved.kind !== 'reserved') return reserved
-	try {
-		await withDeadline(
-			{
-				label: 'publish_build_blob.put',
-				timeoutMs: outboundTimeoutMs.r2,
-				clock,
-			},
-			() => bucket.put(key, bytes),
-		)
-	} catch (error) {
-		await releasePublishBuildChunk(reservation).catch(
-			(releaseError: unknown) => {
-				reportHandledError('publish_builds.release_chunk', releaseError)
-			},
-		)
-		throw error
-	}
+	await withDeadline(
+		{
+			label: 'publish_build_blob.put',
+			timeoutMs: outboundTimeoutMs.r2,
+			clock,
+		},
+		() => bucket.put(key, bytes),
+	)
 	return json({ ok: true, sha256: route.sha256 })
 }
 

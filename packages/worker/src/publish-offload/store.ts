@@ -42,8 +42,6 @@ export type PublishBuildRow = {
 	ticket_sha256: string
 	status: PublishBuildStatus
 	document_sha256: string | null
-	uploaded_chunks: number
-	uploaded_bytes: number
 	message: string | null
 	created_at: string
 	updated_at: string
@@ -157,6 +155,7 @@ export async function discardUnstartedPublishBuild(
 				.bind(buildId)
 				.run(),
 	)
+	await deletePublishBuildChunks(db, buildId)
 }
 
 export async function getPublishBuild(
@@ -214,72 +213,94 @@ export type PublishBuildChunkReservation =
 
 /**
  * Count one chunk against the build's limits before it is written. The
- * conditional UPDATE is atomic in D1, so concurrent PUTs cannot pass
- * `maxBlobsPerBuild` or `maxUploadBytes` together.
+ * conditional INSERT is atomic in D1, so concurrent PUTs cannot pass
+ * `maxBlobsPerBuild` or `maxUploadBytes` together, and a chunk already
+ * counted (a retry, or a duplicate PUT) is not counted again.
  */
 export async function reservePublishBuildChunk(input: {
 	db: D1Database
 	buildId: string
+	sha256: string
 	bytes: number
 	clock?: DeadlineClock
 }): Promise<PublishBuildChunkReservation> {
 	const { maxBlobsPerBuild, maxUploadBytes } = publishOffloadLimits
-	const result = await withDeadline(
+	const { db, buildId, sha256, bytes, clock } = input
+	const inserted = await withDeadline(
 		{
-			label: 'publish_builds.reserve_chunk',
+			label: 'publish_build_chunks.reserve',
 			timeoutMs: outboundTimeoutMs.d1,
-			clock: input.clock,
+			clock,
 		},
 		() =>
-			input.db
+			db
 				.prepare(
-					`UPDATE publish_builds
-					SET uploaded_chunks = uploaded_chunks + 1,
-						uploaded_bytes = uploaded_bytes + ?
-					WHERE id = ? AND status = 'uploading'
-						AND uploaded_chunks < ? AND uploaded_bytes + ? <= ?`,
+					`INSERT INTO publish_build_chunks (build_id, sha256, bytes)
+					SELECT ?, ?, ?
+					WHERE EXISTS (
+						SELECT 1 FROM publish_builds WHERE id = ? AND status = 'uploading'
+					)
+					AND NOT EXISTS (
+						SELECT 1 FROM publish_build_chunks WHERE build_id = ? AND sha256 = ?
+					)
+					AND (SELECT COUNT(*) FROM publish_build_chunks WHERE build_id = ?) < ?
+					AND (
+						SELECT COALESCE(SUM(bytes), 0) FROM publish_build_chunks WHERE build_id = ?
+					) + ? <= ?`,
 				)
 				.bind(
-					input.bytes,
-					input.buildId,
+					buildId,
+					sha256,
+					bytes,
+					buildId,
+					buildId,
+					sha256,
+					buildId,
 					maxBlobsPerBuild,
-					input.bytes,
+					buildId,
+					bytes,
 					maxUploadBytes,
 				)
 				.run(),
 	)
-	if ((result.meta.changes ?? 0) > 0) return { kind: 'reserved' }
-	const row = await getPublishBuild(input.db, input.buildId, input.clock)
-	if (!row || row.status !== 'uploading') {
-		return { kind: 'not_uploading', status: row?.status ?? 'expired' }
+	if ((inserted.meta.changes ?? 0) > 0) return { kind: 'reserved' }
+	const state = await withDeadline(
+		{
+			label: 'publish_build_chunks.reserve_state',
+			timeoutMs: outboundTimeoutMs.d1,
+			clock,
+		},
+		() =>
+			db
+				.prepare(
+					`SELECT
+						(SELECT status FROM publish_builds WHERE id = ?) AS status,
+						EXISTS (
+							SELECT 1 FROM publish_build_chunks WHERE build_id = ? AND sha256 = ?
+						) AS counted,
+						(SELECT COUNT(*) FROM publish_build_chunks WHERE build_id = ?) AS chunks`,
+				)
+				.bind(buildId, buildId, sha256, buildId)
+				.first<{ status: string | null; counted: number; chunks: number }>(),
+	)
+	if (!state?.status || state.status !== 'uploading') {
+		return { kind: 'not_uploading', status: state?.status ?? 'expired' }
 	}
-	if (row.uploaded_chunks >= maxBlobsPerBuild)
-		return { kind: 'too_many_chunks' }
+	if (state.counted) return { kind: 'reserved' }
+	if (state.chunks >= maxBlobsPerBuild) return { kind: 'too_many_chunks' }
 	return { kind: 'upload_too_large' }
 }
 
-/** Give back a reservation whose chunk write failed. */
-export async function releasePublishBuildChunk(input: {
-	db: D1Database
-	buildId: string
-	bytes: number
-	clock?: DeadlineClock
-}) {
+async function deletePublishBuildChunks(db: D1Database, buildId: string) {
 	await withDeadline(
 		{
-			label: 'publish_builds.release_chunk',
+			label: 'publish_build_chunks.delete',
 			timeoutMs: outboundTimeoutMs.d1,
-			clock: input.clock,
 		},
 		() =>
-			input.db
-				.prepare(
-					`UPDATE publish_builds
-					SET uploaded_chunks = MAX(uploaded_chunks - 1, 0),
-						uploaded_bytes = MAX(uploaded_bytes - ?, 0)
-					WHERE id = ?`,
-				)
-				.bind(input.bytes, input.buildId)
+			db
+				.prepare(`DELETE FROM publish_build_chunks WHERE build_id = ?`)
+				.bind(buildId)
 				.run(),
 	)
 }
@@ -446,6 +467,7 @@ export async function purgeExpiredPublishBuilds(input: {
 						.run(),
 			)
 		}
+		await deletePublishBuildChunks(input.db, row.id)
 	}
 	return results.length
 }

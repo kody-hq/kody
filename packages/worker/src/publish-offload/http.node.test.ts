@@ -69,7 +69,10 @@ beforeEach(() => {
 	bucket = memoryBucket()
 	sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(
-		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, commit_sha TEXT, status TEXT, message TEXT, expires_at TEXT, document_sha256 TEXT, updated_at TEXT, uploaded_chunks INTEGER NOT NULL DEFAULT 0, uploaded_bytes INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, commit_sha TEXT, status TEXT, message TEXT, expires_at TEXT, document_sha256 TEXT, updated_at TEXT)`,
+	)
+	sqlite.exec(
+		`CREATE TABLE publish_build_chunks (build_id TEXT NOT NULL, sha256 TEXT NOT NULL, bytes INTEGER NOT NULL, PRIMARY KEY (build_id, sha256))`,
 	)
 	sqlite
 		.prepare(
@@ -84,10 +87,23 @@ beforeEach(() => {
 function buildRow() {
 	return sqlite
 		.prepare(`SELECT * FROM publish_builds WHERE id = ?`)
-		.get(row.id) as {
-		status: string
-		uploaded_chunks: number
-		uploaded_bytes: number
+		.get(row.id) as { status: string }
+}
+
+function chunkTotals() {
+	return sqlite
+		.prepare(
+			`SELECT COUNT(*) AS chunks, COALESCE(SUM(bytes), 0) AS bytes FROM publish_build_chunks WHERE build_id = ?`,
+		)
+		.get(row.id) as { chunks: number; bytes: number }
+}
+
+function countChunks(count: number, bytesEach = 1) {
+	const insert = sqlite.prepare(
+		`INSERT INTO publish_build_chunks (build_id, sha256, bytes) VALUES (?, ?, ?)`,
+	)
+	for (let index = 0; index < count; index++) {
+		insert.run(row.id, `seed-${index}`, bytesEach)
 	}
 }
 
@@ -390,9 +406,7 @@ function sealBody(targets: Array<unknown>, files: Array<unknown> = []) {
 }
 
 test('concurrent chunk PUTs cannot push a build past maxBlobsPerBuild', async () => {
-	sqlite
-		.prepare(`UPDATE publish_builds SET uploaded_chunks = ? WHERE id = ?`)
-		.run(publishOffloadLimits.maxBlobsPerBuild - 1, row.id)
+	countChunks(publishOffloadLimits.maxBlobsPerBuild - 1)
 	const outcomes = await Promise.all(
 		Array.from({ length: 4 }, async (_, index) => {
 			const bytes = chunkOf(index)
@@ -409,14 +423,12 @@ test('concurrent chunk PUTs cannot push a build past maxBlobsPerBuild', async ()
 		),
 	)
 	expect(bucket.puts).toHaveLength(1)
-	expect(buildRow().uploaded_chunks).toBe(publishOffloadLimits.maxBlobsPerBuild)
+	expect(chunkTotals().chunks).toBe(publishOffloadLimits.maxBlobsPerBuild)
 })
 
 test('total uploaded bytes are capped at maxUploadBytes', async () => {
 	const bytes = chunkOf(1)
-	sqlite
-		.prepare(`UPDATE publish_builds SET uploaded_bytes = ? WHERE id = ?`)
-		.run(publishOffloadLimits.maxUploadBytes - bytes.byteLength + 1, row.id)
+	countChunks(1, publishOffloadLimits.maxUploadBytes - bytes.byteLength + 1)
 	await expect(
 		call('PUT', blobPath(await sha256Hex(bytes)), bytes),
 	).rejects.toMatchObject({
@@ -426,15 +438,29 @@ test('total uploaded bytes are capped at maxUploadBytes', async () => {
 	expect(bucket.puts).toHaveLength(0)
 })
 
-test('a chunk write that fails gives its reservation back', async () => {
+test('a chunk retried after a failed write is counted once', async () => {
 	const bytes = chunkOf(1)
+	const sha = await sha256Hex(bytes)
+	const put = bucket.put
 	bucket.put = async () => {
 		throw new Error('r2 down')
 	}
-	await expect(
-		call('PUT', blobPath(await sha256Hex(bytes)), bytes),
-	).rejects.toThrow('r2 down')
-	expect(buildRow()).toMatchObject({ uploaded_chunks: 0, uploaded_bytes: 0 })
+	await expect(call('PUT', blobPath(sha), bytes)).rejects.toThrow('r2 down')
+	bucket.put = put
+	expect((await call('PUT', blobPath(sha), bytes)).status).toBe(200)
+	expect(chunkTotals()).toEqual({ chunks: 1, bytes: bytes.byteLength })
+})
+
+test('concurrent PUTs of the same chunk count it once', async () => {
+	const bytes = chunkOf(1)
+	const sha = await sha256Hex(bytes)
+	const statuses = await Promise.all(
+		Array.from({ length: 3 }, () =>
+			call('PUT', blobPath(sha), bytes).then((response) => response.status),
+		),
+	)
+	expect(statuses).toEqual([200, 200, 200])
+	expect(chunkTotals()).toEqual({ chunks: 1, bytes: bytes.byteLength })
 })
 
 test('the seal body is read with a size cap', async () => {
