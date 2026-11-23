@@ -1169,7 +1169,12 @@ publish the package).
 
 ## Approve many changes at once
 
-When several approvals wait on you, an agent can put them on one page.
+When several approvals wait on you, an agent can put them on one page. The
+recipient can review them together, use [Approve all](#how-approve-all-runs), or
+choose **Approve** or **Deny** per item.
+
+### Create an approval page
+
 **`approvalPendingList`** (`GET /v1/approvals`) lists what waits on the
 signed-in person and what they can decide:
 
@@ -1185,30 +1190,42 @@ provider, and hosts, plus what you approved before.
 
 **`approvalBundleCreate`** (`POST /v1/approval-bundles`) takes item keys from
 that list, or everything pending (narrowed by `types` and `packages`), plus an
-optional note. It returns a URL, `/@{org}/-/approvals/{bundleId}`, which only
-that person can open. The page groups items by package, with **Approve all** and
-per-item **Approve** or **Deny**.
+optional note. It returns a URL, `/@{org}/-/approvals/{bundleId}`. Only the
+signed-in recipient in that org can open the bundle or decide its items.
+[Recipient access test](../../packages/worker/src/approval-bundles/approval-bundles.node.test.ts).
 
-Approving an item runs that item's own approval, the same code as its package
-page (**Approve and publish**, the capability approval, or the credential
-approval). Approve all sends one request that approves up to four packages at
-once. Items on the same package run one after another, with the paused publish
-last because it changes the published version the others pin, so a publish and a
-capability approval on one package never race. A package that imports another
-package in the same bundle waits for it, so it builds against the newly
-published version. Each item shows its own progress and any error, and approvals
-already running finish even if you close the tab.
+The create call prepares the page for the recipient to act on. It rejects calls
+from package code.
+[Bundle creation and caller tests](../../packages/worker/src/approval-bundles/approval-bundles.node.test.ts).
 
-Denying a paused publish drops it, and the published version keeps serving.
-Denying anything else changes nothing. The first decision on an item stands, and
-every decision is recorded in the org activity log.
+A bundle holds at most 100 items and opens for 30 days. When a publish pauses
+and other paused publishes wait on the same person, `repoPublishSession`,
+`packagePublishExternalPush`, and `packageSave` also return an
+**`approval_bundle_url`** (or name it in the message) for reviewing them
+together.
 
-Agents only create bundles; approving is always the person's click in the
-browser. Package code cannot create bundles. A bundle holds at most 100 items
-and opens for 30 days. When a publish pauses and other paused publishes already
-wait on the same person, `repoPublishSession`, `packagePublishExternalPush`, and
-`packageSave` also return an **`approval_bundle_url`** (or name it in the
-message) that approves them together.
+### How Approve all runs
+
+Each item uses the same approval path as its package page. **Approve all** runs
+up to four groups in parallel and streams progress and errors per item. Within a
+package, it handles credential picks, capabilities, then the paused publish.
+Kody puts related packages in the same group when their current published
+artifacts record a dependency between them, and processes the dependency first.
+If a package lookup errors, Kody processes the items serially by type. The
+server uses `waitUntil` to keep the batch running when the tab closes.
+[Batch ordering](../../packages/worker/src/app/approval-bundle-decisions.ts) and
+[progress stream](../../packages/worker/start/server/approval-bundles.ts).
+
+### What a decision records
+
+Denying a paused publish supersedes its approval request. Other denials are
+recorded on the bundle. While a decision is in flight, its 10-minute claim
+blocks competing bundle decisions for the same item in the org. After expiry, a
+request may claim the item again. Kody records a finalized decision on that
+bundle item and queues its org audit entry in the same batch.
+[Decision claims and finalization](../../packages/worker/src/approval-bundles/repo.ts)
+and
+[concurrent decision tests](../../packages/worker/src/approval-bundles/approval-bundles.node.test.ts).
 
 ## Security audit
 
@@ -1455,15 +1472,14 @@ publish checks run.
    writing the published source snapshot, rebuilding package bundle artifacts,
    and refreshing search projections. When the package is too large to bundle in
    a Worker isolate, `kody package publish --build local` or `--build context`
-   builds on the publisher's machine or an execution context they operate, then
-   calls `packagePublishExternalPush` with `publish_build_id`. Kody re-runs the
-   cheap checks, verifies the uploaded tree and bundles, and only then serves
-   the commit. Successful results include `build_origin` (`cloud`, `cli`, or
-   `context`). `packageGet` also returns `provenance`: for each stored artifact
-   of the published commit, where it was built and a SHA-256 of its modules. It
-   is a record only. Kody does not check that an uploaded build was compiled
-   from the pushed source, and nothing uses the record to allow or refuse a
-   publish or a community listing. Builds outside Kody cloud need the
+   builds outside Kody cloud. See
+   [Submit an off-cloud publish build](#submit-an-off-cloud-publish-build) for
+   the underlying build API. Results for uploaded builds can report
+   `build_origin.origin` as `cli` or `context`. `packageGet` also returns
+   `provenance` for each stored artifact of the published commit, with the build
+   origin and a SHA-256 of its modules. See
+   [upload verification](../guides/publish-large-packages.md#what-runs-where)
+   for what the build checks cover. Builds outside Kody cloud need the
    `publish-offload` feature flag. See
    [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
    If the package tip already matched HEAD before this request began, the tool
@@ -1574,6 +1590,32 @@ Choose the narrowest token scope that fits the task. Use `read` for inspection
 or local diffing, and `write` only when the git client needs to push. Keep TTLs
 short for autonomous agents and CI-style helpers; the tool accepts 60 seconds to
 24 hours and defaults to 4 hours.
+
+### Submit an off-cloud publish build
+
+Prefer `kody package publish --build local` or `--build context`. The CLI
+prepares a build, then calls `packagePublishExternalPush` with its build ID.
+
+1. Call `packagePublishBuildCreate` (`POST /v1/packages/publish-builds`) with
+   the package and build origin. Kody selects the pushed Artifacts HEAD. If you
+   supply `expected_commit`, it must match that HEAD before Kody creates a
+   build. The response includes `build_id`, `commit`, and `upload_path`.
+   [Build creation handler](../../packages/worker/src/mcp/capabilities/packages/publish-build-create.ts).
+   - **`origin: "cli"`** returns `status: "uploading"` and the build ticket so
+     the local builder can upload chunks and seal the build.
+   - **`origin: "context"`** uses the named context or your execution chain. The
+     call returns `status: "sealed"` and `context_name` after a context builds
+     and seals the upload.
+     [Context dispatch](../../packages/worker/src/publish-offload/context-dispatch.ts).
+2. Call `packagePublishExternalPush` with the package reference and the sealed
+   `build_id` as `publish_build_id`, using the publisher's credentials. Kody
+   checks the file manifest against the pushed commit, validates the uploaded
+   target set and module metadata, and links published dependencies during
+   finalization. See
+   [What runs where](../guides/publish-large-packages.md#what-runs-where).
+
+Both origins require `publish-offload`. The context origin also requires
+execution contexts to be enabled.
 
 ## Search and discovery
 

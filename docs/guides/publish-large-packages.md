@@ -4,9 +4,9 @@ title: Publish packages too big for Kody cloud
 summary:
   When a cloud build hits the worker's memory, CPU, or payload limits, build the
   package on your own machine (`kody package publish --build local`) or on an
-  execution context you operate (`--build context`). The CLI pushes HEAD first;
-  Kody checks the upload against that commit, links any `kody:@` packages it
-  imports, and writes the registry itself.
+  execution context you operate (`--build context`). Local builds push HEAD
+  first. Context builds use the pushed commit. Kody checks the upload, links its
+  `kody:@` imports, and writes the registry.
 category: platform
 ---
 
@@ -47,11 +47,16 @@ without the experiment.
 
 ## Where a publish builds
 
-With the experiment on, Kody picks where each publish builds, in this order:
+For a standard publish, Kody checks the named context, then the package binding,
+then your execution chain. To require an off-cloud build, use `--build local` or
+[`--build context`](#execution-contexts).
+
+With the experiment on, standard publish routing works in this order:
 
 1. **The context you name.** `kody package publish @you/pkg --context build-box`
-   (or `context` on `packagePublishExternalPush`) builds there and never falls
-   back. `--context cloud` builds on Kody cloud.
+   (or `context` on `packagePublishExternalPush`) selects that context for this
+   publish. If it cannot take the build, the publish fails. `--context cloud`
+   builds on Kody cloud.
 2. **The package's bound context.** A package can set one in `package.json`:
 
    ```json
@@ -62,19 +67,16 @@ With the experiment on, Kody picks where each publish builds, in this order:
    }
    ```
 
-   This is a binding, not a default. When a publish does not name a context and
-   the bound one is offline, busy, or its build fails, the publish fails. It
-   does not fall back to your chain or to Kody cloud, and the previous version
-   keeps serving. The error names the context and the two ways out: name a
-   context for this publish (`--context <name>` or `--context cloud`), or change
-   or remove `kody.publish.execution.context`, push, and publish again.
-   `"context": "cloud"` binds the package to Kody cloud.
+   If the bound context is offline, busy, or its build fails, that publish
+   fails. Use `--context <name>` or `--context cloud` to choose a different
+   builder for one publish. To change future publishes, edit or remove the
+   binding and push the change. Set `"context": "cloud"` to bind to Kody cloud.
 
-3. **Your execution context chain,** the same as `execute`: the contexts you
-   operate, in order, then Kody cloud, unless your chain is strict. Contexts
-   that are offline, busy, or that someone else operates are skipped, and so are
-   contexts whose daemon did not report `git` (the builder clones with it;
-   daemons before this check never report it, so run `kody daemon update`).
+3. **Your execution context chain.** Kody tries eligible contexts in chain order
+   and can select Kody cloud if the chain permits it. A context that takes the
+   build returns its result, including any build error.
+
+[Publish routing tests](../../packages/worker/src/publish-offload/publish-routing.node.test.ts).
 
 Auto-publish on push works the same way. A package that subscribes to the repo
 pushed event and calls publish from its handler gets these same rules.
@@ -151,7 +153,8 @@ uses a write remote Kody mints for that publish with your CLI login, not the
 checkout's remote URL or a stored git credential, so a clone whose remote token
 has expired still publishes.
 
-Uploads resume: rerunning the same command skips chunks Kody already has.
+Retries within the same build reuse chunks already uploaded for that build.
+Running the off-cloud build command again creates a new build.
 
 ## Limits
 
@@ -161,11 +164,21 @@ MiB. Local and context build time is not metered by Kody.
 
 ## Execution contexts
 
-A context build (named, bound, or from your chain, or `--build context`) runs on
-a context you operate (not one shared with you). The context clones only this
-package's repo with a read-only token that expires in about five minutes, builds
-with no access to your credentials, and uploads with a ticket that only works
-for that one build. See [execution contexts](./execution-contexts.md).
+`--build context` uses the named context or your execution chain and requires a
+context to take the build. A context build needs a context you operate that is
+available and whose daemon reports `git`. Run `kody daemon update` if the daemon
+is too old to report it.
+[Routing and operator checks](../../packages/worker/src/execution-contexts/routing.ts).
+
+### What the daemon receives
+
+Kody sends the daemon the pushed commit, a read-only token for that package's
+repo that expires in about five minutes, and an upload ticket for the build. The
+dispatch supplies an empty set of credential picks. A successful context build
+reports the builder's name after Kody confirms the upload is sealed.
+[Dispatch and seal check](../../packages/worker/src/publish-offload/context-dispatch.ts),
+[credential picks](../../packages/worker/src/execution-contexts/routing.ts), and
+[upload ticket check](../../packages/worker/src/publish-offload/store.ts).
 
 Related: [heavy work offload](./heavy-work-offload.md) for runtime work that
 never fits a Worker.

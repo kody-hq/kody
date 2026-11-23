@@ -629,19 +629,13 @@ builds on Kody cloud. More detail:
 
 ## Publish builds
 
-With the `publish-offload` flag also on, a publish follows your chain the same
-as `execute`: the first context you operate that can take it builds the package,
-and Kody cloud is last unless your chain is strict. `--context <name>` (or
-`context` on `packagePublishExternalPush`) picks one for this publish and never
-falls back. A package can bind its publishes to one context with
-`kody.publish.execution.context` in `package.json`. A bound publish that names
-no context fails when that context is unavailable, instead of falling back. See
-[where a publish builds](./publish-large-packages.md#where-a-publish-builds).
+With `publish-offload` enabled, `kody package publish <package> --build context`
+uses an execution context to bundle the pushed commit. Kody verifies the upload
+and handles publication.
 
-`kody package publish <package> --build context` asks a context you operate to
-bundle the package. The run carries no user code and no credentials: the daemon
-clones the pushed commit with a read-only, single-repo token that expires in
-about five minutes and uploads the build with a per-build ticket. Kody checks
-the upload and writes the registry itself. Every credential kind, not only CLI
-logins, needs `execution_context:execute` to route a run to a context. See
-[publish large packages](./publish-large-packages.md).
+See [Where a publish builds](./publish-large-packages.md#where-a-publish-builds)
+for context selection and cloud fallback, and
+[What the daemon receives](./publish-large-packages.md#what-the-daemon-receives)
+for the clone token and upload ticket. A scoped credential needs
+`execution_context:execute` to route a run to a context.
+[Routing scope check](../../packages/worker/src/execution-contexts/routing.ts).

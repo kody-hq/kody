@@ -136,9 +136,9 @@ type DecisionClaim = {
 }
 
 /**
- * How long an unfinalized claim blocks other requests. Longer than any single
- * approve (a publish included), so only a request that stopped part-way loses
- * its claim.
+ * How long an unfinalized claim blocks competing bundle decisions.
+ * A request may take a new claim after this interval, even if the earlier
+ * request is still running.
  */
 export const approvalBundleClaimLeaseMs = 10 * 60_000
 
@@ -152,11 +152,12 @@ const liveClaimElsewhere = `EXISTS (
 )`
 
 /**
- * Claims an item's decision before anything is approved or denied, so only
- * one request acts on an item, across every bundle in the org that holds it.
- * The row stays an in-flight claim (no `finalized_at`) until the approve or
- * deny finishes; a claim older than the lease is taken over. False when the
- * item is decided in this bundle or another request is deciding it.
+ * Claims an item before its approve or deny runs. A live claim blocks other
+ * claims for the same item key in the org.
+ *
+ * An unfinalized claim in this bundle can be replaced after its lease expires.
+ * Returns false for a finalized decision in this bundle or a competing live
+ * claim.
  */
 export async function claimApprovalBundleDecision(
 	db: D1Database,
@@ -219,8 +220,8 @@ export async function releaseApprovalBundleDecision(
 }
 
 /**
- * Turns the claim into a decision once its approve or deny is done; batched
- * with the audit row so a recorded decision is always audited.
+ * Prepares finalization after the action succeeds. The update matches only the
+ * original unfinalized claim. The caller batches it with the audit outbox row.
  */
 export function finalizeApprovalBundleDecisionStatement(
 	db: D1Database,
@@ -260,9 +261,8 @@ export async function deleteApprovalBundlesForMember(input: {
 }
 
 /**
- * Pairs of the given packages where one's published bundles import the other
- * (`dependent` imports `dependency`). A dependent built while its dependency
- * is still publishing captures the old dependency version.
+ * Finds imports between the requested packages using their current published
+ * artifacts. Each pair points from the dependent to its dependency.
  */
 export async function listPackageDependencyEdges(
 	db: D1Database,

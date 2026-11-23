@@ -57,10 +57,10 @@ export function mapContextDispatchFailure(
 }
 
 /**
- * Build on an execution context the publisher operates. The context clones
- * with a freshly minted read-only token for this one repo (valid ~5
- * minutes, sent only inside the run request), never the operator's CLI
- * login, and uploads with the per-build ticket.
+ * Dispatches a builder run and checks that it sealed the upload.
+ *
+ * The run carries a short-lived read token for the package repo and the
+ * build's upload ticket. See `routePublishBuild` for routing outcomes.
  */
 export async function dispatchContextPublishBuild(input: {
 	env: Env

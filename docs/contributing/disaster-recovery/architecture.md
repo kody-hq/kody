@@ -117,41 +117,46 @@ Contract: `packages/shared/src/backup-staging.ts`.
    non-D1 staging. Staging lives under `staging/{day}/d1-paced/{databaseName}/`.
    Completed nights seal to `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
    `weekly/d1-paced/{databaseId}/{day}/` (Sunday UTC full bases). Tick writers
-   flush TSV parts at 4 MiB on page boundaries. Each table walk stops after 32
-   MiB emitted so the next tick can resume; see
-   [`d1-paced-backup.ts`](../../../packages/worker/src/dr/d1-paced-backup.ts).
-   Ticks run on a 45s budget. Full-base nights (every Sunday UTC night, plus
-   nights with a force-full-base request) run 180s ticks that stop after 128
-   MiB: a full base is about 1.5x a delta night's work, and on 2026-11-22 it
-   needed about 72 tick-minutes while 45s ticks fit about 62 before the 07:00 DR
-   health check, so AUDIT_DB sealed at 07:41. Seal also stops between parts of a
-   parted table when the budget runs out and resumes on the next tick without
-   recopying sealed parts, so one large table never needs a tick longer than the
-   budget. A delta tick that stops mid-table records the previous-night index
-   part its merge-join reached (`prevIndexPart` in `progress.json`), and the
-   next tick reopens the previous index at that part, so a resume costs one
-   index part instead of the whole previous index. Only one paced backup tick
-   runs at a time: a tick claims the `dr_d1_paced_backup` row in
-   `scheduled_lane_leases` (2 minutes), a tick that finds the lane held skips
-   with `reason: "lease-held"`, and a tick that outlived its lease re-checks
-   (and extends) it before every bucket write and stops with
-   `D1PacedBackupLeaseLostError` instead of writing. Seal refuses a table whose
-   index is not strictly increasing by rowid (`PacedD1IndexOrderError`, raised
-   before any sealed object for that table is written), so the night stays
-   unsealed and the lane fails in Sentry on every tick until the staging table
-   is rebuilt. The weekly Sunday drill (07:00–08:59 UTC) verifies each table's
-   tip checksum from the sealed chain, streaming one part body at a time and
-   keeping only the rowids touched by deltas since the last `full` base. It is
-   resumable: each tick holds a D1 lease, drills the next unfinished source for
-   up to 4 minutes, and checkpoints every table in APP_DB
-   (`dr_paced_restore_drill_runs` / `dr_paced_restore_drill_sources`). A tick
-   that dies mid-table (OOM, CPU, wall) leaves an active marker; the next tick
-   reports it and retries, and a second death fails that table. Ticks from 08:50
-   fail unfinished sources (`deadline-exceeded`). Drill failures get their own
-   Sentry fingerprint `dr-d1-paced-restore-drill / <kind> / <source>` (kind
-   `oom`, `timeout`, `interrupted`, `deadline`, `mismatch`, `error`) at level
-   `fatal` with `dr.drill.source` / `dr.drill.phase` tags, so a platform reset
-   never folds into a generic (possibly ignored) OOM issue; the jobs worker asks
+   flush TSV parts at page boundaries once the buffered data and index reach 4
+   MiB. A standard tick has a 45-second wall budget and a soft limit of 32 MiB
+   of flushed data and index bytes per table walk. Sunday UTC and
+   operator-requested full-base nights use 180 seconds and 128 MiB per table
+   walk. On 2026-11-22, the full base needed about 72 tick-minutes. The
+   45-second budget fit about 62 tick-minutes before the 07:00 DR health check,
+   and AUDIT_DB sealed at 07:41.
+   [Tick budgets](../../../packages/worker/src/dr/d1-paced-backup.ts).
+
+   A delta tick that stops mid-table records the previous-night index part its
+   merge-join reached (`prevIndexPart` in `progress.json`). The next tick
+   reopens a multipart index at that part and reads forward. Progress without
+   the part cursor starts at part zero.
+   [Multipart resume test](../../../packages/worker/src/dr/d1-paced-backup.node.test.ts)
+   and [progress decoder](../../../packages/shared/src/backup-d1-paced.ts).
+
+   A tick claims the two-minute `dr_d1_paced_backup` lease in
+   `scheduled_lane_leases`. A tick that finds the lane held skips with
+   `reason: "lease-held"`. Each bucket put renews the lease before writing and
+   raises `D1PacedBackupLeaseLostError` if renewal fails.
+   [Lease and write guard](../../../packages/worker/src/dr/d1-paced-backup-lease.ts).
+
+   Seal validates that rowids are strictly increasing before it starts copying a
+   table. An invalid index raises `PacedD1IndexOrderError` and leaves the night
+   unsealed. A multipart table can resume sealing and skip parts already copied.
+   [Table validation and seal](../../../packages/worker/src/dr/d1-paced-backup-seal.ts).
+
+   The weekly Sunday drill (07:00–08:59 UTC) verifies each table's tip checksum
+   from the sealed chain, streaming one part body at a time and keeping only the
+   rowids touched by deltas since the last `full` base. It is resumable: each
+   tick holds a D1 lease, drills the next unfinished source for up to 4 minutes,
+   and checkpoints every table in APP_DB (`dr_paced_restore_drill_runs` /
+   `dr_paced_restore_drill_sources`). A tick that dies mid-table (OOM, CPU,
+   wall) leaves an active marker; the next tick reports it and retries, and a
+   second death fails that table. Ticks from 08:50 fail unfinished sources
+   (`deadline-exceeded`). Drill failures get their own Sentry fingerprint
+   `dr-d1-paced-restore-drill / <kind> / <source>` (kind `oom`, `timeout`,
+   `interrupted`, `deadline`, `mismatch`, `error`) at level `fatal` with
+   `dr.drill.source` / `dr.drill.phase` tags, so a platform reset never folds
+   into a generic (possibly ignored) OOM issue; the jobs worker asks
    `JobsHost.readD1PacedRestoreDrillCheckpoint` for the source and phase when
    the RPC itself dies. Graduated production restore and the isolated paced
    drill replay the same sealed paced chains for schema-v3 days. The
@@ -159,6 +164,7 @@ Contract: `packages/shared/src/backup-staging.ts`.
    reports backup freshness and the latest restore drill. `DR_D1_PACED_SOURCES`
    commits APP_DB + AUDIT_DB + JOBS_DB (deploy still expands live D1 UUIDs from
    resource bindings).
+
 2. **Other canonical stores (production worker)** — When
    `DR_EXPORT_ENABLED=true` and DR S3 credentials are set, nightly ticks
    (`packages/worker/src/dr/exporter.ts`) stage:
