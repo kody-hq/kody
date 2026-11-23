@@ -7,10 +7,7 @@ import {
 	adminMutationCapabilityAccess,
 	auditAdminCapabilityInvocation,
 } from './admin-shared.ts'
-import {
-	appStartersOutputSchema,
-	runAppStarterMutation,
-} from './app-starter-shared.ts'
+import { appStartersOutputSchema } from './app-starter-shared.ts'
 
 export const adminAppStarterRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.admin,
@@ -32,13 +29,12 @@ export const adminAppStarterRemoveCapability = defineDomainCapability(
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminAppStarterRemove',
-				() =>
-					runAppStarterMutation(async () => ({
-						starters: await removeAppStarter({
-							env: ctx.env,
-							packageId: args.package_id,
-						}),
-					})),
+				async () => ({
+					starters: await removeAppStarter({
+						env: ctx.env,
+						packageId: args.package_id,
+					}),
+				}),
 				{ successReason: () => `package_id=${args.package_id}` },
 			)
 		},
