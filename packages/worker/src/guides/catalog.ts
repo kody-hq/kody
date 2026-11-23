@@ -42,6 +42,7 @@ import sharedPackages from '../../../../docs/guides/shared-packages.md'
 import packageSkills from '../../../../docs/guides/package-skills.md'
 import packageExportJsdoc from '../../../../docs/guides/package-export-jsdoc.md'
 import packageApps from '../../../../docs/guides/package-apps.md'
+import makingGreatApps from '../../../../docs/guides/making-great-apps.md'
 import packageAppCustomDomains from '../../../../docs/guides/package-app-custom-domains.md'
 import packageLifecycle from '../../../../docs/guides/package-lifecycle.md'
 import platformEfficiency from '../../../../docs/guides/platform-efficiency.md'
@@ -127,6 +128,7 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'shared-packages', raw: sharedPackages },
 	{ slug: 'package-skills', raw: packageSkills },
 	{ slug: 'package-export-jsdoc', raw: packageExportJsdoc },
+	{ slug: 'making-great-apps', raw: makingGreatApps },
 	{ slug: 'package-apps', raw: packageApps },
 	{ slug: 'package-app-custom-domains', raw: packageAppCustomDomains },
 	{ slug: 'package-subscriptions', raw: packageSubscriptions },

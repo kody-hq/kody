@@ -5,6 +5,13 @@ import {
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
+import { listRecommendedAppStarters } from '#worker/app-starters/service.ts'
+import {
+	formatSearchAppStartersMarkdown,
+	isAppCreationSearchQuery,
+	type SearchAppStartersStructured,
+	toSearchAppStartersStructured,
+} from './search-app-starters.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { stampFirstSearch } from '#worker/identity/activation-stamps.ts'
@@ -27,6 +34,7 @@ import {
 	domainBrowseDefaultLimit,
 	maxChars,
 	SEARCH_ONBOARDING_NOTICE_BUDGET_MS,
+	SEARCH_APP_STARTERS_BUDGET_MS,
 	SEARCH_WAITING_ITEMS_BUDGET_MS,
 } from './search-constants.ts'
 import { resolveEntityDetail } from './search-detail.ts'
@@ -334,12 +342,27 @@ async function runSearchToolWithoutGuestBlock(input: {
 				}
 			}
 			endToEndPhaseTimings.waitingItemsMs = elapsedMs(waitingStart)
+			let appStartersMarkdown: string | null = null
+			let appStartersStructured: SearchAppStartersStructured | null = null
+			if (!domainFilter && isAppCreationSearchQuery(trimmedQuery)) {
+				const appStartersStart = performance.now()
+				const starters = await settleWithBudget(
+					listRecommendedAppStarters(env),
+					SEARCH_APP_STARTERS_BUDGET_MS,
+				).catch(() => null)
+				const recommended = starters?.ok ? starters.value : []
+				appStartersMarkdown = formatSearchAppStartersMarkdown(recommended)
+				appStartersStructured = toSearchAppStartersStructured(recommended)
+				endToEndPhaseTimings.appStartersMs = elapsedMs(appStartersStart)
+			}
 			return {
 				mode: 'list' as const,
 				execution,
 				structuredWarnings,
 				waitingMarkdown,
 				waitingStructured,
+				appStartersMarkdown,
+				appStartersStructured,
 			}
 		}
 		const usernameStart = performance.now()
@@ -442,6 +465,8 @@ async function runSearchToolWithoutGuestBlock(input: {
 					structuredWarnings: Array<string>
 					waitingMarkdown: string | null
 					waitingStructured: ReturnType<typeof toSearchWaitingStructured>
+					appStartersMarkdown: string | null
+					appStartersStructured: SearchAppStartersStructured | null
 			  }
 			| {
 					mode: 'entity'
@@ -625,6 +650,8 @@ async function runSearchToolWithoutGuestBlock(input: {
 		const structuredWarnings = outcome.structuredWarnings
 		const waitingMarkdown = outcome.waitingMarkdown
 		const waitingStructured = outcome.waitingStructured
+		const appStartersMarkdown = outcome.appStartersMarkdown
+		const appStartersStructured = outcome.appStartersStructured
 
 		const payload: {
 			matches: Array<SearchMatch>
@@ -646,7 +673,8 @@ async function runSearchToolWithoutGuestBlock(input: {
 			if (block.type !== 'text' || !('text' in block)) return total
 			return total + (total > 0 ? 1 : 0) + block.text.length
 		}, 0)
-		const reservedWaitingChars = waitingMarkdown?.length ?? 0
+		const reservedWaitingChars =
+			(waitingMarkdown?.length ?? 0) + (appStartersMarkdown?.length ?? 0)
 		const formattingStartMs = performance.now()
 		const { payload: trimmedPayload, serialized } = applyMaxResponseSize(
 			payload,
@@ -739,6 +767,7 @@ async function runSearchToolWithoutGuestBlock(input: {
 						waiting: waitingStructured,
 					}
 				: {}),
+			...(appStartersStructured ? { appStarters: appStartersStructured } : {}),
 			matches: slimMatches,
 		}
 		logMcpEvent({
@@ -790,6 +819,9 @@ async function runSearchToolWithoutGuestBlock(input: {
 		})
 		return {
 			content: prependToolMetadataContent(conversationId, [
+				...(appStartersMarkdown
+					? [{ type: 'text' as const, text: appStartersMarkdown }]
+					: []),
 				...(waitingMarkdown
 					? [
 							{

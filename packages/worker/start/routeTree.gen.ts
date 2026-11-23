@@ -167,6 +167,7 @@ import { Route as AppAdminPlatformIntegrationsRouteImport } from './routes/_app.
 import { Route as AppAdminProviderMarksRouteImport } from './routes/_app.admin.provider-marks'
 import { Route as AppAdminReservedUsernamesRouteImport } from './routes/_app.admin.reserved-usernames'
 import { Route as AppAdminRolesRouteImport } from './routes/_app.admin.roles'
+import { Route as AppAdminStarterTemplatesRouteImport } from './routes/_app.admin.starter-templates'
 import { Route as AppAdminSystemEmailRouteImport } from './routes/_app.admin.system-email'
 import { Route as AppAdminUsersRouteImport } from './routes/_app.admin.users'
 import { Route as KodyAuthSplatRouteImport } from './routes/[_]kody.auth.$'
@@ -259,6 +260,8 @@ import { Route as AppAdminAccountDeletionsApprovalIdRouteImport } from './routes
 import { Route as AppAdminOrgsOrgSlugRouteImport } from './routes/_app.admin.orgs_.$orgSlug'
 import { Route as AppAdminPlatformIntegrationsSlugRouteImport } from './routes/_app.admin.platform-integrations_.$slug'
 import { Route as AppAdminPlatformIntegrationsNewRouteImport } from './routes/_app.admin.platform-integrations_.new'
+import { Route as AppAdminStarterTemplatesPackageIdRouteImport } from './routes/_app.admin.starter-templates_.$packageId'
+import { Route as AppAdminStarterTemplatesNewRouteImport } from './routes/_app.admin.starter-templates_.new'
 import { Route as AppAdminUsersStableUserIdRouteImport } from './routes/_app.admin.users_.$stableUserId'
 import { Route as AccountMcpServersLogosServerIdRouteImport } from './routes/account_.mcp-servers_.logos_.$serverId'
 import { Route as AccountMcpServersOauthCallbackRouteImport } from './routes/account_.mcp-servers_.oauth_.callback'
@@ -1132,6 +1135,12 @@ const AppAdminRolesRoute = AppAdminRolesRouteImport.update({
   path: '/admin/roles',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminStarterTemplatesRoute =
+  AppAdminStarterTemplatesRouteImport.update({
+    id: '/admin/starter-templates',
+    path: '/admin/starter-templates',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAdminSystemEmailRoute = AppAdminSystemEmailRouteImport.update({
   id: '/admin/system-email',
   path: '/admin/system-email',
@@ -1659,6 +1668,18 @@ const AppAdminPlatformIntegrationsNewRoute =
     path: '/admin/platform-integrations/new',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAdminStarterTemplatesPackageIdRoute =
+  AppAdminStarterTemplatesPackageIdRouteImport.update({
+    id: '/admin/starter-templates_/$packageId',
+    path: '/admin/starter-templates/$packageId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAdminStarterTemplatesNewRoute =
+  AppAdminStarterTemplatesNewRouteImport.update({
+    id: '/admin/starter-templates_/new',
+    path: '/admin/starter-templates/new',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAdminUsersStableUserIdRoute =
   AppAdminUsersStableUserIdRouteImport.update({
     id: '/admin/users_/$stableUserId',
@@ -2177,6 +2198,7 @@ export interface FileRoutesByFullPath {
   '/admin/provider-marks': typeof AppAdminProviderMarksRoute
   '/admin/reserved-usernames': typeof AppAdminReservedUsernamesRoute
   '/admin/roles': typeof AppAdminRolesRoute
+  '/admin/starter-templates': typeof AppAdminStarterTemplatesRoute
   '/admin/system-email': typeof AppAdminSystemEmailRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
@@ -2269,6 +2291,8 @@ export interface FileRoutesByFullPath {
   '/admin/orgs/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/admin/platform-integrations/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AppAdminPlatformIntegrationsNewRoute
+  '/admin/starter-templates/$packageId': typeof AppAdminStarterTemplatesPackageIdRoute
+  '/admin/starter-templates/new': typeof AppAdminStarterTemplatesNewRoute
   '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account/mcp-servers/logos/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account/mcp-servers/oauth/callback': typeof AccountMcpServersOauthCallbackRoute
@@ -2486,6 +2510,7 @@ export interface FileRoutesByTo {
   '/admin/provider-marks': typeof AppAdminProviderMarksRoute
   '/admin/reserved-usernames': typeof AppAdminReservedUsernamesRoute
   '/admin/roles': typeof AppAdminRolesRoute
+  '/admin/starter-templates': typeof AppAdminStarterTemplatesRoute
   '/admin/system-email': typeof AppAdminSystemEmailRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
@@ -2578,6 +2603,8 @@ export interface FileRoutesByTo {
   '/admin/orgs/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/admin/platform-integrations/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AppAdminPlatformIntegrationsNewRoute
+  '/admin/starter-templates/$packageId': typeof AppAdminStarterTemplatesPackageIdRoute
+  '/admin/starter-templates/new': typeof AppAdminStarterTemplatesNewRoute
   '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account/mcp-servers/logos/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account/mcp-servers/oauth/callback': typeof AccountMcpServersOauthCallbackRoute
@@ -2798,6 +2825,7 @@ export interface FileRoutesById {
   '/_app/admin/provider-marks': typeof AppAdminProviderMarksRoute
   '/_app/admin/reserved-usernames': typeof AppAdminReservedUsernamesRoute
   '/_app/admin/roles': typeof AppAdminRolesRoute
+  '/_app/admin/starter-templates': typeof AppAdminStarterTemplatesRoute
   '/_app/admin/system-email': typeof AppAdminSystemEmailRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_kody/auth/$': typeof KodyAuthSplatRoute
@@ -2890,6 +2918,8 @@ export interface FileRoutesById {
   '/_app/admin/orgs_/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/_app/admin/platform-integrations_/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/_app/admin/platform-integrations_/new': typeof AppAdminPlatformIntegrationsNewRoute
+  '/_app/admin/starter-templates_/$packageId': typeof AppAdminStarterTemplatesPackageIdRoute
+  '/_app/admin/starter-templates_/new': typeof AppAdminStarterTemplatesNewRoute
   '/_app/admin/users_/$stableUserId': typeof AppAdminUsersStableUserIdRoute
   '/account_/mcp-servers_/logos_/$serverId': typeof AccountMcpServersLogosServerIdRoute
   '/account_/mcp-servers_/oauth_/callback': typeof AccountMcpServersOauthCallbackRoute
@@ -3110,6 +3140,7 @@ export interface FileRouteTypes {
     | '/admin/provider-marks'
     | '/admin/reserved-usernames'
     | '/admin/roles'
+    | '/admin/starter-templates'
     | '/admin/system-email'
     | '/admin/users'
     | '/_kody/auth/$'
@@ -3202,6 +3233,8 @@ export interface FileRouteTypes {
     | '/admin/orgs/$orgSlug'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
+    | '/admin/starter-templates/$packageId'
+    | '/admin/starter-templates/new'
     | '/admin/users/$stableUserId'
     | '/account/mcp-servers/logos/$serverId'
     | '/account/mcp-servers/oauth/callback'
@@ -3419,6 +3452,7 @@ export interface FileRouteTypes {
     | '/admin/provider-marks'
     | '/admin/reserved-usernames'
     | '/admin/roles'
+    | '/admin/starter-templates'
     | '/admin/system-email'
     | '/admin/users'
     | '/_kody/auth/$'
@@ -3511,6 +3545,8 @@ export interface FileRouteTypes {
     | '/admin/orgs/$orgSlug'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
+    | '/admin/starter-templates/$packageId'
+    | '/admin/starter-templates/new'
     | '/admin/users/$stableUserId'
     | '/account/mcp-servers/logos/$serverId'
     | '/account/mcp-servers/oauth/callback'
@@ -3730,6 +3766,7 @@ export interface FileRouteTypes {
     | '/_app/admin/provider-marks'
     | '/_app/admin/reserved-usernames'
     | '/_app/admin/roles'
+    | '/_app/admin/starter-templates'
     | '/_app/admin/system-email'
     | '/_app/admin/users'
     | '/_kody/auth/$'
@@ -3822,6 +3859,8 @@ export interface FileRouteTypes {
     | '/_app/admin/orgs_/$orgSlug'
     | '/_app/admin/platform-integrations_/$slug'
     | '/_app/admin/platform-integrations_/new'
+    | '/_app/admin/starter-templates_/$packageId'
+    | '/_app/admin/starter-templates_/new'
     | '/_app/admin/users_/$stableUserId'
     | '/account_/mcp-servers_/logos_/$serverId'
     | '/account_/mcp-servers_/oauth_/callback'
@@ -5144,6 +5183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminRolesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/starter-templates': {
+      id: '/_app/admin/starter-templates'
+      path: '/admin/starter-templates'
+      fullPath: '/admin/starter-templates'
+      preLoaderRoute: typeof AppAdminStarterTemplatesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/admin/system-email': {
       id: '/_app/admin/system-email'
       path: '/admin/system-email'
@@ -5788,6 +5834,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminPlatformIntegrationsNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/starter-templates_/$packageId': {
+      id: '/_app/admin/starter-templates_/$packageId'
+      path: '/admin/starter-templates/$packageId'
+      fullPath: '/admin/starter-templates/$packageId'
+      preLoaderRoute: typeof AppAdminStarterTemplatesPackageIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/starter-templates_/new': {
+      id: '/_app/admin/starter-templates_/new'
+      path: '/admin/starter-templates/new'
+      fullPath: '/admin/starter-templates/new'
+      preLoaderRoute: typeof AppAdminStarterTemplatesNewRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/admin/users_/$stableUserId': {
       id: '/_app/admin/users_/$stableUserId'
       path: '/admin/users/$stableUserId'
@@ -6261,6 +6321,7 @@ interface AppRouteChildren {
   AppAdminProviderMarksRoute: typeof AppAdminProviderMarksRoute
   AppAdminReservedUsernamesRoute: typeof AppAdminReservedUsernamesRoute
   AppAdminRolesRoute: typeof AppAdminRolesRoute
+  AppAdminStarterTemplatesRoute: typeof AppAdminStarterTemplatesRoute
   AppAdminSystemEmailRoute: typeof AppAdminSystemEmailRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppAdminIndexRoute: typeof AppAdminIndexRoute
@@ -6327,6 +6388,8 @@ interface AppRouteChildren {
   AppAdminOrgsOrgSlugRoute: typeof AppAdminOrgsOrgSlugRoute
   AppAdminPlatformIntegrationsSlugRoute: typeof AppAdminPlatformIntegrationsSlugRoute
   AppAdminPlatformIntegrationsNewRoute: typeof AppAdminPlatformIntegrationsNewRoute
+  AppAdminStarterTemplatesPackageIdRoute: typeof AppAdminStarterTemplatesPackageIdRoute
+  AppAdminStarterTemplatesNewRoute: typeof AppAdminStarterTemplatesNewRoute
   AppAdminUsersStableUserIdRoute: typeof AppAdminUsersStableUserIdRoute
   AppAccountPackagesIndexRoute: typeof AppAccountPackagesIndexRoute
   AppAtChar123orgSlugChar125ActivityRunIdRoute: typeof AppAtChar123orgSlugChar125ActivityRunIdRoute
@@ -6416,6 +6479,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAdminProviderMarksRoute: AppAdminProviderMarksRoute,
   AppAdminReservedUsernamesRoute: AppAdminReservedUsernamesRoute,
   AppAdminRolesRoute: AppAdminRolesRoute,
+  AppAdminStarterTemplatesRoute: AppAdminStarterTemplatesRoute,
   AppAdminSystemEmailRoute: AppAdminSystemEmailRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppAdminIndexRoute: AppAdminIndexRoute,
@@ -6516,6 +6580,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppAdminOrgsOrgSlugRoute: AppAdminOrgsOrgSlugRoute,
   AppAdminPlatformIntegrationsSlugRoute: AppAdminPlatformIntegrationsSlugRoute,
   AppAdminPlatformIntegrationsNewRoute: AppAdminPlatformIntegrationsNewRoute,
+  AppAdminStarterTemplatesPackageIdRoute:
+    AppAdminStarterTemplatesPackageIdRoute,
+  AppAdminStarterTemplatesNewRoute: AppAdminStarterTemplatesNewRoute,
   AppAdminUsersStableUserIdRoute: AppAdminUsersStableUserIdRoute,
   AppAccountPackagesIndexRoute: AppAccountPackagesIndexRoute,
   AppAtChar123orgSlugChar125ActivityRunIdRoute:

@@ -411,6 +411,12 @@ const adminNavItems = [
 		id: 'platform-integrations',
 	},
 	{
+		href: '/admin/starter-templates',
+		label: 'Starter templates',
+		icon: 'box',
+		id: 'starter-templates',
+	},
+	{
 		href: '/admin/provider-marks',
 		label: 'Provider marks',
 		icon: 'photo',

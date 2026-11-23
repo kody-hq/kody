@@ -127,6 +127,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			{ slug: 'package-sharing', label: 'Sharing a package' },
 			{ slug: 'shared-packages', label: 'Shared packages for many accounts' },
 			{ slug: 'package-skills', label: 'Package skills' },
+			{ slug: 'making-great-apps', label: 'Making a great app' },
 			{ slug: 'package-apps', label: 'Package apps' },
 			{
 				slug: 'package-app-custom-domains',

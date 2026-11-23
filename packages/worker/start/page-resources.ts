@@ -12,6 +12,7 @@ import type * as admin_platform_feedback from '#start/server/admin-platform-feed
 import type * as admin_platform_integrations from '#start/server/admin-platform-integrations'
 import type * as admin_provider_marks from '#start/server/admin-provider-marks'
 import type * as admin_reserved_usernames from '#start/server/admin-reserved-usernames'
+import type * as admin_starter_templates from '#start/server/admin-starter-templates'
 import type * as admin_roles from '#start/server/admin-roles'
 import type * as admin_system_email from '#start/server/admin-system-email'
 import type * as admin_users from '#start/server/admin-users'
@@ -53,6 +54,7 @@ export type PageResource =
 	| keyof typeof admin_platform_integrations
 	| keyof typeof admin_provider_marks
 	| keyof typeof admin_reserved_usernames
+	| keyof typeof admin_starter_templates
 	| keyof typeof admin_roles
 	| keyof typeof admin_system_email
 	| keyof typeof admin_users
