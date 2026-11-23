@@ -44,18 +44,12 @@ runs:
           echo "- npm ci: fresh (--prefer-online)"
         } | tee -a "$GITHUB_STEP_SUMMARY"
 
-    - name: 🟢 Setup Node (cached)
-      if: inputs.no_cache != 'true'
-      uses: actions/setup-node@v6
-      with:
-        node-version: 26
-        cache: npm
-
     # setup-node@v6 auto-caches npm when package.json has packageManager;
     # package-manager-cache: false is required or no_cache still restores
     # ~/.npm from the Actions cache (seen on the first ubuntu baseline).
-    - name: 🟢 Setup Node (no cache)
-      if: inputs.no_cache == 'true'
+    # Cached runs restore node_modules in 📥 Install Dependencies instead and
+    # only fetch ~/.npm on a node_modules miss.
+    - name: 🟢 Setup Node
       uses: actions/setup-node@v6
       with:
         node-version: 26
@@ -83,20 +77,28 @@ runs:
       # probe uses only Node built-ins.
       run: node tools/nx-remote-cache-probe.ts --github-env
 
-    # npm ci talks to the public registry even on an Actions cache hit. A
-    # single ECONNRESET used to fail the whole Validate job (seen on E2E
-    # #40035153787 when setup-node restored a 672-byte ~/.npm cache). Retry
-    # only registry transport blips; lockfile/engine errors stay terminal.
-    # The helper is Node built-ins only so it can run before node_modules.
+    # Restores node_modules from the Actions cache (installed offline, no
+    # registry). A miss restores ~/.npm, runs npm ci, and saves node_modules
+    # once for the sibling jobs. npm ci talks to the public registry even with
+    # a warm ~/.npm, and a single ECONNRESET would fail the whole Validate
+    # job, so it runs through
+    # tools/ci/npm-ci-with-retry.ts: retry only registry transport blips;
+    # lockfile/engine errors stay terminal. The helper is Node built-ins only
+    # so it can run before node_modules.
     - name: 📥 Install Dependencies
+      if: inputs.no_cache != 'true'
+      uses: ./.github/actions/npm-ci
+      with:
+        cache-node-modules: 'true'
+        npm-cache: 'true'
+        retry: 'true'
+
+    - name: 📥 Install Dependencies (no cache)
+      if: inputs.no_cache == 'true'
       shell: bash
       run: |
-        if [ "${{ inputs.no_cache }}" = "true" ]; then
-          echo "npm-cache=disabled (fresh npm ci --prefer-online)"
-          node tools/ci/npm-ci-with-retry.ts --prefer-online --no-audit --no-fund
-        else
-          node tools/ci/npm-ci-with-retry.ts --no-audit --no-fund
-        fi
+        echo "npm-cache=disabled (fresh npm ci --prefer-online)"
+        node tools/ci/npm-ci-with-retry.ts --prefer-online --no-audit --no-fund
 
     - name: 📝 Prepare worker env
       if: inputs.worker-env == 'true'

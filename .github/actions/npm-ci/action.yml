@@ -1,10 +1,32 @@
 name: 📥 npm ci
 description: >-
   npm ci. On Windows on Arm, where npm ci spends ~8 min unpacking onto the
-  runner's slow C: disk, node_modules comes from the Actions cache instead (same
-  lockfile, patches, Node version, and runner OS/arch), and npm then relinks the
-  workspaces and runs the lifecycle scripts offline. A miss runs npm ci and
-  saves the tree. Run after actions/checkout and actions/setup-node.
+  runner's slow C: disk, and on any runner that sets cache-node-modules,
+  node_modules comes from the Actions cache instead (same lockfile, patches,
+  Node version, and runner OS/arch), and npm then relinks the workspaces and
+  runs the lifecycle scripts offline. A miss runs npm ci and saves the tree. Run
+  after actions/checkout and actions/setup-node.
+
+inputs:
+  cache-node-modules:
+    description: >-
+      Restore node_modules from the Actions cache on this runner too. Skipped
+      when VALIDATE_NO_CACHE is true.
+    required: false
+    default: 'false'
+  npm-cache:
+    description: >-
+      On a node_modules cache miss, restore (and save) the npm cache before npm
+      ci, under the same key setup-node uses. For callers that set up Node with
+      package-manager-cache false so a hit skips the npm cache download.
+    required: false
+    default: 'false'
+  retry:
+    description: >-
+      Run npm ci through tools/ci/npm-ci-with-retry.ts so registry transport
+      blips retry.
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -12,14 +34,25 @@ runs:
     - name: 🔑 node_modules cache key
       id: key
       shell: bash
+      env:
+        CACHE_NODE_MODULES: ${{ inputs.cache-node-modules }}
+        RETRY: ${{ inputs.retry }}
       run: |
-        if [ "$RUNNER_OS" = Windows ] && [ "$RUNNER_ARCH" = ARM64 ] &&
+        if { { [ "$RUNNER_OS" = Windows ] && [ "$RUNNER_ARCH" = ARM64 ]; } ||
+          [ "$CACHE_NODE_MODULES" = true ]; } &&
           [ "${VALIDATE_NO_CACHE:-false}" != true ]; then
           echo "cache=true" >> "$GITHUB_OUTPUT"
         else
           echo "cache=false" >> "$GITHUB_OUTPUT"
         fi
         echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+        echo "arch=$(node -p process.arch)" >> "$GITHUB_OUTPUT"
+        echo "npm-cache-dir=$(npm config get cache)" >> "$GITHUB_OUTPUT"
+        if [ "$RETRY" = true ]; then
+          echo "npm-ci=node tools/ci/npm-ci-with-retry.ts --no-audit --no-fund" >> "$GITHUB_OUTPUT"
+        else
+          echo "npm-ci=npm ci" >> "$GITHUB_OUTPUT"
+        fi
 
     # Paths and key must match the lookup and save steps below.
     - name: ♻️ Restore node_modules
@@ -36,6 +69,20 @@ runs:
           steps.key.outputs.node }}-${{ hashFiles('package-lock.json',
           'patches/**', '.github/actions/npm-ci/*') }}
 
+    # Same key as setup-node's npm cache, so either one warms the other.
+    - name: ♻️ Restore the npm cache
+      if:
+        inputs.npm-cache == 'true' && steps.key.outputs.cache == 'true' &&
+        steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache@v5.0.3
+      with:
+        path: ${{ steps.key.outputs.npm-cache-dir }}
+        key:
+          node-cache-${{ runner.os }}-${{ steps.key.outputs.arch }}-npm-${{
+          hashFiles('package-lock.json') }}
+        restore-keys:
+          node-cache-${{ runner.os }}-${{ steps.key.outputs.arch }}-npm-
+
     # npm install on the restored tree adds only the workspace links and runs
     # the same root postinstall/prepare and workspace prepare scripts npm ci
     # runs. --offline fails on anything the tree lacks, and an install that
@@ -44,18 +91,22 @@ runs:
     - name: 📥 Install from the restored node_modules
       if: steps.restore.outputs.cache-hit == 'true'
       shell: bash
+      env:
+        NPM_CI: ${{ steps.key.outputs.npm-ci }}
       run: |
         if npm install --offline --no-audit --no-fund && git diff --quiet -- package-lock.json; then
           exit 0
         fi
         echo "::warning::Restored node_modules did not match package-lock.json; running npm ci"
         git checkout -- package-lock.json
-        npm ci
+        $NPM_CI
 
     - name: 📥 npm ci
       if: steps.restore.outputs.cache-hit != 'true'
       shell: bash
-      run: npm ci
+      env:
+        NPM_CI: ${{ steps.key.outputs.npm-ci }}
+      run: $NPM_CI
 
     # Parallel jobs miss together and only the first save wins; the others
     # skip the ~45s tar instead of failing to reserve the key.
