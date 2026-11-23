@@ -220,10 +220,9 @@ export async function attributeReferralAtSignup(input: {
 }
 
 /**
- * Resolve a referral handle to the org it credits. Usernames win (a personal
- * link credits that person's personal org, exactly as before); otherwise a
- * live team org slug credits that team org. Usernames and org slugs share one
- * namespace, so at most one matches in practice.
+ * Resolve a referral handle to the org it credits: a username credits that
+ * person's personal org, a team org slug credits that team org. Usernames and
+ * org slugs share one namespace, so at most one matches.
  */
 export async function resolveReferrerByCode(
 	db: D1Database,
