@@ -234,7 +234,15 @@ async function buildDestHeadRewriteFiles(input: {
 			env: input.env,
 			repoId: input.repoId,
 			commit: input.destHead,
-		}).catch(() => null)
+		}).catch((error: unknown) => {
+			// Keep the fork going with the manifest rewrite; the source
+			// references then fail the fork's own checks, not the fork itself.
+			console.warn(
+				`Forked artifact repo "${input.repoId}" tree at ${input.destHead} is unreadable; renamed kody.emits topics are rewritten in package.json only.`,
+				error,
+			)
+			return null
+		})
 		if (tree) {
 			const originFiles = { ...tree, 'package.json': manifestContent }
 			return collectChangedForkFiles({
