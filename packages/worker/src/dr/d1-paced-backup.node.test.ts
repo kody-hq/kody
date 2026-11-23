@@ -721,6 +721,120 @@ test('delta night reuses previous staging manifest and index', async () => {
 	).toBeGreaterThan(0)
 })
 
+test('delta resume seeks the previous index part instead of rereading from part 0', async () => {
+	const { client, objects } = createMemoryS3()
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(`
+		CREATE TABLE items (
+			id TEXT PRIMARY KEY NOT NULL,
+			body TEXT NOT NULL
+		);
+	`)
+	const rowCount = 60
+	const insert = sqlite.prepare(`INSERT INTO items (id, body) VALUES (?, ?)`)
+	for (let i = 1; i <= rowCount; i += 1) insert.run(`i${i}`, 'x'.repeat(500))
+	const env = createEnv({ APP_DB: createAppD1(sqlite) })
+	const baseDay = '2026-10-23' // Friday
+	const nextDay = '2026-10-24' // Saturday, a delta night
+	// Small parts so the previous night's index spans many part files, like
+	// the night after a weekly full base.
+	const base = await runD1PacedBackupTick({
+		env,
+		now: new Date(`${baseDay}T01:00:00.000Z`),
+		s3: client,
+		partMaxBytes: 2_000,
+		walkerOpts: { ...fastWalker, minPage: 2, maxPage: 2 },
+	})
+	expect(base.nightsSealed).toBe(1)
+	const prevIndexPartKeyPattern = new RegExp(
+		`/${baseDay}/.*index/items\\.parts/`,
+	)
+	const prevIndexParts = [...objects.keys()].filter(
+		(key) => key.startsWith('daily/') && prevIndexPartKeyPattern.test(key),
+	).length
+	expect(prevIndexParts).toBeGreaterThan(10)
+
+	sqlite
+		.prepare(`UPDATE items SET body = ? WHERE id = ?`)
+		.run('changed', `i${rowCount - 5}`)
+	sqlite.prepare(`DELETE FROM items WHERE id = ?`).run('i30')
+
+	const reference = createMemoryS3()
+	for (const [key, value] of objects) reference.objects.set(key, value)
+	await runD1PacedBackupTick({
+		env,
+		now: new Date(`${nextDay}T01:00:00.000Z`),
+		s3: reference.client,
+		walkerOpts: fastWalker,
+	})
+	await sqlite.exec(`DELETE FROM scheduled_lane_leases`)
+
+	let prevIndexReads = 0
+	const getBytes = client.getBytes.bind(client)
+	client.getBytes = async (key) => {
+		if (prevIndexPartKeyPattern.test(key)) prevIndexReads += 1
+		return await getBytes(key)
+	}
+	let nowMs = 0
+	const perTickReads: Array<number> = []
+	let ticks = 0
+	while (ticks < 200) {
+		ticks += 1
+		prevIndexReads = 0
+		const tick = await runD1PacedBackupTick({
+			env,
+			now: new Date(`${nextDay}T01:00:00.000Z`),
+			s3: client,
+			walkerOpts: {
+				minPage: 2,
+				maxPage: 2,
+				minGapMs: 0,
+				budgetMs: 50,
+				sleep: async () => {
+					nowMs += 100
+				},
+				now: () => nowMs,
+			},
+		})
+		perTickReads.push(prevIndexReads)
+		if (tick.manifestsWritten === 1) break
+	}
+	// One page per tick, so the night takes many resumes.
+	expect(ticks).toBeGreaterThan(20)
+	// Each resume reads only the part under the cursor and the next one,
+	// never the whole previous index again.
+	expect(Math.max(...perTickReads)).toBeLessThanOrEqual(2)
+
+	const manifestKey = pacedD1StagingManifestKey(nextDay, 'kody')
+	const resumed = parsePacedD1NightManifest(
+		JSON.parse((await client.getText(manifestKey))!.text),
+	)
+	const oneTick = parsePacedD1NightManifest(
+		JSON.parse((await reference.client.getText(manifestKey))!.text),
+	)
+	expect(resumed.tables.items?.mode).toBe('delta')
+	expect(resumed.tables.items).toMatchObject({
+		count: rowCount - 1,
+		upserts: 1,
+		deletes: 1,
+		checksum: oneTick.tables.items?.checksum,
+	})
+	const deltaLines = async (store: ReturnType<typeof createMemoryS3>) => {
+		const dataPrefix = `staging/${nextDay}/d1-paced/kody/data/items.parts/`
+		const lines: Array<string> = []
+		for (const key of [...store.objects.keys()].filter((key) =>
+			key.startsWith(dataPrefix),
+		)) {
+			const text = (await store.client.getText(key))!.text
+			lines.push(...text.split('\n').filter(Boolean))
+		}
+		return lines.sort()
+	}
+	const resumedLines = await deltaLines({ client, objects })
+	expect(resumedLines).toEqual(await deltaLines(reference))
+	expect(resumedLines.filter((line) => line.startsWith('D\t'))).toHaveLength(1)
+})
+
 test('missing JOBS_DB binding is skipped without failing the tick', async () => {
 	const { client } = createMemoryS3()
 	const env = createEnv({
