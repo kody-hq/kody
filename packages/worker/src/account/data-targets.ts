@@ -392,6 +392,16 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	// Publish builds (publish-offload): short-lived upload jobs for a package
 	// the person owns or published. Their R2 chunks expire with the build.
+	...(['owner_user_id', 'requester_user_id'] as const).map(
+		(parentUserColumn) =>
+			({
+				kind: 'bucket_parent',
+				table: 'publish_build_chunks',
+				parentTable: 'publish_builds',
+				childParentColumn: 'build_id',
+				parentUserColumn,
+			}) as const,
+	),
 	{
 		kind: 'user_columns',
 		table: 'publish_builds',
