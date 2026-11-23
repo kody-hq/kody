@@ -200,6 +200,12 @@ export async function ensureCommunityFlowSchema(db: D1Database) {
 			created_at TEXT NOT NULL,
 			rotated_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS app_starters (
+			package_id TEXT PRIMARY KEY NOT NULL,
+			rank INTEGER NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			note TEXT
+		)`,
 		`CREATE TABLE IF NOT EXISTS published_bundle_artifacts (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL,
