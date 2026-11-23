@@ -129,6 +129,8 @@ import {
 	refuseUnapprovedAnonymousServe,
 } from '#worker/package-runtime/package-app-anonymous-serve.ts'
 import { wantsJson } from '#worker/utils.ts'
+import { applyPackageAppDefaults } from '#worker/package-runtime/package-app-defaults.ts'
+import { refusePackageAppWriteOverRateLimit } from '#worker/package-runtime/package-app-default-rate-limit.ts'
 import {
 	pushServerTiming,
 	type ServerTimingEntry,
@@ -1079,6 +1081,15 @@ async function servePackageAppRequestWithId(input: {
 			)
 		}
 	}
+	const overRateLimit = await refusePackageAppWriteOverRateLimit({
+		request,
+		env,
+		packageId: savedPackage.id,
+		synthetic: dispatch?.synthetic === true,
+	})
+	if (overRateLimit) {
+		return attachPackageAppServerTiming(overRateLimit, serverTiming)
+	}
 	// Custom hostnames are not the app origin. `getAppBaseUrl(requestUrl)`
 	// would otherwise treat the customer Host as first-party and point
 	// package runtime API calls at the custom domain.
@@ -1345,6 +1356,7 @@ async function servePackageAppRequestWithId(input: {
 	let servedPublishedCommit: string | null = null
 	let servedRepoId: string | null = null
 	let clientReadableCookieNames: ReadonlyArray<string> = []
+	let appDescription: string | null = null
 	let visitNonce: string | null = null
 	try {
 		// The supplier flag depends only on the owning org, so it runs beside
@@ -1401,6 +1413,7 @@ async function servePackageAppRequestWithId(input: {
 		clientReadableCookieNames = getPackageAppClientReadableCookieNames(
 			packageManifest.manifest,
 		)
+		appDescription = packageManifest.manifest.kody.description
 		const suppliersEnabled = await suppliersEnabledPending
 		const visitorNeeds = suppliersEnabled
 			? savedCredentialNeeds(
@@ -1739,10 +1752,22 @@ async function servePackageAppRequestWithId(input: {
 			runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
 		})
 		const requestUrl = new URL(request.url)
+		const appName = getPackageNameLeaf(savedPackage.name)
+		const served = await applyPackageAppDefaults({
+			request,
+			response: fetched,
+			appName,
+			description: appDescription,
+			appHomePath: `${packageAppBasePath({
+				mount: packagePath.mount,
+				username: packagePath.username,
+				kodyId: appName,
+			})}/`,
+		})
 		// One pass for cookie scrub/filter/HttpOnly, timing, and the visit
 		// watch; inside the origin boundary it merges with cache headers and
 		// the run-id strip.
-		return deferPackageAppResponseRewrite(fetched, {
+		return deferPackageAppResponseRewrite(served, {
 			domainScrub: {
 				responseHostname: requestUrl.hostname,
 				packageAppApexHostnames: listPackageAppOrigins({ env }).map(

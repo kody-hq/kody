@@ -70,6 +70,7 @@ test('kody dev check passes on the fixture', async () => {
 	})
 	assert.equal(code, 0)
 	assert.match(stdout, /passed/)
+	assert.match(stdout, /^Tip: Run `kody app check` while you develop/m)
 	assert.ok(sentFiles.includes('package.json'))
 })
 
@@ -89,6 +90,10 @@ test('kody dev check via CLI exits without leaving the mock server open', async 
 		)
 		assert.equal(code, 0)
 		assert.match(stdout, /"ok": true/)
+		assert.match(
+			JSON.parse(stdout).hints[0],
+			/^Run `kody app check` while you develop/,
+		)
 	} finally {
 		process.chdir(previous)
 	}

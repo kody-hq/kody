@@ -848,6 +848,34 @@ See also
 exports, jobs, webhooks, and subscriptions (`kody dev job|webhook|emit` when the
 CLI is available).
 
+## Platform defaults
+
+Every hosted package app gets these from Kody, so an app is complete even before
+you add them yourself. Anything your app sets wins.
+
+- **404 page.** When a page visit gets a 404 that is not HTML (for example
+  `new Response('Not found', { status: 404 })`), visitors see a friendly page
+  that links to the app home. API calls and your own HTML 404 pages are served
+  exactly as you send them.
+- **Meta tags.** HTML pages get the tags they are missing at the end of
+  `<head>`: `viewport`, `<title>` (the package name), `description` and
+  `og:description` (from `kody.description`), and `og:title` (your page title).
+- **Favicon.** Pages without a `<link rel="icon">` get the package's generated
+  icon. Link your own icon from `kody.app.assets` to replace it.
+- **Rate limiting.** Each visitor IP can send 300 writes (POST, PUT, PATCH,
+  DELETE) per minute to one app; after that Kody answers 429 with `Retry-After`.
+  Page loads, assets, and realtime sockets are not counted. Use
+  `kody.appRateLimit` for tighter or per-person limits, such as sign-up or
+  contact forms.
+- **Secret files.** Files and folders whose names start with a dot (`.env`,
+  `.dev.vars`, `.git/`) are never served from `kody.app.assets`; `.well-known/`
+  is. Keep secrets in Kody secrets and reference them with `{{secret:name}}`.
+
+Responses Kody changed carry an `x-kody-default` header (`not-found`, `head`, or
+`rate-limit`). Local `kody dev` serves your app as written, so run
+`kody app check` during development and fix what it shows to get the same
+quality locally.
+
 ## Smoke with packageAppFetch
 
 After publish, call `packageAppFetch` with the path, method, and body the

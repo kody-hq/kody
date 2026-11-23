@@ -1016,6 +1016,9 @@ export function parsePackageCheckResult(value: unknown): PackageCheckResult {
  * tree publish will not have. Soft-suggests `.kody/mocks.ts` when credentialed
  * fetch is detected. `offline` skips the server checks and says so.
  */
+export const devCheckAppCheckHint =
+	'Run `kody app check` while you develop to see your app on desktop and mobile, in light and dark, then fix what it shows.'
+
 export async function runDevCheck(input: {
 	target: KodyTarget
 	cwd?: string
@@ -1234,6 +1237,8 @@ export async function runDevCheck(input: {
 	}
 
 	const failed = checks.filter((check) => !check.ok)
+	// Optional and never counted as a check: it only recommends the browser check.
+	const appCheckHint = manifest.app?.entry ? devCheckAppCheckHint : null
 	if (input.json) {
 		input.io.stdout(
 			`${JSON.stringify(
@@ -1248,6 +1253,7 @@ export async function runDevCheck(input: {
 								ok: publishChecksOk,
 								...(publishChecksError ? { error: publishChecksError } : {}),
 							},
+					...(appCheckHint ? { hints: [appCheckHint] } : {}),
 					...(credentialSignals.length > 0
 						? {
 								credentialedFetch: {
@@ -1278,6 +1284,7 @@ export async function runDevCheck(input: {
 				? `kody dev check passed (${checks.length} checks, target ${input.target})\n`
 				: `kody dev check failed: ${failed.length}/${checks.length}\n`,
 		)
+		if (appCheckHint) input.io.stdout(`Tip: ${appCheckHint}\n`)
 	}
 	return failed.length === 0 ? 0 : 1
 }
