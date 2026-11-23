@@ -54,10 +54,12 @@ agent converting a newsletter slice of the worker to Effect 4. Thank you to
 feedback is what pushed us to redo the trial properly instead of drawing
 conclusions from a quick port. Thanks also to
 [@KrishRVH](https://github.com/KrishRVH) and
-[@mikearnaldi](https://github.com/mikearnaldi), whose feedback on
-[#5461](https://github.com/kody-hq/kody/pull/5461) shaped a later round: one
-`ManagedRuntime` per isolate, convert shared helpers once, Schema at boundaries,
-and measure a tree-shaken bundle.
+[@mikearnaldi](https://github.com/mikearnaldi) for their feedback on
+[#5461](https://github.com/kody-hq/kody/pull/5461), which shaped later rounds.
+Krish suggested one `ManagedRuntime` per isolate, converting shared helpers
+once, Schema at boundaries, and measuring a tree-shaken bundle. Mike pushed for
+comparing against a Promise baseline with the same telemetry, typed boundaries,
+and explicit errors.
 
 ## The short history
 
