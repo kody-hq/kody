@@ -11,7 +11,6 @@ import {
 	appStarterNoteSchema,
 	appStarterRankSchema,
 	appStartersOutputSchema,
-	runAppStarterMutation,
 } from './app-starter-shared.ts'
 
 export const adminAppStarterAddCapability = defineDomainCapability(
@@ -40,16 +39,15 @@ export const adminAppStarterAddCapability = defineDomainCapability(
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminAppStarterAdd',
-				() =>
-					runAppStarterMutation(async () => ({
-						starters: await addAppStarter({
-							env: ctx.env,
-							packageRef: args.package,
-							rank: args.rank,
-							enabled: args.enabled,
-							note: args.note,
-						}),
-					})),
+				async () => ({
+					starters: await addAppStarter({
+						env: ctx.env,
+						packageRef: args.package,
+						rank: args.rank,
+						enabled: args.enabled,
+						note: args.note,
+					}),
+				}),
 				{ successReason: () => `package=${args.package}` },
 			)
 		},

@@ -1,8 +1,5 @@
 import { z } from 'zod'
-import {
-	AppStarterError,
-	maxAppStarterNoteLength,
-} from '#worker/app-starters/service.ts'
+import { maxAppStarterNoteLength } from '#worker/app-starters/service.ts'
 
 const fieldErrorSchema = z.object({ field: z.string(), message: z.string() })
 
@@ -57,13 +54,3 @@ export const appStarterRankSchema = z
 	.min(1)
 	.optional()
 	.describe('1 is recommended first. Other starters shift to make room.')
-
-/** Capability errors carry the field list in the message. */
-export async function runAppStarterMutation<T>(run: () => Promise<T>) {
-	try {
-		return await run()
-	} catch (error) {
-		if (error instanceof AppStarterError) throw new Error(error.message)
-		throw error
-	}
-}
