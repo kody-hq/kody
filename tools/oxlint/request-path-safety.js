@@ -319,7 +319,7 @@ export const requireOutboundDeadlineRule = {
 		schema: [],
 		messages: {
 			missingDeadline:
-				'Wrap this outbound call in withDeadline({ label, timeoutMs }, (signal) => ...) from #worker/outbound/with-deadline.ts so a hung call fails with a typed DeadlineExceededError. Pick timeoutMs explicitly; there is no default.',
+				'Wrap this outbound call in withDeadline({ label, timeoutMs }, (signal) => ...) from #worker/outbound/with-deadline.ts so a hung call fails with a typed DeadlineExceededError. Pick timeoutMs explicitly; there is no default. See docs/contributing/request-handlers.md.',
 		},
 	},
 	createOnce(context) {
@@ -352,7 +352,7 @@ export const noFloatingPromiseRule = {
 		schema: [],
 		messages: {
 			floating:
-				'This promise floats: await it, return it, or pass it to waitUntil. The request can finish (and the isolate stop) before a floating promise settles, and its rejection is never observed.',
+				'This promise floats: await it, return it, or pass it to waitUntil. The request can finish (and the isolate stop) before a floating promise settles, and its rejection is never observed. See docs/contributing/request-handlers.md.',
 		},
 	},
 	createOnce(context) {
@@ -444,7 +444,7 @@ export const noSwallowedErrorRule = {
 		schema: [],
 		messages: {
 			swallowed:
-				'This handler swallows the error. Rethrow it, return a typed failure ({ kind: ... } or a ...Failure(...) builder) for the edge mapper, map it with an ...ErrorResponse(...) edge mapper, push it onto warnings/failures, or report it with reportHandledError from #worker/outbound/typed-failure.ts.',
+				'This handler swallows the error. Rethrow it, return a typed failure ({ kind: ... } or a ...Failure(...) builder) for the edge mapper, map it with an ...ErrorResponse(...) edge mapper, push it onto warnings/failures, or report it with reportHandledError from #worker/outbound/typed-failure.ts. See docs/contributing/request-handlers.md.',
 		},
 	},
 	createOnce(context) {
