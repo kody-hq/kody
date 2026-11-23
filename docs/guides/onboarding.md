@@ -5,7 +5,7 @@ summary:
   First-run guide for a connected agent. Teach lightly what Kody is and is not,
   look at what is already in this agent (connections, skills, memories,
   instructions, repeating processes), propose a few to move into Kody, and help
-  move one. If there is little to move, offer six first-win ideas instead. Set
+  move one. If there is little to move, offer seven first-win ideas instead. Set
   up integrations with clear difficulty. Then Step 3.
 category: platform
 audience: agents
@@ -29,7 +29,7 @@ Agent notes — for AI agents driving first-run from a copied onboarding prompt:
 - Propose, then wait. Do not migrate anything on your own, and never paste or
   transmit secret values.
 - Fallback: if you find little, or this host cannot be inspected, say so in one
-  sentence, ask a couple of questions if that would help, then offer the six
+  sentence, ask a couple of questions if that would help, then offer the seven
   first-win ideas below. Wait for their pick and do one small win from that
   playbook.
 - Stay on that one thing. One small win, then Step 3.
@@ -138,7 +138,9 @@ doing anything else.
    Only pursue this when the connected host can be woken asynchronously (cloud
    agent with an API, webhook, or wake URL).
 5. **Trigger Kody from Slack or Raycast**: a webhook that runs outside chat.
-6. **Something else**: they name it, and you do one small win from that answer.
+6. **Make me a small app**: a small private app for one thing they do often,
+   forked from `@kody/app-starter`.
+7. **Something else**: they name it, and you do one small win from that answer.
 
 Then follow the matching playbook. One small win, then send them to
 `/onboarding/step-3`.
@@ -193,6 +195,13 @@ chat. Open `search({ entity: "guide:triggers" })` for inbound webhooks. Raycast
 same webhook path; talking _to_ Slack later is `guide:provider_slack` and is a
 different job. Persist one webhook handler, mint the URL from package settings,
 and send one test POST.
+
+### Make me a small app
+
+Ask who the app is for and the one thing it should do. Open
+`search({ entity: "guide:making_great_apps" })`, fork `@kody/app-starter`, and
+change its content and one page. Run `kody app check` if you have a shell and
+fix what it shows, then publish. One small app, then Step 3.
 
 ### Something else
 
