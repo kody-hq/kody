@@ -72,7 +72,8 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
 - [ ] Quarterly: seal verification + verify every Mailbox owner dump against its
       sealed index + spot-check StorageRunner/R2/artifact restore into a
       non-production target (or full UI production restore only during a real
-      incident, after a fresh drill; the drill replays the newest day from the
-      last week that every paced source sealed).
+      incident, after a fresh drill with the drill day set to the day being
+      restored; leave the drill day empty only when restoring the newest day
+      from the last week that every paced source sealed).
 - [ ] After material schema/storage/encryption changes: extra drill before
       trusting the newest sealed day.

@@ -79,25 +79,43 @@ function pacedDrillProgressKey(day: string, runId: string): string {
 	return `staging/${day}/d1-paced/isolated-restore-drill/${runId}.json`
 }
 
+async function isPacedDaySealed(
+	env: BackupEnvironment,
+	day: string,
+): Promise<boolean> {
+	const reader = bucketReader(env.BACKUP_BUCKET)
+	const sealed = await Promise.all(
+		pacedSourceDatabases(env).map((source) =>
+			loadSealedPacedD1Manifest({ reader, source, day }),
+		),
+	)
+	return sealed.every((night) => night !== null)
+}
+
 /** Most recent day, up to a week back, sealed by every paced source. */
 export async function latestPacedSealedDay(
 	env: BackupEnvironment,
 	now: Date,
 ): Promise<string> {
-	const reader = bucketReader(env.BACKUP_BUCKET)
-	const sources = pacedSourceDatabases(env)
 	for (let back = 0; back <= 7; back += 1) {
 		const day = utcDay(new Date(now.getTime() - back * 86_400_000))
-		const sealed = await Promise.all(
-			sources.map((source) =>
-				loadSealedPacedD1Manifest({ reader, source, day }),
-			),
-		)
-		if (sealed.every((night) => night !== null)) return day
+		if (await isPacedDaySealed(env, day)) return day
 	}
 	throw new BackupError(
 		'paced-drill-seal-missing',
 		'no day in the last week has sealed paced manifests for every source',
+	)
+}
+
+/** An operator-chosen drill day, refused unless every paced source sealed it. */
+export async function requirePacedSealedDay(
+	env: BackupEnvironment,
+	day: string,
+): Promise<string> {
+	if (await isPacedDaySealed(env, day)) return day
+	throw new BackupError(
+		'paced-drill-seal-missing',
+		`${day} has no sealed paced manifest for every source`,
 	)
 }
 
