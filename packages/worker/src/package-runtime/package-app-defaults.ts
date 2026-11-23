@@ -13,7 +13,8 @@ import { buildCommunityIconFallbackSvg } from '#worker/community/community-icon-
  *   Open Graph title and description, and a favicon (the package's
  *   generated icon). Tags the app already sets always win.
  *
- * Every response Kody changes carries {@link packageAppDefaultHeader}.
+ * Kody-made responses and HTML documents whose head Kody checked carry
+ * {@link packageAppDefaultHeader}.
  */
 
 export const packageAppDefaultHeader = 'x-kody-default'
@@ -187,6 +188,34 @@ function escapeAttribute(value: string) {
 		.replaceAll('>', '&gt;')
 }
 
+const namedEntities: Record<string, string> = {
+	amp: '&',
+	lt: '<',
+	gt: '>',
+	quot: '"',
+	apos: "'",
+	nbsp: '\u00a0',
+}
+
+/** Page text and attributes arrive as source markup; decode before re-escaping. */
+function decodeHtmlEntities(value: string) {
+	return value.replace(
+		/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi,
+		(match, entity: string) => {
+			if (entity[0] === '#') {
+				const code =
+					entity[1]?.toLowerCase() === 'x'
+						? Number.parseInt(entity.slice(2), 16)
+						: Number.parseInt(entity.slice(1), 10)
+				return Number.isFinite(code) && code <= 0x10ffff
+					? String.fromCodePoint(code)
+					: match
+			}
+			return namedEntities[entity.toLowerCase()] ?? match
+		},
+	)
+}
+
 function escapeText(value: string) {
 	return value
 		.replaceAll('&', '&amp;')
@@ -231,8 +260,11 @@ function injectPackageAppHeadDefaults(
 			},
 		})
 		.on('head title', {
-			element() {
+			element(element) {
 				titleSeen = true
+				element.onEndTag((end) => {
+					if (!title.trim()) end.before(escapeText(input.appName))
+				})
 			},
 			text(chunk) {
 				title += chunk.text
@@ -255,11 +287,13 @@ function injectPackageAppHeadDefaults(
 							'<meta name="viewport" content="width=device-width, initial-scale=1" />',
 						)
 					}
-					const pageTitle = title.trim() || input.appName
-					if (!titleSeen || !title.trim()) {
+					const pageTitle = decodeHtmlEntities(title).trim() || input.appName
+					if (!titleSeen) {
 						tags.push(`<title>${escapeText(input.appName)}</title>`)
 					}
-					const description = seen.description?.trim() || input.description
+					const description =
+						decodeHtmlEntities(seen.description ?? '').trim() ||
+						input.description
 					if (seen.description === null && input.description) {
 						tags.push(
 							`<meta name="description" content="${escapeAttribute(input.description)}" />`,
@@ -302,11 +336,15 @@ export async function applyPackageAppDefaults(
 		!isHtmlResponse(response)
 	) {
 		await response.body?.cancel()
-		return buildPackageAppNotFoundPage({
+		const page = buildPackageAppNotFoundPage({
 			appName: input.appName,
 			appHomePath: input.appHomePath,
 			method: request.method,
 		})
+		for (const cookie of response.headers.getSetCookie()) {
+			page.headers.append('Set-Cookie', cookie)
+		}
+		return page
 	}
 	if (
 		request.method === 'GET' &&

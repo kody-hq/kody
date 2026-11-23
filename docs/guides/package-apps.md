@@ -871,10 +871,11 @@ you add them yourself. Anything your app sets wins.
   `.dev.vars`, `.git/`) are never served from `kody.app.assets`; `.well-known/`
   is. Keep secrets in Kody secrets and reference them with `{{secret:name}}`.
 
-Responses Kody changed carry an `x-kody-default` header (`not-found`, `head`, or
-`rate-limit`). Local `kody dev` serves your app as written, so run
-`kody app check` during development and fix what it shows to get the same
-quality locally.
+Kody marks its work with an `x-kody-default` header: `not-found` and
+`rate-limit` responses come from Kody, and `head` means Kody checked the HTML
+`<head>` and added any missing tags. Local `kody dev` serves your app as
+written, so run `kody app check` during development and fix what it shows to get
+the same quality locally.
 
 ## Smoke with packageAppFetch
 

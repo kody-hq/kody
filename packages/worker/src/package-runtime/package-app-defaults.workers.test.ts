@@ -109,7 +109,38 @@ test('the og:title follows the page title the app set', async () => {
 	})
 	const body = await response.text()
 	expect(body).toContain(
-		'<meta property="og:title" content="Shopping &amp;amp; Errands" />',
+		'<meta property="og:title" content="Shopping &amp; Errands" />',
 	)
 	expect(body).not.toContain('<title>notes</title>')
+})
+
+test('an empty title is filled in place, so the page has one title', async () => {
+	const response = await applyPackageAppDefaults({
+		...base,
+		request: pageVisit(),
+		response: new Response(
+			'<html><head><title></title></head><body></body></html>',
+			{ headers: { 'Content-Type': 'text/html' } },
+		),
+	})
+	const body = await response.text()
+	expect(body).toContain('<title>notes</title>')
+	expect(body.match(/<title>/g)).toHaveLength(1)
+	expect(body).toContain('<meta property="og:title" content="notes" />')
+})
+
+test('the friendly 404 keeps the cookies the app set', async () => {
+	const fetched = new Response('Not found', { status: 404 })
+	fetched.headers.append('Set-Cookie', 'a=1; Path=/; HttpOnly')
+	fetched.headers.append('Set-Cookie', 'b=2; Path=/; HttpOnly')
+	const response = await applyPackageAppDefaults({
+		...base,
+		request: pageVisit(),
+		response: fetched,
+	})
+	expect(response.headers.get('x-kody-default')).toBe('not-found')
+	expect(response.headers.getSetCookie()).toEqual([
+		'a=1; Path=/; HttpOnly',
+		'b=2; Path=/; HttpOnly',
+	])
 })
