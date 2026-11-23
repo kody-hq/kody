@@ -54,9 +54,9 @@ export function mapRoutePublishBuildFailure(
 			})
 		case 'deadline_exceeded':
 			return new ExecutionContextError({
-				status: 504,
+				status: 503,
 				code: 'execution_context_unavailable',
-				message: `The publish build did not finish in time (${failure.label} exceeded ${failure.timeoutMs}ms).`,
+				message: `Kody storage did not answer in time (${failure.label} exceeded ${failure.timeoutMs}ms). Run the publish again in a moment.`,
 			})
 		default:
 			return assertNever(failure, 'route publish build failure')
