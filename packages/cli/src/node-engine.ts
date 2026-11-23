@@ -3,18 +3,30 @@ const minimumNodeVersion = [22, 19, 0] as const
 const minimumNodeLabel = minimumNodeVersion.slice(0, 2).join('.')
 
 /**
- * Refuse `execute --local` before workerd download or spawn when Node is too old.
- * `package.json` `engines` is advisory; npx and a direct `node` launch do not enforce it.
+ * Refuse a local-runtime command before any download or spawn when Node is too
+ * old. `package.json` `engines` is advisory; npx and a direct `node` launch do
+ * not enforce it.
  */
-export function assertLocalExecuteNodeEngine(
+export function assertNodeEngine(
+	input: { command: string; reason: string },
 	version: string = process.versions.node,
 ): void {
 	const parsed = parseNodeVersion(version)
 	if (parsed && compareVersions(parsed, minimumNodeVersion) >= 0) return
 	const reported = version.trim() || 'unknown'
 	throw new Error(
-		`execute --local needs Node.js ${minimumNodeLabel} or newer (this process is v${reported}). Local execute runs your module in workerd. Upgrade Node.js and retry.`,
+		`${input.command} needs Node.js ${minimumNodeLabel} or newer (this process is v${reported}). ${input.reason} Upgrade Node.js and retry.`,
 	)
+}
+
+export const localExecuteNodeEngine = {
+	command: 'execute --local',
+	reason: 'Local execute runs your module in workerd.',
+}
+
+export const appCheckNodeEngine = {
+	command: 'kody app check',
+	reason: 'The check runs Lighthouse 13.',
 }
 
 function parseNodeVersion(

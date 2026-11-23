@@ -48,7 +48,7 @@ import {
 	sessionSupportsCredentialCallMap,
 	type CredentialCallMapInput,
 } from './credential-call-map.js'
-import { assertLocalExecuteNodeEngine } from './node-engine.js'
+import { assertNodeEngine, localExecuteNodeEngine } from './node-engine.js'
 import { apiTokenEnvVar } from './defaults.js'
 import {
 	hasSavedPackageImports,
@@ -238,7 +238,7 @@ export const localExecutePackageGraphResolveStatus =
 export async function runLocalExecute(
 	input: LocalExecuteInput,
 ): Promise<ToolCallResult> {
-	assertLocalExecuteNodeEngine()
+	assertNodeEngine(localExecuteNodeEngine)
 	assertTokenSafeApiUrl(input.apiUrl)
 	const setupStartedAt = new Date()
 	const setupStartedMs = performance.now()
