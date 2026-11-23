@@ -462,12 +462,18 @@ async function handleInvoicePaid(input: {
 	const pending = await input.env.APP_DB.prepare(
 		`SELECT r.referee_stable_user_id, r.referrer_org_id
 		 FROM referrals r
-		 JOIN users u ON u.stable_user_id = r.referee_stable_user_id
-		 WHERE COALESCE(NULLIF(TRIM(u.personal_org_id), ''), u.stable_user_id) = ?
-		   AND u.deleted_at IS NULL
-		   AND r.status = 'pending'`,
+		 WHERE r.status = 'pending'
+		   AND r.referee_stable_user_id IN (
+		     SELECT u.stable_user_id FROM users u
+		     WHERE u.personal_org_id = ? AND u.deleted_at IS NULL
+		     UNION
+		     SELECT u.stable_user_id FROM users u
+		     WHERE u.stable_user_id = ?
+		       AND COALESCE(TRIM(u.personal_org_id), '') = ''
+		       AND u.deleted_at IS NULL
+		   )`,
 	)
-		.bind(org.id)
+		.bind(org.id, org.id)
 		.first<{ referee_stable_user_id: string; referrer_org_id: string }>()
 	if (pending) {
 		const referrerPaidPeriodEndAt = await latestReferrerPaidPeriodEnd({
