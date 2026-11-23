@@ -200,8 +200,8 @@ and send one test POST.
 
 Ask who the app is for and the one thing it should do. Open
 `search({ entity: "guide:making_great_apps" })`, fork `@kody/app-starter`, and
-change its content and one page. Publish it, then run `kody app check` if you
-have a shell and fix what it shows. One small app, then Step 3.
+change its content and one page. Run `kody app check` if you have a shell and
+fix what it shows, then publish. One small app, then Step 3.
 
 ### Something else
 
