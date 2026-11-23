@@ -76,6 +76,7 @@ const source = {
 }
 
 const janeManifest = '{"name":"@jane/demo"}'
+const tabbedJson = (value: unknown) => `${JSON.stringify(value, null, '\t')}\n`
 
 function mockDestRemote(remote: string, headCommit?: string | null) {
 	mockModule.resolveExistingArtifactSourceRepo.mockResolvedValue({
@@ -177,8 +178,6 @@ test('persistForkedArtifactRepoContents syncs only changed files on production r
 
 test('persistForkedArtifactRepoContents stamps dest HEAD and rewrites only dest package.json when dest HEAD is not the listing pin', async () => {
 	mockDestRemote(productionRemote, 'commit-head')
-	const tabbedJson = (value: unknown) =>
-		`${JSON.stringify(value, null, '\t')}\n`
 	mockModule.readArtifactFileAtCommit.mockResolvedValue(
 		new TextEncoder().encode(
 			tabbedJson({
@@ -225,6 +224,46 @@ test('persistForkedArtifactRepoContents stamps dest HEAD and rewrites only dest 
 					kody: { extra: true },
 					private: true,
 				}),
+			},
+		}),
+	)
+})
+
+test('persistForkedArtifactRepoContents renames emits topics across dest HEAD files when dest is ahead of the pin', async () => {
+	mockDestRemote(productionRemote, 'commit-head')
+	const headManifest = tabbedJson({
+		name: '@kody/github',
+		kody: { emits: { '@kody/github.pr.merged': { description: 'Merged' } } },
+	})
+	mockModule.readArtifactFileAtCommit.mockResolvedValue(
+		new TextEncoder().encode(headManifest),
+	)
+	mockModule.readArtifactTreeAtCommit.mockResolvedValue({
+		'package.json': headManifest,
+		'src/topics.ts': "export const merged = '@kody/github.pr.merged'\n",
+		'README.md': '# untouched',
+	})
+	mockModule.syncArtifactSourceSnapshot.mockResolvedValue('commit-rewritten')
+
+	await persist({ originCommit: 'commit-pin', targetKodyId: 'github' })
+
+	expect(mockModule.readArtifactTreeAtCommit).toHaveBeenCalledWith({
+		env,
+		repoId: 'package-dest',
+		commit: 'commit-head',
+	})
+	expect(mockModule.syncArtifactSourceSnapshot).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			existingHeadCommit: 'commit-head',
+			files: {
+				'package.json': tabbedJson({
+					name: '@jane/github',
+					kody: {
+						emits: { '@jane/github.pr.merged': { description: 'Merged' } },
+					},
+					private: true,
+				}),
+				'src/topics.ts': "export const merged = '@jane/github.pr.merged'\n",
 			},
 		}),
 	)
@@ -388,6 +427,39 @@ test('resolveCommunityForkArtifactsGitFallbackTree rewrites origin HEAD when des
 		repoId: 'package-origin',
 		commit: 'commit-head',
 	})
+})
+
+test('resolveCommunityForkArtifactsGitFallbackTree renames emits topics in origin HEAD files', async () => {
+	const { resolveCommunityForkArtifactsGitFallbackTree } =
+		await import('./artifact-repo-fork.ts')
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-head',
+	})
+	mockModule.readArtifactTreeAtCommit.mockResolvedValue({
+		'package.json': tabbedJson({
+			name: '@kody/discord',
+			kody: { emits: { '@kody/discord.message.created': {} } },
+		}),
+		'src/emit.ts': "emit('@kody/discord.message.created')\n",
+	})
+	const result = await resolveCommunityForkArtifactsGitFallbackTree({
+		env,
+		destRepoId: 'package-dest',
+		originRepoId: 'package-origin',
+		preparedOriginCommit: 'commit-pin',
+		preparedFiles: { 'package.json': janeManifest },
+		expectedPackageScope: 'jane',
+		targetKodyId: 'discord',
+		listingName: '@kody/discord',
+		targetName: '@jane/discord',
+	})
+	expect(result?.files['package.json']).toContain(
+		'"@jane/discord.message.created"',
+	)
+	expect(result?.files['src/emit.ts']).toBe(
+		"emit('@jane/discord.message.created')\n",
+	)
 })
 
 test('resolveCommunityForkArtifactsGitFallbackTree returns null when dest HEAD is ahead and origin tree is unavailable', async () => {

@@ -1581,6 +1581,7 @@ async function prepareForkFromOriginFiles(args: {
 		},
 		originPackageName: rewrittenManifest.originName ?? args.originName,
 		nextPackageName: rewrittenManifest.targetName,
+		topicRenames: rewrittenManifest.topicRenames,
 	})
 	const crossScopeReferences = scanCrossScopeReferences({
 		files: rewrittenFiles,

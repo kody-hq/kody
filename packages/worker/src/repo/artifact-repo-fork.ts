@@ -1,5 +1,6 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
+	collectChangedForkFiles,
 	rewriteForkedPackageSelfReferences,
 	rewritePackageManifestForFork,
 } from '#worker/community/fork-scan.ts'
@@ -225,6 +226,42 @@ async function buildDestHeadRewriteFiles(input: {
 		expectedPackageScope: input.expectedPackageScope,
 		targetKodyId: input.targetKodyId,
 	})
+	if (Object.keys(rewritten.topicRenames).length > 0) {
+		// Renamed emits topics must follow into emit calls and subscriptions,
+		// or the fork fails its own typecheck. Re-derive from dest HEAD's tree
+		// so later origin commits are kept.
+		const tree = await readArtifactTreeAtCommit({
+			env: input.env,
+			repoId: input.repoId,
+			commit: input.destHead,
+		}).catch((error: unknown) => {
+			// Permanent: an unreadable tree must not fail the fork. The user
+			// loses the source-side topic rewrite and fixes those emit calls
+			// before the fork's first publish.
+			console.warn(
+				JSON.stringify({
+					message: 'fork dest head tree unreadable',
+					repoId: input.repoId,
+					destHead: input.destHead,
+					impact: 'kody.emits renames applied to package.json only',
+					error: error instanceof Error ? error.message : String(error),
+				}),
+			)
+			return null
+		})
+		if (tree) {
+			const originFiles = { ...tree, 'package.json': manifestContent }
+			return collectChangedForkFiles({
+				originFiles,
+				rewrittenFiles: rewriteForkedPackageSelfReferences({
+					files: { ...originFiles, 'package.json': rewritten.content },
+					originPackageName: rewritten.originName ?? '',
+					nextPackageName: rewritten.targetName,
+					topicRenames: rewritten.topicRenames,
+				}),
+			})
+		}
+	}
 	if (rewritten.content === manifestContent) return {}
 	return { 'package.json': rewritten.content }
 }
@@ -320,6 +357,7 @@ export async function resolveCommunityForkArtifactsGitFallbackTree(input: {
 			},
 			originPackageName: input.listingName,
 			nextPackageName: input.targetName,
+			topicRenames: rewrittenManifest.topicRenames,
 		}),
 	}
 }

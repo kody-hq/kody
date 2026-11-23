@@ -162,6 +162,13 @@ record for upstream tracking. It never grants more access to the source.
   a new leaf returns that existing fork (`already_forked: true` and a short
   `message`) instead of creating a duplicate. Pass a different `@owner/leaf`
   when you want a second fork of the same listing.
+- Its own event topics follow the new name. `kody.emits` topics named after the
+  origin (`@kody/github.issue.opened`) become `@you/<leaf>.issue.opened`; any
+  other emits topic keeps its body and takes your scope. Exact references to
+  those topics in the manifest (subscriptions) and source (emit calls, topic
+  constants, docs) are rewritten too. Subscribers to the origin's topics do not
+  receive your fork's events. When you port upstream changes later, keep that
+  rename: publish rejects emits topics outside your scope.
 - **No saved package row is created**, so nothing runs yet — no imports, jobs,
   subscriptions, or package app. Lookups that need a saved package
   (`packageGet`, `packageGetGitRemote`) name the pending fork and point at

@@ -175,3 +175,148 @@ test('collectChangedForkFiles returns only rewritten paths', () => {
 		'src/index.ts': 'export const n = "@jane/demo"\n',
 	})
 })
+
+const githubManifest = `${JSON.stringify(
+	{
+		name: '@kody/github',
+		exports: { '.': './src/index.ts' },
+		kody: {
+			id: 'github',
+			description: 'GitHub events',
+			emits: {
+				'@kody/github.issue.opened': { description: 'Issue opened' },
+				'@kody/github.pr.merged': { description: 'PR merged' },
+				'@kody/ci.completed': { description: 'Not named after the package' },
+			},
+			subscriptions: {
+				'@kody/github.issue.opened': { handler: './src/on-issue.ts' },
+				'@kody/discord.message.created': { handler: './src/on-discord.ts' },
+			},
+		},
+	},
+	null,
+	'\t',
+)}\n`
+
+test('rewritePackageManifestForFork renames the package own kody.emits topics to the fork scope and leaf', () => {
+	const rewritten = rewritePackageManifestForFork({
+		manifestContent: githubManifest,
+		expectedPackageScope: 'tino-espinoza',
+		targetKodyId: 'my-github',
+	})
+	expect(rewritten.topicRenames).toEqual({
+		'@kody/github.issue.opened': '@tino-espinoza/my-github.issue.opened',
+		'@kody/github.pr.merged': '@tino-espinoza/my-github.pr.merged',
+		'@kody/ci.completed': '@tino-espinoza/ci.completed',
+		'@kody/github.*': '@tino-espinoza/my-github.*',
+	})
+	const kody = (
+		JSON.parse(rewritten.content) as { kody: Record<string, object> }
+	).kody
+	expect(Object.keys(kody['emits']!)).toEqual([
+		'@tino-espinoza/my-github.issue.opened',
+		'@tino-espinoza/my-github.pr.merged',
+		'@tino-espinoza/ci.completed',
+	])
+	// Own-topic subscriptions follow; other packages' topics stay put.
+	expect(Object.keys(kody['subscriptions']!)).toEqual([
+		'@tino-espinoza/my-github.issue.opened',
+		'@kody/discord.message.created',
+	])
+})
+
+test('rewritePackageManifestForFork keeps topics already in the fork namespace', () => {
+	const rewritten = rewritePackageManifestForFork({
+		manifestContent: githubManifest.replaceAll('@kody/', '@jane/'),
+		expectedPackageScope: 'jane',
+		targetKodyId: 'github',
+	})
+	expect(rewritten.topicRenames).toEqual({})
+	expect(rewritten.content).toContain('"@jane/github.issue.opened"')
+})
+
+test('rewriteForkedPackageSelfReferences rewrites own topic references in emit calls, constants, and docs', () => {
+	const { content, originName, targetName, topicRenames } =
+		rewritePackageManifestForFork({
+			manifestContent: githubManifest,
+			expectedPackageScope: 'jane',
+			targetKodyId: 'github',
+		})
+	const files = rewriteForkedPackageSelfReferences({
+		files: {
+			'package.json': content,
+			'src/events/topics.ts': [
+				"export const opened = '@kody/github.issue.opened'",
+				'export const merged = "@kody/github.pr.merged"',
+				'export const other = `@kody/github.issue.opened.v2`',
+				"export const foreign = '@kody/discord.message.created'",
+			].join('\n'),
+			'src/emit.ts':
+				"await emit({ topic: '@kody/github.pr.merged' }); import x from '@kody/github'",
+			'README.md':
+				'Emits `@kody/github.*` events such as @kody/github.issue.opened.',
+		},
+		originPackageName: originName!,
+		nextPackageName: targetName,
+		topicRenames,
+	})
+	expect(files['src/events/topics.ts']).toBe(
+		[
+			"export const opened = '@jane/github.issue.opened'",
+			'export const merged = "@jane/github.pr.merged"',
+			// Not a declared topic: only an exact topic match is renamed.
+			'export const other = `@kody/github.issue.opened.v2`',
+			"export const foreign = '@kody/discord.message.created'",
+		].join('\n'),
+	)
+	expect(files['src/emit.ts']).toBe(
+		"await emit({ topic: '@jane/github.pr.merged' }); import x from '@jane/github'",
+	)
+	expect(files['README.md']).toBe(
+		'Emits `@jane/github.*` events such as @jane/github.issue.opened.',
+	)
+})
+
+test('rewritePackageManifestForFork refuses a fork name that merges two emits topics', () => {
+	expect(() =>
+		rewritePackageManifestForFork({
+			manifestContent: githubManifest,
+			expectedPackageScope: 'jane',
+			targetKodyId: 'ci',
+		}),
+	).not.toThrow()
+	const manifest = githubManifest.replace(
+		'"@kody/ci.completed"',
+		'"@kody/github.completed": { "description": "x" },\n\t\t\t\t"@kody/ci.completed"',
+	)
+	expect(() =>
+		rewritePackageManifestForFork({
+			manifestContent: manifest,
+			expectedPackageScope: 'jane',
+			targetKodyId: 'ci',
+		}),
+	).toThrow(
+		/"@kody\/github\.completed" and "@kody\/ci\.completed" to the same topic "@jane\/ci\.completed"/,
+	)
+})
+
+test('rewriteForkedPackageSelfReferences leaves binary files untouched', () => {
+	const binary = 'PNG\0@kody/github.pr.merged @kody/github'
+	const files = rewriteForkedPackageSelfReferences({
+		files: { 'logo.png': binary, 'data.bin': binary },
+		originPackageName: '@kody/github',
+		nextPackageName: '@jane/github',
+		topicRenames: { '@kody/github.pr.merged': '@jane/github.pr.merged' },
+	})
+	expect(files).toEqual({ 'logo.png': binary, 'data.bin': binary })
+})
+
+test('rewriteForkedPackageSelfReferences rewrites text files that contain U+FFFD', () => {
+	const files = rewriteForkedPackageSelfReferences({
+		files: { 'src/a.ts': "// \uFFFD\nemit('@kody/github.pr.merged')\n" },
+		originPackageName: '@kody/github',
+		nextPackageName: '@jane/github',
+		topicRenames: { '@kody/github.pr.merged': '@jane/github.pr.merged' },
+	})
+	expect(files['src/a.ts']).toBe("// \uFFFD\nemit('@jane/github.pr.merged')\n")
+})

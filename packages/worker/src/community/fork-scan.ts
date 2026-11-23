@@ -1,3 +1,4 @@
+import { shouldStoreArtifactBlobAsLatin1 } from '#universal/package-file-media.ts'
 import { listKodyPackageDependencyNames } from '#worker/package-registry/types.ts'
 import type { CrossScopeReference } from './types.ts'
 
@@ -24,11 +25,108 @@ function addCrossScopeReference(
 	results.push(input)
 }
 
+const scopedTopicPattern = /^@([a-z0-9][a-z0-9._-]*)\/(.+)$/
+
+/**
+ * Map each `kody.emits` topic the origin declares to the fork's topic. A
+ * topic named after the origin package (`@kody/github.issue.opened`) takes
+ * the fork's scope and leaf (`@jane/my-github.issue.opened`); any other
+ * topic body keeps its body and only takes the fork's scope. Unchanged
+ * topics are left out.
+ */
+export function planForkedEmittedTopics(input: {
+	topics: Array<string>
+	originName: string | null
+	targetName: string
+}): Record<string, string> {
+	const target = scopedPackageNamePattern.exec(input.targetName)
+	if (!target) return {}
+	const targetScope = target[1]!
+	const targetLeaf = input.targetName.slice(target[0].length)
+	const originLeaf = input.originName
+		? input.originName.trim().replace(scopedPackageNamePattern, '')
+		: null
+	const renames: Record<string, string> = {}
+	for (const topic of input.topics) {
+		const match = scopedTopicPattern.exec(topic.trim())
+		if (!match) continue
+		const body = match[2]!
+		const nextBody =
+			originLeaf && body.startsWith(`${originLeaf}.`)
+				? `${targetLeaf}${body.slice(originLeaf.length)}`
+				: body
+		const next = `@${targetScope}/${nextBody}`
+		if (next !== topic) renames[topic] = next
+	}
+	const owners = new Map<string, string>()
+	for (const topic of input.topics) {
+		const next = renames[topic] ?? topic
+		const other = owners.get(next)
+		if (other != null && other !== topic) {
+			throw new Error(
+				`Forking as "${input.targetName}" would rename kody.emits topics "${other}" and "${topic}" to the same topic "${next}". Choose a different package name for the fork.`,
+			)
+		}
+		owners.set(next, topic)
+	}
+	return renames
+}
+
+/**
+ * The topic body is lower-dot-case, so a reference ends where the next
+ * character cannot continue it (a sentence-ending `.` still ends it).
+ */
+const emittedTopicReferenceEnd = '(?![a-z0-9_-]|\\.[a-z0-9*])'
+
+function rewriteEmittedTopicReferences(
+	content: string,
+	topicRenames: Record<string, string>,
+) {
+	let next = content
+	for (const [origin, target] of Object.entries(topicRenames)) {
+		if (!next.includes(origin)) continue
+		const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+		next = next.replace(
+			new RegExp(`${escaped}${emittedTopicReferenceEnd}`, 'g'),
+			target,
+		)
+	}
+	return next
+}
+
+/** `@kody/github.*` globs in prose follow the origin's own topic prefix. */
+function withOwnTopicGlob(input: {
+	topicRenames: Record<string, string>
+	originName: string | null
+	targetName: string
+}) {
+	const { originName, targetName } = input
+	if (!originName || originName === targetName) return input.topicRenames
+	const ownPrefix = `${originName}.`
+	const usesOwnPrefix = Object.entries(input.topicRenames).some(
+		([origin, target]) =>
+			origin.startsWith(ownPrefix) && target.startsWith(`${targetName}.`),
+	)
+	return usesOwnPrefix
+		? { ...input.topicRenames, [`${originName}.*`]: `${targetName}.*` }
+		: input.topicRenames
+}
+
 export function rewritePackageManifestForFork(input: {
 	manifestContent: string
 	expectedPackageScope: string
 	targetKodyId: string
-}): { content: string; targetName: string; originName: string | null } {
+}): {
+	content: string
+	targetName: string
+	originName: string | null
+	/**
+	 * Origin `kody.emits` topic → fork topic. Emits topics must use the
+	 * package scope, so a fork renames them with the package; apply these to
+	 * every other file with `rewriteForkedPackageSelfReferences`.
+	 */
+	topicRenames: Record<string, string>
+} {
 	const parsed = JSON.parse(input.manifestContent) as Record<string, unknown>
 	const originName =
 		typeof parsed['name'] === 'string' && parsed['name'].trim()
@@ -49,10 +147,27 @@ export function rewritePackageManifestForFork(input: {
 		private: true,
 		kody: previousKody,
 	}
+	const emits = previousKody['emits']
+	const topicRenames = withOwnTopicGlob({
+		topicRenames: planForkedEmittedTopics({
+			topics:
+				typeof emits === 'object' && emits != null && !Array.isArray(emits)
+					? Object.keys(emits)
+					: [],
+			originName,
+			targetName,
+		}),
+		originName,
+		targetName,
+	})
 	return {
-		content: `${JSON.stringify(next, null, '\t')}\n`,
+		content: rewriteEmittedTopicReferences(
+			`${JSON.stringify(next, null, '\t')}\n`,
+			topicRenames,
+		),
 		targetName,
 		originName,
+		topicRenames,
 	}
 }
 
@@ -140,17 +255,35 @@ export function rewriteScopedReferences(input: {
 	return files
 }
 
+/** Snapshot strings that persist as raw bytes, not UTF-8 text. */
+function isByteSnapshotFile(path: string, content: string) {
+	return content.includes('\0') || shouldStoreArtifactBlobAsLatin1(path)
+}
+
 export function rewriteForkedPackageSelfReferences(input: {
 	files: Record<string, string>
 	originPackageName: string
 	nextPackageName: string
+	/** From `rewritePackageManifestForFork`: emit calls, subscriptions, docs. */
+	topicRenames?: Record<string, string>
 }): Record<string, string> {
-	return rewriteScopedReferences({
-		files: input.files,
+	const textFiles: Record<string, string> = {}
+	for (const [path, content] of Object.entries(input.files)) {
+		if (!isByteSnapshotFile(path, content)) textFiles[path] = content
+	}
+	const files = rewriteScopedReferences({
+		files: textFiles,
 		origin: input.originPackageName,
 		next: input.nextPackageName,
 		end: 'name',
 	})
+	for (const [path, content] of Object.entries(files)) {
+		files[path] = rewriteEmittedTopicReferences(
+			content,
+			input.topicRenames ?? {},
+		)
+	}
+	return { ...input.files, ...files }
 }
 
 /**

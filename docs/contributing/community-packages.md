@@ -234,7 +234,7 @@ Core logic: `packages/worker/src/community/`
 | `repo.ts`               | D1 queries                                                                        |
 | `activity-*`            | Admin activity feed and durable admin subscription dispatch                       |
 | `snapshot.ts`           | KV snapshot I/O                                                                   |
-| `fork-scan.ts`          | Manifest rewrite + cross-scope `kody:@…` / `kody.dependencies` scan               |
+| `fork-scan.ts`          | Manifest + emits-topic rewrite, cross-scope `kody:@…` / `kody.dependencies` scan  |
 | `og-image.ts`           | Community listing 1200×630 PNG on the shared `#worker/og` pipeline                |
 | `types.ts`              | Shared record types                                                               |
 
@@ -257,12 +257,13 @@ leaf errors if that name is taken. A repeat fork of the same listing errors with
 the existing fork instead of allocating another leaf. Persist stamps dest
 `published_commit` to dest HEAD (the default-branch tip the fork copied) and
 records that SHA on `community_forks.origin_commit`. When dest HEAD matches the
-listing pin used in prepare, only rewritten files (`package.json` and
-self-reference text) are applied. When dest HEAD is ahead of that pin, persist
-re-derives the `package.json` rewrite from dest HEAD instead of applying
-pin-relative edits that would revert later origin commits. When the origin
-Artifacts repo is missing, persist falls back to the full-tree snapshot sync.
-Isolate memory / Artifacts `MEMORY_LIMIT` failures surface as
+listing pin used in prepare, only rewritten files (`package.json`,
+self-reference text, and renamed `kody.emits` topic references) are applied.
+When dest HEAD is ahead of that pin, persist re-derives the rewrite from dest
+HEAD (the whole tree when emits topics are renamed, else only `package.json`)
+instead of applying pin-relative edits that would revert later origin commits.
+When the origin Artifacts repo is missing, persist falls back to the full-tree
+snapshot sync. Isolate memory / Artifacts `MEMORY_LIMIT` failures surface as
 `CommunityForkResourceLimitError` (honest UI/MCP copy; fork count does not
 increment). Records `community_forks` — **without** inserting `saved_packages`.
 Failed persist cleanup deletes the dest Artifacts repo, the inert entity source,
