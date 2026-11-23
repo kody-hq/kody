@@ -47,10 +47,10 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
 - [ ] Control plane `PRIMARY_WORKER_ORIGIN` points at production.
 - [ ] Set `DR_EXPORT_ENABLED=true` in production. The exporter skips nightly and
       manual runs while the gate is off.
-- [ ] The first nightly staging run writes `staging/{day}/exporter/summary.json`
-      with acceptable warnings; verify the mailbox and RunLog indexes and at
-      least one referenced owner dump against the recorded byte count and
-      SHA-256.
+- [ ] The first completed staging export (nightly, or finished by daytime
+      catch-up) writes `staging/{day}/exporter/summary.json` with acceptable
+      warnings; verify the mailbox and RunLog indexes and at least one
+      referenced owner dump against the recorded byte count and SHA-256.
 
 ## 5. Enable the seal schedule
 
