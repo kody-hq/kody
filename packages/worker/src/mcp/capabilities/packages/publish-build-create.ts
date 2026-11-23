@@ -276,7 +276,8 @@ async function createBuild(
 			bucket: ctx.env.REPO_SESSION_BLOBS,
 		})
 	} catch (error) {
-		// Opportunistic: a failed purge never blocks a new build.
+		// Opportunistic: a failed purge never blocks a new build. Expired
+		// uploads stay in storage until a later build start sweeps them.
 		reportHandledError('publish_builds.purge_expired', error)
 	}
 	const created = await createPublishBuild({

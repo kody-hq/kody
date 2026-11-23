@@ -606,6 +606,7 @@ export const tokenOperationDefinitions: Record<
 			} catch (error) {
 				await revokeProfile(caller, { profileId: profile.id }).catch(
 					(rollbackError: unknown) => {
+						// The token create still fails; the new profile stays active until revoked.
 						reportHandledError(
 							'api_token.revoke_profile_rollback',
 							rollbackError,
