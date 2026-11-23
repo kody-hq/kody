@@ -29,7 +29,7 @@ export function readSharedTokenUsage(css: string) {
 	return {
 		missing: sharedAppTokenNames.filter((name) => !declared.has(name)),
 		hasDark:
-			/prefers-color-scheme:\s*dark|data-theme\s*=\s*["']?dark|\.dark\b|light-dark\(/i.test(
+			/prefers-color-scheme:\s*dark|data-theme\s*=\s*["']?dark|\.dark(?![\w-])|light-dark\(/i.test(
 				css,
 			),
 	}

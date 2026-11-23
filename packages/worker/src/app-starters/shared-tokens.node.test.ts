@@ -22,3 +22,10 @@ test('a class-based dark theme counts as dark', () => {
 			.hasDark,
 	).toBe(true)
 })
+
+test('a class that only starts with dark does not count as dark', () => {
+	expect(
+		readSharedTokenUsage(':root{--color-bg:#fff;}.dark-mode-toggle{color:red;}')
+			.hasDark,
+	).toBe(false)
+})
