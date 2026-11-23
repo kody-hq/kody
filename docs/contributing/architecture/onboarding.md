@@ -14,6 +14,10 @@ optional first-win email guide share one contract:
 | Checklist                                | Verify email, complete the three wizard steps, then persist a package                                       |
 | [`first-win`](../../guides/first-win.md) | Optional email → reply → memories loop after a host is connected                                            |
 
+The sections below cover one surface each.
+
+## Step 2: make something useful
+
 Step 2 is one copy-paste prompt that tells the connected agent to retrieve
 [`onboarding`](../../guides/onboarding.md)
 (`search({ entity: "guide:onboarding" })`). The agent first looks at what is
@@ -34,6 +38,8 @@ published and enabled, and that the user has not connected yet, appear, so the
 list is empty while every built-in is draft. See
 [OAuth integrations](./integrations.md#enabled-and-visibility).
 
+## Step 3: connect a second ecosystem
+
 Step 3 groups the agent picker by ecosystem (Grok, Claude, ChatGPT, and the
 rest). Cursor Local and Cursor Cloud are separate tabs when the grant redirect
 shows which surface authorized. An unclassified Cursor grant (client name
@@ -48,29 +54,35 @@ folded into the same step so the new agent looks up
 (`search({ entity: "guide:portability" })`) and reuses what Step 2 made. When
 the onboarding payload has a known memory subject or saved-package name, Step 3
 shows a short "You made …" chip (truncated subject and `@scope/kody-id`, or
-hidden if nothing sensible). `hasSecondMcpClient` is two known ecosystems, not
-raw grant count, not unique `clientId`s, and not attribution to the selected
-host — Cursor hosts and Grok hosts are one ecosystem, Claude Code and Claude
-Desktop are one ecosystem, and an unlabeled client does not count as its own.
-The Step 3 lede says two Claude apps count as one, and a selected host that
-shares an ecosystem with a connected one shows a note that it will not count.
-The connected label stays "You've connected a second agent." When the
-second-agent Pro gift is active, that status adds "Pro is free for 2 weeks."
-When it was delivered as a paid-plan invoice credit, it adds "You get 2 weeks of
-your plan as an invoice credit." Step 3 copy advertises the Free overlay and the
-paid invoice credit. `/onboarding` resumes at that step instead of always
-opening the Step 1 picker. The Step 1 and Step 3 pickers, and Step 2, list
-already-connected hosts so a return visit cannot hide Cursor or Claude Desktop.
-A selected-agent card names only that host: another client's connection does not
-mark this one connected and does not put its logo on the card. A remembered
-picker choice is not a grant. When a different host actually authorized, Step 2
-and Step 3 follow that grant instead of the pick. Account → Agents
-(`/@<slug>/-/agents`) lists those inbound hosts grouped by display name, with
-public logos for known kinds, newest-first sort, best-effort labels,
-per-`clientId` revoke, and **View connect steps** for known kinds (same install
-path as Connect an agent). That list is not `users.mcp_client_name`
-(first-touch) and not `/account/mcp-oauth-clients` (user-minted confidential
-clients).
+hidden if nothing sensible).
+
+`hasSecondMcpClient` is two known ecosystems, not raw grant count, not unique
+`clientId`s, and not attribution to the selected host — Cursor hosts and Grok
+hosts are one ecosystem, Claude Code and Claude Desktop are one ecosystem, and
+an unlabeled client does not count as its own. The Step 3 lede says two Claude
+apps count as one, and a selected host that shares an ecosystem with a connected
+one shows a note that it will not count. The connected label stays "You've
+connected a second agent." When the second-agent Pro gift is active, that status
+adds "Pro is free for 2 weeks." When it was delivered as a paid-plan invoice
+credit, it adds "You get 2 weeks of your plan as an invoice credit." Step 3 copy
+advertises the Free overlay and the paid invoice credit.
+
+## Return visits and connected agents
+
+`/onboarding` resumes at that step instead of always opening the Step 1 picker.
+The Step 1 and Step 3 pickers, and Step 2, list already-connected hosts so a
+return visit cannot hide Cursor or Claude Desktop. A selected-agent card names
+only that host: another client's connection does not mark this one connected and
+does not put its logo on the card. A remembered picker choice is not a grant.
+When a different host actually authorized, Step 2 and Step 3 follow that grant
+instead of the pick. Account → Agents (`/@<slug>/-/agents`) lists those inbound
+hosts grouped by display name, with public logos for known kinds, newest-first
+sort, best-effort labels, per-`clientId` revoke, and **View connect steps** for
+known kinds (same install path as Connect an agent). That list is not
+`users.mcp_client_name` (first-touch) and not `/account/mcp-oauth-clients`
+(user-minted confidential clients).
+
+## Second-agent gift reconciliation
 
 The gift ledger is written at OAuth authorization completion. Website reads only
 load that ledger. The `second_agent_gift_reconciliation` scheduled lane repairs
@@ -85,6 +97,8 @@ applies up to eight queued paid-plan invoice credits
 (`src/entitlements/second-agent-gift-invoice-credit.ts`). The cursor is only a
 progress hint, so stale KV reads can repeat work safely. See
 `src/entitlements/second-agent-gift-reconciliation.ts` in the worker package.
+
+## First-win and Waiting
 
 `first-win` is not a wizard step and is not a checklist item. Signed-in
 `/onboarding` does not probe Mailbox for that loop. MCP registers

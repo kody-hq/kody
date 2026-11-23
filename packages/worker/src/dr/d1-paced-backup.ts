@@ -104,6 +104,7 @@ export const d1PacedBackupTickByteBudget = 32 * 1024 * 1024
 /**
  * Sunday UTC and operator-requested full-base nights use a larger wall
  * budget and per-table byte budget because the walk copies every row.
+ * See docs/contributing/disaster-recovery/architecture.md for the measured budget.
  */
 export const d1PacedBackupFullBaseRunTimeBudgetMs =
 	4 * d1PacedBackupRunTimeBudgetMs
