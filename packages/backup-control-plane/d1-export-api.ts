@@ -241,10 +241,8 @@ function pollSleepMs(pollIndex: number, options: ApiOptions): number {
 }
 
 /**
- * Wait for a pre-restore safety export. Poll pending bookmarks immediately,
- * then use the short interval for the first few waits and the longer interval
- * thereafter. Start a new export without a bookmark when the result expires,
- * subject to the poll and restart limits.
+ * Short early waits pick up fast safety exports promptly; longer waits limit
+ * API calls for exports that take more time.
  */
 export async function awaitExportReady(
 	env: BackupEnvironment,
