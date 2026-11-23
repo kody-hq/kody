@@ -310,3 +310,13 @@ test('rewriteForkedPackageSelfReferences leaves binary files untouched', () => {
 	})
 	expect(files).toEqual({ 'logo.png': binary, 'data.bin': binary })
 })
+
+test('rewriteForkedPackageSelfReferences rewrites text files that contain U+FFFD', () => {
+	const files = rewriteForkedPackageSelfReferences({
+		files: { 'src/a.ts': "// \uFFFD\nemit('@kody/github.pr.merged')\n" },
+		originPackageName: '@kody/github',
+		nextPackageName: '@jane/github',
+		topicRenames: { '@kody/github.pr.merged': '@jane/github.pr.merged' },
+	})
+	expect(files['src/a.ts']).toBe("// \uFFFD\nemit('@jane/github.pr.merged')\n")
+})

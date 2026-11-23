@@ -1,4 +1,4 @@
-import { isBinarySnapshotFile } from '#worker/package-codemods/apply-write-plan.ts'
+import { shouldStoreArtifactBlobAsLatin1 } from '#universal/package-file-media.ts'
 import { listKodyPackageDependencyNames } from '#worker/package-registry/types.ts'
 import type { CrossScopeReference } from './types.ts'
 
@@ -248,12 +248,16 @@ export function rewriteScopedReferences(input: {
 	const pattern = new RegExp(`${escaped}${scopedReferenceEnds[input.end]}`, 'g')
 	const files: Record<string, string> = {}
 	for (const [path, content] of Object.entries(input.files)) {
-		files[path] =
-			content.includes(origin) && !isBinarySnapshotFile(path, content)
-				? content.replace(pattern, next)
-				: content
+		files[path] = content.includes(origin)
+			? content.replace(pattern, next)
+			: content
 	}
 	return files
+}
+
+/** Snapshot strings that persist as raw bytes, not UTF-8 text. */
+function isByteSnapshotFile(path: string, content: string) {
+	return content.includes('\0') || shouldStoreArtifactBlobAsLatin1(path)
 }
 
 export function rewriteForkedPackageSelfReferences(input: {
@@ -263,19 +267,23 @@ export function rewriteForkedPackageSelfReferences(input: {
 	/** From `rewritePackageManifestForFork`: emit calls, subscriptions, docs. */
 	topicRenames?: Record<string, string>
 }): Record<string, string> {
+	const textFiles: Record<string, string> = {}
+	for (const [path, content] of Object.entries(input.files)) {
+		if (!isByteSnapshotFile(path, content)) textFiles[path] = content
+	}
 	const files = rewriteScopedReferences({
-		files: input.files,
+		files: textFiles,
 		origin: input.originPackageName,
 		next: input.nextPackageName,
 		end: 'name',
 	})
-	const topicRenames = input.topicRenames ?? {}
-	if (Object.keys(topicRenames).length === 0) return files
 	for (const [path, content] of Object.entries(files)) {
-		if (isBinarySnapshotFile(path, content)) continue
-		files[path] = rewriteEmittedTopicReferences(content, topicRenames)
+		files[path] = rewriteEmittedTopicReferences(
+			content,
+			input.topicRenames ?? {},
+		)
 	}
-	return files
+	return { ...input.files, ...files }
 }
 
 /**
