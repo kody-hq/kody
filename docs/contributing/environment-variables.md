@@ -587,21 +587,18 @@ credentials are set. The paced D1 walk uses the same credentials and
   when either differs from the signed full manifest.
 - `DR_RESTORE_SECRET` — Worker secret; bearer token for
   `POST /__maintenance/dr-restore`, `POST /__maintenance/dr-mailbox-import`,
+  `POST /__maintenance/dr-export`,
+  `POST /__maintenance/dr-paced-force-full-base`,
   `GET`/`POST /__maintenance/dr-paced-status`, and the operator-only
   `POST /__maintenance/do-pitr`. Must match the control-plane secret of the same
   name. Fail-closed when unset.
 
 ## Backup control plane (DR account Worker)
 
-Lives under `packages/backup-control-plane/` in the DR Cloudflare account. Code
-deploys via the production GitHub Actions workflow when control-plane / shared
-backup contract or backup-resource paths change. GitHub Actions requires
-`DR_DEPLOY_TOKEN` and `DR_BACKUP_ACCOUNT_ID`. An optional
-`DR_BACKUP_ADMIN_TOKEN` with DR-account Workers R2 Storage Write reconciles and
-reads back the lock/lifecycle policy before the Worker deploy. When unavailable,
-Actions logs a reconciliation skip and deploys normally. The admin token is
-never installed as a Worker secret. Enable gates and source identity vars live
-in that package's `wrangler.jsonc`.
+Lives under `packages/backup-control-plane/` in the DR Cloudflare account and
+deploys from GitHub Actions with `DR_DEPLOY_TOKEN` and `DR_BACKUP_ACCOUNT_ID`
+(see [credentials and escrow](./disaster-recovery/access-and-escrow.md)). Enable
+gates and source identity vars live in that package's `wrangler.jsonc`.
 
 Workflow bindings are `RESTORE_WORKFLOW`, `SEAL_WORKFLOW`, and
 `PACED_DRILL_WORKFLOW`.
@@ -652,8 +649,9 @@ evidence):
   [agent routes](../../packages/backup-control-plane/dr-ops-maintenance.ts):
   `POST /__maintenance/dr-seal`, `GET /__maintenance/seal-status`, and
   `GET /__maintenance/paced-drill-status`. Unset → `503` on those routes. See
-  the [agent seal API](./disaster-recovery.md#agent-seal-api-dr_ops_secret) for
-  edge Access requirements.
+  the
+  [agent seal API](./disaster-recovery/restore.md#agent-seal-api-dr_ops_secret)
+  for edge Access requirements.
 
 GitHub Actions `workflow_dispatch` escrow (`.github/workflows/dr-escrow.yml`)
 also needs `SECRET_STORE_KEY`, `SECRET_ESCROW_PASSPHRASE`, and the DR S3

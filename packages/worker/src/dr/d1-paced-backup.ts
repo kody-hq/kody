@@ -106,7 +106,7 @@ export const d1PacedBackupTickByteBudget = 32 * 1024 * 1024
  * instead of a delta, about 1.5x a delta night's tick work, which 45s ticks
  * every 5 minutes cannot finish before the 07:00 DR health check. 4x longer
  * ticks with 4x the emitted bytes seal a full base hours before that check.
- * See docs/contributing/disaster-recovery.md for the measured budget.
+ * See docs/contributing/disaster-recovery/architecture.md for the measured budget.
  */
 export const d1PacedBackupFullBaseRunTimeBudgetMs =
 	4 * d1PacedBackupRunTimeBudgetMs

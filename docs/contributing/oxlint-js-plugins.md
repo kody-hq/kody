@@ -39,7 +39,10 @@ plugins Oxlint-only and do not include ESLint-compat helpers.
 settings in `tools/oxlint/oxlint-rules.json` so new rules do not require
 touching root config.
 
-## Example in this repo
+## Rules in this repo
+
+Each rule below names the test that runs it. Request-path rules and built-in
+bans have their own subsections.
 
 - Plugin name: `kody-custom`
 - Rule id: `no-example-identifier`
@@ -95,6 +98,8 @@ does not trip it. When the condition already holds, delete the path.
 `tools/oxlint/require-exit-condition-comment.node.test.ts` runs the linter on a
 fixture.
 
+### Request-path rules
+
 Request handlers have three rules in `request-path-safety.js`, turned on as
 errors for `packages/worker/src/open-api/`,
 `packages/worker/src/publish-offload/`, and the publish build entry points in
@@ -121,6 +126,8 @@ them.
 The rules are syntactic: a deliberate exception takes an
 `oxlint-disable-next-line` with the reason after `--`.
 `tools/oxlint/request-path-safety.node.test.ts` runs the linter on fixtures.
+
+### Built-in rules and separate checks
 
 `react/exhaustive-deps` runs at error. Read values an effect should not react to
 through `useEffectEvent`. Unused disable directives are errors
