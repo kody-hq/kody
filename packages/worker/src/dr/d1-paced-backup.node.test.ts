@@ -819,6 +819,20 @@ test('delta resume seeks the previous index part instead of rereading from part 
 		deletes: 1,
 		checksum: oneTick.tables.items?.checksum,
 	})
+	const deltaLines = async (store: ReturnType<typeof createMemoryS3>) => {
+		const dataPrefix = `staging/${nextDay}/d1-paced/kody/data/items.parts/`
+		const lines: Array<string> = []
+		for (const key of [...store.objects.keys()].filter((key) =>
+			key.startsWith(dataPrefix),
+		)) {
+			const text = (await store.client.getText(key))!.text
+			lines.push(...text.split('\n').filter(Boolean))
+		}
+		return lines.sort()
+	}
+	const resumedLines = await deltaLines({ client, objects })
+	expect(resumedLines).toEqual(await deltaLines(reference))
+	expect(resumedLines.filter((line) => line.startsWith('D\t'))).toHaveLength(1)
 })
 
 test('missing JOBS_DB binding is skipped without failing the tick', async () => {
