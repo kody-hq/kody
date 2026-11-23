@@ -84,8 +84,12 @@ export async function executeAppMcp(input: {
 			const idempotencyKey = readExecuteFollowKey(toolResult)
 			if (!idempotencyKey) return null
 			followDeadline ??= Date.now() + followTimeoutMs
-			if (Date.now() >= followDeadline) return null
-			await new Promise((resolve) => setTimeout(resolve, followIntervalMs))
+			const remainingMs = followDeadline - Date.now()
+			if (remainingMs <= 0) return null
+			// One last read at the deadline prints the freshest handle.
+			await new Promise((resolve) =>
+				setTimeout(resolve, Math.min(followIntervalMs, remainingMs)),
+			)
 			return { ...baseArguments, idempotencyKey }
 		},
 		cookieHeader: input.cookieHeader,
