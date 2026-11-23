@@ -4,9 +4,10 @@ The UI is the primary drill/restore path. Keep the CLIs for air-gapped or
 UI-down recovery:
 
 - `node tools/disaster-recovery/d1-restore-drill-cli.ts` — isolated D1 import of
-  a SQL export against checked-in identity/baseline/manifest-key registries, not
-  a paced-chain replay. Use `--database` to check the source name against the
-  export's manifest.
+  a REST-era SQL export with its schema-v2 export manifest, against checked-in
+  identity/baseline/manifest-key registries, not a paced-chain replay. Use
+  `--database` to check the source name against that manifest. Schema-v3 paced
+  days drill through the UI.
 - `node tools/disaster-recovery/canonical-readiness-cli.ts` — fail-closed
   readiness assessment from local Ed25519 evidence envelopes
 - `node tools/disaster-recovery/seal-escrow.ts` — same seal used by
