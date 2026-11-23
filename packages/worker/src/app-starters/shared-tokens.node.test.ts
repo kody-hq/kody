@@ -15,3 +15,10 @@ test('missing tokens and a missing dark theme are reported', () => {
 		hasDark: false,
 	})
 })
+
+test('a class-based dark theme counts as dark', () => {
+	expect(
+		readSharedTokenUsage(':root{--color-bg:#fff;}.dark{--color-bg:#000;}')
+			.hasDark,
+	).toBe(true)
+})
