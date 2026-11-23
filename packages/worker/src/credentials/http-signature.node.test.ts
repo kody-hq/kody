@@ -1,5 +1,6 @@
 import { createVerify, generateKeyPairSync } from 'node:crypto'
 import { expect, test } from 'vitest'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { CredentialRequestRefusedError } from './credential-request.ts'
 import {
 	type HttpSignatureOperation,
@@ -277,7 +278,8 @@ test('a bad or encrypted key fails without the key in the error', async () => {
 			() => null,
 			(caught: unknown) => caught as Error,
 		)
-		expect(error?.message).toContain('unencrypted RSA private key')
+		expect(error).toBeInstanceOf(McpCallerError)
+		expect(error?.message).toContain('The signing key')
 		const body = pkcs8Pem.split('\n')[1]!
 		expect(error?.message).not.toContain(body)
 		expect(String(error?.stack)).not.toContain(body)

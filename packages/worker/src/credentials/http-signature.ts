@@ -11,6 +11,7 @@
 import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { normalizeHost } from '#worker/secrets/allowed-hosts.ts'
 import { extractSecretMaterial } from '#mcp/capabilities/secrets/jwt-signing.ts'
+import { importPrivateKeyPem } from './private-key-pem.ts'
 import {
 	assertHttpsUrl,
 	CredentialRequestRefusedError,
@@ -297,56 +298,16 @@ export function httpSignatureHeaders(
 	}
 }
 
-const pkcs8RsaPrefix = [
-	0x02, 0x01, 0x00, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d,
-	0x01, 0x01, 0x01, 0x05, 0x00,
-]
-
-function derLength(length: number) {
-	if (length < 0x80) return [length]
-	const bytes: Array<number> = []
-	for (let rest = length; rest > 0; rest >>= 8) bytes.unshift(rest & 0xff)
-	return [0x80 | bytes.length, ...bytes]
-}
-
-/** Wraps a PKCS#1 RSAPrivateKey in PKCS#8 PrivateKeyInfo. */
-function pkcs1ToPkcs8(pkcs1: Uint8Array) {
-	const octet = [0x04, ...derLength(pkcs1.length)]
-	const bodyLength = pkcs8RsaPrefix.length + octet.length + pkcs1.length
-	const out = new Uint8Array([
-		0x30,
-		...derLength(bodyLength),
-		...pkcs8RsaPrefix,
-		...octet,
-		...pkcs1,
-	])
-	return out
-}
-
-const keyError =
-	'The signing credential must hold an unencrypted RSA private key in PEM form (BEGIN PRIVATE KEY or BEGIN RSA PRIVATE KEY).'
+const rsaKeyFits =
+	'RSA SHA-256 signing, which needs an RSA key (BEGIN PRIVATE KEY or BEGIN RSA PRIVATE KEY)'
 
 /** Imports a PKCS#8 or PKCS#1 PEM RSA key for RSASSA-PKCS1-v1_5 SHA-256. */
 export async function importRsaSigningKey(pem: string) {
-	const match =
-		/-----BEGIN (RSA )?PRIVATE KEY-----([\s\S]*?)-----END (RSA )?PRIVATE KEY-----/.exec(
-			pem,
-		)
-	if (!match || /Proc-Type:\s*4,ENCRYPTED/i.test(match[2]!)) {
-		throw new Error(keyError)
-	}
-	try {
-		const der = base64ToBytes(match[2]!.replace(/\s/g, ''))
-		return await crypto.subtle.importKey(
-			'pkcs8',
-			match[1] ? pkcs1ToPkcs8(der) : der,
-			{ name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-			false,
-			['sign'],
-		)
-	} catch {
-		throw new Error(keyError)
-	}
+	return await importPrivateKeyPem({
+		value: pem,
+		algorithm: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+		fits: rsaKeyFits,
+	})
 }
 
 async function rsaSha256(

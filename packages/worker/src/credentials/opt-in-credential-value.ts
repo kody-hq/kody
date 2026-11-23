@@ -4,6 +4,7 @@
  */
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { credentialHostsAllow } from './credential-request.ts'
+import { privateKeyPemToPkcs8 } from './private-key-pem.ts'
 
 export const optInStoredCredentialKinds = ['url', 'login', 'signing'] as const
 
@@ -57,8 +58,14 @@ export function assertOptInCredentialValue(input: {
 			}
 			return
 		}
-		case 'signing':
+		case 'signing': {
+			// HMAC material and JSON-wrapped keys are checked at signing time; a
+			// bare PEM can be checked now.
+			if (input.value.trimStart().startsWith('-----BEGIN ')) {
+				privateKeyPemToPkcs8(input.value)
+			}
 			return
+		}
 		default: {
 			const exhaustive: never = input.kind
 			throw new Error(`Unhandled credential kind: ${String(exhaustive)}`)
