@@ -57,8 +57,8 @@ cannot bypass edge Access.
 `POST /actions/run-paced-drill` starts workflow
 `kody-production-paced-restore-drill`. It replays the latest sealed paced base
 plus deltas for every `D1_PACED_SOURCES` database into fresh D1 databases in
-`DRILL_ACCOUNT_ID`, then compares imported and target row counts and checksums
-with the sealed tip manifest. It deletes each drill database on success and
+`DRILL_ACCOUNT_ID`, then checks each target's final row count and checksum
+against the sealed tip manifest. It deletes each drill database on success and
 keeps it on failure for inspection. The drill refuses to start when
 `DRILL_ACCOUNT_ID` equals `SOURCE_ACCOUNT_ID` (`drill-account-not-isolated`;
 [`assertDrillAccountIsolated`](../../../packages/backup-control-plane/restore-drill.ts),
@@ -92,7 +92,7 @@ It does not restore StorageRunner, R2, or artifacts.
 
 Graduated production restore is the disaster path only. Never run it against the
 live databases as a validation or on a schedule: the isolated paced restore
-drill exercises the same plan, preflight, import, and verify steps
+drill exercises the same plan, import, and verify steps
 (`packages/backup-control-plane/paced-d1-target-restore.ts`) against fresh
 databases in `DRILL_ACCOUNT_ID`, and is the proof that it works.
 

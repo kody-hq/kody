@@ -45,10 +45,12 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
       `DR_BACKUP_ACCESS_KEY_ID`, `DR_BACKUP_SECRET_ACCESS_KEY`,
       `DR_RESTORE_SECRET` (same value as control plane).
 - [ ] Control plane `PRIMARY_WORKER_ORIGIN` points at production.
-- [ ] One manual/nightly staging run writes
-      `staging/{day}/exporter/summary.json` with acceptable warnings; verify the
-      mailbox and RunLog indexes and at least one referenced owner dump against
-      the recorded byte count and SHA-256.
+- [ ] Set `DR_EXPORT_ENABLED=true` in production. The exporter skips nightly and
+      manual runs while the gate is off.
+- [ ] The first nightly staging run writes `staging/{day}/exporter/summary.json`
+      with acceptable warnings; verify the mailbox and RunLog indexes and at
+      least one referenced owner dump against the recorded byte count and
+      SHA-256.
 
 ## 5. Enable the seal schedule
 
@@ -65,12 +67,12 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
       against the sealed blob with the real passphrase, offline (proven
       2026-08-07 — see the [live evidence log](./evidence-log.md) /
       [#1091](https://github.com/kentcdodds/kody/issues/1091)).
-- [ ] Set `DR_EXPORT_ENABLED=true` in production after staging path is proven.
 - [ ] Monthly: UI isolated paced restore drill; confirm alert paths for
       freshness failures.
 - [ ] Quarterly: seal verification + verify every Mailbox owner dump against its
       sealed index + spot-check StorageRunner/R2/artifact restore into a
       non-production target (or full UI production restore only during a real
-      incident after a fresh drill on that day).
+      incident, after a fresh drill; the drill replays the newest day from the
+      last week that every paced source sealed).
 - [ ] After material schema/storage/encryption changes: extra drill before
       trusting the newest sealed day.

@@ -20,7 +20,8 @@ snapshot.
 Retention (UTC):
 
 - `daily/` — ~35 days (immutable lock + lifecycle)
-- `weekly/` — ~400 days (Sunday UTC D1 exports under `weekly/d1/...`)
+- `weekly/` — ~400 days (Sunday UTC paced D1 full bases under
+  `weekly/d1-paced/...`)
 - `blobs/sha256/` — long-retention content-addressed store shared across days
 - Failed or incomplete sets never replace a sealed day
 
