@@ -45,11 +45,14 @@ import {
 } from '#worker/package-capabilities/capability-approval-service.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import {
+	approvalBundleApproveConcurrency,
 	approvalItemKey,
 	parseApprovalItemKey,
+	type ApprovalBundleApproveAllEvent,
 	type ApprovalBundleDecisionRequest,
 	type ApprovalBundleDecisionResponse,
 	type ApprovalItemRef,
+	type ApprovalItemType,
 	type ApprovalItemView,
 } from '#universal/approval-bundles.ts'
 
@@ -500,4 +503,126 @@ async function loadCurrentItemView(
 		ref,
 		decisions.get(approvalItemKey(ref)) ?? null,
 	)
+}
+
+type ApproveAllEntry = { item: string; fingerprint: string }
+
+/**
+ * A paused publish moves the published version, which changes what the
+ * package's other items pin (its capability set, its credential picks), so
+ * those go first and the publish last.
+ */
+const samePackageOrder: Record<ApprovalItemType, number> = {
+	'credential-picks': 0,
+	capabilities: 1,
+	publish: 2,
+}
+
+/**
+ * Approve all. Each item runs `decideApprovalBundleItem`, so it does exactly
+ * what approving it alone does and is audited the same way. Items on one
+ * package run one at a time (credential picks, then capabilities, then the
+ * publish), so they never race; packages run in parallel, at most
+ * `concurrency` at once. `onEvent` reports each item as it starts and ends.
+ */
+export async function approveApprovalBundleItems(input: {
+	viewer: ApprovalViewer
+	request: Request
+	user: AuthenticatedAppUser
+	bundleId: string
+	items: ReadonlyArray<ApproveAllEntry>
+	concurrency?: number
+	onEvent?: (event: ApprovalBundleApproveAllEvent) => void
+}): Promise<Array<{ item: string; result: ApprovalBundleDecisionResponse }>> {
+	const { viewer } = input
+	const personId = viewer.request.actor?.userId
+	const bundle = personId
+		? await getApprovalBundleForPerson(viewer.env.APP_DB, {
+				id: input.bundleId,
+				orgId: viewer.request.org.id,
+				personUserId: personId,
+			})
+		: null
+	const position = new Map(
+		(bundle?.items ?? []).map((ref, index) => [approvalItemKey(ref), index]),
+	)
+	const unique = [
+		...new Map(input.items.map((entry) => [entry.item, entry])).values(),
+	].sort(
+		(a, b) =>
+			(position.get(a.item) ?? Number.MAX_SAFE_INTEGER) -
+			(position.get(b.item) ?? Number.MAX_SAFE_INTEGER),
+	)
+	const packageKeys = await Promise.all(
+		unique.map((entry) => approvalItemPackageKey(viewer, entry.item)),
+	)
+	const groups = new Map<string, Array<ApproveAllEntry>>()
+	for (const [index, entry] of unique.entries()) {
+		const key = packageKeys[index]!
+		groups.set(key, [...(groups.get(key) ?? []), entry])
+	}
+	const rank = (entry: ApproveAllEntry) => {
+		const ref = parseApprovalItemKey(entry.item)
+		return ref ? samePackageOrder[ref.type] : 0
+	}
+	for (const group of groups.values()) group.sort((a, b) => rank(a) - rank(b))
+	const results: Array<{
+		item: string
+		result: ApprovalBundleDecisionResponse
+	}> = []
+	const approveOne = async (entry: ApproveAllEntry) => {
+		input.onEvent?.({ item: entry.item, phase: 'approving' })
+		let result: ApprovalBundleDecisionResponse
+		try {
+			const decided = await decideApprovalBundleItem({
+				viewer,
+				request: input.request,
+				user: input.user,
+				bundleId: input.bundleId,
+				decision: { action: 'approve', ...entry },
+			})
+			result = decided.body
+		} catch (error) {
+			console.error('Approve all could not finish an item:', {
+				bundleId: input.bundleId,
+				item: entry.item,
+				error: getErrorMessage(error),
+			})
+			result = {
+				ok: false,
+				error: 'Kody could not finish this approval. Try again.',
+				item: null,
+			}
+		}
+		results.push({ item: entry.item, result })
+		input.onEvent?.({ item: entry.item, phase: 'done', result })
+	}
+	const queue = [...groups.values()]
+	const lane = async () => {
+		for (let group = queue.shift(); group; group = queue.shift()) {
+			for (const entry of group) await approveOne(entry)
+		}
+	}
+	const lanes = Math.min(
+		Math.max(1, input.concurrency ?? approvalBundleApproveConcurrency),
+		queue.length,
+	)
+	await Promise.all(Array.from({ length: lanes }, lane))
+	return results
+}
+
+/**
+ * The package an item acts on. Items with no package each get their own key;
+ * items whose package could not be read share one lane, so they stay serial.
+ */
+async function approvalItemPackageKey(viewer: ApprovalViewer, key: string) {
+	const ref = parseApprovalItemKey(key)
+	if (!ref) return `item:${key}`
+	if (ref.type === 'capabilities') return `package:${ref.packageId}`
+	try {
+		const view = await loadApprovalItemView(viewer, ref, null)
+		return view.package ? `package:${view.package.id}` : `item:${key}`
+	} catch {
+		return 'unknown'
+	}
 }

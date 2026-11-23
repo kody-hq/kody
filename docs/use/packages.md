@@ -1191,8 +1191,11 @@ per-item **Approve** or **Deny**.
 
 Approving an item runs that item's own approval, the same code as its package
 page (**Approve and publish**, the capability approval, or the credential
-approval). Approve all approves each item in turn and reports any that need
-another look.
+approval). Approve all sends one request that approves up to four packages at
+once. Items on the same package run one after another, with the paused publish
+last because it changes the published version the others pin, so a publish and a
+capability approval on one package never race. Each item shows its own progress
+and any error, and approvals already running finish even if you close the tab.
 
 Denying a paused publish drops it, and the published version keeps serving.
 Denying anything else changes nothing. The first decision on an item stands, and

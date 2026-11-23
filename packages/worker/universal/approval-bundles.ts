@@ -189,6 +189,14 @@ export type ApprovalBundleDecisionResponse =
 	| { ok: true; item: ApprovalItemView }
 	| { ok: false; error: string; item: ApprovalItemView | null }
 
+/** Approve all runs at most this many packages at once. */
+export const approvalBundleApproveConcurrency = 4
+
+/** What one Approve all request reports as each item starts and finishes. */
+export type ApprovalBundleApproveAllEvent =
+	| { item: string; phase: 'approving' }
+	| { item: string; phase: 'done'; result: ApprovalBundleDecisionResponse }
+
 export function approvalBundlePath(input: {
 	orgSlug: string
 	bundleId: string
@@ -252,6 +260,27 @@ export function approveAllLabel(ready: number, waiting: number = ready) {
 			: 'Nothing here can be approved yet'
 	}
 	return ready === 1 ? 'Approve 1 change' : `Approve all ${ready} changes`
+}
+
+export function approvingAllLabel(total: number) {
+	return total === 1 ? 'Approving 1 change…' : `Approving ${total} changes…`
+}
+
+/** Live progress while Approve all runs; finished items count as they land. */
+export function approveAllProgress(input: {
+	approved: number
+	failed: number
+	total: number
+}) {
+	const approved = `Approved ${input.approved} of ${input.total}`
+	return input.failed === 0 ? approved : `${approved} · ${input.failed} failed`
+}
+
+export function approveAllSummary(input: { approved: number; total: number }) {
+	const failed = input.total - input.approved
+	const approved = `Approved ${input.approved} of ${input.total}.`
+	if (failed === 0) return approved
+	return `${approved} ${failed} need${failed === 1 ? 's' : ''} another look; see the message on ${failed === 1 ? 'it' : 'each'}.`
 }
 
 export function approvalBundleCreatedVia(kind: string | null) {

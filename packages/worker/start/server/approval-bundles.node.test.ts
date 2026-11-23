@@ -4,6 +4,8 @@ const state = vi.hoisted(() => ({
 	viewer: vi.fn(),
 	load: vi.fn(),
 	decide: vi.fn(),
+	approveAll: vi.fn(),
+	waitUntil: vi.fn(),
 	lease: vi.fn(),
 	status: vi.fn(),
 	header: vi.fn(),
@@ -60,11 +62,17 @@ vi.mock('./mutation-context.ts', () => {
 vi.mock('../../src/app/approval-bundle-decisions.ts', () => ({
 	loadApprovalViewerForSlug: state.viewer,
 	decideApprovalBundleItem: state.decide,
+	approveApprovalBundleItems: state.approveAll,
 }))
+vi.mock('cloudflare:workers', () => ({ waitUntil: state.waitUntil }))
 vi.mock('../../src/approval-bundles/service.ts', () => ({
 	loadApprovalBundleView: state.load,
 }))
-import { decideApprovalBundle, loadApprovalBundle } from './approval-bundles.ts'
+import {
+	approveAllApprovalBundle,
+	decideApprovalBundle,
+	loadApprovalBundle,
+} from './approval-bundles.ts'
 const input = { orgSlug: 'team', bundleId: 'bundle-1' }
 beforeEach(() => {
 	vi.clearAllMocks()
@@ -137,4 +145,63 @@ test('outsider decisions never reach the business operation', async () => {
 		}),
 	).resolves.toMatchObject({ ok: false, item: null })
 	expect(state.decide).not.toHaveBeenCalled()
+})
+test('Approve all streams each item and keeps running under waitUntil', async () => {
+	let finish: () => void = () => {}
+	state.approveAll.mockImplementation(
+		async (options: {
+			onEvent: (event: unknown) => void
+			items: Array<{ item: string }>
+		}) => {
+			for (const { item } of options.items)
+				options.onEvent({ item, phase: 'approving' })
+			await new Promise<void>((resolve) => {
+				finish = resolve
+			})
+			options.onEvent({
+				item: 'publish:a',
+				phase: 'done',
+				result: { ok: true, item: null },
+			})
+		},
+	)
+	const items = [
+		{ item: 'publish:a', fingerprint: 'one' },
+		{ item: 'capabilities:pkg', fingerprint: 'two' },
+	]
+	const response = await approveAllApprovalBundle({
+		data: { ...input, items },
+	})
+	if (!response.ok) throw new Error('approve all did not start')
+	expect(state.lease).toHaveBeenCalledOnce()
+	expect(state.waitUntil).toHaveBeenCalledOnce()
+	expect(state.approveAll).toHaveBeenCalledWith(
+		expect.objectContaining({
+			bundleId: 'bundle-1',
+			items,
+			user: { request: { org: { id: 'team-org' } } },
+		}),
+	)
+	const seen: Array<unknown> = []
+	const reading = (async () => {
+		for await (const event of response.events) seen.push(event)
+	})()
+	await vi.waitFor(() => expect(seen).toHaveLength(2))
+	finish()
+	await reading
+	expect(seen).toEqual([
+		{ item: 'publish:a', phase: 'approving' },
+		{ item: 'capabilities:pkg', phase: 'approving' },
+		{ item: 'publish:a', phase: 'done', result: { ok: true, item: null } },
+	])
+	await state.waitUntil.mock.calls[0]![0]
+})
+test('outsiders cannot start Approve all', async () => {
+	state.viewer.mockResolvedValue(null)
+	await expect(
+		approveAllApprovalBundle({
+			data: { ...input, items: [{ item: 'x', fingerprint: 'x' }] },
+		}),
+	).resolves.toEqual({ ok: false, error: 'Approval bundle not found.' })
+	expect(state.approveAll).not.toHaveBeenCalled()
 })
