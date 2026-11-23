@@ -205,13 +205,9 @@ Contract: `packages/shared/src/backup-staging.ts`.
    recopying sealed parts, so one large table never needs a tick longer than the
    budget. A delta tick that stops mid-table records the previous-night index
    part its merge-join reached (`prevIndexPart` in `progress.json`), and the
-   next tick reopens the previous index at that part. Before 2026-11-23 every
-   resume re-read the previous index from part 0. A full base splits AUDIT_DB
-   `org_audit_events` into about 314 parts (one per 4 MiB of data), so on the
-   night after it each resume spent most of its 45s re-reading them: AUDIT_DB
-   finished its walk at 07:06 on 2026-11-23 and sealed after the 07:00 check,
-   and 2026-11-16 finished at 04:16 instead of about 02:30. Only one paced
-   backup tick runs at a time: a tick claims the `dr_d1_paced_backup` row in
+   next tick reopens the previous index at that part, so a resume costs one
+   index part instead of the whole previous index. Only one paced backup tick
+   runs at a time: a tick claims the `dr_d1_paced_backup` row in
    `scheduled_lane_leases` (2 minutes), a tick that finds the lane held skips
    with `reason: "lease-held"`, and a tick that outlived its lease re-checks
    (and extends) it before every bucket write and stops with
