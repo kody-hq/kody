@@ -55,9 +55,10 @@ finished:
   `--font-sans`, `--radius`, and `--space-1` through `--space-4`. Adjust the
   palette in the tokens file to give the app its own look.
 - **Mobile first.** Check every page at a phone width. Use the starter's layout
-  and keep tap targets at least 44px.
-- **Accessible components.** Reuse the starter's buttons, fields, and dialogs.
-  Give every input a label and every icon button an accessible name.
+  and keep tap targets at least 48px.
+- **Accessible components.** Reuse the starter's buttons, fields, alerts, and
+  empty states. Give every input a label and every icon button an accessible
+  name.
 - **Loading and error states.** Show the starter's pending and error views for
   every request, and an empty state for every list.
 - **Sign-in and storage.** Read the visitor from the starter's session helper
