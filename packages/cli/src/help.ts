@@ -97,6 +97,7 @@ Usage:
   kody dev webhook <name> --body <file.json> [--target prod|mock] [--dry-run] [--json]
   kody dev emit <event> --body <event.json> [--target prod|mock] [--dry-run] [--json]
   kody dev check [--target prod|mock] [--build local] [--offline] [--debug] [--json]
+  kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--org <slug>] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
@@ -463,6 +464,19 @@ ${orgBlock}
              the handlers. Unmocked requests fail closed with a
              ready-to-paste MSW handler stub pointing at
              \`.kody/mocks.ts\`. Share previews are out of scope.
+
+  kody app check
+             Optional quality check for a package app. Starts the
+             \`kody dev\` preview, renders it in Chromium at desktop and
+             mobile sizes in light and dark, and runs axe-core and
+             Lighthouse. Writes \`app-check.md\` (short summary for agents)
+             and \`app-check.json\` (full results) to
+             \`<package>/.kody/app-check/\` (or \`--out <dir>\`). Pass or fail
+             is in the report; the command exits non-zero only when the
+             preview or browser cannot start. The first run installs
+             Playwright, axe-core, Lighthouse, and Chromium into the Kody
+             cache (\`KODY_CACHE_DIR\`) and reuses them after that. Run it
+             during development and fix what it shows.
 
 Environment:
   KODY_MCP_URL        Override the default MCP URL (${defaultMcpUrl})

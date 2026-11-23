@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { windowsFileLaunch } from '../execution-context/windows-command.js'
-import { npmInstallEnv } from '../mock/ensure-msw.js'
+import { npmInstallEnv } from '../cached-npm-install.js'
 import {
 	resolveMockFetchGateway,
 	type MockFetchGateway,
