@@ -151,13 +151,13 @@ const uiGallerySections: ReadonlyArray<{
 						<Input name="gallery-group-default" defaultValue="acme-labs" />
 					</InputGroup>
 				</Field>
-				<Field label="Invalid" error="Use 3 to 32 characters.">
+				<Field label="Handle with error" error="Use 3 to 32 characters.">
 					<InputGroup>
 						<InputAddon aria-hidden="true">kody.codes/@</InputAddon>
 						<Input name="gallery-group-error" defaultValue="a" />
 					</InputGroup>
 				</Field>
-				<Field label="Disabled">
+				<Field label="Locked repository">
 					<InputGroup>
 						<InputAddon aria-hidden="true">@jane/</InputAddon>
 						<Input
