@@ -118,13 +118,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0 libfuse2t64 xvfb
+      # Installs before the version bump rewrites package-lock.json, so the
+      # node_modules cache key (Windows on Arm) matches across releases. The
+      # bump touches only the packages/desktop version, which node_modules
+      # links to rather than copies.
+      - name: Run npm ci
+        uses: ./.github/actions/npm-ci
       - name: Set release version
         env:
           RELEASE_VERSION: ${{ needs.credentials.outputs.version }}
         run:
           node packages/desktop/scripts/release-version.cjs --apply
           "$RELEASE_VERSION"
-      - run: npm ci
       - run: npm run build --workspace @kodycodes/cli
       - run: npm run desktop:validate
       - name: Restore Apple API key
