@@ -8,7 +8,9 @@ test('a theme declaring every shared token for light and dark passes', () => {
 })
 
 test('missing tokens and a missing dark theme are reported', () => {
-	expect(readSharedTokenUsage(':root{--color-bg:#fff;}')).toEqual({
+	expect(
+		readSharedTokenUsage(':root{color-scheme: light dark;--color-bg:#fff;}'),
+	).toEqual({
 		missing: sharedAppTokenNames.filter((name) => name !== '--color-bg'),
 		hasDark: false,
 	})
