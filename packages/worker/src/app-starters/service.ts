@@ -196,7 +196,11 @@ async function inspectStarterPackage(
 		})
 		files = published.files
 		packageJson = JSON.parse(published.files['package.json'] ?? 'null')
-	} catch {
+	} catch (error) {
+		console.error('app-starter-source-read-failed', {
+			packageId: savedPackage.id,
+			error,
+		})
 		packageJson = null
 	}
 	const { starter, checks } = manifestChecks({
@@ -322,14 +326,26 @@ export async function listRecommendedAppStarters(
 	env: Env,
 	input: { limit?: number } = {},
 ) {
+	const limit = input.limit ?? 5
 	const rows = await listAppStarterRows(env.APP_DB, { enabledOnly: true })
-	const entries = await loadEntries(env, rows.slice(0, input.limit ?? 5), {
-		checkFiles: false,
-	})
-	return entries.filter(
-		(entry): entry is AppStarterEntry & { starter: AppStarterManifest } =>
-			entry.starter !== null && entry.problems.length === 0,
-	)
+	const recommended: Array<AppStarterEntry & { starter: AppStarterManifest }> =
+		[]
+	for (
+		let start = 0;
+		start < rows.length && recommended.length < limit;
+		start += limit
+	) {
+		const entries = await loadEntries(env, rows.slice(start, start + limit), {
+			checkFiles: true,
+		})
+		recommended.push(
+			...entries.filter(
+				(entry): entry is AppStarterEntry & { starter: AppStarterManifest } =>
+					entry.starter !== null && entry.problems.length === 0,
+			),
+		)
+	}
+	return recommended.slice(0, limit)
 }
 
 /** @kody packages an admin can still add, newest first. */
@@ -374,6 +390,23 @@ function normalizeNote(note: string | null | undefined) {
 	return trimmed || null
 }
 
+/** Only rows whose settings changed, so a save never rewrites another admin's edit. */
+function changedRows(
+	before: Array<AppStarterRow>,
+	after: Array<AppStarterRow>,
+) {
+	const previous = new Map(before.map((row) => [row.packageId, row]))
+	return after.filter((row) => {
+		const prior = previous.get(row.packageId)
+		return (
+			!prior ||
+			prior.rank !== row.rank ||
+			prior.enabled !== row.enabled ||
+			prior.note !== row.note
+		)
+	})
+}
+
 function placeAtRank(
 	rows: Array<AppStarterRow>,
 	packageId: string,
@@ -415,7 +448,7 @@ export async function addAppStarter(input: {
 	}
 	const row: AppStarterRow = {
 		packageId: savedPackage.id,
-		rank: rows.length + 1,
+		rank: (rows.at(-1)?.rank ?? 0) + 1,
 		enabled: input.enabled ?? true,
 		note,
 	}
@@ -423,7 +456,10 @@ export async function addAppStarter(input: {
 	if (input.rank !== undefined && input.rank < row.rank) {
 		await saveAppStarterRows(
 			input.env.APP_DB,
-			placeAtRank([...rows, row], row.packageId, input.rank),
+			changedRows(
+				[...rows, row],
+				placeAtRank([...rows, row], row.packageId, input.rank),
+			),
 		)
 	}
 	return listAdminAppStarters(input.env)
@@ -450,7 +486,7 @@ export async function updateAppStarter(input: {
 	)
 	await saveAppStarterRows(
 		input.env.APP_DB,
-		placeAtRank(updated, input.packageId, input.rank),
+		changedRows(rows, placeAtRank(updated, input.packageId, input.rank)),
 	)
 	return listAdminAppStarters(input.env)
 }
@@ -475,10 +511,13 @@ export async function reorderAppStarters(input: {
 	}
 	await saveAppStarterRows(
 		input.env.APP_DB,
-		input.packageIds.map((id, index) => ({
-			...byId.get(id)!,
-			rank: index + 1,
-		})),
+		changedRows(
+			rows,
+			input.packageIds.map((id, index) => ({
+				...byId.get(id)!,
+				rank: index + 1,
+			})),
+		),
 	)
 	return listAdminAppStarters(input.env)
 }
@@ -490,13 +529,10 @@ export async function removeAppStarter(input: { env: Env; packageId: string }) {
 		throw new AppStarterError('That starter is not on the list.', 404)
 	}
 	await deleteAppStarterRow(input.env.APP_DB, input.packageId)
+	const remaining = rows.filter((row) => row.packageId !== input.packageId)
 	await saveAppStarterRows(
 		input.env.APP_DB,
-		placeAtRank(
-			rows.filter((row) => row.packageId !== input.packageId),
-			input.packageId,
-			undefined,
-		),
+		changedRows(remaining, placeAtRank(remaining, input.packageId, undefined)),
 	)
 	return listAdminAppStarters(input.env)
 }
