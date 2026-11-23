@@ -169,6 +169,9 @@ function appliesToOrgHardPurge(target: UserScopedDataTarget): boolean {
 			// when bound to a team org id.
 			return true
 		case 'bucket_parent':
+			// Children of owner-keyed parents (publish build chunks) go with the
+			// parent rows the owner_user_id user_columns target purges.
+			if (target.parentUserColumn === 'owner_user_id') return true
 			return orgOwnedBucketChildSoftDeleteTables.some(
 				(row) =>
 					row.child === target.table && row.parent === target.parentTable,
