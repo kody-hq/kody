@@ -1016,7 +1016,7 @@ export function parsePackageCheckResult(value: unknown): PackageCheckResult {
  * tree publish will not have. Soft-suggests `.kody/mocks.ts` when credentialed
  * fetch is detected. `offline` skips the server checks and says so.
  */
-export const devCheckAppCheckHint =
+const devCheckAppCheckHint =
 	'Run `kody app check` while you develop to see your app on desktop and mobile, in light and dark, then fix what it shows.'
 
 export async function runDevCheck(input: {
