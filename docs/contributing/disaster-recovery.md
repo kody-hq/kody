@@ -203,24 +203,32 @@ Contract: `packages/shared/src/backup-staging.ts`.
    health check, so AUDIT_DB sealed at 07:41. Seal also stops between parts of a
    parted table when the budget runs out and resumes on the next tick without
    recopying sealed parts, so one large table never needs a tick longer than the
-   budget. Only one paced backup tick runs at a time: a tick claims the
-   `dr_d1_paced_backup` row in `scheduled_lane_leases` (2 minutes), a tick that
-   finds the lane held skips with `reason: "lease-held"`, and a tick that
-   outlived its lease re-checks (and extends) it before every bucket write and
-   stops with `D1PacedBackupLeaseLostError` instead of writing. Seal refuses a
-   table whose index is not strictly increasing by rowid
-   (`PacedD1IndexOrderError`, raised before any sealed object for that table is
-   written), so the night stays unsealed and the lane fails in Sentry on every
-   tick until the staging table is rebuilt. The weekly Sunday drill (07:00–08:59
-   UTC) verifies each table's tip checksum from the sealed chain, streaming one
-   part body at a time and keeping only the rowids touched by deltas since the
-   last `full` base. It is resumable: each tick holds a D1 lease, drills the
-   next unfinished source for up to 4 minutes, and checkpoints every table in
-   APP_DB (`dr_paced_restore_drill_runs` / `dr_paced_restore_drill_sources`). A
-   tick that dies mid-table (OOM, CPU, wall) leaves an active marker; the next
-   tick reports it and retries, and a second death fails that table. Ticks from
-   08:50 fail unfinished sources (`deadline-exceeded`). Drill failures get their
-   own Sentry fingerprint `dr-d1-paced-restore-drill / <kind> / <source>` (kind
+   budget. A delta tick that stops mid-table records the previous-night index
+   part its merge-join reached (`prevIndexPart` in `progress.json`), and the
+   next tick reopens the previous index at that part. Before 2026-11-23 every
+   resume re-read the previous index from part 0. A full base splits AUDIT_DB
+   `org_audit_events` into about 314 parts (one per 4 MiB of data), so on the
+   night after it each resume spent most of its 45s re-reading them: AUDIT_DB
+   finished its walk at 07:06 on 2026-11-23 and sealed after the 07:00 check,
+   and 2026-11-16 finished at 04:16 instead of about 02:30. Only one paced
+   backup tick runs at a time: a tick claims the `dr_d1_paced_backup` row in
+   `scheduled_lane_leases` (2 minutes), a tick that finds the lane held skips
+   with `reason: "lease-held"`, and a tick that outlived its lease re-checks
+   (and extends) it before every bucket write and stops with
+   `D1PacedBackupLeaseLostError` instead of writing. Seal refuses a table whose
+   index is not strictly increasing by rowid (`PacedD1IndexOrderError`, raised
+   before any sealed object for that table is written), so the night stays
+   unsealed and the lane fails in Sentry on every tick until the staging table
+   is rebuilt. The weekly Sunday drill (07:00–08:59 UTC) verifies each table's
+   tip checksum from the sealed chain, streaming one part body at a time and
+   keeping only the rowids touched by deltas since the last `full` base. It is
+   resumable: each tick holds a D1 lease, drills the next unfinished source for
+   up to 4 minutes, and checkpoints every table in APP_DB
+   (`dr_paced_restore_drill_runs` / `dr_paced_restore_drill_sources`). A tick
+   that dies mid-table (OOM, CPU, wall) leaves an active marker; the next tick
+   reports it and retries, and a second death fails that table. Ticks from 08:50
+   fail unfinished sources (`deadline-exceeded`). Drill failures get their own
+   Sentry fingerprint `dr-d1-paced-restore-drill / <kind> / <source>` (kind
    `oom`, `timeout`, `interrupted`, `deadline`, `mismatch`, `error`) at level
    `fatal` with `dr.drill.source` / `dr.drill.phase` tags, so a platform reset
    never folds into a generic (possibly ignored) OOM issue; the jobs worker asks

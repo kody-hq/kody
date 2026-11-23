@@ -133,6 +133,12 @@ export type PacedD1ProgressCursor = {
 	 * Mid-table resumes append a new part instead of rewriting the whole TSV.
 	 */
 	partCount: number
+	/**
+	 * Previous-night index part holding the first entry the delta merge-join
+	 * has not consumed for `currentTable`. A mid-table resume opens the
+	 * previous index here instead of re-reading every part from 0.
+	 */
+	prevIndexPart: number
 }
 
 export function assertBackupDay(day: string): void {
@@ -472,6 +478,11 @@ export function parsePacedD1ProgressCursor(
 			value.partCount === undefined ||
 			(Number.isSafeInteger(value.partCount) &&
 				(value.partCount as number) >= 0)
+		) ||
+		!(
+			value.prevIndexPart === undefined ||
+			(Number.isSafeInteger(value.prevIndexPart) &&
+				(value.prevIndexPart as number) >= 0)
 		)
 	) {
 		throw new Error('paced D1 progress cursor has an invalid versioned shape')
@@ -479,5 +490,7 @@ export function parsePacedD1ProgressCursor(
 	return {
 		...(value as PacedD1ProgressCursor),
 		partCount: typeof value.partCount === 'number' ? value.partCount : 0,
+		prevIndexPart:
+			typeof value.prevIndexPart === 'number' ? value.prevIndexPart : 0,
 	}
 }

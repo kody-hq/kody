@@ -340,9 +340,10 @@ export async function walkPacedD1Table(
 	let bytesOut = 0
 	const queryMs: Array<number> = []
 
-	// Delta resume reopens the previous index from the start. Keys at or below
-	// the resume cursor were already merge-joined (matched or deleted) in the
-	// earlier partial; skip them without emitting another D line.
+	// Delta resume reopens the previous index at or before the resume cursor
+	// (the host seeks to the persisted part). Keys at or below the cursor were
+	// already merge-joined (matched or deleted) in the earlier partial; skip
+	// them without emitting another D line.
 	if (input.mode === 'delta' && lastRowid !== null) {
 		while (true) {
 			const prev = await idx.peek()

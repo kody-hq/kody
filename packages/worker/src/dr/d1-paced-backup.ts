@@ -36,6 +36,7 @@ import {
 	walkPacedD1Table,
 	type PacedD1Database,
 	type PacedD1DiscoveredTable,
+	type PacedD1IndexReader,
 	type PacedD1SchemaSnapshot,
 	type PacedD1TableArtifactWriter,
 	type PacedD1WalkerOptions,
@@ -150,6 +151,11 @@ type LaneProgress = {
 	schemaVersion: typeof pacedD1BackupSchemaVersion
 	day: string
 	nextSourceIndex: number
+}
+
+type PrevIndexReader = PacedD1IndexReader & {
+	/** Part to reopen at when resuming after the entries consumed so far. */
+	resumePart: () => number
 }
 
 type PrevNight = {
@@ -445,14 +451,16 @@ async function loadPreviousNight(input: {
 function createPartsIndexReader(input: {
 	s3: DrBackupS3Client
 	partCount: number
+	startPart: number
 	partKey: (partIndex: number) => string
 	label: string
-}) {
-	let partIndex = 0
+}): PrevIndexReader {
+	let partIndex = Math.min(input.startPart, input.partCount)
+	let partLoaded = false
 	let lines: Array<string> = []
 	let lineIndex = 0
 	let cur: PacedD1IndexEntry | null = null
-	let done = input.partCount === 0
+	let done = partIndex >= input.partCount
 
 	const refill = async () => {
 		while (lineIndex >= lines.length && partIndex < input.partCount) {
@@ -463,6 +471,7 @@ function createPartsIndexReader(input: {
 				)
 			}
 			partIndex += 1
+			partLoaded = true
 			const text = new TextDecoder().decode(bytes)
 			lines = text.length === 0 ? [] : text.replace(/\n$/, '').split('\n')
 			lineIndex = 0
@@ -489,6 +498,11 @@ function createPartsIndexReader(input: {
 			cur = null
 			return value
 		},
+		// Every entry before the loaded part was consumed, so a resume after
+		// the current cursor can start reading at that part.
+		resumePart() {
+			return partLoaded ? partIndex - 1 : partIndex
+		},
 	}
 }
 
@@ -497,7 +511,8 @@ async function openPrevIndex(input: {
 	source: PacedD1SourceConfig
 	prev: PrevNight
 	table: string
-}) {
+	startPart: number
+}): Promise<PrevIndexReader> {
 	const tier = pacedD1RetentionTierForDay(input.prev.day)
 	const key =
 		input.prev.indexLocation === 'sealed'
@@ -517,6 +532,7 @@ async function openPrevIndex(input: {
 			return createPartsIndexReader({
 				s3: input.s3,
 				partCount: pointer.partCount,
+				startPart: input.startPart,
 				label,
 				partKey: (partIndex) =>
 					pacedD1SealedIndexPartKey(
@@ -531,6 +547,7 @@ async function openPrevIndex(input: {
 		return createPartsIndexReader({
 			s3: input.s3,
 			partCount: pointer.partCount,
+			startPart: input.startPart,
 			label,
 			partKey: (partIndex) =>
 				pacedD1StagingIndexPartKey(
@@ -541,7 +558,7 @@ async function openPrevIndex(input: {
 				),
 		})
 	}
-	return createMemoryPacedD1IndexReader(body)
+	return { ...createMemoryPacedD1IndexReader(body), resumePart: () => 0 }
 }
 
 async function loadOrCreateNightMeta(input: {
@@ -780,6 +797,7 @@ function createInitialProgress(input: {
 		partialChecksum: '0000000000000000',
 		revision: 0,
 		partCount: 0,
+		prevIndexPart: 0,
 	}
 }
 
@@ -1008,6 +1026,7 @@ async function workSourceTick(input: {
 				partialCount: 0,
 				partialChecksum: '0000000000000000',
 				partCount: 0,
+				prevIndexPart: 0,
 				revision: progress.revision + 1,
 			}
 			const idx = remainingTables.findIndex(
@@ -1037,6 +1056,9 @@ async function workSourceTick(input: {
 		const resuming = sameTable && progress.lastRowid !== null
 		let partCount = sameTable ? progress.partCount : 0
 		const writer = createTickTableWriter()
+		const resumePrevIndexPart = resuming ? progress.prevIndexPart : 0
+		let prevIndex: PrevIndexReader | null = null
+		const prevIndexPart = () => prevIndex?.resumePart() ?? resumePrevIndexPart
 		let tickBytesFlushed = 0
 		let stopForByteBudget = false
 		const partMaxBytes = input.partMaxBytes ?? d1PacedBackupPartMaxBytes
@@ -1081,6 +1103,7 @@ async function workSourceTick(input: {
 				partialUpserts: cursor.upserts,
 				partialDeletes: cursor.deletes,
 				partCount,
+				prevIndexPart: persistMode === 'walk-complete' ? 0 : prevIndexPart(),
 				revision: progress.revision + 1,
 			}
 			await persistProgress(input.s3, progress)
@@ -1132,6 +1155,7 @@ async function workSourceTick(input: {
 				partialCount: 0,
 				partialChecksum: '0000000000000000',
 				partCount: 0,
+				prevIndexPart: 0,
 				revision: progress.revision + 1,
 			}
 			const idx = remainingTables.findIndex(
@@ -1153,13 +1177,16 @@ async function workSourceTick(input: {
 				mode === 'delta' && prevTable
 					? {
 							schemaHash: prevTable.schemaHash,
-							openIndex: () =>
-								openPrevIndex({
+							openIndex: async () => {
+								prevIndex = await openPrevIndex({
 									s3: input.s3,
 									source: input.source,
 									prev: prev!,
 									table: table.name,
-								}),
+									startPart: resumePrevIndexPart,
+								})
+								return prevIndex
+							},
 						}
 					: null,
 			writer,
@@ -1242,6 +1269,7 @@ async function workSourceTick(input: {
 				partialUpserts: result.upserts,
 				partialDeletes: result.deletes,
 				partCount,
+				prevIndexPart: prevIndexPart(),
 				revision: progress.revision + 1,
 			}
 			await persistProgress(input.s3, progress)
@@ -1281,6 +1309,7 @@ async function workSourceTick(input: {
 			partialCount: 0,
 			partialChecksum: '0000000000000000',
 			partCount: 0,
+			prevIndexPart: 0,
 			revision: progress.revision + 1,
 		}
 		// Drop finished table from the local remaining list.
