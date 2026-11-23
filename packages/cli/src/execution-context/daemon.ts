@@ -317,7 +317,7 @@ export async function runDaemonConnection(
 	const Socket = input.WebSocketImpl ?? globalThis.WebSocket
 	if (!Socket) {
 		throw new Error(
-			'This Node.js has no global WebSocket. Use Node 22 or newer.',
+			'This Node.js has no global WebSocket. Use Node 22.19 or newer.',
 		)
 	}
 	const ticketTimeout = AbortSignal.timeout(connectTicketTimeoutMs)

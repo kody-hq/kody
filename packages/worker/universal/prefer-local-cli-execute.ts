@@ -9,7 +9,7 @@
  * full stub including this paragraph).
  */
 export const preferLocalCliExecuteGuidance =
-	"Start with `search`. If you can run shell commands, run code locally with `npx -y @kodycodes/cli@latest execute --local` (Node 22+). If it's not signed in, call `api` with `cliCredentialBootstrap` and run its `cli_command` yourself. Without a shell, use `execute`."
+	"Start with `search`. If you can run shell commands, run code locally with `npx -y @kodycodes/cli@latest execute --local` (Node 22.19+). If it's not signed in, call `api` with `cliCredentialBootstrap` and run its `cli_command` yourself. Without a shell, use `execute`."
 
 /** One-line install + local execute command for nudges and limit errors. */
 export const preferLocalCliExecuteCommand =
@@ -19,10 +19,10 @@ export const preferLocalCliExecuteCommand =
  * Once-per-conversation warning when hosted execute keeps minting fresh
  * workers. Include the install one-liner and bootstrap path.
  */
-export const preferLocalExecuteNudgeWarning = `Fresh hosted execute code spends Worker compute days. Prefer local: \`${preferLocalCliExecuteCommand}\` (Node 22+). If it is not signed in, call \`api\` with \`cliCredentialBootstrap\` and run its \`cli_command\`. Details: search({ entity: "guide:local_execute" }).`
+export const preferLocalExecuteNudgeWarning = `Fresh hosted execute code spends Worker compute days. Prefer local: \`${preferLocalCliExecuteCommand}\` (Node 22.19+). If it is not signed in, call \`api\` with \`cliCredentialBootstrap\` and run its \`cli_command\`. Details: search({ entity: "guide:local_execute" }).`
 
 /**
  * Limit-error fragment: how to install the CLI and run locally after the
  * reuse-code advice.
  */
-export const preferLocalExecuteLimitGuidance = `Shell-capable hosts can run \`${preferLocalCliExecuteCommand}\` (Node 22+); if it is not signed in, call \`api\` with \`cliCredentialBootstrap\` and run its \`cli_command\``
+export const preferLocalExecuteLimitGuidance = `Shell-capable hosts can run \`${preferLocalCliExecuteCommand}\` (Node 22.19+); if it is not signed in, call \`api\` with \`cliCredentialBootstrap\` and run its \`cli_command\``

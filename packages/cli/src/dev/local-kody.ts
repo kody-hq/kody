@@ -36,14 +36,20 @@ import {
 	packageAppHostEntryQueryParam,
 } from '@kody-internal/shared/public-urls.ts'
 import { localUsernameFor } from './dev-app-origin.js'
+import { parseLocalKodyLogLine, type DevEvent } from './dev-events.js'
 import { devWorkDirPrefix, startProcessReaper } from './process-reaper.js'
 
 const devRuntimePackageName = '@kodycodes/dev-runtime'
+
+/** Overrides {@link localKodyStateDir} so a second stack (`kody app check`) never shares ports with `kody dev`. */
+export const localKodyStateDirEnvVar = 'KODY_DEV_STATE_DIR'
 
 export function localKodyStateDir(
 	root: string,
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
+	const override = env[localKodyStateDirEnvVar]
+	if (override) return resolve(override)
 	return join(
 		userCacheDir(env),
 		'dev-state',
@@ -246,6 +252,8 @@ export async function startLocalKody(input: {
 	passthroughHosts?: ReadonlyArray<string>
 	allowPrivateNetwork?: boolean
 	onStatus?: (message: string) => void
+	/** Worker `console.error` lines as dev log events (also kept in `runtime.log`). */
+	onEvent?: (event: DevEvent) => void
 }): Promise<LocalKody> {
 	const entry = await ensureDevRuntime({
 		env: input.env,
@@ -284,7 +292,12 @@ export async function startLocalKody(input: {
 			packageAppPort: input.packageAppPort,
 			...(input.simulation ? { simulation: input.simulation } : {}),
 			...(outbound ? { outboundUrl: outbound.url } : {}),
-			onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
+			onLog: (line) => {
+				log.write(`[${line.source}] ${line.line}\n`)
+				if (line.source !== 'wrangler' || !input.onEvent) return
+				const event = parseLocalKodyLogLine(line.line)
+				if (event) input.onEvent(event)
+			},
 			onSpawn: (pid) => reaper?.trackGroup(pid),
 			onExit: (pid) => reaper?.untrackGroup(pid),
 		})

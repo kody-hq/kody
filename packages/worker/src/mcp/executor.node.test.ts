@@ -1738,7 +1738,7 @@ test('executor maps secret errors, formats guidance, and truncates on UTF-8 boun
 		alternativeAction: {
 			type: 'run_locally',
 			command: 'npx -y @kodycodes/cli@latest execute --local --file <file>',
-			requires: ['node>=22', 'kody_cli_signed_in'],
+			requires: ['node>=22.19', 'kody_cli_signed_in'],
 		},
 	})
 	// A build that ran out of room on Kody cloud names the local build, even
@@ -1759,7 +1759,7 @@ test('executor maps secret errors, formats guidance, and truncates on UTF-8 boun
 			command:
 				'npx -y @kodycodes/cli@latest package publish <package> --build local',
 			requires: [
-				'node>=22',
+				'node>=22.19',
 				'kody_cli_signed_in',
 				'execution_contexts_experiment',
 			],

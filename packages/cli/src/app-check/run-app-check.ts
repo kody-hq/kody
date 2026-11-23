@@ -14,6 +14,15 @@ import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { DevEvent } from '../dev/dev-events.js'
+import {
+	devStatusPath,
+	findRunningDevServer,
+	type DevServerStatus,
+} from '../dev/dev-registry.js'
+import {
+	localKodyStateDir,
+	localKodyStateDirEnvVar,
+} from '../dev/local-kody.js'
 import { loadPackageManifest } from '../package-manifest.js'
 import { StructuredCliError } from '../structured-error.js'
 import type { KodyTarget } from '../target.js'
@@ -109,15 +118,34 @@ export async function runAppCheck(input: {
 	if (ownsOutputDir) await writeFile(join(outputDir, '.gitignore'), '*\n')
 
 	const consoleEntries: Array<AppCheckConsoleEntry> = []
-	status(`kody app check: starting the kody dev preview for ${manifest.name}…`)
-	const preview = await startDevPreview({
-		packageRoot: manifest.root,
+	const onServerError = (message: string) =>
+		consoleEntries.push({ source: 'server', message })
+	const running = await findRunningDevServer({
+		root: manifest.root,
 		target: input.target,
-		...(input.org ? { org: input.org } : {}),
-		...(input.env ? { env: input.env } : {}),
-		onServerError: (message) =>
-			consoleEntries.push({ source: 'server', message }),
 	})
+	let preview: DevPreview
+	if (running) {
+		status(
+			`kody app check: using the running kody dev preview for ${manifest.name} (pid ${running.registration.pid})…`,
+		)
+		preview = attachDevPreview({
+			origin: running.registration.origin,
+			status: running.status,
+			onServerError,
+		})
+	} else {
+		status(
+			`kody app check: starting the kody dev preview for ${manifest.name}…`,
+		)
+		preview = await startDevPreview({
+			packageRoot: manifest.root,
+			target: input.target,
+			...(input.org ? { org: input.org } : {}),
+			...(input.env ? { env: input.env } : {}),
+			onServerError,
+		})
+	}
 	let report: AppCheckReport
 	try {
 		status(`kody app check: rendering ${preview.url}…`)
@@ -192,6 +220,46 @@ async function freePort(): Promise<number> {
 	})
 }
 
+type DevPreview = { url: string; close: () => Promise<void> }
+
+/**
+ * Render a `kody dev` that is already running for this package instead of
+ * starting a second stack. Its server errors stream to that terminal, so the
+ * report picks up whichever error it records last during the check.
+ */
+function attachDevPreview(input: {
+	origin: string
+	status: DevServerStatus
+	onServerError: (message: string) => void
+}): DevPreview {
+	const before = lastErrorAt(input.status)
+	return {
+		url: input.status.url,
+		close: async () => {
+			const status = await fetch(new URL(devStatusPath, input.origin), {
+				signal: AbortSignal.timeout(1_500),
+			})
+				.then((response) =>
+					response.ok ? (response.json() as Promise<DevServerStatus>) : null,
+				)
+				.catch(() => null)
+			const error = status?.lastError
+			if (!error || lastErrorAt(status) === before) return
+			input.onServerError(
+				error.kind === 'build'
+					? `Build error${error.file ? ` in ${error.file}` : ''}: ${error.message}`
+					: error.request
+						? `${error.message} (${error.request.method} ${error.request.path})`
+						: error.message,
+			)
+		},
+	}
+}
+
+function lastErrorAt(status: DevServerStatus): string | null {
+	return status.lastError?.at ?? null
+}
+
 /**
  * Run this same CLI's `kody dev serve` on a free port, so the check renders
  * exactly the preview `kody dev` serves. Its NDJSON events carry server-side
@@ -203,7 +271,7 @@ async function startDevPreview(input: {
 	org?: string
 	env?: NodeJS.ProcessEnv
 	onServerError: (message: string) => void
-}): Promise<{ url: string; close: () => Promise<void> }> {
+}): Promise<DevPreview> {
 	const cliEntry = process.argv[1]
 	if (!cliEntry) {
 		throw new StructuredCliError({
@@ -231,7 +299,7 @@ async function startDevPreview(input: {
 		],
 		{
 			cwd: input.packageRoot,
-			env: input.env ?? process.env,
+			env: appCheckPreviewEnv(input.packageRoot, input.env ?? process.env),
 			stdio: ['ignore', 'pipe', 'pipe'],
 			windowsHide: true,
 		},
@@ -298,6 +366,20 @@ async function startDevPreview(input: {
 	} catch (error) {
 		await close()
 		throw error
+	}
+}
+
+/**
+ * The check's own local Kody state, so its stack never reuses the ports a
+ * `kody dev` started later (or with `--port`) holds for the same package.
+ */
+function appCheckPreviewEnv(
+	packageRoot: string,
+	env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+	return {
+		...env,
+		[localKodyStateDirEnvVar]: `${localKodyStateDir(packageRoot, env)}-app-check`,
 	}
 }
 

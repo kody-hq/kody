@@ -166,6 +166,8 @@ export async function runDevServe(input: {
 		manifest: Awaited<ReturnType<typeof loadPackageManifest>>,
 		/** Port the app will be served on; local Kody builds its origin from it. */
 		packageAppPort: number,
+		/** Dev events from the local workers (their `console.error` lines). */
+		onEvent: (event: DevEvent) => void,
 	) => Promise<{
 		upstream: LocalKodyUpstream
 		close: () => Promise<void>
@@ -211,7 +213,7 @@ export async function runDevServe(input: {
 		: undefined
 	const localKody =
 		input.startLocalKody && localKodyPort !== undefined
-			? await input.startLocalKody(manifest, localKodyPort)
+			? await input.startLocalKody(manifest, localKodyPort, onEvent)
 			: null
 	try {
 		server = await startPackageAppDev({

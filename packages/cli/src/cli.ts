@@ -1867,7 +1867,11 @@ async function dispatch(
 								: {}),
 							...(target === 'mock' && process.env.KODY_DEV_STUB_RUNTIME !== '1'
 								? {
-										startLocalKody: async (manifest, packageAppPort) => {
+										startLocalKody: async (
+											manifest,
+											packageAppPort,
+											onEvent,
+										) => {
 											const local = await import('./dev/local-kody.js')
 											const kody = await local.startLocalKody({
 												manifest,
@@ -1881,6 +1885,7 @@ async function dispatch(
 													clock: parsed.values.clock,
 												}),
 												onStatus: (message) => io.stderr(`${message}\n`),
+												onEvent,
 											})
 											return {
 												api: { origin: kody.origin, apiToken: kody.apiToken },

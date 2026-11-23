@@ -555,12 +555,13 @@ cookies, layout, redirects, and websocket facets.
 
 ## Local testing with `kody dev`
 
-**When Node ≥22 and `@kodycodes/cli` are available**, start here for unpublished
-apps. From the package directory the CLI serves `kody.app.entry` on localhost
-via workerd with hot reload, at the root of its own `*.localhost` origin like
-the hosted app; `packageContext.hostedUrl` is that local origin. Bundling reuses
-the same esbuild path as publish. If the agent cannot run a local CLI, skip this
-section and use `repoRunChecks` + post-publish `packageAppFetch` instead.
+**When Node ≥22.19 and `@kodycodes/cli` are available**, start here for
+unpublished apps. From the package directory the CLI serves `kody.app.entry` on
+localhost via workerd with hot reload, at the root of its own `*.localhost`
+origin like the hosted app; `packageContext.hostedUrl` is that local origin.
+Bundling reuses the same esbuild path as publish. If the agent cannot run a
+local CLI, skip this section and use `repoRunChecks` + post-publish
+`packageAppFetch` instead.
 
 ```bash
 cd ./my-package

@@ -1959,7 +1959,7 @@ export function getExecutionErrorDetails(
 				type: 'publish_local_build',
 				command: publishLocalBuildCommand,
 				requires: [
-					'node>=22',
+					'node>=22.19',
 					'kody_cli_signed_in',
 					'execution_contexts_experiment',
 				],
@@ -2256,7 +2256,7 @@ function parseExecutorSandboxTimeoutErrorMessage(message: string) {
 	return { timedOutAfterMs: unit === 'ms' ? value : value * 1000 }
 }
 
-const runLocallyRequirements = ['node>=22', 'kody_cli_signed_in']
+const runLocallyRequirements = ['node>=22.19', 'kody_cli_signed_in']
 
 const executionTimedOutRunLocallyNextStep = `To run it as written, save the module to a file and run \`${executeLocallyCommand}\`: local runs have no execution time budget and call the same Kody capabilities.`
 

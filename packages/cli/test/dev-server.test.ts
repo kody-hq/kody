@@ -15,6 +15,7 @@ import { test } from 'node:test'
 import psList from 'ps-list'
 import {
 	formatDevEvent,
+	parseLocalKodyLogLine,
 	parseWorkerdStdoutLine,
 	runtimeErrorFix,
 } from '../src/dev/dev-events.js'
@@ -209,6 +210,28 @@ test('parseWorkerdStdoutLine reads tagged app logs and passes plain lines throug
 		message: 'hello',
 		request: null,
 	})
+})
+
+test('parseLocalKodyLogLine turns wrangler console.error lines into error logs', () => {
+	assert.deepEqual(
+		parseLocalKodyLogLine(
+			'\u001b[31m\u2718 \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mdb fallback used { code: 42 }\u001b[0m',
+		),
+		{
+			type: 'log',
+			source: 'workerd',
+			level: 'error',
+			message: 'db fallback used { code: 42 }',
+			request: null,
+		},
+	)
+	assert.equal(parseLocalKodyLogLine('plain console.log line'), null)
+	assert.equal(parseLocalKodyLogLine('\u25b2 [WARNING] experimental API'), null)
+	assert.equal(
+		parseLocalKodyLogLine('[wrangler:info] GET / 200 OK (5ms)'),
+		null,
+	)
+	assert.equal(parseLocalKodyLogLine(''), null)
 })
 
 test('runtime errors from a CommonJS require() of a Node builtin carry a fix line', () => {

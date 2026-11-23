@@ -64,7 +64,7 @@ export function buildStubPackageFiles(input: {
 			'`repoRunChecks` then `repoPublishSession`; git lane — local checks,',
 			'commit, push, then `packagePublishExternalPush` (server-side checks;',
 			'sessions refuse unpublished HEAD).',
-			'After publish, when Node ≥22 + CLI are available, prefer',
+			'After publish, when Node ≥22.19 + CLI are available, prefer',
 			'`npx @kodycodes/cli execute --local` (`kody login` or headless',
 			'`KODY_API_TOKEN`; `guide:local_execute`). MCP-only hosts (no shell)',
 			'smoke with the matching post-publish surface or a static `kody:@…`',

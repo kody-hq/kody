@@ -507,8 +507,8 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   other clients is never read. Paired `kody login` OAuth is accepted as Bearer
   on CapabilityProxy and package-graph. Unpaired API origins need bootstrap or a
   `kody_at_…` token.
-- **Node.js:** 22 or newer (`package.json` `engines` is `>=22`). Older Node
-  fails immediately with that requirement, before workerd is downloaded or
+- **Node.js:** 22.19 or newer (`package.json` `engines` is `>=22.19`). Older
+  Node fails immediately with that requirement, before workerd is downloaded or
   started.
 - **Bundling:** `--file` entries are bundled with esbuild before workerd loads
   `main.js` (relative local imports and bare npm packages from `node_modules`;

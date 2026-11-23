@@ -2,7 +2,7 @@
 name: prefer-local-cli-execute
 description: >
   Prefer @kodycodes/cli execute --local over hosted MCP execute for one-off
-  modules and smoke tests when Node ≥22 and the CLI are available. Agents
+  modules and smoke tests when Node ≥22.19 and the CLI are available. Agents
   already on Kody MCP: cliCredentialBootstrap then CLI auth bootstrap (no second
   OAuth, no tokenCreate). Interactive humans: kody login. Scoped KODY_API_TOKEN
   remains for CI/headless. Use when running Kody execute from Cursor (including

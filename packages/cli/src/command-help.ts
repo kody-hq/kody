@@ -375,7 +375,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 			targetFlag,
 			tokenFlag,
 			apiUrlFlag,
-			['--local', 'Run in local workerd on this machine (Node.js 22+)'],
+			['--local', 'Run in local workerd on this machine (Node.js 22.19+)'],
 			[
 				'--allow-private-network',
 				'Let --local code fetch private and local addresses',

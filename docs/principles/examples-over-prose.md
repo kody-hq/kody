@@ -8,7 +8,7 @@ applies, the command, and what failure looks like.
 
 Local CLI execute has one guide and one skill. Other pages link them.
 
-- When: Node ≥22 and `@kodycodes/cli` are available.
+- When: Node ≥22.19 and `@kodycodes/cli` are available.
 - Command: `npx @kodycodes/cli execute --local`
 - Failure: `--local` cannot run. Use Open API / MCP `api`, or fix the
   environment.

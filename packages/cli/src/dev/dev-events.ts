@@ -51,6 +51,29 @@ const logLevels = new Set<DevLogLevel>([
 ])
 
 /** Parse one workerd stdout line; plain lines become untagged `log` events. */
+const ansiEscape = /\u001b\[[0-9;]*m/g
+const wranglerErrorLine = /^(?:\u2718\s+)?\[ERROR\]\s+(.+)$/
+
+/**
+ * Local Kody (`--target mock`) runs the app inside wrangler, which prints a
+ * worker's `console.error` as `✘ [ERROR] <message>`. Turn those lines into
+ * error log events; everything else stays in `runtime.log` only.
+ */
+export function parseLocalKodyLogLine(
+	line: string,
+): Extract<DevEvent, { type: 'log' }> | null {
+	const match = wranglerErrorLine.exec(line.replace(ansiEscape, '').trim())
+	const message = match?.[1]?.trim()
+	if (!message) return null
+	return {
+		type: 'log',
+		source: 'workerd',
+		level: 'error',
+		message,
+		request: null,
+	}
+}
+
 export function parseWorkerdStdoutLine(
 	line: string,
 ): Extract<DevEvent, { type: 'log' }> {
