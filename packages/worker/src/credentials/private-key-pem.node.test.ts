@@ -84,6 +84,15 @@ test('unsupported or broken keys are caller errors that name the label, never th
 			'-----BEGIN EC PRIVATE KEY-----\nMAA=\n-----END EC PRIVATE KEY-----',
 			'not a valid SEC1 EC key',
 		],
+		[
+			'-----BEGIN PRIVATE KEY-----\nMAA=\n-----END PRIVATE KEY-----',
+			'not a valid PKCS#8 key',
+		],
+		[
+			'-----BEGIN RSA PRIVATE KEY-----\nMAA=\n-----END RSA PRIVATE KEY-----',
+			'not a valid PKCS#1 RSA key',
+		],
+		['abcd', 'is not a PEM private key'],
 	]
 	for (const [value, expected] of cases) {
 		const error = caught(() => privateKeyPemToPkcs8(value))

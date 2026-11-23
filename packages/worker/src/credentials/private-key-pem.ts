@@ -52,7 +52,9 @@ export function privateKeyPemToPkcs8(value: string): {
 				`The signing key has a PEM header without a matching END line. ${acceptedPrivateKeyPems}`,
 			)
 		}
-		return { der: decodeBody(text, null), format: 'PKCS#8' }
+		const der = decodeBody(text, null)
+		assertDerSequence(der, [0x02, 0x30, 0x04], null, 'PKCS#8')
+		return { der, format: 'PKCS#8' }
 	}
 	const block = blocks.find(([, label]) => label! in labelFormats)
 	if (!block) throw unsupportedLabelError(blocks[0]![1]!)
@@ -67,8 +69,10 @@ export function privateKeyPemToPkcs8(value: string): {
 	const der = decodeBody(body, label)
 	switch (format) {
 		case 'PKCS#8':
+			assertDerSequence(der, [0x02, 0x30, 0x04], label, format)
 			return { der, format }
 		case 'PKCS#1 RSA':
+			assertDerSequence(der, [0x02, 0x02, 0x02], label, format)
 			return { der: wrapPkcs8(rsaEncryptionAlgorithm, der), format }
 		case 'SEC1 EC':
 			return {
@@ -143,25 +147,56 @@ function decodeBody(body: string, label: string | null) {
 
 type DerElement = { tag: number; start: number; end: number }
 
-function readDer(bytes: Uint8Array, offset: number): DerElement {
+function readDer(
+	bytes: Uint8Array,
+	offset: number,
+	malformed: () => Error = malformedSec1,
+): DerElement {
 	const tag = bytes[offset]
 	let length = bytes[offset + 1]
 	let start = offset + 2
-	if (tag === undefined || length === undefined) throw malformedSec1()
+	if (tag === undefined || length === undefined) throw malformed()
 	if (length & 0x80) {
 		const count = length & 0x7f
-		if (count === 0 || count > 4) throw malformedSec1()
+		if (count === 0 || count > 4) throw malformed()
 		length = 0
 		for (let index = 0; index < count; index += 1) {
 			const byte = bytes[start + index]
-			if (byte === undefined) throw malformedSec1()
+			if (byte === undefined) throw malformed()
 			length = length * 256 + byte
 		}
 		start += count
 	}
 	const end = start + length
-	if (end > bytes.length) throw malformedSec1()
+	if (end > bytes.length) throw malformed()
 	return { tag, start, end }
+}
+
+/**
+ * Checks the DER is one SEQUENCE whose first fields have `leadingTags`, so a
+ * value that decodes as base64 but holds no key fails when it is saved.
+ */
+function assertDerSequence(
+	der: Uint8Array,
+	leadingTags: Array<number>,
+	label: string | null,
+	format: PrivateKeyFormat,
+) {
+	const malformed = () =>
+		new McpCallerError(
+			label
+				? `The signing key's BEGIN ${label} block is not a valid ${format} key.`
+				: `The signing key is not a PEM private key. ${acceptedPrivateKeyPems}`,
+		)
+	const outer = readDer(der, 0, malformed)
+	if (outer.tag !== 0x30 || outer.end !== der.length) throw malformed()
+	let offset = outer.start
+	for (const tag of leadingTags) {
+		if (offset >= outer.end) throw malformed()
+		const field = readDer(der, offset, malformed)
+		if (field.tag !== tag) throw malformed()
+		offset = field.end
+	}
 }
 
 /** The namedCurve OID (whole TLV) from a SEC1 ECPrivateKey's `[0]` parameters. */
