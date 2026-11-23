@@ -2,9 +2,9 @@
 title: How my agents decided to not use Effect
 date: 2026-11-25
 description:
-  I didn't pick this one. Agents designed a blind trial, built the same Kody
-  request path in Effect and in plain Promises with lint rules, planted bugs in
-  both, and scored them against priorities I set.
+  I made this call, and my agents did the investigation. They ran a blind trial,
+  built the same Kody request path in Effect and in plain Promises with lint
+  rules, planted bugs in both, and scored them against priorities I set.
 order: 1
 category: technical
 ---
@@ -13,25 +13,59 @@ category: technical
 made safe by a few small required helpers and custom lint rules that are on by
 default, plus zod decoding everywhere input arrives. Effect is not being adopted
 worker-wide, but it stays a candidate for long-lived resource-lifecycle code
-like Durable Objects and queues. I didn't make that call on vibes, and I didn't
-make it alone: I set the priorities and the process, and my agents did the
-investigation. I actually started out leaning toward Effect.
+like Durable Objects and queues. This was my call and I own it. I set the
+priorities and designed the process, my agents did the investigation, and I
+actually started out leaning toward Effect.
 
-## I don't write the code anymore
+## I made this call
 
-These days I'm not writing Kody's code myself. Agents are. That changes how I
-think about decisions like this one. If I pick a side because of what I like
-reading, I'm making a call about code I won't be writing, for authors who aren't
-me.
+This was my decision, and I didn't make it on a gut feeling. I wrote down what I
+care about and how much. When our first attempt was a quick port, I didn't
+accept it as proof. I pushed for a blind trial with planted bugs, where no
+builder knew about the other and nobody who wrote code got to grade it. I went
+in leaning toward Effect. Then I read the evidence and approved the
+recommendation.
 
-So I believe decisions like this are better made by agents after a rigorous
-investigation by the agents themselves. My job is to say what matters and how
-we'll find out. Their job is to find out.
+Agents did the investigation because agents write the code. I'm not writing
+Kody's code myself anymore, and picking a side based on what I like reading
+would mean deciding for authors who aren't me. My job is to say what matters,
+how we'll find out, and to make the call. Their job is to find out, rigorously.
 
 And I had a preference going in. Early on I said, "I mean to use effect." I also
 said that something that "catches bugs increases the pit of success and that
 counts for a great deal." I meant both. This post is about what happened when we
 actually tested that.
+
+## About that 2024 post
+
+In April 2024, replying to Sebastian Lorenz from the Effect team,
+[I wrote](https://x.com/kentcdodds/status/1784281743165731316): "I'm not talking
+about overlap. I'm talking about perception. And the size of your API. It's
+enormous. And it feels like writing a completely different language. Which is
+why I'm not planning on using it."
+
+That was a gut reaction, and plenty of people pushed back. The fair version of
+that pushback was "try it before saying never." They were right. So we did:
+seven rounds, and I went in leaning toward it.
+
+Earlier in that thread, Sebastian said he was
+["respectfully placing a counter bet"](https://x.com/thefubhy/status/1784275505971077240)
+on my take. For the record, the bet had nothing to do with this. I didn't steer
+my agents away from Effect to win it. And even if they'd picked Effect, I
+wouldn't count the bet as lost, because I still wouldn't be the one using it. My
+agents would. Sebastian, I'm happy to hear your appeal.
+
+The bigger point is that my 2024 objection matters a lot less now. When agents
+are the authors, "it feels like a different language to me" isn't a good reason
+to reject a library. That's exactly why Effect got a real trial instead of a
+tweet.
+
+## Libraries are tools for my agents
+
+I think of libraries and frameworks as tools for my agents now, and I'm looking
+for the ones my agents find good to work with. Our
+[move from Remix 3 to TanStack Start](/blog/why-we-moved-kody-from-remix-3-to-tanstack-start)
+came from the same place. This is another round of that.
 
 ## Why we ran this at all
 
@@ -89,7 +123,7 @@ Effect versus Promises plus helpers and lint.
 
 ## How the agents ran it
 
-Here's the process. I set it; agents did every step.
+Here's the process. I designed it; agents did every step.
 
 **The rubric came first, and it was hidden.** My agent wrote the scoring rubric
 before any code was built. No builder, follow-up author, or bug hunter ever saw
@@ -108,9 +142,8 @@ the build, and then commits it.
   outbound call without a deadline, no floating promises, and no swallowed
   errors.
 
-Both were told to hill-climb until the easy way is the correct way: re-read the
-code, ask what a contributor in a hurry would still get wrong, fix it, and
-repeat until a pass found nothing meaningful.
+Both were told to keep asking what a contributor in a hurry would still get
+wrong, and fix it, until a pass found nothing meaningful.
 
 **Blind bug hunts.** An independent hunter reviewed each arm without knowing
 about the trial or the other arm, and wrote failing repro tests for what it
@@ -159,8 +192,8 @@ them, and I'll come back to that.
 | Adoption cost                 | 4.0        | 8.0                 |
 | **Weighted total**            | **5.76**   | **7.32**            |
 
-Numbers alone don't decide this. That was in the judge's instructions from the
-start. Here's what's behind each one.
+Numbers alone don't decide this, and the judge was told so from the start.
+Here's what's behind each one.
 
 **Seeded bugs: Effect 6.11, Promises 5.56.** Effect caught 5.5 of 9, Promises
 5.0, and every catch on both arms was static. Both caught the same four
@@ -198,7 +231,7 @@ worker package, about 10 times slower. The Promise approach adds no dependencies
 and is adopted per file by adding it to a rule list; backing out is deleting
 that entry. The judge estimated 2 to 4 weeks of agent time to bring the rest of
 the worker's request handlers over with Promises, versus 6 to 10 weeks with
-Effect, because the helpers under each route would have to become Effects too.
+Effect.
 
 ## Being fair to Effect
 
@@ -261,41 +294,34 @@ tests and state-machine invariants, not typing."
 The judge also assessed a few things with no points attached. They sit beside
 the scores, not inside them.
 
-**Day-to-day developer experience.** On the Effect arm, `effect:check` is a 52
-second leg; exhaustive-match type errors are long but precise; traces get spans
-for free; tests need layers or a test runtime; and adding a route means a new
-tagged error, a matcher arm, and a service. On the Promise arm, lint feedback
-comes in seconds with messages that name the fix, stack traces are plain async,
-tests use plain fakes with an injected clock, and adding a route means a union
-member and a switch case.
+**Day-to-day developer experience.** Effect gets trace spans for free and
+precise (if long) type errors, but `effect:check` is a 52 second leg and tests
+need layers. On the Promise arm, lint feedback comes in seconds with messages
+that name the fix, and tests use plain fakes.
 
 **Will it be written well unsupervised?** The follow-up PRs are the best
 evidence, and they're good news for both. Fresh agents with no reviewer who knew
 the approach followed its rules unprompted. No bypassed hooks, no lint disables,
 no casts routing around the approach, and no new failures left unmapped, on
-either arm. The difference was in review: checking the Effect diffs meant
-knowing `Effect.fn`, services, `Ref`, and layer provision to confirm the retry
-budget really was per request. The Promise diffs were more verbose but needed no
-outside knowledge.
+either arm. The difference was in review: checking the Effect diffs took real
+Effect knowledge, while the Promise diffs were more verbose but needed none.
 
 **Long-term direction.** The worker is heading toward more request handlers,
-more Durable Objects, queues, and execution contexts, with more contributors and
-agents. The Promise approach builds on what's already here: our oxlint plugin
-and zod. Effect's resource safety (a `Scope` that releases things on every exit
-path) is the part that might matter more in long-lived code, and that's exactly
-the kind of code where the judge kept it as a candidate (Durable Objects and
-queues) rather than ruling it out. The honest weakness on the Promise side is
-that its rules are opt-in per file, and code outside the rule list is unguarded.
+Durable Objects, and queues. The Promise approach builds on what's already here:
+our oxlint plugin and zod. Effect's resource safety (a `Scope` that releases
+things on every exit path) is the part that might matter more in long-lived
+code, and that's exactly the kind of code where the judge kept it as a candidate
+(Durable Objects and queues) rather than ruling it out. The honest weakness on
+the Promise side is that its rules are opt-in per file, and code outside the
+rule list is unguarded.
 
-**Ecosystem familiarity.** Async/await is plain TypeScript, which nearly every
-TypeScript developer already writes. Effect takes real knowledge to change
-safely (the judge scored readability as close to needing outside expertise), and
-Effect 4 is a recent major version. The judge named that version and the slow
-check as the costs most likely to be felt every day.
+**Ecosystem familiarity.** Async/await is what nearly every TypeScript developer
+already writes. The judge named Effect 4 being a recent major version, plus the
+slow check, as the costs most likely to be felt every day.
 
 ## So what about my own two quotes?
 
-The judge was told not to decide for me, but to say how the evidence bears on
+The judge was told not to decide for me, just to say how the evidence bears on
 what I'd said.
 
 If I weighted pit of success above everything else, Effect wins the bug
@@ -333,28 +359,27 @@ If any of those show up, we'll look at this again.
 
 ## What's next
 
-We're now adopting this on main for the publish offload and open API request
-paths. That work is underway, not shipped:
+The adoption has shipped. [#5542](https://github.com/kody-hq/kody/pull/5542) is
+merged and live. It brought the Promise helpers, zod decoding at the edge, and
+the request-path lint rules (as errors) to the open API and publish offload
+paths. It fixed the bugs on main that the builders and hunters found, each with
+tests, including the two the seeds showed we were missing: an expired ticket,
+and discarding an unstarted build on cloud fallback. It also added a contributor
+doc on writing request handlers. It cost about 2 KB of bundle and didn't change
+startup CPU or check time.
 
-- Turning the request-path rules on by default, as errors.
-- Adding a zod-decode helper for request bodies.
-- Fixing the bugs on main that the builders and hunters found.
-- Adding the two tests the seeds showed we were missing: an expired ticket, and
-  discarding an unstarted build on cloud fallback.
+Next up is the worker's webhooks code, which has 73 lint findings to work
+through. That hasn't started yet.
 
-Then we'll measure a second request path the same way.
+## I made the call, agents did the legwork
 
-## Agents investigated, I set the priorities
+I started this wanting Effect, and it's good code once you know it. But I'm not
+the one writing it. So I set the priorities, agents tested them blind, and I
+made the call on the evidence. That's how I want to make decisions like this
+from now on.
 
-I started this wanting Effect. If I'd decided on my own, I might well have
-picked it. It's good code once you know it.
-
-But I'm not the one writing the code, so I'm not the right one to guess. I wrote
-down what I care about, agents designed a fair test, other agents built it
-blind, others tried to break it, and a judge scored it. Then I read the
-evidence. That's the process I want for calls like this from now on.
-
-If you want to dig in, the trial PRs are all there: Arm A Effect
+If you want to dig in, the trial PRs are all there (now closed, superseded by
+[#5542](https://github.com/kody-hq/kody/pull/5542)): Arm A Effect
 ([#5522](https://github.com/kody-hq/kody/pull/5522)), Arm C Promises plus
 helpers and lint ([#5524](https://github.com/kody-hq/kody/pull/5524)), and the
 follow-ups: C-F1 ([#5525](https://github.com/kody-hq/kody/pull/5525)), C-F3
