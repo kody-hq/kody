@@ -136,7 +136,13 @@ export type PacedD1ProgressCursor = {
 	/**
 	 * Previous-night index part holding the first entry the delta merge-join
 	 * has not consumed for `currentTable`. A mid-table resume opens the
-	 * previous index here instead of re-reading every part from 0.
+	 * previous index here instead of re-reading every part from 0. Cursors
+	 * written before this field parse as 0 (reread from the start, still
+	 * correct).
+	 *
+	 * Remove when: the 0 fallback in `parsePacedD1ProgressCursor` can go once
+	 * no staging `progress.json` older than this field remains inside the
+	 * 14-day catch-up lookback.
 	 */
 	prevIndexPart: number
 }
