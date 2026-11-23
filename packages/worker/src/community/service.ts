@@ -1,3 +1,4 @@
+import { isAppStarterPackage } from '#worker/app-starters/repo.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
@@ -1345,9 +1346,27 @@ export async function prepareCommunityFork(
 			`Catalog entry "${input.listingId}" was not found.`,
 		)
 	}
-	const source = await getEntitySourceById(input.env.APP_DB, listing.sourceId)
+	const [source, isStarter] = await Promise.all([
+		getEntitySourceById(input.env.APP_DB, listing.sourceId),
+		isAppStarterPackage(input.env.APP_DB, listing.packageId),
+	])
 	let preferredCommit = listing.pinnedCommit
-	if (source) {
+	let starterHeadIsPublished = false
+	if (source && isStarter) {
+		// Starter checks validate the published revision, so forks copy that one.
+		// Permanent: the listing pin also passed publish checks, so it stands in
+		// for a source that has no published commit.
+		preferredCommit = source.published_commit || listing.pinnedCommit
+		const head = await resolveArtifactSourceHead(
+			input.env,
+			source.repo_id,
+		).catch((error: unknown) => {
+			// Without the tip, the fork copies the published text snapshot.
+			console.warn('community-fork-starter-head-failed', error)
+			return null
+		})
+		starterHeadIsPublished = head?.commit === preferredCommit
+	} else if (source) {
 		try {
 			const head = await resolveArtifactSourceHead(input.env, source.repo_id)
 			if (head.commit) preferredCommit = head.commit
@@ -1360,7 +1379,9 @@ export async function prepareCommunityFork(
 		sourceId: listing.sourceId,
 		repoId: source?.repo_id ?? null,
 		preferredCommit,
-		fallbackCommits: [listing.pinnedCommit, source?.published_commit],
+		fallbackCommits: isStarter
+			? []
+			: [listing.pinnedCommit, source?.published_commit],
 	})
 	if (!resolved) {
 		throw new CommunityActionError(
@@ -1383,7 +1404,10 @@ export async function prepareCommunityFork(
 		originCommit,
 		originName: listing.name,
 		originKodyId: listing.kodyId,
-		originRepoId: source?.repo_id ?? null,
+		// A storage-layer repo fork copies the branch tip (and binary files), so
+		// starters use it only when that tip is the published revision.
+		originRepoId:
+			isStarter && !starterHeadIsPublished ? null : (source?.repo_id ?? null),
 		lineage: {
 			listingId: input.listingId,
 			upstreamOwnerId: null,

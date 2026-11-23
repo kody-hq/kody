@@ -28,6 +28,15 @@ export async function listAppStarterRows(
 	return (rows.results ?? []).map(mapAppStarterRow)
 }
 
+/** Whether the package is on the recommended starters list, enabled or not. */
+export async function isAppStarterPackage(db: D1Database, packageId: string) {
+	const row = await db
+		.prepare(`SELECT 1 AS found FROM app_starters WHERE package_id = ? LIMIT 1`)
+		.bind(packageId)
+		.first<{ found: number }>()
+	return row !== null
+}
+
 export async function insertAppStarterRow(db: D1Database, row: AppStarterRow) {
 	await db
 		.prepare(

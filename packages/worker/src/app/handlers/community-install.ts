@@ -29,6 +29,7 @@ import { entitlementEmailForOwner } from '#worker/request-context/owner-id.ts'
 import { getPackageScopeByUserId } from '#worker/package-registry/user-scope.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { isAppStarterPackage } from '#worker/app-starters/repo.ts'
 
 const communityInstallPostSchema = z.object({
 	acknowledged: z.boolean().optional(),
@@ -105,8 +106,14 @@ export async function installWebsiteCommunityPackage(input: {
 		)
 		let expectedPinnedCommit = listing.pinnedCommit
 		if (listing.sourceId) {
-			const source = await getEntitySourceById(env.APP_DB, listing.sourceId)
-			if (source?.repo_id) {
+			const [source, isStarter] = await Promise.all([
+				getEntitySourceById(env.APP_DB, listing.sourceId),
+				isAppStarterPackage(env.APP_DB, listing.packageId),
+			])
+			if (source && isStarter) {
+				// Starter forks copy the published revision that passed the checks.
+				expectedPinnedCommit = source.published_commit || listing.pinnedCommit
+			} else if (source?.repo_id) {
 				try {
 					const head = await resolveArtifactSourceHead(env, source.repo_id)
 					if (head.commit) expectedPinnedCommit = head.commit

@@ -68,6 +68,7 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		deleteCommunitySnapshot: vi.fn(),
 		setCommunityListingStatus: vi.fn(),
 		resolveCommunityReportRow: vi.fn(),
+		isAppStarterPackage: vi.fn(async () => false),
 		resolveArtifactSourceHead: vi.fn(async () => ({
 			commit: null as string | null,
 			branch: 'main',
@@ -123,6 +124,7 @@ vi.mock('#worker/repo/artifact-repo-fork.ts', () => ({
 			error.message,
 		),
 }))
+vi.mock('#worker/app-starters/repo.ts', () => pickMocks('isAppStarterPackage'))
 vi.mock('#worker/repo/entity-sources.ts', () =>
 	pickMocks('deleteEntitySource', 'getEntitySourceById'),
 )
@@ -1057,4 +1059,33 @@ test('absorbCommunityForkUpstream records the current listing pin and is idempot
 
 	mockModule.getCommunityForkByForkedPackageId.mockResolvedValue(null)
 	await expect(absorb()).rejects.toThrow(/self-authored/)
+})
+
+test('forkCommunityListing copies the published revision of a recommended starter, not the branch head', async () => {
+	mockForkable()
+	mockModule.getCommunityListingById.mockResolvedValue(
+		sampleListing({ pinnedCommit: 'commit-0' }),
+	)
+	mockModule.getEntitySourceById.mockResolvedValue({
+		id: 'source-1',
+		repo_id: 'package-origin-1',
+		published_commit: 'commit-1',
+	})
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		commit: 'commit-unpublished',
+		branch: 'main',
+	})
+	mockModule.isAppStarterPackage.mockResolvedValueOnce(true)
+
+	await fork({ kodyId: 'my-starter' })
+
+	expect(mockModule.isAppStarterPackage).toHaveBeenCalledWith(
+		expect.anything(),
+		'package-1',
+	)
+	expect(mockModule.forkArtifactRepo).not.toHaveBeenCalled()
+	expect(mockModule.insertCommunityFork).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ origin_commit: 'commit-1' }),
+	)
 })
