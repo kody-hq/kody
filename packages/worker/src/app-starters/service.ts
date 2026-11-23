@@ -324,10 +324,15 @@ export async function listAdminAppStarters(env: Env) {
 /** Enabled starters in rank order whose package still meets the starter contract. */
 export async function listRecommendedAppStarters(
 	env: Env,
-	input: { limit?: number } = {},
+	input: { limit?: number; budgetMs?: number } = {},
 ) {
 	const limit = input.limit ?? 5
-	const rows = await listAppStarterRows(env.APP_DB, { enabledOnly: true })
+	const deadline = performance.now() + (input.budgetMs ?? Infinity)
+	const rows = await withinMs(
+		listAppStarterRows(env.APP_DB, { enabledOnly: true }),
+		deadline - performance.now(),
+	)
+	if (!rows) return []
 	const recommended: Array<AppStarterEntry & { starter: AppStarterManifest }> =
 		[]
 	for (
@@ -335,9 +340,18 @@ export async function listRecommendedAppStarters(
 		start < rows.length && recommended.length < limit;
 		start += limit
 	) {
-		const entries = await loadEntries(env, rows.slice(start, start + limit), {
-			checkFiles: true,
-		})
+		const entries = await withinMs(
+			loadEntries(env, rows.slice(start, start + limit), {
+				checkFiles: true,
+			}).catch((error: unknown) => {
+				console.error('app-starters-recommendation-batch-failed', error)
+				return null
+			}),
+			deadline - performance.now(),
+		)
+		// Out of time or failed: keep the starters already validated.
+		// Permanent: starter packages can fail to load and search must still answer.
+		if (!entries) break
 		recommended.push(
 			...entries.filter(
 				(entry): entry is AppStarterEntry & { starter: AppStarterManifest } =>
@@ -535,4 +549,15 @@ export async function removeAppStarter(input: { env: Env; packageId: string }) {
 		changedRows(remaining, placeAtRank(remaining, input.packageId, undefined)),
 	)
 	return listAdminAppStarters(input.env)
+}
+
+function withinMs<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+	if (ms === Infinity) return promise
+	let timer: ReturnType<typeof setTimeout> | undefined
+	return Promise.race([
+		promise,
+		new Promise<null>((resolve) => {
+			timer = setTimeout(() => resolve(null), Math.max(0, ms))
+		}),
+	]).finally(() => clearTimeout(timer))
 }
