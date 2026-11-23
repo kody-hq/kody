@@ -443,15 +443,24 @@ function PackageFilesExplorerContent({
 											fullView
 												? undefined
 												: (file) =>
-														file.id === data.selectedPath ? (
-															preview
-														) : data.kind === 'file' ? (
+														file.id === data.selectedPath ||
+														data.kind === 'file' ? (
 															// The previous file stays readable until the
 															// next one arrives, instead of a blank column.
+															// The wrapper is always present so the kept file
+															// keeps its scroll position and view state.
 															<div
-																aria-busy="true"
-																data-stale-preview
-																css={stalePreviewCss}
+																{...(file.id === data.selectedPath
+																	? {}
+																	: {
+																			'aria-busy': 'true',
+																			'data-stale-preview': '',
+																		})}
+																css={
+																	file.id === data.selectedPath
+																		? { display: 'contents' }
+																		: stalePreviewCss
+																}
 															>
 																{preview}
 															</div>
@@ -495,7 +504,11 @@ function resetPreviewScroll(node: HTMLElement | null) {
 }
 
 const stalePreviewCss: CSSObject = {
+	display: 'flex',
+	flexDirection: 'column',
+	flex: 1,
 	minWidth: 0,
+	minHeight: 0,
 	pointerEvents: 'none',
 	animation: 'stale-preview-dim 0.2s ease 300ms forwards',
 	'@media (prefers-reduced-motion: reduce)': { animationDuration: '0s' },

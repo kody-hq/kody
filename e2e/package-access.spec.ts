@@ -150,11 +150,16 @@ test('private package source and settings stay isolated across owner, granted gu
 			await fileHeld
 			await route.continue()
 		})
+		// The kept file is the same DOM, so its scroll and view state survive.
+		await page
+			.getByRole('heading', { name: 'index.ts', exact: true })
+			.evaluate((node) => node.setAttribute('data-kept', ''))
 		await page
 			.getByRole('navigation', { name: 'Package root', exact: true })
 			.getByRole('link', { name: 'README.md', exact: true })
 			.click()
 		const stalePreview = page.locator('[data-stale-preview]')
+		await expect(stalePreview.locator('[data-kept]')).toBeVisible()
 		await expect(stalePreview).toHaveAttribute('aria-busy', 'true')
 		await expect(
 			stalePreview.getByRole('heading', { name: 'index.ts', exact: true }),
