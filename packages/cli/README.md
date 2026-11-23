@@ -299,6 +299,7 @@ kody dev emit demo.event --body ./event.json   # subscription delivery shape
 kody dev check                   # local bundles + snapshot membership + publish checks (needs login)
 kody dev check --offline         # local bundles + snapshot membership only; publish can still refuse
 kody dev check --debug           # also print the publish checks call: HTTP status, error code, request id
+kody app check                   # screenshots, accessibility, Lighthouse, console errors -> .kody/app-check/
 
 # Four surfaces against mock then prod:
 kody execute --target mock --invoke ./greet --params '{"name":"kent"}'
@@ -307,6 +308,28 @@ kody execute --target prod --invoke ./greet --params '{"name":"kent"}'
 kody execute --local --invoke kody:@scope/pkg/export --params '{}'
 kody search --target mock local
 ```
+
+### Checking app quality (`kody app check`)
+
+Run `kody app check` during development and fix what it shows. It starts the
+`kody dev` preview for the package in the current directory (or the directory
+you pass), then writes `app-check.md` (a short summary), `app-check.json` (full
+results), and desktop and mobile screenshots in light and dark to
+`<package>/.kody/app-check/`:
+
+```bash
+kody app check                    # this package; default --target mock
+kody app check ./my-package --out ./reports/app-check
+kody app check --json             # one JSON line: result, summary, report paths
+```
+
+The report covers accessibility violations (axe-core), Lighthouse scores, and
+console errors from the browser and the dev server. Pass or fail is in the
+report; the command exits non-zero only when the preview or the browser cannot
+start. The first run installs Playwright, axe-core, Lighthouse, and the
+Playwright Chromium browser into the Kody cache (`KODY_CACHE_DIR`) and reuses
+them after that, so nothing extra ships with the CLI. See
+[Check app quality](https://kody.codes/docs/package-apps#check-app-quality-with-kody-app-check).
 
 ### Testing from other devices (`--host`)
 

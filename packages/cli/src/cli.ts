@@ -94,6 +94,7 @@ export type CommandName =
 	| 'package'
 	| 'execute'
 	| 'dev'
+	| 'app'
 	| 'install'
 	| 'skill'
 	| 'help'
@@ -118,6 +119,7 @@ const orgScopedCommands = new Set<CommandName>([
 	'package',
 	'execute',
 	'dev',
+	'app',
 	'auth',
 ])
 
@@ -165,6 +167,7 @@ function commandUsesStoredActiveOrg(input: {
 		case 'package':
 		case 'execute':
 		case 'dev':
+		case 'app':
 		case 'auth':
 		case 'secret':
 		case 'run':
@@ -260,6 +263,7 @@ const cliFlagOptions = {
 	clock: { type: 'string' },
 	'cpu-limit-ms': { type: 'string' },
 	'ready-file': { type: 'string' },
+	out: { type: 'string' },
 	'no-attach': { type: 'boolean' },
 	method: { type: 'string' },
 	body: { type: 'string' },
@@ -317,6 +321,7 @@ export function resolveCommand(argv: Array<string>): {
 		case 'package':
 		case 'execute':
 		case 'dev':
+		case 'app':
 		case 'install':
 		case 'skill':
 		case 'help':
@@ -563,7 +568,7 @@ async function dispatch(
 		typeof parsed.values.org === 'string' ? parsed.values.org : undefined
 	if (orgFlag !== undefined && !orgScopedCommands.has(parsed.command)) {
 		throw new Error(
-			`\`--org\` is not used with \`kody ${parsed.command}\`. Use it with login, logout, whoami, search, api, package, execute, or auth.`,
+			`\`--org\` is not used with \`kody ${parsed.command}\`. Use it with login, logout, whoami, search, api, package, execute, dev, app, or auth.`,
 		)
 	}
 	// Version checks must work without opening the user's keychain.
@@ -1532,6 +1537,35 @@ async function dispatch(
 			} finally {
 				await closeMock?.()
 			}
+		}
+		case 'app': {
+			const [subcommand, packageDir, ...extra] = parsed.positionals
+			if (subcommand !== 'check' || extra.length > 0) {
+				throw new Error(
+					'Usage: kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--json]',
+				)
+			}
+			const [{ resolveTarget }, { runAppCheck }] = await Promise.all([
+				import('./target.js'),
+				import('./app-check/run-app-check.js'),
+			])
+			const target = resolveTarget({
+				command: 'dev',
+				flag:
+					typeof parsed.values.target === 'string'
+						? parsed.values.target
+						: undefined,
+			})
+			return await runAppCheck({
+				target,
+				json,
+				io: { stdout: write, stderr: writeErr },
+				...(packageDir ? { packageDir } : {}),
+				...(typeof parsed.values.out === 'string'
+					? { outputDir: parsed.values.out }
+					: {}),
+				...(org ? { org } : {}),
+			})
 		}
 		case 'dev': {
 			const { resolveTarget } = await import('./target.js')

@@ -536,6 +536,34 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 		],
 	},
 	{
+		name: 'app',
+		summary: 'Check a package app in a real browser',
+		usage: ['kody app <command> [flags]'],
+		subcommands: [
+			{
+				name: 'check',
+				summary:
+					'Screenshot the kody dev preview and report accessibility, Lighthouse, and console errors',
+				usage: [
+					'kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--org <slug>] [--json]',
+				],
+				notes: [
+					'Writes app-check.md and app-check.json to <package>/.kody/app-check/ (or --out). Pass or fail is in the report; the exit code is 0 unless the preview or browser cannot start.',
+					'The first run installs Playwright, axe-core, Lighthouse, and Chromium into the Kody cache and reuses them after that.',
+				],
+				flags: [
+					[
+						'--out <dir>',
+						'Write the report and screenshots here (default <package>/.kody/app-check)',
+					],
+					devTargetFlag,
+					orgFlag,
+					jsonFlag,
+				],
+			},
+		],
+	},
+	{
 		name: 'install',
 		summary: 'Add Kody as an MCP server to local agent clients',
 		usage: [

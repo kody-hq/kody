@@ -843,6 +843,29 @@ per line (`ready`, `rebuild_start`, `rebuild_ok`, `build_error`,
 id and last error. After local mock and prod both look right, publish, then use
 `packageAppFetch` and the handed-off URL for the hosted proof.
 
+### Check app quality with `kody app check`
+
+Run `kody app check` during development and fix what it shows. From the package
+directory (or `kody app check ./my-package`), it starts the same `kody dev`
+preview, renders it in Chromium at desktop and mobile sizes in light and dark,
+and runs axe-core and Lighthouse. It writes these files to
+`<package>/.kody/app-check/` (or `--out <dir>`):
+
+- `app-check.md`: a short summary for an agent's context window. It starts with
+  pass or fail and the most important issue, then lists the screenshot paths,
+  accessibility violations by rule (most severe first), Lighthouse scores
+  (performance, accessibility, best practices, SEO), and deduplicated console
+  errors from the browser and the dev server.
+- `app-check.json`: the full uncapped results for scripts.
+- `desktop-light.png`, `desktop-dark.png`, `mobile-light.png`,
+  `mobile-dark.png`.
+
+The check is optional. Pass or fail lives in the report, and the command exits
+non-zero only when the preview or the browser cannot start. The first run
+installs Playwright, axe-core, Lighthouse, and the Playwright Chromium browser
+into the Kody cache, then reuses them. The default folder has its own
+`.gitignore`, so the report stays out of git and the published snapshot.
+
 See also
 [Package lifecycle](./package-lifecycle.md#validate-and-test-before-publish) for
 exports, jobs, webhooks, and subscriptions (`kody dev job|webhook|emit` when the
