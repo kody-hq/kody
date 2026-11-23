@@ -3661,11 +3661,10 @@ function WorkspaceDocumentPanel({
 		],
 		queryFn: () =>
 			readFilePreview({ data: { orgSlug: data.orgSlug, fileId: metadata.id } }),
+		// The previous file stays readable until the next one arrives, instead
+		// of a blank column behind a loading indicator.
 		placeholderData: (previous, previousQuery) =>
-			previousQuery?.queryKey[1] === data.orgSlug &&
-			previousQuery.queryKey[2] === metadata.id
-				? previous
-				: undefined,
+			previousQuery?.queryKey[1] === data.orgSlug ? previous : undefined,
 		retry: false,
 	})
 	if (query.isPending) return <LoadingIndicator label="Loading file" />
@@ -3676,14 +3675,36 @@ function WorkspaceDocumentPanel({
 				action={{ label: 'Try again', run: () => void query.refetch() }}
 			/>
 		)
+	const stale = query.data.file.id !== metadata.id
 	return (
-		<FilesPage
-			key={metadata.id}
-			embedded
-			data={{ ...data, selected: query.data }}
-			collapsed={new Set()}
-			onToggleBranch={() => {}}
-		/>
+		<div
+			aria-busy={stale ? 'true' : undefined}
+			data-stale-preview={stale ? '' : undefined}
+			css={
+				stale
+					? {
+							display: 'flex',
+							flexDirection: 'column',
+							flex: 1,
+							minWidth: 0,
+							minHeight: 0,
+							pointerEvents: 'none',
+							animation: 'stale-preview-dim 0.2s ease 300ms forwards',
+							'@media (prefers-reduced-motion: reduce)': {
+								animationDuration: '0s',
+							},
+						}
+					: { display: 'contents' }
+			}
+		>
+			<FilesPage
+				key={query.data.file.id}
+				embedded
+				data={{ ...data, selected: query.data }}
+				collapsed={new Set()}
+				onToggleBranch={() => {}}
+			/>
+		</div>
 	)
 }
 
