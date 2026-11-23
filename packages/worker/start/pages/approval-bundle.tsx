@@ -14,7 +14,10 @@ import {
 	useQueryClient,
 	type QueryKey,
 } from '@tanstack/react-query'
-import { decideApprovalBundle } from '#start/server/approval-bundles'
+import {
+	approveAllApprovalBundle,
+	decideApprovalBundle,
+} from '#start/server/approval-bundles'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { permissionsMutationOptions } from '../permissions-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -25,6 +28,9 @@ import {
 	approvalItemsReadyToApprove,
 	approvalItemStatusLabel,
 	approveAllLabel,
+	approveAllProgress,
+	approveAllSummary,
+	approvingAllLabel,
 	type ApprovalBundleLoaderData,
 	type ApprovalBundlePackageGroup,
 	type ApprovalBundleView,
@@ -59,6 +65,29 @@ const listCss: CSSObject = {
 }
 
 type BundlePath = { orgSlug: string; bundleId: string }
+
+/** Where an item stands inside a running Approve all. */
+type BatchItemState = 'queued' | 'approving'
+
+function replaceItem(
+	old: ApprovalBundleLoaderData | undefined,
+	item: ApprovalItemView,
+): ApprovalBundleLoaderData | undefined {
+	return old?.ok
+		? {
+				...old,
+				view: {
+					...old.view,
+					groups: old.view.groups.map((group) => ({
+						...group,
+						items: group.items.map((previous) =>
+							previous.key === item.key ? item : previous,
+						),
+					})),
+				},
+			}
+		: old
+}
 
 function statusColor(status: ApprovalItemStatus) {
 	switch (status) {
@@ -177,9 +206,13 @@ export function ApprovalBundleRoute({
 	const [errors, setErrors] = useState(new Map<string, string>())
 	const [confirmingDeny, setConfirmingDeny] = useState<string | null>(null)
 	const [approveAll, setApproveAll] = useState<{
-		done: number
+		approved: number
+		failed: number
 		total: number
 	} | null>(null)
+	const [batchItems, setBatchItems] = useState(
+		new Map<string, BatchItemState>(),
+	)
 	const [summary, setSummary] = useState<string | null>(null)
 	const permissions = permissionsMutationOptions(client, actorKey)
 	const mutation = useMutation({
@@ -192,33 +225,73 @@ export function ApprovalBundleRoute({
 			const queryKey = submitted.queryKey
 			if (!result.item) return
 			const item = result.item
-			const matches = { queryKey, exact: true }
-			await client.cancelQueries(matches)
+			await client.cancelQueries({ queryKey, exact: true })
 			client.setQueryData<ApprovalBundleLoaderData>(queryKey, (old) =>
-				old?.ok
-					? {
-							...old,
-							view: {
-								...old.view,
-								groups: old.view.groups.map((group) => ({
-									...group,
-									items: group.items.map((previous) =>
-										previous.key === item.key ? item : previous,
-									),
-								})),
-							},
-						}
-					: old,
+				replaceItem(old, item),
 			)
+		},
+	})
+	const approveAllMutation = useMutation({
+		...permissions,
+		retry: false,
+		gcTime: 0,
+		mutationFn: async (input: {
+			path: BundlePath
+			queue: Array<ApprovalItemView>
+			isCurrent: () => boolean
+		}) => {
+			const response = await approveAllApprovalBundle({
+				data: {
+					...input.path,
+					items: input.queue.map((item) => ({
+						item: item.key,
+						fingerprint: item.fingerprint!,
+					})),
+				},
+			})
+			if (!response.ok) throw new Error(response.error)
+			let approved = 0
+			let failed = 0
+			const settled = new Set<string>()
+			for await (const event of response.events) {
+				if (!input.isCurrent()) continue
+				if (event.phase === 'approving') {
+					setBatchItems((previous) =>
+						new Map(previous).set(event.item, 'approving'),
+					)
+					continue
+				}
+				settled.add(event.item)
+				const { result } = event
+				if (result.ok) approved += 1
+				else failed += 1
+				setBatchItems((previous) => {
+					const next = new Map(previous)
+					next.delete(event.item)
+					return next
+				})
+				if (!result.ok)
+					setErrors((previous) =>
+						new Map(previous).set(event.item, result.error),
+					)
+				const item = result.item
+				if (item) {
+					await client.cancelQueries({ queryKey, exact: true })
+					client.setQueryData<ApprovalBundleLoaderData>(queryKey, (old) =>
+						replaceItem(old, item),
+					)
+				}
+				setApproveAll({ approved, failed, total: input.queue.length })
+			}
+			return { approved, settled }
 		},
 	})
 	async function decide(
 		path: BundlePath,
 		item: ApprovalItemView,
 		action: 'approve' | 'deny',
-		fromBatch = false,
 	): Promise<boolean> {
-		if (batch.current && !fromBatch) return false
+		if (batch.current) return false
 		if (claims.current.has(item.key) || !item.fingerprint) return false
 		claims.current.add(item.key)
 		setBusy(new Set(claims.current))
@@ -264,30 +337,51 @@ export function ApprovalBundleRoute({
 	async function runApproveAll(path: BundlePath, view: ApprovalBundleView) {
 		if (batch.current) return
 		const queue = approvalItemsReadyToApprove(view).filter(
-			(item) => !claims.current.has(item.key),
+			(item) => !claims.current.has(item.key) && item.fingerprint,
 		)
 		if (queue.length === 0) return
 		batch.current = true
-		setApproveAll({ done: 0, total: queue.length })
+		setApproveAll({ approved: 0, failed: 0, total: queue.length })
+		setBatchItems(new Map(queue.map((item) => [item.key, 'queued'])))
 		setSummary(null)
+		setErrors((previous) => {
+			const next = new Map(previous)
+			for (const item of queue) next.delete(item.key)
+			return next
+		})
 		const isCurrent = capture()
-		let approved = 0
 		try {
-			for (const [index, item] of queue.entries()) {
-				if (!isCurrent()) break
-				if (await decide(path, item, 'approve', true)) approved += 1
-				if (isCurrent()) setApproveAll({ done: index + 1, total: queue.length })
-			}
-			const failed = queue.length - approved
+			const { approved, settled } = await approveAllMutation.mutateAsync({
+				path,
+				queue,
+				isCurrent,
+			})
+			if (!isCurrent()) return
+			const lost = queue.filter((item) => !settled.has(item.key))
+			if (lost.length > 0)
+				setErrors((previous) => {
+					const next = new Map(previous)
+					for (const item of lost)
+						next.set(
+							item.key,
+							'Kody stopped reporting on this approval. Reload to see whether it finished.',
+						)
+					return next
+				})
+			setSummary(approveAllSummary({ approved, total: queue.length }))
+		} catch (error) {
 			if (isCurrent())
 				setSummary(
-					failed === 0
-						? `Approved ${approved} of ${queue.length}.`
-						: `Approved ${approved} of ${queue.length}. ${failed} need${failed === 1 ? 's' : ''} another look; see the message on ${failed === 1 ? 'it' : 'each'}.`,
+					error instanceof Error
+						? error.message
+						: 'Kody could not be reached. Try again.',
 				)
 		} finally {
 			batch.current = false
-			if (isCurrent()) setApproveAll(null)
+			if (isCurrent()) {
+				setApproveAll(null)
+				setBatchItems(new Map())
+			}
 			void client.invalidateQueries({
 				queryKey,
 				exact: true,
@@ -296,7 +390,8 @@ export function ApprovalBundleRoute({
 	}
 
 	function renderItem(path: BundlePath, item: ApprovalItemView): ReactNode {
-		const isBusy = busy.has(item.key)
+		const batchState = batchItems.get(item.key) ?? null
+		const isBusy = busy.has(item.key) || batchState === 'approving'
 		const locked = isBusy || approveAll !== null
 		const error = errors.get(item.key) ?? null
 		const decided = item.status !== 'pending'
@@ -306,6 +401,7 @@ export function ApprovalBundleRoute({
 				data-testid="approval-bundle-item"
 				data-item={item.key}
 				data-status={item.status}
+				data-progress={batchState ?? undefined}
 				css={{
 					display: 'grid',
 					gap: spacing.sm,
@@ -336,13 +432,17 @@ export function ApprovalBundleRoute({
 						css={{
 							fontSize: typography.fontSize.sm,
 							fontWeight: typography.fontWeight.semibold,
-							color: statusColor(item.status),
+							color: batchState ? colors.textMuted : statusColor(item.status),
 							padding: `0 ${spacing.sm}`,
 							borderRadius: radius.full,
 							border: `1px solid currentColor`,
 						}}
 					>
-						{approvalItemStatusLabel(item.status)}
+						{batchState === 'approving'
+							? 'Approving…'
+							: batchState === 'queued'
+								? 'Queued'
+								: approvalItemStatusLabel(item.status)}
 					</span>
 				</div>
 				<p css={{ margin: 0, whiteSpace: 'pre-wrap' }}>{item.summary}</p>
@@ -530,7 +630,7 @@ export function ApprovalBundleRoute({
 		<section
 			css={stackedPageCss}
 			data-testid="approval-bundle"
-			aria-busy={busy.size > 0 ? 'true' : undefined}
+			aria-busy={busy.size > 0 || approveAll ? 'true' : undefined}
 		>
 			<header css={pageHeaderCss}>
 				<span css={pageEyebrowCss}>Review approvals</span>
@@ -586,12 +686,16 @@ export function ApprovalBundleRoute({
 						onClick={() => void runApproveAll(path, view)}
 					>
 						{approveAll
-							? `Approving ${Math.min(approveAll.done + 1, approveAll.total)} of ${approveAll.total}…`
+							? approvingAllLabel(approveAll.total)
 							: approveAllLabel(ready, remaining)}
 					</Button>
 					{approveAll ? (
-						<p css={smallMutedCss}>
-							Publishes can take a moment each. Keep this page open.
+						<p
+							role="status"
+							data-testid="approval-bundle-progress"
+							css={smallMutedCss}
+						>
+							{approveAllProgress(approveAll)}
 						</p>
 					) : null}
 					{summary ? (

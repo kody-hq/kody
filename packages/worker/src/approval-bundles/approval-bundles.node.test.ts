@@ -1,7 +1,10 @@
 import { expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { decideApprovalBundleItem } from '#app/approval-bundle-decisions.ts'
+import {
+	approveApprovalBundleItems,
+	decideApprovalBundleItem,
+} from '#app/approval-bundle-decisions.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { approvalBundleCreateCapability } from '#mcp/capabilities/packages/approval-bundle-create.ts'
 import { approvalPendingListCapability } from '#mcp/capabilities/packages/approval-pending-list.ts'
@@ -16,6 +19,7 @@ import { listPendingCredentialProposals } from '#worker/credentials/agent-creden
 import {
 	approvalItemsAwaitingDecision,
 	approvalItemsReadyToApprove,
+	type ApprovalBundleApproveAllEvent,
 	type ApprovalBundleView,
 	type ApprovalItemView,
 } from '#universal/approval-bundles.ts'
@@ -154,6 +158,21 @@ async function setup() {
 			},
 		})
 	}
+	const approveAll = async (input: {
+		bundleId: string
+		items: Array<{ item: string; fingerprint: string }>
+		concurrency?: number
+	}) => {
+		const events: Array<ApprovalBundleApproveAllEvent> = []
+		const results = await approveApprovalBundleItems({
+			viewer: viewerFor('bea'),
+			request: new Request(`${mappingFixtureBaseUrl}/approvals`),
+			user: user('bea'),
+			...input,
+			onEvent: (event) => events.push(event),
+		})
+		return { events, results }
+	}
 	const bundleAudits = async () => {
 		const rows = await t.env.AUDIT_DB.prepare(
 			`SELECT action, result, credential_kind, details_json
@@ -179,6 +198,7 @@ async function setup() {
 		proposeDailyChat,
 		pausePublish,
 		decide,
+		approveAll,
 		bundleAudits,
 	}
 }
@@ -269,6 +289,169 @@ test('an agent bundles pending approvals, and approving from the bundle applies 
 			credentialKind: 'session',
 			details: expect.objectContaining({ item: picks.key }),
 		}),
+	])
+})
+
+test('Approve all runs one package one item at a time, publish last, each exactly as approving it alone', async () => {
+	const t = await setup()
+	await t.proposeDailyChat()
+	const request = await t.pausePublish()
+	const created = await approvalBundleCreateCapability.handler(
+		{},
+		t.agent('bea'),
+	)
+	// The publish base moved, so its own approve supersedes it instead of publishing.
+	await t.db
+		.prepare(`UPDATE entity_sources SET published_commit = 'commit-2'`)
+		.run()
+	const loaded = await loadApprovalBundleView({
+		viewer: t.viewerFor('bea'),
+		bundleId: created.bundleId,
+	})
+	if (!loaded.ok) throw new Error('bundle did not load')
+	const items = bundleItems(loaded.view)
+	const picks = items.find((item) => item.type === 'credential-picks')!
+	const publish = items.find((item) => item.key === `publish:${request.id}`)!
+
+	const { events, results } = await t.approveAll({
+		bundleId: created.bundleId,
+		items: [picks, publish].map((item) => ({
+			item: item.key,
+			fingerprint: item.fingerprint!,
+		})),
+	})
+
+	// The publish moves the published version, so it goes after the picks.
+	expect(created.items.map((item) => item.type)).toEqual([
+		'publish',
+		'credential-picks',
+	])
+	expect(events.map((event) => [event.phase, event.item])).toEqual(
+		[picks.key, publish.key].flatMap((key) => [
+			['approving', key],
+			['done', key],
+		]),
+	)
+	expect(
+		results.find((entry) => entry.item === picks.key)?.result,
+	).toMatchObject({ ok: true, item: { status: 'approved' } })
+	expect(
+		results.find((entry) => entry.item === publish.key)?.result,
+	).toMatchObject({
+		ok: false,
+		error: expect.stringContaining('published version changed'),
+	})
+	expect(
+		(await t.bundleAudits())
+			.filter((event) => event.result === 'success')
+			.map((event) => [event.action, event.details?.item ?? null]),
+	).toEqual([
+		['approval.bundle.create', null],
+		['approval.bundle.approve', picks.key],
+	])
+})
+
+test('Approve all runs separate packages in parallel, up to its concurrency', async () => {
+	const t = await setup()
+	const created = await createApprovalBundle({
+		viewer: t.viewerFor('bea'),
+		items: [{ type: 'publish', requestId: (await t.pausePublish()).id }],
+	})
+	const items = ['publish:gone-a', 'publish:gone-b'].map((item) => ({
+		item,
+		fingerprint: 'reviewed',
+	}))
+	const parallel = await t.approveAll({ bundleId: created.bundle.id, items })
+	expect(parallel.events.slice(0, 2).map((event) => event.phase)).toEqual([
+		'approving',
+		'approving',
+	])
+	expect(parallel.results.map((entry) => entry.result)).toEqual([
+		{ ok: false, error: 'That item is not in this bundle.', item: null },
+		{ ok: false, error: 'That item is not in this bundle.', item: null },
+	])
+	const serial = await t.approveAll({
+		bundleId: created.bundle.id,
+		items,
+		concurrency: 1,
+	})
+	expect(serial.events.map((event) => event.phase)).toEqual([
+		'approving',
+		'done',
+		'approving',
+		'done',
+	])
+})
+
+test('Approve all starts at most four packages at once', async () => {
+	const t = await setup()
+	const created = await createApprovalBundle({
+		viewer: t.viewerFor('bea'),
+		items: [{ type: 'publish', requestId: (await t.pausePublish()).id }],
+	})
+	const { events } = await t.approveAll({
+		bundleId: created.bundle.id,
+		items: ['a', 'b', 'c', 'd', 'e'].map((id) => ({
+			item: `capabilities:gone-${id}`,
+			fingerprint: 'reviewed',
+		})),
+	})
+	expect(events.slice(0, 5).map((event) => event.phase)).toEqual([
+		'approving',
+		'approving',
+		'approving',
+		'approving',
+		'done',
+	])
+})
+
+test('Approve all runs a package after a package it imports', async () => {
+	const t = await setup()
+	const now = '2026-10-13T00:00:00.000Z'
+	const mailerId = crypto.randomUUID()
+	await t.db.batch([
+		t.db
+			.prepare(
+				`INSERT INTO saved_packages (
+					id, user_id, name, kody_id, description, tags_json, source_id,
+					has_app, hidden, is_private, created_at, updated_at
+				) VALUES (?, ?, '@acme/mailer', 'mailer', 'mailer', '[]', ?, 0, 0, 1, ?, ?)`,
+			)
+			.bind(mailerId, t.acmeId, `source-${mailerId}`, now, now),
+		t.db
+			.prepare(
+				`INSERT INTO published_bundle_artifacts (
+					id, user_id, source_id, published_commit, artifact_kind,
+					artifact_name, entry_point, kv_key, dependencies_json,
+					created_at, updated_at
+				) VALUES ('digest-module', ?, ?, 'commit-1', 'module', NULL,
+					'index.ts', 'bundle:digest', ?, ?, ?)`,
+			)
+			.bind(
+				t.acmeId,
+				t.savedPackage.sourceId,
+				JSON.stringify([
+					{ sourceId: `source-${mailerId}`, publishedCommit: 'mailer-1' },
+				]),
+				now,
+				now,
+			),
+	])
+	const created = await createApprovalBundle({
+		viewer: t.viewerFor('bea'),
+		items: [{ type: 'publish', requestId: (await t.pausePublish()).id }],
+	})
+	const digest = `capabilities:${t.savedPackage.id}`
+	const mailer = `capabilities:${mailerId}`
+	const { events } = await t.approveAll({
+		bundleId: created.bundle.id,
+		items: [digest, mailer].map((item) => ({ item, fingerprint: 'reviewed' })),
+	})
+	expect(events.map((event) => [event.phase, event.item])).toEqual([
+		['approving', mailer],
+		['done', mailer],
+		['approving', digest],
+		['done', digest],
 	])
 })
 
