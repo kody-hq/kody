@@ -59592,7 +59592,7 @@ export const capabilityManifest = {
 				{
 					"name": "packagePublishBuildCreate",
 					"domain": "packages",
-					"description": "Prepare an off-cloud build of the package's pushed Artifacts HEAD. Prefer `kody package publish --build local|context`. Requires the publish-offload flag. `origin: cli` returns a ticket for uploading and sealing the build. `origin: context` waits for a context you operate to build and seal it. Pass the sealed build ID to `packagePublishExternalPush({ publish_build_id })` to validate the file manifest and uploaded targets, link dependencies, and publish. Details: https://kody.codes/docs/publish-large-packages",
+					"description": "Prepare an off-cloud build of the package's pushed Artifacts HEAD. Prefer `kody package publish --build local|context`. Requires the publish-offload flag. `origin: cli` returns a ticket for uploading and sealing the build. `origin: context` waits for a context you operate to build and seal it. Pass `package_id` and the sealed `publish_build_id` to `packagePublishExternalPush` to verify and publish the build. Details: https://kody.codes/docs/publish-large-packages",
 					"keywords": [
 						"package",
 						"publish",

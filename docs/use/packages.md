@@ -1607,10 +1607,10 @@ prepares a build, then calls `packagePublishExternalPush` with its build ID.
      call returns `status: "sealed"` and `context_name` after a context builds
      and seals the upload.
      [Context dispatch](../../packages/worker/src/publish-offload/context-dispatch.ts).
-2. Pass the sealed `build_id` as `publish_build_id` to
-   `packagePublishExternalPush` using the publisher's credentials. Kody checks
-   the file manifest against the pushed commit, validates the uploaded target
-   set and module metadata, and links published dependencies during
+2. Call `packagePublishExternalPush` with the package reference and the sealed
+   `build_id` as `publish_build_id`, using the publisher's credentials. Kody
+   checks the file manifest against the pushed commit, validates the uploaded
+   target set and module metadata, and links published dependencies during
    finalization. See
    [What runs where](../guides/publish-large-packages.md#what-runs-where).
 
