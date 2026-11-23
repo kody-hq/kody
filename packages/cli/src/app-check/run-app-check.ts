@@ -99,13 +99,14 @@ export async function runAppCheck(input: {
 	const outputDir = resolve(
 		input.outputDir ?? defaultAppCheckOutputDir(manifest.root),
 	)
+	const ownsOutputDir = input.outputDir === undefined
 	const status = (message: string) => input.io.stderr(`${message}\n`)
 	const tools = await loadAppCheckTools({
 		...(input.env ? { env: input.env } : {}),
 		onStatus: status,
 	})
 	await mkdir(outputDir, { recursive: true })
-	await writeFile(join(outputDir, '.gitignore'), '*\n')
+	if (ownsOutputDir) await writeFile(join(outputDir, '.gitignore'), '*\n')
 
 	const consoleEntries: Array<AppCheckConsoleEntry> = []
 	status(`kody app check: starting the kody dev preview for ${manifest.name}…`)
@@ -130,9 +131,16 @@ export async function runAppCheck(input: {
 				url: preview.url,
 				outputDir,
 				consoleEntries,
+				onStatus: status,
 			}))
 		} finally {
-			await browser.close().catch(() => {})
+			await browser
+				.close()
+				.catch((error: unknown) =>
+					status(
+						`kody app check: could not close the browser (${errorText(error)}).`,
+					),
+				)
 		}
 		status('kody app check: running Lighthouse…')
 		const lighthouse = await runLighthouse({ tools, url: preview.url })
@@ -232,7 +240,21 @@ async function startDevPreview(input: {
 	child.stderr?.on('data', (chunk: Buffer) => {
 		stderrTail = `${stderrTail}${chunk.toString('utf8')}`.slice(-8_000)
 	})
+	const exitCodes: Partial<Record<NodeJS.Signals, number>> = {
+		SIGINT: 130,
+		SIGTERM: 143,
+		SIGHUP: 129,
+	}
+	const onSignal = (signal: NodeJS.Signals) => {
+		void stopChild(child).finally(() => process.exit(exitCodes[signal] ?? 1))
+	}
+	for (const signal of Object.keys(exitCodes) as Array<NodeJS.Signals>) {
+		process.once(signal, onSignal)
+	}
 	const close = async () => {
+		for (const signal of Object.keys(exitCodes) as Array<NodeJS.Signals>) {
+			process.off(signal, onSignal)
+		}
 		await stopChild(child)
 	}
 	const ready = new Promise<string>((resolveReady, reject) => {
@@ -332,6 +354,10 @@ async function launchBrowser(tools: AppCheckTools): Promise<PlaywrightBrowser> {
 	}
 }
 
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error)
+}
+
 function firstLine(text: string): string {
 	return text.split('\n')[0]?.trim() ?? ''
 }
@@ -342,6 +368,7 @@ async function renderVariants(input: {
 	url: string
 	outputDir: string
 	consoleEntries: Array<AppCheckConsoleEntry>
+	onStatus: (message: string) => void
 }): Promise<{
 	screenshots: Array<AppCheckScreenshot>
 	axe: Array<AppCheckVariantAxe>
@@ -381,13 +408,25 @@ async function renderVariants(input: {
 						colorScheme,
 					})
 				})
-				const response = await page.goto(input.url, {
-					waitUntil: 'load',
-					timeout: pageTimeoutMs,
-				})
+				const variant = `${viewport} ${colorScheme}`
+				const response = await page
+					.goto(input.url, { waitUntil: 'load', timeout: pageTimeoutMs })
+					.catch((error: unknown) => {
+						input.consoleEntries.push({
+							source: 'page',
+							message: `Page did not finish loading: ${firstLine(errorText(error))}`,
+							viewport,
+							colorScheme,
+						})
+						return null
+					})
 				await page
 					.waitForLoadState('networkidle', { timeout: 5_000 })
-					.catch(() => {})
+					.catch(() =>
+						input.onStatus(
+							`kody app check: ${variant} still had network activity after 5s; capturing it as is.`,
+						),
+					)
 				const path = join(input.outputDir, `${viewport}-${colorScheme}.png`)
 				await page.screenshot({ path, fullPage: true })
 				screenshots.push({
@@ -402,7 +441,13 @@ async function renderVariants(input: {
 					...(await runAxe(page, input.tools.axeSource)),
 				})
 			} finally {
-				await context.close().catch(() => {})
+				await context
+					.close()
+					.catch((error: unknown) =>
+						input.onStatus(
+							`kody app check: could not close the ${viewport} ${colorScheme} page (${errorText(error)}).`,
+						),
+					)
 			}
 		}
 	}

@@ -863,8 +863,8 @@ and runs axe-core and Lighthouse. It writes these files to
 The check is optional. Pass or fail lives in the report, and the command exits
 non-zero only when the preview or the browser cannot start. The first run
 installs Playwright, axe-core, Lighthouse, and the Playwright Chromium browser
-into the Kody cache, then reuses them. The folder has its own `.gitignore`, so
-the report stays out of git and the published snapshot.
+into the Kody cache, then reuses them. The default folder has its own
+`.gitignore`, so the report stays out of git and the published snapshot.
 
 See also
 [Package lifecycle](./package-lifecycle.md#validate-and-test-before-publish) for
