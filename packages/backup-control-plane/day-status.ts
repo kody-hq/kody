@@ -4,7 +4,7 @@ import { isRecord } from '@kody-internal/shared/is-record.ts'
  * Operator-facing status for one UTC backup day.
  *
  * Thresholds (all UTC), chosen from the live staging pace observed on
- * 2026-10-18 and from the schedules in `docs/contributing/disaster-recovery.md`:
+ * 2026-10-18 and from the schedules in `docs/contributing/disaster-recovery/schedules.md`:
  *
  * - D1 export is enqueued at 02:15, with hourly catch-up through 05:45. A
  *   missing manifest stays neutral until 06:10 (the staging window close) and

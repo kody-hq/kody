@@ -457,8 +457,8 @@ deploy proceed or dispatch Deploy on that HEAD.
    [Cleanup after migrations](./cleanup-after-migrations.md).
 6. If the incident involved data (D1 apply, Time Travel, Durable Object storage,
    Mailbox), add a row to the
-   [live evidence log](./disaster-recovery.md#live-evidence-log) in that
-   document's table format (UTC date, lane proven).
+   [live evidence log](./disaster-recovery/evidence-log.md) in that document's
+   table format (UTC date, lane proven).
 
 ## 6. Rehearsal
 
