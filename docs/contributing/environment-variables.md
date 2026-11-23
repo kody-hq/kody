@@ -572,11 +572,11 @@ credentials are set. The paced D1 walk uses the same credentials and
 `DR_D1_PACED_BACKUP_ENABLED`. See [Disaster recovery](./disaster-recovery.md).
 
 - `DR_EXPORT_ENABLED` — Worker var; enable staging only when `"true"`.
-- `DR_D1_PACED_BACKUP_ENABLED` — Worker var; paced D1 walk (APP_DB + JOBS_DB)
-  runs when `"true"` plus the same DR S3 credentials. Production wrangler sets
-  this to `"true"`. Ticks no-op when unset or any other value.
+- `DR_D1_PACED_BACKUP_ENABLED` — Worker var; the paced D1 walk runs when
+  `"true"` and the DR S3 credentials are set. Production Wrangler sets this to
+  `"true"`. Ticks no-op when unset or any other value.
 - `DR_D1_PACED_SOURCES` — Worker var; JSON array of `{ binding, name, id }`
-  (`APP_DB` / `JOBS_DB` in production; `AUDIT_DB` waits on a committed UUID).
+  (`APP_DB`, `AUDIT_DB`, and `JOBS_DB` in production).
 - `DR_BACKUP_ACCOUNT_ID` / `DR_BACKUP_BUCKET_NAME` — DR account id and backup
   bucket name (S3 API endpoint host uses the account id).
 - `DR_BACKUP_ACCESS_KEY_ID` / `DR_BACKUP_SECRET_ACCESS_KEY` — Worker secrets; R2
