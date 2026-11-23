@@ -24,7 +24,11 @@ export async function loadAdminStarterTemplatesData(
 ): Promise<AdminStarterTemplatesLoaderData> {
 	const [entries, candidates] = await Promise.all([
 		listAdminAppStarters(env),
-		listAppStarterCandidates(env).catch(() => []),
+		listAppStarterCandidates(env).catch((error: unknown) => {
+			// The picker shows no candidates; the starter list still loads.
+			console.error('app-starter-candidates-load-failed', error)
+			return []
+		}),
 	])
 	let candidate: AdminStarterTemplatesLoaderData['candidate'] = null
 	let candidateError: string | null = null

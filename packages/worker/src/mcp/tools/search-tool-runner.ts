@@ -349,7 +349,11 @@ async function runSearchToolWithoutGuestBlock(input: {
 				const starters = await settleWithBudget(
 					listRecommendedAppStarters(env),
 					SEARCH_APP_STARTERS_BUDGET_MS,
-				).catch(() => null)
+				).catch((error: unknown) => {
+					// Search still links the guide, without starter recommendations.
+					console.error('search-app-starters-failed', error)
+					return null
+				})
 				const recommended = starters?.ok ? starters.value : []
 				appStartersMarkdown = formatSearchAppStartersMarkdown(recommended)
 				appStartersStructured = toSearchAppStartersStructured(recommended)
