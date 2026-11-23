@@ -115,11 +115,8 @@ export async function executeVerifyEmail({
 			maybeRewardHeldReferralAfterEmailVerified({
 				db: env.APP_DB,
 				stableUserId: result.stableUserId,
-				resolveReferrerPaidPeriodEnd: (referrerStableUserId) =>
-					latestReferrerPaidPeriodEnd({
-						env,
-						referrerStableUserId,
-					}),
+				resolveReferrerPaidPeriodEnd: (referrerOrgId) =>
+					latestReferrerPaidPeriodEnd({ env, referrerOrgId }),
 			}).catch((error) => {
 				console.warn('referral-held-reward-failed', error)
 			}),

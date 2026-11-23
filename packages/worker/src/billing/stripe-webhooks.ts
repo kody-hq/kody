@@ -386,12 +386,12 @@ async function handleInvoicePaymentFailed(input: {
 
 export async function latestReferrerPaidPeriodEnd(input: {
 	env: Env
-	referrerStableUserId: string
+	referrerOrgId: string
 }): Promise<string | null> {
 	const row = await input.env.APP_DB.prepare(
 		`SELECT stripe_customer_id FROM orgs WHERE id = ? AND deleted_at IS NULL`,
 	)
-		.bind(input.referrerStableUserId)
+		.bind(input.referrerOrgId)
 		.first<{ stripe_customer_id: string | null }>()
 	const customerId = row?.stripe_customer_id?.trim()
 	if (!customerId) return null
@@ -435,12 +435,12 @@ async function handleInvoicePaid(input: {
 	})
 	if (!qualifies) return
 
-	const user = await input.env.APP_DB.prepare(
-		`SELECT id AS stable_user_id FROM orgs WHERE stripe_customer_id = ? AND deleted_at IS NULL`,
+	const org = await input.env.APP_DB.prepare(
+		`SELECT id FROM orgs WHERE stripe_customer_id = ? AND deleted_at IS NULL`,
 	)
 		.bind(customerId)
-		.first<{ stable_user_id: string }>()
-	if (!user?.stable_user_id) {
+		.first<{ id: string }>()
+	if (!org?.id) {
 		// Soft-deleted (or unlinked) accounts must not fail the webhook: Stripe
 		// retries and can disable the endpoint for every customer. Soft-delete
 		// cancels Kody subscriptions; acknowledge and skip referral handling.
@@ -455,24 +455,34 @@ async function handleInvoicePaid(input: {
 		 SET referral_first_paid_at = COALESCE(referral_first_paid_at, ?)
 		 WHERE id = ? AND deleted_at IS NULL`,
 	)
-		.bind((input.now ?? new Date()).toISOString(), user.stable_user_id)
+		.bind((input.now ?? new Date()).toISOString(), org.id)
 		.run()
 
+	// A referee's reward invoice is their personal org's invoice.
 	const pending = await input.env.APP_DB.prepare(
-		`SELECT referrer_stable_user_id
-		 FROM referrals
-		 WHERE referee_stable_user_id = ? AND status = 'pending'`,
+		`SELECT r.referee_stable_user_id, r.referrer_org_id
+		 FROM referrals r
+		 WHERE r.status = 'pending'
+		   AND r.referee_stable_user_id IN (
+		     SELECT u.stable_user_id FROM users u
+		     WHERE u.personal_org_id = ? AND u.deleted_at IS NULL
+		     UNION
+		     SELECT u.stable_user_id FROM users u
+		     WHERE u.stable_user_id = ?
+		       AND COALESCE(TRIM(u.personal_org_id), '') = ''
+		       AND u.deleted_at IS NULL
+		   )`,
 	)
-		.bind(user.stable_user_id)
-		.first<{ referrer_stable_user_id: string }>()
+		.bind(org.id, org.id)
+		.first<{ referee_stable_user_id: string; referrer_org_id: string }>()
 	if (pending) {
 		const referrerPaidPeriodEndAt = await latestReferrerPaidPeriodEnd({
 			env: input.env,
-			referrerStableUserId: pending.referrer_stable_user_id,
+			referrerOrgId: pending.referrer_org_id,
 		})
 		await rewardReferralForPaidInvoice({
 			db: input.env.APP_DB,
-			refereeStableUserId: user.stable_user_id,
+			refereeStableUserId: pending.referee_stable_user_id,
 			invoiceId,
 			invoiceQualifies: true,
 			paidPeriodEndAt: readStripeInvoicePeriodEndIso(input.object),
@@ -484,11 +494,11 @@ async function handleInvoicePaid(input: {
 	const heldAsReferrer = await input.env.APP_DB.prepare(
 		`SELECT referee_stable_user_id, held_invoice_id, held_period_end_at
 		 FROM referrals
-		 WHERE referrer_stable_user_id = ?
+		 WHERE referrer_org_id = ?
 		   AND status = 'pending'
 		   AND held_invoice_id IS NOT NULL`,
 	)
-		.bind(user.stable_user_id)
+		.bind(org.id)
 		.all<{
 			referee_stable_user_id: string
 			held_invoice_id: string | null
@@ -499,7 +509,7 @@ async function handleInvoicePaid(input: {
 
 	const referrerPaidPeriodEndAt = await latestReferrerPaidPeriodEnd({
 		env: input.env,
-		referrerStableUserId: user.stable_user_id,
+		referrerOrgId: org.id,
 	})
 	for (const row of heldRows) {
 		if (!row.held_invoice_id) continue

@@ -299,7 +299,7 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{
 		kind: 'user_columns',
 		table: 'referrals',
-		columns: ['referrer_stable_user_id', 'referee_stable_user_id'],
+		columns: ['referrer_org_id', 'referee_stable_user_id'],
 	},
 	{ kind: 'user_id', table: 'feature_flag_exposure_rollups' },
 	{ kind: 'user_id', table: 'agent_package_conversation_uses' },
@@ -1453,7 +1453,7 @@ export const accountExportForeignUserIdColumnsByTable: Readonly<
 	user_integrations: ['connected_by_user_id'],
 	webhook_endpoints: ['created_by_user_id'],
 	package_app_custom_hostnames: ['created_by_user_id'],
-	referrals: ['referrer_stable_user_id', 'referee_stable_user_id'],
+	referrals: ['referrer_org_id', 'referee_stable_user_id'],
 }
 
 export const accountExportRedactedForeignUserId = '[redacted]'

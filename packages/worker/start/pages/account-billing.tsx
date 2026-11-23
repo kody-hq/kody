@@ -173,6 +173,7 @@ export function AccountBillingPage({
 		displayName: '',
 		avatarUrl: null,
 	}).name
+	const rewardRecipient = payload.org.personal ? 'you' : orgName
 	const portalMutation = useMutation(billingPortalMutationOptions)
 	const portalPending = portalMutation.isPending
 	const checkoutMutation = useMutation(billingCheckoutMutationOptions)
@@ -312,7 +313,7 @@ export function AccountBillingPage({
 				description={
 					payload.org.personal
 						? 'Your plan, Stripe subscription, and referral link.'
-						: `${orgName}'s Kody plan. Pro is billed per seat: every owner and member is one.`
+						: `${orgName}'s Kody plan and referral link. Pro is billed per seat: every owner and member is one.`
 				}
 				currentHref={currentHref}
 			/>
@@ -448,7 +449,11 @@ export function AccountBillingPage({
 					{billing.referralProgram ? (
 						<AccountManagementPanel
 							title="Refer a friend"
-							description="Share your link. When someone signs up with it, or an existing Free user adds you under Referred by within 72 hours of signing up and before their first payment, you both get one month of Pro once they verify their email and pay their first invoice. There is no cap."
+							description={
+								payload.org.personal
+									? 'Share your link. When someone signs up with it, or an existing Free user adds you under Referred by within 72 hours of signing up and before their first payment, you both get one month of Pro once they verify their email and pay their first invoice. There is no cap. This link credits your personal account; each organization has its own link on its billing page.'
+									: `Share ${orgName}'s link. When someone signs up with it, or an existing Free user adds @${payload.org.slug} under Referred by within 72 hours of signing up and before their first payment, ${orgName} gets one month of Pro and so do they, once they verify their email and pay their first invoice (an owner of ${orgName} also needs a verified email). There is no cap. Rewards from this link go to ${orgName}, not your personal account; your personal link is on your personal billing page.`
+							}
 						>
 							<div
 								css={{
@@ -458,7 +463,9 @@ export function AccountBillingPage({
 							>
 								<div css={fieldCss}>
 									<label htmlFor="referral-share-url" css={fieldLabelCss}>
-										Your referral link
+										{payload.org.personal
+											? 'Your referral link'
+											: `${orgName}'s referral link`}
 									</label>
 									<div
 										css={{
@@ -527,11 +534,11 @@ export function AccountBillingPage({
 												{item.status === 'rewarded' ? (
 													item.rewardedAt ? (
 														<>
-															earned you a month on{' '}
+															earned {rewardRecipient} a month on{' '}
 															{formatCancelDate(item.rewardedAt)}
 														</>
 													) : (
-														'earned you a month'
+														`earned ${rewardRecipient} a month`
 													)
 												) : (
 													'is referred and has not paid yet'
@@ -540,7 +547,7 @@ export function AccountBillingPage({
 										))}
 									</ul>
 								) : (
-									<p css={descriptionCss}>No one has used your link yet.</p>
+									<p css={descriptionCss}>No one has used this link yet.</p>
 								)}
 							</div>
 						</AccountManagementPanel>
@@ -548,6 +555,7 @@ export function AccountBillingPage({
 
 					{billing.referralProgram ? (
 						<ReferredByPanel
+							key={payload.org.slug}
 							orgSlug={payload.org.slug}
 							referredBy={billing.referralProgram.referredBy}
 						/>

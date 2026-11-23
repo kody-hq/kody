@@ -5,7 +5,9 @@ import {
 } from '@kody-internal/shared/state-machine.ts'
 /**
  * Referral attribution at signup and invoice-gated Standard credit.
- * Reward is one stacked month for both parties; there is no annual or
+ * A referral code is a handle: a username credits that person's personal
+ * org, a team org slug credits that org. Reward is one stacked month for
+ * the referrer org and the referee's personal org; there is no annual or
  * lifetime cap on how many a referrer can earn.
  */
 
@@ -40,7 +42,7 @@ export type ReferralAttributionOutcome =
 	| { outcome: 'already_attributed' }
 
 export type LateReferralAttributionOutcome =
-	| { outcome: 'attributed'; referrerUsername: string }
+	| { outcome: 'attributed'; referrerHandle: string }
 	| {
 			outcome: 'rejected'
 			reason:
@@ -69,9 +71,21 @@ type ReferralParty = {
 	referral_standard_credit_expires_at: string | null
 }
 
+type ReferrerOrg = {
+	org_id: string
+	stripe_customer_id: string | null
+	/** Live members; any owner with a verified email unlocks the reward. */
+	members: Array<{
+		stable_user_id: string
+		role: string
+		email: string | null
+		email_verified_at: string | null
+	}>
+}
+
 type PendingReferralRow = {
 	id: number
-	referrer_stable_user_id: string
+	referrer_org_id: string
 	referee_stable_user_id: string
 	status: string
 	reward_invoice_id: string | null
@@ -178,18 +192,11 @@ export async function attributeReferralAtSignup(input: {
 	if (code === normalizeReferralCode(input.refereeUsername)) {
 		return { outcome: 'ignored', reason: 'self' }
 	}
-	const referrer = await input.db
-		.prepare(
-			`SELECT stable_user_id
-			 FROM users
-			 WHERE username = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(code)
-		.first<{ stable_user_id: string }>()
-	if (!referrer?.stable_user_id) {
+	const referrer = await resolveReferrerByCode(input.db, code)
+	if (!referrer) {
 		return { outcome: 'ignored', reason: 'unknown_referrer' }
 	}
-	if (referrer.stable_user_id === input.refereeStableUserId) {
+	if (referrer.personStableUserId === input.refereeStableUserId) {
 		return { outcome: 'ignored', reason: 'self' }
 	}
 	const now = input.now ?? new Date()
@@ -197,14 +204,10 @@ export async function attributeReferralAtSignup(input: {
 		await input.db
 			.prepare(
 				`INSERT INTO referrals (
-					referrer_stable_user_id, referee_stable_user_id, created_at, status
+					referrer_org_id, referee_stable_user_id, created_at, status
 				) VALUES (?, ?, ?, 'pending')`,
 			)
-			.bind(
-				referrer.stable_user_id,
-				input.refereeStableUserId,
-				now.toISOString(),
-			)
+			.bind(referrer.orgId, input.refereeStableUserId, now.toISOString())
 			.run()
 		return { outcome: 'attributed' }
 	} catch (error) {
@@ -214,6 +217,63 @@ export async function attributeReferralAtSignup(input: {
 		}
 		throw error
 	}
+}
+
+/**
+ * Resolve a referral handle to the org it credits: a username credits that
+ * person's personal org, a team org slug credits that team org. Usernames and
+ * org slugs share one namespace, so at most one matches.
+ */
+export async function resolveReferrerByCode(
+	db: D1Database,
+	code: string,
+): Promise<{
+	orgId: string
+	handle: string
+	personStableUserId: string | null
+} | null> {
+	const person = await db
+		.prepare(
+			`SELECT stable_user_id, username,
+			        COALESCE(NULLIF(TRIM(personal_org_id), ''), stable_user_id) AS org_id
+			 FROM users
+			 WHERE username = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(code)
+		.first<{ stable_user_id: string; username: string; org_id: string }>()
+	if (person?.stable_user_id) {
+		return {
+			orgId: person.org_id,
+			handle: person.username,
+			personStableUserId: person.stable_user_id,
+		}
+	}
+	const org = await db
+		.prepare(
+			`SELECT o.id, o.slug
+			 FROM orgs o
+			 WHERE o.slug = ?${andLiveDeletedAtSql('o')}
+			   AND NOT EXISTS (
+			     SELECT 1 FROM users u
+			     WHERE u.personal_org_id = o.id OR u.stable_user_id = o.id
+			   )`,
+		)
+		.bind(code)
+		.first<{ id: string; slug: string }>()
+	if (!org?.id) return null
+	return { orgId: org.id, handle: org.slug, personStableUserId: null }
+}
+
+/** SQL for the handle that credits `orgIdExpr`: the username for a personal org, else the org slug. */
+function referrerHandleSql(orgIdExpr: string) {
+	return `COALESCE(
+		(SELECT u.username FROM users u
+		 WHERE u.deleted_at IS NULL
+		   AND (u.personal_org_id = ${orgIdExpr}
+		     OR (COALESCE(TRIM(u.personal_org_id), '') = '' AND u.stable_user_id = ${orgIdExpr}))
+		 LIMIT 1),
+		(SELECT o.slug FROM orgs o WHERE o.id = ${orgIdExpr} AND o.deleted_at IS NULL)
+	)`
 }
 
 /**
@@ -308,28 +368,21 @@ export async function attributeReferralBeforeFirstPayment(input: {
 }): Promise<LateReferralAttributionOutcome> {
 	const code = parseReferrerInput(input.referrerInput)
 	if (!code) return { outcome: 'rejected', reason: 'invalid_code' }
-	const referrer = await input.db
-		.prepare(
-			`SELECT stable_user_id, username
-			 FROM users
-			 WHERE username = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(code)
-		.first<{ stable_user_id: string; username: string }>()
-	if (!referrer?.stable_user_id) {
+	const referrer = await resolveReferrerByCode(input.db, code)
+	if (!referrer) {
 		return { outcome: 'rejected', reason: 'unknown_referrer' }
 	}
-	if (referrer.stable_user_id === input.refereeStableUserId) {
+	if (referrer.personStableUserId === input.refereeStableUserId) {
 		return { outcome: 'rejected', reason: 'self' }
 	}
-	const [referrerParty, refereeParty] = await Promise.all([
-		loadParty(input.db, referrer.stable_user_id),
+	const [referrerOrg, refereeParty] = await Promise.all([
+		loadReferrerOrg(input.db, referrer.orgId),
 		loadParty(input.db, input.refereeStableUserId),
 	])
 	if (
-		referrerParty &&
+		referrerOrg &&
 		refereeParty &&
-		rejectReasonForParties(referrerParty, refereeParty)
+		rejectReasonForReferral(referrerOrg, refereeParty)
 	) {
 		return { outcome: 'rejected', reason: 'self' }
 	}
@@ -363,7 +416,7 @@ export async function attributeReferralBeforeFirstPayment(input: {
 		const result = await input.db
 			.prepare(
 				`INSERT INTO referrals (
-					referrer_stable_user_id, referee_stable_user_id, created_at, status
+					referrer_org_id, referee_stable_user_id, created_at, status
 				)
 				SELECT ?, ?, ?, 'pending'
 				WHERE NOT EXISTS (
@@ -372,7 +425,7 @@ export async function attributeReferralBeforeFirstPayment(input: {
 				)`,
 			)
 			.bind(
-				referrer.stable_user_id,
+				referrer.orgId,
 				input.refereeStableUserId,
 				now.toISOString(),
 				input.refereeStableUserId,
@@ -383,7 +436,7 @@ export async function attributeReferralBeforeFirstPayment(input: {
 		if ((result.meta?.changes ?? 0) === 0) {
 			return { outcome: 'rejected', reason: 'already_paid' }
 		}
-		return { outcome: 'attributed', referrerUsername: referrer.username }
+		return { outcome: 'attributed', referrerHandle: referrer.handle }
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error)
 		if (/UNIQUE constraint failed/i.test(message)) {
@@ -422,22 +475,19 @@ async function loadReferredByState(input: {
 }): Promise<ReferredByState> {
 	const row = await input.db
 		.prepare(
-			`SELECT r.status, u.username AS referrer_username
+			`SELECT r.status, ${referrerHandleSql('r.referrer_org_id')} AS referrer_handle
 			 FROM referrals r
-			 LEFT JOIN users u
-				ON u.stable_user_id = r.referrer_stable_user_id
-				AND u.deleted_at IS NULL
 			 WHERE r.referee_stable_user_id = ?`,
 		)
 		.bind(input.stableUserId)
-		.first<{ status: string; referrer_username: string | null }>()
+		.first<{ status: string; referrer_handle: string | null }>()
 	if (row) {
 		if (row.status !== 'pending' && row.status !== 'rewarded') {
 			return { state: 'closed' }
 		}
 		return {
 			state: 'attributed',
-			referrerUsername: row.referrer_username,
+			referrerHandle: row.referrer_handle,
 			status: row.status,
 		}
 	}
@@ -482,16 +532,59 @@ async function loadParty(
 		.first<ReferralParty>()
 }
 
-function rejectReasonForParties(
-	referrer: ReferralParty,
+async function loadReferrerOrg(
+	db: D1Database,
+	orgId: string,
+): Promise<ReferrerOrg | null> {
+	const org = await db
+		.prepare(
+			`SELECT id, stripe_customer_id FROM orgs
+			 WHERE id = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(orgId)
+		.first<{ id: string; stripe_customer_id: string | null }>()
+	if (!org?.id) return null
+	// The personal-org person counts as owner even without a membership row.
+	const members = await db
+		.prepare(
+			`SELECT u.stable_user_id, m.role, u.email, u.email_verified_at
+			 FROM org_memberships m
+			 JOIN users u ON u.stable_user_id = m.user_id${andLiveDeletedAtSql('u')}
+			 WHERE m.org_id = ?${andLiveDeletedAtSql('m')}
+			 UNION
+			 SELECT u.stable_user_id, 'owner' AS role, u.email, u.email_verified_at
+			 FROM users u
+			 WHERE (u.personal_org_id = ?
+			     OR (COALESCE(TRIM(u.personal_org_id), '') = '' AND u.stable_user_id = ?))${andLiveDeletedAtSql('u')}`,
+		)
+		.bind(org.id, org.id, org.id)
+		.all<ReferrerOrg['members'][number]>()
+	return {
+		org_id: org.id,
+		stripe_customer_id: org.stripe_customer_id,
+		members: members.results ?? [],
+	}
+}
+
+function rejectReasonForReferral(
+	referrer: ReferrerOrg,
 	referee: ReferralParty,
 ): ReferralRejectReason | null {
-	if (referrer.stable_user_id === referee.stable_user_id) {
+	if (
+		referrer.org_id === referee.org_id ||
+		referrer.members.some(
+			(member) => member.stable_user_id === referee.stable_user_id,
+		)
+	) {
 		return 'self_referral'
 	}
+	const refereeEmail = normalizeEmailForReferralFraud(referee.email)
 	if (
-		normalizeEmailForReferralFraud(referrer.email) ===
-		normalizeEmailForReferralFraud(referee.email)
+		referrer.members.some(
+			(member) =>
+				member.email &&
+				normalizeEmailForReferralFraud(member.email) === refereeEmail,
+		)
 	) {
 		return 'same_email'
 	}
@@ -505,6 +598,12 @@ function rejectReasonForParties(
 		return 'same_stripe_customer'
 	}
 	return null
+}
+
+function referrerOrgHasVerifiedOwner(referrer: ReferrerOrg) {
+	return referrer.members.some(
+		(member) => member.role === 'owner' && Boolean(member.email_verified_at),
+	)
 }
 
 async function markRejected(
@@ -578,7 +677,7 @@ export async function rewardReferralForPaidInvoice(input: {
 	const now = input.now ?? new Date()
 	const pending = await input.db
 		.prepare(
-			`SELECT id, referrer_stable_user_id, referee_stable_user_id, status,
+			`SELECT id, referrer_org_id, referee_stable_user_id, status,
 			        reward_invoice_id, held_invoice_id, held_period_end_at,
 			        credits_granted_at
 			 FROM referrals
@@ -598,18 +697,18 @@ export async function rewardReferralForPaidInvoice(input: {
 	}
 
 	const [referrer, referee] = await Promise.all([
-		loadParty(input.db, pending.referrer_stable_user_id),
+		loadReferrerOrg(input.db, pending.referrer_org_id),
 		loadParty(input.db, pending.referee_stable_user_id),
 	])
 	if (!referrer || !referee) return { outcome: 'ignored', reason: 'no_pending' }
 
-	const reject = rejectReasonForParties(referrer, referee)
+	const reject = rejectReasonForReferral(referrer, referee)
 	if (reject) {
 		await markRejected(input.db, pending.id, reject)
 		return { outcome: 'rejected', reason: reject }
 	}
 
-	if (!referrer.email_verified_at || !referee.email_verified_at) {
+	if (!referrerOrgHasVerifiedOwner(referrer) || !referee.email_verified_at) {
 		await input.db
 			.prepare(
 				`UPDATE referrals
@@ -691,7 +790,7 @@ export async function maybeRewardHeldReferralAfterEmailVerified(input: {
 	stableUserId: string
 	referrerPaidPeriodEndAt?: string | null
 	resolveReferrerPaidPeriodEnd?: (
-		referrerStableUserId: string,
+		referrerOrgId: string,
 	) => Promise<string | null>
 	now?: Date
 }): Promise<ReferralRewardOutcome | { outcome: 'ignored'; reason: 'no_held' }> {
@@ -700,16 +799,25 @@ export async function maybeRewardHeldReferralAfterEmailVerified(input: {
 	}
 	const held = await input.db
 		.prepare(
-			`SELECT id, referrer_stable_user_id, referee_stable_user_id, status,
+			`SELECT id, referrer_org_id, referee_stable_user_id, status,
 			        reward_invoice_id, held_invoice_id, held_period_end_at,
 			        credits_granted_at
 			 FROM referrals
-			 WHERE (referee_stable_user_id = ? OR referrer_stable_user_id = ?)
+			 WHERE (
+			     referee_stable_user_id = ?
+			     OR referrer_org_id IN (
+			       SELECT COALESCE(NULLIF(TRIM(personal_org_id), ''), stable_user_id)
+			       FROM users WHERE stable_user_id = ?
+			       UNION
+			       SELECT org_id FROM org_memberships
+			       WHERE user_id = ? AND role = 'owner' AND deleted_at IS NULL
+			     )
+			   )
 			   AND status = 'pending'
 			   AND held_invoice_id IS NOT NULL
 			 ORDER BY created_at ASC`,
 		)
-		.bind(input.stableUserId, input.stableUserId)
+		.bind(input.stableUserId, input.stableUserId, input.stableUserId)
 		.all<PendingReferralRow>()
 	const rows = held.results ?? []
 	if (rows.length === 0) {
@@ -721,9 +829,7 @@ export async function maybeRewardHeldReferralAfterEmailVerified(input: {
 		let referrerPaidPeriodEndAt: string | null
 		try {
 			referrerPaidPeriodEndAt = input.resolveReferrerPaidPeriodEnd
-				? await input.resolveReferrerPaidPeriodEnd(
-						pending.referrer_stable_user_id,
-					)
+				? await input.resolveReferrerPaidPeriodEnd(pending.referrer_org_id)
 				: (input.referrerPaidPeriodEndAt ?? null)
 		} catch (error) {
 			console.warn('referral-held-referrer-period-end-failed', error)
@@ -744,11 +850,20 @@ export async function maybeRewardHeldReferralAfterEmailVerified(input: {
 
 export async function loadReferralProgramSummary(input: {
 	db: D1Database
-	stableUserId: string
-	username: string
+	/** The org this link credits: a personal org or a team org. */
+	orgId: string
+	/** Username for a personal org, slug for a team org. */
+	handle: string
 	origin: string
-	/** Omit to hide the "Referred by" entry (state `closed` unless attributed). */
-	personHasPaid?: () => Promise<boolean>
+	/**
+	 * The person viewing their own personal billing. Omit for team orgs, where
+	 * "Referred by" does not apply (state `closed`).
+	 */
+	referee?: {
+		stableUserId: string
+		/** Omit to hide the "Referred by" entry (state `closed` unless attributed). */
+		personHasPaid?: () => Promise<boolean>
+	}
 	now?: Date
 }): Promise<ReferralProgramSummary> {
 	const now = input.now ?? new Date()
@@ -758,7 +873,7 @@ export async function loadReferralProgramSummary(input: {
 			 FROM orgs
 			 WHERE id = ? AND deleted_at IS NULL`,
 		)
-		.bind(input.stableUserId)
+		.bind(input.orgId)
 		.first<{ referral_standard_credit_expires_at: string | null }>()
 	const creditExpiresAt =
 		creditRow?.referral_standard_credit_expires_at?.trim() || null
@@ -770,11 +885,11 @@ export async function loadReferralProgramSummary(input: {
 				 LEFT JOIN users u
 					ON u.stable_user_id = r.referee_stable_user_id
 					AND u.deleted_at IS NULL
-				 WHERE r.referrer_stable_user_id = ?
+				 WHERE r.referrer_org_id = ?
 				   AND r.status IN ('pending', 'rewarded')
 				 ORDER BY r.created_at DESC LIMIT 50`,
 			)
-			.bind(input.stableUserId)
+			.bind(input.orgId)
 			.all<{
 				status: string
 				created_at: string
@@ -785,18 +900,20 @@ export async function loadReferralProgramSummary(input: {
 			.prepare(
 				`SELECT status, COUNT(*) AS total
 				 FROM referrals
-				 WHERE referrer_stable_user_id = ?
+				 WHERE referrer_org_id = ?
 				   AND status IN ('pending', 'rewarded')
 				 GROUP BY status`,
 			)
-			.bind(input.stableUserId)
+			.bind(input.orgId)
 			.all<{ status: string; total: number }>(),
-		loadReferredByState({
-			db: input.db,
-			stableUserId: input.stableUserId,
-			personHasPaid: input.personHasPaid,
-			now,
-		}),
+		input.referee
+			? loadReferredByState({
+					db: input.db,
+					stableUserId: input.referee.stableUserId,
+					personHasPaid: input.referee.personHasPaid,
+					now,
+				})
+			: ({ state: 'closed' } satisfies ReferredByState),
 	])
 	const referrals: Array<ReferralProgramListItem> = (rows.results ?? []).map(
 		(row) => ({
@@ -814,7 +931,7 @@ export async function loadReferralProgramSummary(input: {
 		const parsed = typeof total === 'number' ? total : Number(total)
 		return Number.isFinite(parsed) ? parsed : 0
 	}
-	const sharePath = referralSharePath(input.username)
+	const sharePath = referralSharePath(input.handle)
 	return {
 		sharePath,
 		shareUrl: new URL(sharePath, input.origin).toString(),

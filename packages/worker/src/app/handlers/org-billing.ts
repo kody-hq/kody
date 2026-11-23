@@ -313,14 +313,17 @@ const lateReferralRejections: Record<
 	invalid_code: {
 		status: 400,
 		error:
-			'Enter a Kody username or referral link, like @alice or kody.codes/?ref=alice.',
+			'Enter a Kody username, organization handle, or referral link, like @alice or kody.codes/?ref=alice.',
 	},
 	unknown_referrer: {
 		status: 404,
 		error:
-			'No Kody account uses that username. Check the spelling or their link.',
+			'No Kody account or organization uses that handle. Check the spelling or their link.',
 	},
-	self: { status: 400, error: 'You can’t refer yourself.' },
+	self: {
+		status: 400,
+		error: 'You can’t refer yourself or an organization you belong to.',
+	},
 	already_attributed: {
 		status: 409,
 		error: 'A referrer is already recorded for your account.',
@@ -380,7 +383,7 @@ export async function attachWebsiteReferral(input: {
 	}
 	return operationResult({
 		ok: true,
-		referrerUsername: result.referrerUsername,
+		referrerHandle: result.referrerHandle,
 	})
 }
 

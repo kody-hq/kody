@@ -60,6 +60,7 @@ function createBillingEnv(input: {
 		plan: 'free',
 		username: 'billing-user',
 		stable_user_id: 'stable-user-id',
+		org_id: 'stable-user-id',
 		stripe_plan: input.stripePlan,
 		stripe_customer_id: input.stripeCustomerId,
 		stripe_plan_refreshed_at: null,
@@ -68,6 +69,7 @@ function createBillingEnv(input: {
 	}
 	const orgRow = {
 		plan: 'free',
+		slug: 'acme',
 		stripe_plan: null,
 		stripe_credits_eligible: 0,
 		stripe_customer_id: input.orgStripeCustomerId ?? null,
@@ -210,7 +212,10 @@ test("a team organization reads and refreshes its own Stripe customer, not the v
 		creditsEligible: true,
 		creditsHref: '/@acme/-/usage#credits',
 		usageHref: '/@acme/-/usage',
-		referralProgram: null,
+		referralProgram: expect.objectContaining({
+			sharePath: '/?ref=acme',
+			referredBy: { state: 'closed' },
+		}),
 		org: {
 			slug: 'acme',
 			displayName: 'Acme',

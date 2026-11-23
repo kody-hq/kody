@@ -33,8 +33,8 @@ export function ReferredByPanel(props: {
 	if (state.state === 'closed') return null
 
 	if (state.state === 'attributed') {
-		const who = state.referrerUsername
-			? `@${state.referrerUsername}`
+		const who = state.referrerHandle
+			? `@${state.referrerHandle}`
 			: 'Another Kody user'
 		return (
 			<AccountManagementPanel title="Referred by">
@@ -62,7 +62,7 @@ export function ReferredByPanel(props: {
 		}
 		setState({
 			state: 'attributed',
-			referrerUsername: result.referrerUsername,
+			referrerHandle: result.referrerHandle,
 			status: 'pending',
 		})
 	}
@@ -70,7 +70,7 @@ export function ReferredByPanel(props: {
 	return (
 		<AccountManagementPanel
 			title="Referred by"
-			description="Did someone send you to Kody? Add their username or referral link within 72 hours of signing up, before your first paid invoice. This credits them: once you both verify your email and that invoice is paid, you each get one month of Pro. It is not a promo code and takes nothing off your price. It can be set once."
+			description="Did someone send you to Kody? Add their username, organization handle, or referral link within 72 hours of signing up, before your first paid invoice. Once you both verify your email and that invoice is paid, you get one month of Pro on your personal account, and so does the referrer: a username credits that person's personal account, an organization handle credits that organization. It is not a promo code and takes nothing off your price. It can be set once."
 		>
 			<form
 				css={{ display: 'grid', gap: spacing.sm }}
@@ -81,7 +81,7 @@ export function ReferredByPanel(props: {
 			>
 				<div css={fieldCss}>
 					<label htmlFor="referred-by" css={fieldLabelCss}>
-						Referrer's username or link
+						Referrer's username, organization, or link
 					</label>
 					<div
 						css={{

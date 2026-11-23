@@ -87,7 +87,7 @@ async function seedReferral(
 ) {
 	await env.APP_DB.prepare(
 		`INSERT INTO referrals (
-			referrer_stable_user_id, referee_stable_user_id, created_at, status,
+			referrer_org_id, referee_stable_user_id, created_at, status,
 			held_invoice_id, held_period_end_at
 		) VALUES (?, ?, ?, 'pending', ?, ?)`,
 	)

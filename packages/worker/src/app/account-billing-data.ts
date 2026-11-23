@@ -101,15 +101,19 @@ type BillingUserRow = {
 	stripe_customer_id: string | null
 	stripe_plan_refreshed_at: string | null
 	stable_user_id: OwnerId
+	org_id: OwnerId
 	second_agent_standard_gift_expires_at: string | null
 	referral_standard_credit_expires_at: string | null
 }
 
 type BillingOrgRow = {
 	plan: string
+	slug: string
 	stripe_plan: string | null
 	stripe_credits_eligible: number | null
 	stripe_customer_id: string | null
+	second_agent_standard_gift_expires_at: string | null
+	referral_standard_credit_expires_at: string | null
 }
 
 /** The organization whose subscription the billing page shows. */
@@ -127,7 +131,15 @@ type PlanState = {
 	creditsEligible: boolean
 	customerId: string | null
 	overlayExpiresAt: string | null
-	referral: { stableUserId: OwnerId; username: string } | null
+	/**
+	 * The referral link this page shows: it credits `orgId`. `refereeStableUserId`
+	 * is set on personal billing only, where the person can add who referred them.
+	 */
+	referral: {
+		orgId: OwnerId
+		handle: string
+		refereeStableUserId: OwnerId | null
+	} | null
 }
 
 type RefreshedPlan = {
@@ -143,7 +155,7 @@ async function readPersonalPlanState(
 	userId: number,
 ): Promise<PlanState & { stableUserId: OwnerId | null }> {
 	const row = await env.APP_DB.prepare(
-		`SELECT o.plan, u.username, o.stripe_plan, o.stripe_credits_eligible,
+		`SELECT o.id AS org_id, o.plan, u.username, o.stripe_plan, o.stripe_credits_eligible,
 		        o.stripe_customer_id, o.stripe_plan_refreshed_at,
 		        u.stable_user_id, o.second_agent_standard_gift_expires_at,
 		        o.referral_standard_credit_expires_at
@@ -169,7 +181,11 @@ async function readPersonalPlanState(
 		),
 		referral:
 			row.stable_user_id && row.username
-				? { stableUserId: row.stable_user_id, username: row.username }
+				? {
+						orgId: row.org_id,
+						handle: row.username,
+						refereeStableUserId: row.stable_user_id,
+					}
 				: null,
 		stableUserId: row.stable_user_id ?? null,
 	}
@@ -177,7 +193,9 @@ async function readPersonalPlanState(
 
 async function readTeamPlanState(env: Env, orgId: OwnerId): Promise<PlanState> {
 	const row = await env.APP_DB.prepare(
-		`SELECT plan, stripe_plan, stripe_credits_eligible, stripe_customer_id
+		`SELECT plan, slug, stripe_plan, stripe_credits_eligible, stripe_customer_id,
+		        second_agent_standard_gift_expires_at,
+		        referral_standard_credit_expires_at
 		 FROM orgs
 		 WHERE id = ?${andLiveDeletedAtSql()}`,
 	)
@@ -193,8 +211,11 @@ async function readTeamPlanState(env: Env, orgId: OwnerId): Promise<PlanState> {
 		stripePlan: parseStripePlanName(row.stripe_plan),
 		creditsEligible: Number(row.stripe_credits_eligible) === 1,
 		customerId: row.stripe_customer_id?.trim() || null,
-		overlayExpiresAt: null,
-		referral: null,
+		overlayExpiresAt: laterIsoTimestamp(
+			row.second_agent_standard_gift_expires_at,
+			row.referral_standard_credit_expires_at,
+		),
+		referral: { orgId, handle: row.slug, refereeStableUserId: null },
 	}
 }
 
@@ -269,18 +290,25 @@ export async function loadAccountBillingData(input: {
 
 	const purchasablePlans = configured ? getPurchasablePlans(input.env) : []
 	const origin = getCanonicalAppBaseUrl({ env: input.env })
-	const referralProgram = state.referral
+	const referral = state.referral
+	const refereeStableUserId = referral?.refereeStableUserId ?? null
+	const referralProgram = referral
 		? await loadReferralProgramSummary({
 				db: input.env.APP_DB,
-				stableUserId: state.referral.stableUserId,
-				username: state.referral.username,
+				orgId: referral.orgId,
+				handle: referral.handle,
 				origin,
-				personHasPaid: () =>
-					personHasPaidKodyInvoice({
-						db: input.env.APP_DB,
-						stableUserId: state.referral!.stableUserId,
-						listPaidInvoices: referralPaidInvoiceLister(input.env),
-					}),
+				referee: refereeStableUserId
+					? {
+							stableUserId: refereeStableUserId,
+							personHasPaid: () =>
+								personHasPaidKodyInvoice({
+									db: input.env.APP_DB,
+									stableUserId: refereeStableUserId,
+									listPaidInvoices: referralPaidInvoiceLister(input.env),
+								}),
+						}
+					: undefined,
 				now,
 			}).catch((referralError) => {
 				console.error('account_billing_referral_failed', {

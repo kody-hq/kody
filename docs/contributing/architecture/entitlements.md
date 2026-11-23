@@ -186,44 +186,59 @@ The onboarding loader exposes that object as `secondAgentStandardGift`.
 
 ### Referral Pro credit
 
-Share links add `?ref=` to any page (for example `/?ref=<username>`) and set a
-last-wins `kody_ref` cookie that expires after one week. A later share link
-overwrites the previous referrer for the rest of that window. Signup (password
-and OAuth) persists a pending `referrals` row from the cookie or a same-request
-share link. First-touch UTMs stay write-once and do not carry the referral code.
-Reward runs on `invoice.paid` after the referee's first qualifying paid Stripe
-invoice (`amount_paid > 0`, not a $0 trial, not a historical compute-overage
-invoice). Both the referrer and the referee receive one stacked month (30 days)
-of Pro via `orgs.referral_standard_credit_expires_at` (retired Pro ceilings, no
-credit wallet — same as the second-agent gift). There is no annual or lifetime
-cap on how many months a referrer can earn. Paid subscribers stack from the
-later of an existing credit and the current paid period end so the month starts
-after paid access rather than overlapping it. Referee invoices use the latest
-line `period.end`. A failed Stripe lookup of the referrer's subscription fails
-the webhook so Stripe can retry instead of stacking from now. Email-verify
-leaves a held row pending if that lookup fails; the referrer’s later
-`invoice.paid` retries it. Stripe subscriptions are not mutated.
+A referral code is a handle, and each `referrals` row records the org it credits
+in `referrer_org_id`. A personal link (`/?ref=<username>`) credits the person's
+personal org; a team org link (`/?ref=<org slug>`) credits that team org, never
+the personal account of whoever shared it. Usernames resolve first, then live
+team org slugs (they share one namespace). The referee's month always lands on
+the referee's personal org, and their personal org's first qualifying invoice is
+the one that triggers the reward.
+
+Share links add `?ref=` to any page and set a last-wins `kody_ref` cookie that
+expires after one week. A later share link overwrites the previous referrer for
+the rest of that window. Signup (password and OAuth) persists a pending
+`referrals` row from the cookie or a same-request share link. First-touch UTMs
+stay write-once and do not carry the referral code. Reward runs on
+`invoice.paid` after the referee's first qualifying paid Stripe invoice
+(`amount_paid > 0`, not a $0 trial, not a historical compute-overage invoice).
+The referrer org and the referee's personal org each receive one stacked month
+(30 days) of Pro via `orgs.referral_standard_credit_expires_at` (retired Pro
+ceilings, no credit wallet — same as the second-agent gift). There is no annual
+or lifetime cap on how many months a referrer can earn. Paid subscribers stack
+from the later of an existing credit and the current paid period end so the
+month starts after paid access rather than overlapping it. Referee invoices use
+the latest line `period.end`. A failed Stripe lookup of the referrer's
+subscription fails the webhook so Stripe can retry instead of stacking from now.
+Email-verify leaves a held row pending if that lookup fails; the referrer’s
+later `invoice.paid` retries it. Stripe subscriptions are not mutated.
 
 Existing accounts without an attribution can add one from **Referred by** on
-their personal `/@<slug>/-/billing` page (username, `@username`, or share link).
-It is write-once (the unique referee index; a signup attribution is never
-replaced), only within 72 hours of the account's signup (`users.created_at`),
-and only before the person's first paid Kody invoice: refused when any live org
-they own or bill has `orgs.referral_first_paid_at` or a qualifying paid Stripe
-invoice (a full page of paid invoices with none qualifying also counts).
-`invoice.paid` stamps that marker before it looks for a pending referral, and
-the insert re-checks the marker in the same statement, so an invoice paid
-mid-request either blocks the row or rewards it. The panel is hidden after the
-72-hour window or once the person has paid so it never implies a retroactive
-reward. It is a referral, not a Stripe promo code, and earns the same month of
-Pro through the same reward path.
+their personal `/@<slug>/-/billing` page (username, org slug, `@handle`, or
+share link; an org handle credits that org). It is write-once (the unique
+referee index; a signup attribution is never replaced), only within 72 hours of
+the account's signup (`users.created_at`), and only before the person's first
+paid Kody invoice: refused when any live org they own or bill has
+`orgs.referral_first_paid_at` or a qualifying paid Stripe invoice (a full page
+of paid invoices with none qualifying also counts). `invoice.paid` stamps that
+marker before it looks for a pending referral, and the insert re-checks the
+marker in the same statement, so an invoice paid mid-request either blocks the
+row or rewards it. The panel is hidden after the 72-hour window or once the
+person has paid so it never implies a retroactive reward. It is a referral, not
+a Stripe promo code, and earns the same month of Pro through the same reward
+path.
 
-Fraud basics before a reward: both emails verified, attribution persisted at
-signup or from Referred by within 72 hours of signup and before the first
-payment, no self-referral, no plus-tag / Gmail-dot email collapse, and no shared
-Stripe customer. An unverified party holds the qualifying invoice id on the
-pending row; email verification retries the grant. `/@<slug>/-/billing` shows
-the share link, simple referrer status, and Referred by.
+Fraud basics before a reward: the referee's email and at least one referrer org
+owner's email verified, attribution persisted at signup or from Referred by
+within 72 hours of signup and before the first payment, no self-referral (the
+referee is not a member of the referrer org), no plus-tag / Gmail-dot email
+collapse with any referrer org member, and no shared Stripe customer. An
+unverified party holds the qualifying invoice id on the pending row; email
+verification (the referee, or any owner of the referrer org) retries the grant.
+Every `/@<slug>/-/billing` page shows that org's share link and referrer status
+to the same owners and billing admins who can open it; Referred by is personal
+billing only. A team org with no paid plan still earns the month: the Pro
+overlay lifts its Free base for every seat, and a paid team org's month starts
+after its current paid period.
 
 `getUserEntitlement` overlays Pro through the later of the second-agent gift and
 this referral credit (retired Pro table, no wallet).
