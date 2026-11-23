@@ -368,13 +368,42 @@ startup CPU or check time.
 Next up is the worker's webhooks code, which has 73 lint findings to work
 through. That hasn't started yet.
 
-## So, how did the trial go?
+## Conclusion
 
-I gave Effect a real trial, and I went in wanting it to win. For Kody's request
-handlers, it didn't. I still think it's good code once you know it. But I'm not
-the one writing it, and on our priorities, plain promises with some guardrails
-did better for a lot less cost. That tradeoff could look different if Effect
-loaded lazily and its check got fast.
+I gave Effect 4 (`effect` 4.1.5) a real trial, and I went in wanting it to win.
+Here is how the tradeoff shook out for Kody's request handlers.
+
+**The strongest case for Effect:**
+
+- It won the bug-prevention column (5.17 to 3.33), mostly because schema
+  decoding at the edge caught two real bugs on `main` automatically.
+- Typed errors, service boundaries, and trace spans come built in once a path
+  is in Effect, without relying on per-file lint opt-in.
+- Startup latency was a wash; the earlier 30 ms concern didn't reproduce.
+- The code itself is clean once you know the library, and Effect's `Scope`
+  resource safety still makes it a candidate for long-lived Durable Objects and
+  queues if loaded lazily.
+
+**Why we decided not to use it here:**
+
+- On planted bugs, Effect and Promises plus lint caught the exact same four
+  issues specifically, and neither caught the business-logic or ordering bugs
+  that need tests anyway.
+- Fresh agents made all three follow-up changes with zero rule breaks on both
+  arms, so Effect didn't pull ahead on keeping code correct under change.
+- It added about 168 KB gzip per Worker that loads it at startup (versus 1.7 KB
+  for our Promise helpers) and a 52.4 s check (versus 4.7 s for oxlint across
+  the whole worker).
+- Adoption is slower and harder to reverse: converting a route means converting
+  the helpers below it too (estimated 6 to 10 weeks of agent time versus 2 to 4
+  weeks), and backing out means rewriting files instead of removing a lint
+  entry.
+
+So for Kody's request handlers, we're keeping the best lesson from Effect
+(schema decoding at every untrusted edge, using zod) on top of plain
+async/await, a few required helpers, and custom lint rules. On our priorities,
+that gave us the same core safety for a lot less cost. That tradeoff could look
+different if Effect loaded lazily and its check got fast.
 
 Thanks again to everyone who gave feedback on the early PRs. This trial got a
 lot better because of you.
