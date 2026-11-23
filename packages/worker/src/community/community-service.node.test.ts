@@ -1063,9 +1063,12 @@ test('absorbCommunityForkUpstream records the current listing pin and is idempot
 
 test('forkCommunityListing copies the published revision of a recommended starter, not the branch head', async () => {
 	mockForkable()
+	mockModule.getCommunityListingById.mockResolvedValue(
+		sampleListing({ pinnedCommit: 'commit-0' }),
+	)
 	mockModule.getEntitySourceById.mockResolvedValue({
 		id: 'source-1',
-		repo_id: null,
+		repo_id: 'package-origin-1',
 		published_commit: 'commit-1',
 	})
 	mockModule.resolveArtifactSourceHead.mockResolvedValue({
@@ -1081,6 +1084,7 @@ test('forkCommunityListing copies the published revision of a recommended starte
 		'package-1',
 	)
 	expect(mockModule.resolveArtifactSourceHead).not.toHaveBeenCalled()
+	expect(mockModule.forkArtifactRepo).not.toHaveBeenCalled()
 	expect(mockModule.insertCommunityFork).toHaveBeenCalledWith(
 		expect.anything(),
 		expect.objectContaining({ origin_commit: 'commit-1' }),

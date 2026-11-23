@@ -1353,6 +1353,7 @@ export async function prepareCommunityFork(
 	let preferredCommit = listing.pinnedCommit
 	if (source && isStarter) {
 		// Starter checks validate the published revision, so forks copy that one.
+		// Permanent: a source with no published commit forks the listing pin.
 		preferredCommit = source.published_commit || listing.pinnedCommit
 	} else if (source) {
 		try {
@@ -1392,7 +1393,8 @@ export async function prepareCommunityFork(
 		originCommit,
 		originName: listing.name,
 		originKodyId: listing.kodyId,
-		originRepoId: source?.repo_id ?? null,
+		// A storage-layer repo fork would copy the unpublished branch tip.
+		originRepoId: isStarter ? null : (source?.repo_id ?? null),
 		lineage: {
 			listingId: input.listingId,
 			upstreamOwnerId: null,
