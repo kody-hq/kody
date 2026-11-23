@@ -452,7 +452,7 @@ export function AccountBillingPage({
 							description={
 								payload.org.personal
 									? 'Share your link. When someone signs up with it, or an existing Free user adds you under Referred by within 72 hours of signing up and before their first payment, you both get one month of Pro once they verify their email and pay their first invoice. There is no cap. This link credits your personal account; each organization has its own link on its billing page.'
-									: `Share ${orgName}'s link. When someone signs up with it, or an existing Free user adds @${payload.org.slug} under Referred by within 72 hours of signing up and before their first payment, ${orgName} gets one month of Pro and so do they, once they verify their email and pay their first invoice. There is no cap. Rewards from this link go to ${orgName}, not your personal account; your personal link is on your personal billing page.`
+									: `Share ${orgName}'s link. When someone signs up with it, or an existing Free user adds @${payload.org.slug} under Referred by within 72 hours of signing up and before their first payment, ${orgName} gets one month of Pro and so do they, once they verify their email and pay their first invoice (an owner of ${orgName} also needs a verified email). There is no cap. Rewards from this link go to ${orgName}, not your personal account; your personal link is on your personal billing page.`
 							}
 						>
 							<div
@@ -555,6 +555,7 @@ export function AccountBillingPage({
 
 					{billing.referralProgram ? (
 						<ReferredByPanel
+							key={payload.org.slug}
 							orgSlug={payload.org.slug}
 							referredBy={billing.referralProgram.referredBy}
 						/>
