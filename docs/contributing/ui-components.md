@@ -67,6 +67,25 @@ to the control win.
   for the others. Native `hidden`, `file`, `range`, and `color` inputs stay raw.
 - Never render an unstyled `<select>`. For a searchable list use `Combobox`.
 
+## InputGroup, InputAddon
+
+`start/components/input.tsx`
+
+```tsx
+<InputGroup>
+	<InputAddon aria-hidden="true">kody.codes/@</InputAddon>
+	<Input name="slug" />
+</InputGroup>
+```
+
+One joined control: a single border, rounded outer corners, square inner
+corners, and a focus ring around the whole group. Never butt a styled `span`
+against an `Input` with radius overrides.
+
+- `size` and `background` go on `InputGroup`; the `Input` inside follows them.
+- `InputAddon` is static text. Mark it `aria-hidden` when the field's
+  description already says the full value.
+
 ## Checkbox, Radio, Switch
 
 `start/components/choice-controls.tsx`

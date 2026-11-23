@@ -1,8 +1,16 @@
 /** @jsxImportSource @emotion/react */
-import type { ComponentProps, HTMLInputTypeAttribute } from 'react'
+import {
+	createContext,
+	use,
+	type ComponentProps,
+	type HTMLInputTypeAttribute,
+} from 'react'
 import { useFieldControl } from './field.tsx'
 import {
 	getFieldControlCss,
+	getInputAddonCss,
+	getInputGroupControlCss,
+	getInputGroupCss,
 	getSelectControlCss,
 	getTextareaControlCss,
 	type FieldControlStyleOptions,
@@ -28,14 +36,42 @@ export type InputProps = Omit<ComponentProps<'input'>, 'size' | 'type'> &
 /** Text-like input. Use `Checkbox`, `Radio`, or `Button` for the other types. */
 export function Input({ size, background, ...props }: InputProps) {
 	const fieldProps = useFieldControl(props)
+	const group = use(InputGroupContext)
 	return (
 		<input
 			data-field-ring
-			css={getFieldControlCss({ size, background })}
+			css={
+				group
+					? getInputGroupControlCss(group)
+					: getFieldControlCss({ size, background })
+			}
 			{...props}
 			{...fieldProps}
 		/>
 	)
+}
+
+const InputGroupContext = createContext<FieldControlStyleOptions | null>(null)
+
+export type InputGroupProps = ComponentProps<'span'> & FieldControlStyleOptions
+
+/**
+ * Joins an `InputAddon` and an `Input` into one control: one border, rounded
+ * outer corners, square inner corners, and a focus ring around the whole
+ * group. Set `size` and `background` here; the `Input` inside follows them.
+ */
+export function InputGroup({ size, background, ...props }: InputGroupProps) {
+	return (
+		<InputGroupContext value={{ size, background }}>
+			<span css={getInputGroupCss({ size, background })} {...props} />
+		</InputGroupContext>
+	)
+}
+
+/** Static text at the start of an `InputGroup`, such as `kody.codes/@`. */
+export function InputAddon(props: ComponentProps<'span'>) {
+	const group = use(InputGroupContext)
+	return <span css={getInputAddonCss(group ?? {})} {...props} />
 }
 
 export type TextareaProps = ComponentProps<'textarea'> &

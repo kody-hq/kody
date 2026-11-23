@@ -69,7 +69,7 @@ import {
 	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import { Input } from '../components/input.tsx'
+import { Input, InputAddon, InputGroup } from '../components/input.tsx'
 export function OrganizationsPage({
 	data,
 }: {
@@ -373,13 +373,10 @@ function CreateOrganizationForm() {
 					</Field>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Handle</span>
-						<span css={slugFieldCss}>
-							<span aria-hidden="true" css={slugPrefixCss}>
-								kody.codes/@
-							</span>
+						<InputGroup>
+							<InputAddon aria-hidden="true">kody.codes/@</InputAddon>
 							<Input
 								ref={slugInputRef}
-								css={slugInputCss}
 								aria-describedby={[
 									'create-organization-slug-note',
 									slugInvalid ? formErrorId : null,
@@ -401,7 +398,7 @@ function CreateOrganizationForm() {
 								autoComplete="off"
 								required
 							/>
-						</span>
+						</InputGroup>
 						<p id="create-organization-slug-note" css={fieldDescriptionCss}>
 							{handleFormatHint} {handlePermanentNote} Your organization's URL
 							will be{' '}
@@ -677,32 +674,6 @@ const orgRowChevronCss: CSSObject = {
 const formCss: CSSObject = {
 	display: 'grid',
 	gap: spacing.lg,
-}
-
-const slugFieldCss: CSSObject = {
-	display: 'flex',
-	alignItems: 'stretch',
-	minWidth: 0,
-}
-
-const slugPrefixCss: CSSObject = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	paddingInline: '0.85rem',
-	borderRadius: '12px 0 0 12px',
-	border: `1.5px solid ${colors.fieldBorder}`,
-	borderRight: 'none',
-	backgroundColor: colors.background,
-	color: colors.textMuted,
-	fontSize: typography.fontSize.sm,
-	whiteSpace: 'nowrap' as const,
-}
-
-const slugInputCss: CSSObject = {
-	flex: '1 1 auto',
-	minWidth: 0,
-	borderTopLeftRadius: 0,
-	borderBottomLeftRadius: 0,
 }
 
 const mutedCopyCss: CSSObject = {
