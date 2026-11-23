@@ -230,6 +230,19 @@
 					},
 				],
 			},
+			// Default write limit for every hosted package app (per visitor IP per
+			// app); mirrors packageAppWriteRateLimit in
+			// packages/worker/src/package-runtime/package-app-default-rate-limit.ts.
+			"ratelimits": [
+				{
+					"name": "PACKAGE_APP_RATE_LIMITER",
+					"namespace_id": "1009",
+					"simple": {
+						"limit": 300,
+						"period": 60,
+					},
+				},
+			],
 			// Jobs worker service binding (ADR 0016): package save/delete paths
 			// sync the JobManager alarm through this coarse-grained contract.
 			"services": [
@@ -464,6 +477,19 @@
 					},
 				],
 			},
+			// Default write limit for every hosted package app (per visitor IP per
+			// app); mirrors packageAppWriteRateLimit in
+			// packages/worker/src/package-runtime/package-app-default-rate-limit.ts.
+			"ratelimits": [
+				{
+					"name": "PACKAGE_APP_RATE_LIMITER",
+					"namespace_id": "1010",
+					"simple": {
+						"limit": 300,
+						"period": 60,
+					},
+				},
+			],
 			// Jobs worker service binding (ADR 0016): the preview config
 			// generator rewrites the service to the per-preview jobs worker
 			// name, same as the main worker's JOBS binding.

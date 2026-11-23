@@ -129,3 +129,19 @@ test('resolvePackageAppAssetSourcePath blocks traversal and malformed segments',
 	expect(resolve('img\\logo.png')).toBeNull()
 	expect(resolve('a\0b')).toBeNull()
 })
+
+test('resolvePackageAppAssetSourcePath never serves dot-files, so committed secrets stay private', () => {
+	const resolve = (relativePath: string) =>
+		resolvePackageAppAssetSourcePath({
+			assetsDirectory: 'public',
+			relativePath,
+		})
+	expect(resolve('.env')).toBeNull()
+	expect(resolve('.dev.vars')).toBeNull()
+	expect(resolve('config/.env.production')).toBeNull()
+	expect(resolve('.git/config')).toBeNull()
+	expect(resolve('.well-known/assetlinks.json')).toBe(
+		'public/.well-known/assetlinks.json',
+	)
+	expect(resolve('img/logo.v2.png')).toBe('public/img/logo.v2.png')
+})

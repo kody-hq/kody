@@ -104,7 +104,9 @@ export function listPackageAppAssetFiles(input: {
 /**
  * Map a request path under `/_assets/` back to a workspace file inside the
  * assets directory. Rejects traversal, empty segments, and backslashes so a
- * request can never escape the declared directory.
+ * request can never escape the declared directory, and dot-files and
+ * dot-folders (`.env`, `.dev.vars`, `.git/`) so a secret file committed under
+ * the assets directory is never served. `.well-known/` stays servable.
  */
 export function resolvePackageAppAssetSourcePath(input: {
 	assetsDirectory: string
@@ -121,7 +123,9 @@ export function resolvePackageAppAssetSourcePath(input: {
 	const segments = relativePath.split('/')
 	if (
 		segments.some(
-			(segment) => segment.length === 0 || segment === '.' || segment === '..',
+			(segment) =>
+				segment.length === 0 ||
+				(segment.startsWith('.') && segment !== '.well-known'),
 		)
 	) {
 		return null
