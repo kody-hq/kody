@@ -30,7 +30,7 @@ export interface BackupEnvironment {
 	DRILL_API_TOKEN?: string
 	RESTORE_CONFIRM_SECRET?: string
 	DR_RESTORE_SECRET?: string
-	/** Bearer for agent seal enqueue/status on `/__maintenance/dr-seal` only. */
+	/** Bearer for agent seal enqueue, seal status, and paced drill status. */
 	DR_OPS_SECRET?: string
 }
 

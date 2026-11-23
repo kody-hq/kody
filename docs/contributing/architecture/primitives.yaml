@@ -781,7 +781,7 @@ primitives:
     group: storage
     name: Production backup control plane
     summary:
-      Dedicated scheduled D1 export, production-side multi-store exporter,
+      Production-side paced D1 and multi-store capture, DR-account full seals,
       immutable R2 retention, Access-gated operator UI, isolated restore drills,
       and cross-store recovery contracts.
     code:

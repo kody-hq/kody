@@ -97,7 +97,8 @@ snapshot.
 Retention (UTC):
 
 - `daily/` — ~35 days (immutable lock + lifecycle)
-- `weekly/` — ~400 days (Sunday UTC D1 exports under `weekly/d1/...`)
+- `weekly/` — ~400 days (Sunday UTC paced full bases under
+  `weekly/d1-paced/...`)
 - `blobs/sha256/` — long-retention content-addressed store shared across days
 - Failed or incomplete sets never replace a sealed day
 
@@ -179,19 +180,19 @@ Contract: `packages/shared/src/backup-staging.ts`.
    not converted, modified, or manually deleted; they expire under R2 lifecycle
    (`daily/` about 35 days, so the last REST-era daily full manifest,
    2026-11-16, ages out in late December 2026; `weekly/d1/` about 400 days, with
-   no weekly full manifest to restore them through). `SOURCE_DATABASES`
-   (`{ id, name }` entries) lists the D1 databases graduated restore may target;
-   `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` remain the primary APP_DB
-   identity. Gates: `ENABLE_PRODUCTION_D1_BACKUPS` and
-   `BACKUP_BENCHMARK_APPROVED` must both be exactly `"true"` for the seal cron
-   to run. The production `kody-jobs` UUID is resolved by name in
-   `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`). **D1 paced walk
-   (production worker)** — When `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the
-   same DR S3 credentials are set, the production worker walks APP_DB, AUDIT_DB,
-   and JOBS_DB page-by-page (`packages/worker/src/dr/d1-paced-backup.ts`) in the
-   same nightly window as non-D1 staging. Staging lives under
-   `staging/{day}/d1-paced/{databaseName}/`. Completed nights seal to
-   `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
+   no weekly full manifest to restore them through). `SOURCE_DATABASES` lists
+   the D1 databases for dashboard size lookups; restore uses `D1_PACED_SOURCES`
+   and the day's signed `d1Paced` list. See the
+   [source settings](./environment-variables.md#backup-control-plane-dr-account-worker).
+   Gates: `ENABLE_PRODUCTION_D1_BACKUPS` and `BACKUP_BENCHMARK_APPROVED` must
+   both be exactly `"true"` for the seal cron to run. The production `kody-jobs`
+   UUID is resolved by name in `tools/ci/jobs-worker-resources.ts`
+   (`jobs_d1_database_id`). **D1 paced walk (production worker)** — When
+   `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the same DR S3 credentials are
+   set, the production worker walks APP_DB, AUDIT_DB, and JOBS_DB page-by-page
+   (`packages/worker/src/dr/d1-paced-backup.ts`) in the same nightly window as
+   non-D1 staging. Staging lives under `staging/{day}/d1-paced/{databaseName}/`.
+   Completed nights seal to `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
    `weekly/d1-paced/{databaseId}/{day}/` (Sunday UTC full bases). Tick writers
    flush TSV parts at 4 MiB on page boundaries. Each table walk stops after 32
    MiB emitted so the next tick can resume; see
@@ -324,21 +325,21 @@ Contract: `packages/shared/src/backup-staging.ts`.
    fails with `restore-paced-verify-mismatch` when a count or checksum differs
    from the sealed tip manifest. A paced source without a sealed manifest is
    refused before the safety export (`restore-paced-seal-missing`). REST
-   evidence on a v3 day is never imported. Schema-v1 and schema-v2 days are
-   refused before any production call (`restore-rest-era-day`). Already-sealed
-   days short-circuit before source checks. The hourly `:45` cron attempts to
-   seal the last sixteen complete days synchronously. The UI seal action
-   enqueues workflow `kody-production-seal-day` for that day and returns
-   immediately.
+   evidence on a v3 day is not used to select restore targets.
+   [Restore rejects schema-v1 and schema-v2 days before the first production API call](../../packages/backup-control-plane/production-restore.node.test.ts)
+   with `restore-rest-era-day`. Already-sealed days short-circuit before source
+   checks. The hourly `:45` cron attempts to seal the last sixteen complete days
+   synchronously. The UI seal action enqueues workflow
+   `kody-production-seal-day` for that day and returns immediately.
 
 ### Restore-safe row sizes
 
 D1's import path rejects individual SQL statements above its ~100 KB
-statement-length limit (`statement too long: SQLITE_TOOBIG`), and D1 exports
-write one INSERT per row — so a single oversized row makes the whole D1 backup
-un-importable. This is not hypothetical: drills of the 2026-07-26 production
-export failed on oversized `package_invocations.response_json` rows until the
-rows were bounded.
+statement-length limit (`statement too long: SQLITE_TOOBIG`). The legacy REST
+exports wrote one INSERT per row; drills of the 2026-07-26 production export
+failed on oversized `package_invocations.response_json` rows. The
+[paced restore SQL generator](../../packages/shared/src/backup-d1-paced-restore.ts)
+splits oversized text and BLOB values into smaller statements.
 
 - Write paths bound large text columns via
   `packages/shared/src/backup-restore-safety.ts` (64 KiB per column):
@@ -393,7 +394,7 @@ Restore rebuilds the derived stores below; do not treat them as recovery media:
   (`DR_D1_PACED_SOURCES`) and restored from it by graduated production restore
   on schema-v3 days. Paced sealed nights are the backup lane for this evidence.
   Scheduled job definitions live in `JOBS_DB` (`kody-jobs`) and are part of the
-  nightly D1 export; APP_DB does not store them.
+  nightly paced D1 backup; APP_DB does not store them.
 
 ### Honest gaps
 
@@ -424,16 +425,16 @@ Restore rebuilds the derived stores below; do not treat them as recovery media:
 
 No single credential should both erase production and erase the retained backup.
 
-| Credential                   | Where                                                                                       | Purpose                                                        |
-| ---------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Source Account D1 Edit token | Control-plane secret `CLOUDFLARE_API_TOKEN`                                                 | D1 export + production D1 import                               |
-| DR R2 provisioner token      | Operator env only (`backup-resources-cli`)                                                  | Bucket / lock / lifecycle setup — never a Worker secret        |
-| Production → DR S3 keys      | Production Worker secrets `DR_BACKUP_ACCESS_KEY_ID` / `DR_BACKUP_SECRET_ACCESS_KEY`         | Stage into the DR bucket                                       |
-| Drill D1 Edit token          | Control-plane secret `DRILL_API_TOKEN`                                                      | Create/import/query/delete drill D1 in `DRILL_ACCOUNT_ID` only |
-| Restore confirm HMAC         | Control-plane secret `RESTORE_CONFIRM_SECRET`                                               | Short-lived (10 min) prepare→execute token                     |
-| Production restore bearer    | Both sides: `DR_RESTORE_SECRET`                                                             | Control plane → `POST /__maintenance/dr-restore`               |
-| Manifest signing key         | Control-plane secret `BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64`                     | Sign D1 + full manifests                                       |
-| Escrow passphrase            | Operator password manager only (`SECRET_ESCROW_PASSPHRASE` in GitHub for the seal workflow) | Unseal `SECRET_STORE_KEY`                                      |
+| Credential                   | Where                                                                                       | Purpose                                                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Source Account D1 Edit token | Control-plane secret `CLOUDFLARE_API_TOKEN`                                                 | Dashboard size lookups and graduated production restore (including safety exports)                                             |
+| DR R2 provisioner token      | Operator env only (`backup-resources-cli`)                                                  | Bucket / lock / lifecycle setup — never a Worker secret                                                                        |
+| Production → DR S3 keys      | Production Worker secrets `DR_BACKUP_ACCESS_KEY_ID` / `DR_BACKUP_SECRET_ACCESS_KEY`         | Stage into the DR bucket                                                                                                       |
+| Drill D1 Edit token          | Control-plane secret `DRILL_API_TOKEN`                                                      | Create/import/query/delete drill D1 in `DRILL_ACCOUNT_ID` only                                                                 |
+| Restore confirm HMAC         | Control-plane secret `RESTORE_CONFIRM_SECRET`                                               | Short-lived (10 min) prepare→execute token                                                                                     |
+| Production restore bearer    | Both sides: `DR_RESTORE_SECRET`                                                             | Control plane → `POST /__maintenance/dr-restore`                                                                               |
+| Manifest signing key         | Control-plane secret `BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64`                     | Sign the [full manifest](../../packages/backup-control-plane/seal-full-backup.ts), which records the paced D1 manifest digests |
+| Escrow passphrase            | Operator password manager only (`SECRET_ESCROW_PASSPHRASE` in GitHub for the seal workflow) | Unseal `SECRET_STORE_KEY`                                                                                                      |
 
 Admin UI auth is dual-layer:
 
@@ -497,16 +498,16 @@ backup SQL. See [Secret rotation](./secret-rotation.md).
 
 Routes (all require Access JWT):
 
-| Method | Path                       | Action                                                                                                                                                                                                                           |
-| ------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/`                        | Dashboard: enable gates, source identity, live D1 size, escrow presence, 14-day D1/staging/seal status with signature verification                                                                                               |
-| `POST` | `/actions/seal-day`        | Enqueue workflow `kody-production-seal-day` for that day (`seal-day-<day>`), then redirect to its status page.                                                                                                                   |
-| `POST` | `/actions/run-paced-drill` | Isolated paced restore drill: replays the latest sealed paced base plus deltas for every `D1_PACED_SOURCES` database into fresh D1 databases in `DRILL_ACCOUNT_ID` (never production) and redirects to `/paced-drill-status?id=` |
-| `GET`  | `/paced-drill-status?id=`  | Live paced drill readout: per-source progress, per-table manifest, imported and target row counts, manifest and target checksums, and PASS or FAIL. Refreshes every 5 seconds while running                                      |
-| `POST` | `/actions/restore/prepare` | Validate sealed day; issue 10-minute HMAC confirm token                                                                                                                                                                          |
-| `POST` | `/actions/restore/execute` | Require typed exact `SOURCE_DATABASE_NAME` + valid token; start restore Workflow                                                                                                                                                 |
-| `GET`  | `/seal-status?id=...`      | Poll seal Workflow status (in progress, sealed, already sealed, or incomplete reason)                                                                                                                                            |
-| `GET`  | `/restore-status?id=...`   | Poll restore Workflow status                                                                                                                                                                                                     |
+| Method | Path                       | Action                                                                                                                                                                                      |
+| ------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/`                        | Dashboard: enable gates, source identity, live D1 size, escrow presence, 14-day D1/staging/seal status with signature verification                                                          |
+| `POST` | `/actions/seal-day`        | Enqueue workflow `kody-production-seal-day` for that day (`seal-day-<day>`), then redirect to its status page.                                                                              |
+| `POST` | `/actions/run-paced-drill` | Enqueue an [isolated paced restore drill](#isolated-restore-drill) and redirect to `/paced-drill-status?id=`                                                                                |
+| `GET`  | `/paced-drill-status?id=`  | Live paced drill readout: per-source progress, per-table manifest, imported and target row counts, manifest and target checksums, and PASS or FAIL. Refreshes every 5 seconds while running |
+| `POST` | `/actions/restore/prepare` | Validate sealed day; issue 10-minute HMAC confirm token                                                                                                                                     |
+| `POST` | `/actions/restore/execute` | Require typed exact `SOURCE_DATABASE_NAME` + valid token; start restore Workflow                                                                                                            |
+| `GET`  | `/seal-status?id=...`      | Poll seal Workflow status (in progress, sealed, already sealed, or incomplete reason)                                                                                                       |
+| `GET`  | `/restore-status?id=...`   | Poll restore Workflow status                                                                                                                                                                |
 
 ### Force a paced full base
 
@@ -521,9 +522,10 @@ night keeps its weekday `daily` tier, and later delta nights chain back to it.
 
 Headless agents enqueue seal workflows without the Access-protected HTML UI.
 These routes live on the DR control plane origin (for example
-`https://kody-dr.kentcdodds.com`) and authenticate with
-`Authorization: Bearer $DR_OPS_SECRET` only. They do **not** accept
-`DR_RESTORE_SECRET` and expose no restore, drill, or purge actions.
+`https://kody-dr.kentcdodds.com`). The
+[Worker's agent-route handler](../../packages/backup-control-plane/dr-ops-maintenance.ts)
+checks `Authorization: Bearer $DR_OPS_SECRET` and dispatches seal enqueue, seal
+status, and paced drill status.
 
 Reachability is separate from bearer auth: Cloudflare Access on
 `kody-dr.kentcdodds.com` still applies unless the request includes a valid
@@ -540,37 +542,38 @@ cannot bypass edge Access.
 
 ### Isolated restore drill
 
-Creates `kody-dr-drill-{day}-{hex}` in `DRILL_ACCOUNT_ID` (must differ from
-`SOURCE_ACCOUNT_ID`), imports one selected database's signed D1 SQL (UI
-`database` select, or CLI `--database kody` / `--database kody-jobs`), runs
-`PRAGMA quick_check`, samples table counts, then deletes the drill database on
-success (keeps it on failure for inspection). The CLI points `migrations_dir` at
-`packages/worker/migrations` for APP_DB and `packages/jobs-worker/migrations`
-for `kody-jobs`. This path does not restore StorageRunner/R2/artifacts into
-production. Run the drill once per database when proving a sealed day.
-
-D1 remote import enforces foreign keys while applying `CREATE TABLE`, but
-Cloudflare exports are not topologically ordered. Before upload, the control
-plane verifies the unmodified SQL MD5 against the signed manifest R2 ETag, then
-prefixes `PRAGMA foreign_keys=OFF;` and uses the prepared body's MD5 for the D1
-import init/ingest etag. Without that prelude, drills fail with errors like
-`no such table: main.users`.
+The UI selects the most recent day in the last week with a sealed paced night
+for every `D1_PACED_SOURCES` database. Before making D1 requests, the drill
+[checks that `DRILL_ACCOUNT_ID` differs from `SOURCE_ACCOUNT_ID`](../../packages/backup-control-plane/restore-drill.ts).
+For each source the
+[drill Workflow](../../packages/backup-control-plane/paced-restore-drill.ts)
+creates a fresh drill database in the drill account, replays the sealed base and
+deltas, runs `PRAGMA quick_check`, and verifies each table's row count and
+checksum against the tip manifest. It deletes databases that pass and leaves
+created databases on failed runs available for inspection. This drill covers D1
+only; see [Offline CLI fallback](#offline-cli-fallback) for the separate
+SQL-export drill.
 
 ### Graduated production restore
 
-1. **Prepare** — sealed full manifest + D1 manifest signatures must verify; UI
-   shows SQL key/bytes/sha256 and a short-lived confirm token.
-2. **Execute** — operator types the exact primary production database name
-   (`SOURCE_DATABASE_NAME`, APP_DB `kody`); Workflow
-   `kody-production-dr-restore` restores the databases that sealed day's
-   manifest declares. Days without `d1Sources` restore APP_DB only and record
-   `JOBS_DB: not present in this backup day` as a restore note, not a warning,
-   so the Workflow instance completes. Days that list `d1Sources` restore every
-   listed database. Before any production write, restore HEADs every required
-   SQL object for existence and size, then streams each body through a SHA-256
-   digest and discards it so SQL is not retained in memory. It then
-   safety-exports each target and imports JOBS_DB (when listed) before APP_DB by
-   streaming one database at a time via the Cloudflare API, then loops chunked
+1. **Prepare** —
+   [sealed-day validation](../../packages/backup-control-plane/production-restore.ts)
+   verifies the full manifest signature and each referenced paced manifest's
+   expected R2 key and SHA-256. The UI shows the source names and issues a
+   10-minute confirm token.
+2. **Execute** — the
+   [execute route](../../packages/backup-control-plane/control-plane-fetch.ts)
+   requires a valid confirm token and the exact primary production database name
+   (`SOURCE_DATABASE_NAME`, APP_DB `kody`). Workflow
+   `kody-production-dr-restore` revalidates the day, then plans and preflights
+   every paced chain in the sealed day's `d1Paced` list
+   [before starting any safety export](../../packages/backup-control-plane/production-restore.ts).
+   It saves a D1 SQL safety export for each target under
+   `pre-restore/{day}/{databaseId}/`; the
+   [export poller](../../packages/backup-control-plane/d1-export-api.ts) polls
+   pending bookmarks and restarts expired exports within its attempt limits. The
+   Workflow replays each paced chain, with APP_DB last, and verifies table
+   counts and checksums plus `PRAGMA quick_check`. It then loops chunked
    `POST {PRIMARY_WORKER_ORIGIN}/__maintenance/dr-restore` with
    `Authorization: Bearer {DR_RESTORE_SECRET}` until the production worker
    reports `done` (StorageRunner replace, R2 put, published snapshot KV put).
@@ -580,9 +583,9 @@ import init/ingest etag. Without that prelude, drills fail with errors like
 
 Graduated production restore is the disaster path only. Never run it against the
 live databases as a validation or on a schedule: the isolated paced restore
-drill exercises the same plan, preflight, import, and verify steps
-(`packages/backup-control-plane/paced-d1-target-restore.ts`) against fresh
-databases in `DRILL_ACCOUNT_ID`, and is the proof that it works.
+drill exercises the same plan, import, and verification helpers
+([paced target restore](../../packages/backup-control-plane/paced-d1-target-restore.ts))
+against fresh databases in `DRILL_ACCOUNT_ID`.
 
 Put the app in [maintenance mode (edge)](#maintenance-mode-edge) before execute.
 After restore: reindex Vectorize (`POST /__maintenance/reindex-capabilities`
@@ -907,9 +910,10 @@ ruleset, disabled, so `status` can still report it). Confirm
 The UI is the primary drill/restore path. Keep the CLIs for air-gapped or
 UI-down recovery:
 
-- `node tools/disaster-recovery/d1-restore-drill-cli.ts` — isolated D1 import
-  against checked-in identity/baseline/manifest-key registries. Pass
-  `--database kody` or `--database kody-jobs` to select the export.
+- `node tools/disaster-recovery/d1-restore-drill-cli.ts` — isolated D1 import of
+  a SQL export against checked-in identity/baseline/manifest-key registries, not
+  a paced-chain replay. Use `--database` to check the source name against the
+  export's manifest.
 - `node tools/disaster-recovery/canonical-readiness-cli.ts` — fail-closed
   readiness assessment from local Ed25519 evidence envelopes
 - `node tools/disaster-recovery/seal-escrow.ts` — same seal used by

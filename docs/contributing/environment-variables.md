@@ -572,11 +572,11 @@ credentials are set. The paced D1 walk uses the same credentials and
 `DR_D1_PACED_BACKUP_ENABLED`. See [Disaster recovery](./disaster-recovery.md).
 
 - `DR_EXPORT_ENABLED` — Worker var; enable staging only when `"true"`.
-- `DR_D1_PACED_BACKUP_ENABLED` — Worker var; paced D1 walk (APP_DB + JOBS_DB)
-  runs when `"true"` plus the same DR S3 credentials. Production wrangler sets
-  this to `"true"`. Ticks no-op when unset or any other value.
+- `DR_D1_PACED_BACKUP_ENABLED` — Worker var; the paced D1 walk runs when
+  `"true"` and the DR S3 credentials are set. Production Wrangler sets this to
+  `"true"`. Ticks no-op when unset or any other value.
 - `DR_D1_PACED_SOURCES` — Worker var; JSON array of `{ binding, name, id }`
-  (`APP_DB` / `JOBS_DB` in production; `AUDIT_DB` waits on a committed UUID).
+  (`APP_DB`, `AUDIT_DB`, and `JOBS_DB` in production).
 - `DR_BACKUP_ACCOUNT_ID` / `DR_BACKUP_BUCKET_NAME` — DR account id and backup
   bucket name (S3 API endpoint host uses the account id).
 - `DR_BACKUP_ACCESS_KEY_ID` / `DR_BACKUP_SECRET_ACCESS_KEY` — Worker secrets; R2
@@ -609,20 +609,26 @@ Workflow bindings are `RESTORE_WORKFLOW`, `SEAL_WORKFLOW`, and
 Non-secret vars:
 
 - `ENABLE_PRODUCTION_D1_BACKUPS` / `BACKUP_BENCHMARK_APPROVED` — both must be
-  exactly `"true"` or schedules stay inert.
+  exactly `"true"` for the control-plane seal cron to run.
 - `SOURCE_ACCOUNT_ID` / `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` plus
-  `SOURCE_DATABASES` (JSON array of `{ id, name }` objects: the D1 databases
-  graduated restore targets, including legacy REST-era days) and
-  `ALLOWED_SOURCE_ACCOUNT_IDS` / `ALLOWED_SOURCE_DATABASE_IDS`.
-  `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` are the primary APP_DB (`kody`)
-  identity and the single-database fallback when `SOURCE_DATABASES` is unset.
-  Every listed id must appear in `ALLOWED_SOURCE_DATABASE_IDS`. Production
-  `kody-jobs` UUID is the live D1 named `kody-jobs`; deploy resolves it by name
-  in `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`).
+  `SOURCE_DATABASES` (JSON array of `{ id, name }` objects) and
+  `ALLOWED_SOURCE_ACCOUNT_IDS` / `ALLOWED_SOURCE_DATABASE_IDS`. The dashboard
+  uses `SOURCE_DATABASES` for D1 size lookups. Restore progress notes which
+  configured sources are absent from the backup day; this list does not select
+  restore targets. `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` are the primary
+  APP_DB (`kody`) identity and the single-database fallback when
+  `SOURCE_DATABASES` is unset.
+  [Source configuration validation](../../packages/backup-control-plane/backup-policy.ts)
+  runs before the full seal and production restore use the paced source list. It
+  requires the primary id/name pair in `SOURCE_DATABASES` when set, every
+  `SOURCE_DATABASES` id in `ALLOWED_SOURCE_DATABASE_IDS`, and the account id in
+  `ALLOWED_SOURCE_ACCOUNT_IDS`. Deploy resolves the live production `kody-jobs`
+  UUID by name in `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`).
 - `D1_PACED_SOURCES`: JSON array of `{ id, name }` for the paced D1 sources
   (same ids as the worker's `DR_D1_PACED_SOURCES`; must include
   `SOURCE_DATABASE_ID`). The full seal requires each source's sealed paced night
-  and records it under `d1Paced`.
+  and records it under `d1Paced`. Graduated production restore matches that
+  day's `d1Paced` entries by database ID against this list.
 - `BACKUP_MANIFEST_SIGNING_KEY_ID`,
   `BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64`.
 - `ACCESS_TEAM_DOMAIN`, `ACCESS_APP_AUD`, `ACCESS_ALLOWED_EMAIL` — Zero Trust
@@ -635,19 +641,19 @@ Non-secret vars:
 Secrets (Wrangler secret storage only — never `.env`, config, logs, or
 evidence):
 
-- `CLOUDFLARE_API_TOKEN` — production-account Account D1 Edit (export +
-  production import).
+- `CLOUDFLARE_API_TOKEN` — production-account Account D1 Edit for dashboard size
+  lookups and graduated production restore, including safety exports.
 - `BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64` — base64 Ed25519 PKCS#8.
 - `DRILL_API_TOKEN` — drill-account D1 Edit for isolated UI drills.
 - `RESTORE_CONFIRM_SECRET` — HMAC secret for the 10-minute prepare→execute
   production-restore token.
 - `DR_RESTORE_SECRET` — bearer shared with the production Worker.
-- `DR_OPS_SECRET` — optional bearer for agent-only seal enqueue/status on
-  `POST /__maintenance/dr-seal` and `GET /__maintenance/seal-status` on the DR
-  control plane. Does not grant restore, drill, or purge. Unset → `503` on those
-  routes. Edge Access on `kody-dr.kentcdodds.com` is still required unless a
-  service token or `/__maintenance/*` bypass is configured (see
-  disaster-recovery runbook).
+- `DR_OPS_SECRET` — optional bearer for the DR control plane's
+  [agent routes](../../packages/backup-control-plane/dr-ops-maintenance.ts):
+  `POST /__maintenance/dr-seal`, `GET /__maintenance/seal-status`, and
+  `GET /__maintenance/paced-drill-status`. Unset → `503` on those routes. See
+  the [agent seal API](./disaster-recovery.md#agent-seal-api-dr_ops_secret) for
+  edge Access requirements.
 
 GitHub Actions `workflow_dispatch` escrow (`.github/workflows/dr-escrow.yml`)
 also needs `SECRET_STORE_KEY`, `SECRET_ESCROW_PASSPHRASE`, and the DR S3
