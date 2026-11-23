@@ -74,6 +74,10 @@ export async function loadSessionInfo(
 		{
 			userId: resolved.user.userId,
 			stableUserId: resolved.user.mcpUser.userId,
+			personalOrg: {
+				username: resolved.user.username,
+				id: resolved.user.mcpUser.personalOrgId,
+			},
 		},
 		pathname,
 	)

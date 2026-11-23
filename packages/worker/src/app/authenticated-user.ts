@@ -101,6 +101,10 @@ async function readAuthenticatedAppUserInternal(
 		prefetchRequestFeatureFlagsForHtmlPage(resourceRequest, env, {
 			userId: user.userId,
 			stableUserId: user.mcpUser.userId,
+			personalOrg: {
+				username: resolved.user.username,
+				id: user.mcpUser.personalOrgId,
+			},
 		})
 	}
 	return user

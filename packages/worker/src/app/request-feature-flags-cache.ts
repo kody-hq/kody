@@ -37,6 +37,7 @@ export type EvaluatedFeatureFlags = Record<FeatureFlagKey, boolean>
 export type FeatureFlagRequestUser = {
 	userId: number
 	stableUserId: string
+	personalOrg?: { username: string; id: string | undefined }
 }
 
 const requestFeatureFlagsStore = new WeakMap<
@@ -91,10 +92,16 @@ async function resolveRequestFeatureFlags(
 	}
 	try {
 		const org = orgSlug ? await getOrgBySlug(env.APP_DB, orgSlug) : null
+		// A renamed profile keeps the signup workspace's sidebar.
+		const orgId =
+			org?.id ??
+			(user.personalOrg?.username.toLowerCase() === orgSlug
+				? user.personalOrg.id
+				: null)
 		const evaluations = await getFeatureFlagEvaluationsForUser(
 			env.APP_DB,
 			user.userId,
-			org ? { orgId: org.id } : null,
+			orgId ? { orgId } : null,
 		)
 		await recordFeatureFlagExposures(env, {
 			stableUserId: user.stableUserId,
