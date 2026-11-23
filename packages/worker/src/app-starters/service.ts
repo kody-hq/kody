@@ -328,7 +328,11 @@ export async function listRecommendedAppStarters(
 ) {
 	const limit = input.limit ?? 5
 	const deadline = performance.now() + (input.budgetMs ?? Infinity)
-	const rows = await listAppStarterRows(env.APP_DB, { enabledOnly: true })
+	const rows = await withinMs(
+		listAppStarterRows(env.APP_DB, { enabledOnly: true }),
+		deadline - performance.now(),
+	)
+	if (!rows) return []
 	const recommended: Array<AppStarterEntry & { starter: AppStarterManifest }> =
 		[]
 	for (
@@ -337,10 +341,15 @@ export async function listRecommendedAppStarters(
 		start += limit
 	) {
 		const entries = await withinMs(
-			loadEntries(env, rows.slice(start, start + limit), { checkFiles: true }),
+			loadEntries(env, rows.slice(start, start + limit), {
+				checkFiles: true,
+			}).catch((error: unknown) => {
+				console.error('app-starters-recommendation-batch-failed', error)
+				return null
+			}),
 			deadline - performance.now(),
 		)
-		// Out of time: keep the starters already validated.
+		// Out of time or failed: keep the starters already validated.
 		if (!entries) break
 		recommended.push(
 			...entries.filter(
