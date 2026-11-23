@@ -22,6 +22,7 @@ export const blogPostSlugs = [
 	'first-useful-kody-workflow',
 	'gateways-connect-homes-accumulate',
 	'give-staff-and-their-bots-access-to-your-kody-org',
+	'how-my-agents-decided-to-not-use-effect',
 	'how-to-roll-out-ai-agents-to-your-team',
 	'how-to-turn-agent-work-into-software-you-own',
 	'internal-tools-built-with-ai-team-credentials',

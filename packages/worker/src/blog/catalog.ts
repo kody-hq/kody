@@ -9,6 +9,7 @@ import { parseBlogPostMarkdown, type BlogPost } from './parse-frontmatter.ts'
 import earlyKodyUsers from './posts/early-kody-users.md'
 import everyInstallIsAForkYouOwn from './posts/every-install-is-a-fork-you-own.md'
 import gatewaysConnectHomesAccumulate from './posts/gateways-connect-homes-accumulate.md'
+import howMyAgentsDecidedToNotUseEffect from './posts/how-my-agents-decided-to-not-use-effect.md'
 import howToTurnAgentWorkIntoSoftwareYouOwn from './posts/how-to-turn-agent-work-into-software-you-own.md'
 import kodyWeekly20260320 from './posts/kody-weekly-2026-03-20.md'
 import kodyWeekly20260327 from './posts/kody-weekly-2026-03-27.md'
@@ -238,6 +239,10 @@ const postSources: Array<{ slug: string; raw: string }> = [
 	{
 		slug: 'why-we-moved-kody-from-remix-3-to-tanstack-start',
 		raw: whyWeMovedKodyFromRemix3ToTanstackStart,
+	},
+	{
+		slug: 'how-my-agents-decided-to-not-use-effect',
+		raw: howMyAgentsDecidedToNotUseEffect,
 	},
 	{
 		slug: 'three-ways-to-share-an-ai-built-app',
