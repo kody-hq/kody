@@ -111,20 +111,17 @@ export async function loadAppCheckTools(input: {
 			string,
 			unknown
 		>
+	// playwright-core and axe-core resolve to CommonJS, so their API is the default export.
 	const playwright = await importFromCache('playwright-core')
-	const chromium = (playwright.chromium ??
-		(playwright.default as Record<string, unknown> | undefined)
-			?.chromium) as AppCheckTools['chromium']
+	const chromium = (playwright.default as { chromium: unknown })
+		.chromium as AppCheckTools['chromium']
 	await ensureChromium({ chromium, root, env, onStatus: input.onStatus })
 	const axe = await importFromCache('axe-core')
-	const axeSource = (axe.source ??
-		(axe.default as { source?: string } | undefined)?.source) as string
+	const axeSource = (axe.default as { source: string }).source
 	const lighthouse = (await importFromCache('lighthouse'))
 		.default as AppCheckTools['lighthouse']
-	const chromeLauncher = await importFromCache('chrome-launcher')
-	const launch = (chromeLauncher.launch ??
-		(chromeLauncher.default as Record<string, unknown> | undefined)
-			?.launch) as AppCheckTools['launchChrome']
+	const launch = (await importFromCache('chrome-launcher'))
+		.launch as AppCheckTools['launchChrome']
 	return { chromium, axeSource, lighthouse, launchChrome: launch }
 }
 

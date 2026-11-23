@@ -129,7 +129,6 @@ const impactRank: Record<AxeImpact, number> = {
 const markdownListLimit = 10
 const markdownSelectorLimit = 3
 
-/** Merge per-variant axe results by rule, most severe first. */
 function mergeAccessibilityRules(
 	variants: ReadonlyArray<AppCheckVariantAxe>,
 ): Array<AppCheckAccessibilityRule> {
@@ -164,7 +163,6 @@ function mergeAccessibilityRules(
 	)
 }
 
-/** Deduplicate console errors by message, most frequent first. */
 function dedupeConsoleErrors(
 	entries: ReadonlyArray<AppCheckConsoleEntry>,
 ): Array<AppCheckConsoleError> {
@@ -205,7 +203,6 @@ function sentence(text: string): string {
 	return /[.!?]$/.test(text) ? text : `${text}.`
 }
 
-/** Failing issues, most important first. */
 function collectIssues(input: {
 	screenshots: ReadonlyArray<AppCheckScreenshot>
 	rules: ReadonlyArray<AppCheckAccessibilityRule>
