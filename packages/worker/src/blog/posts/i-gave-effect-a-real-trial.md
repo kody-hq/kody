@@ -161,7 +161,7 @@ measured startup and bundle size, scored everything, and wrote a recommendation.
 
 ## The rubric
 
-My agent proposed these weights:
+My agent proposed these weights, and I approved them:
 
 | Criterion                               | Weight |
 | --------------------------------------- | ------ |
@@ -345,7 +345,7 @@ and we can have those without switching runtimes.
 
 ## What would change the answer
 
-The judge listed what would make us revisit this:
+The judge listed what would change the answer:
 
 - Effect loads lazily, so it adds nothing at startup.
 - `effect:check` runs in about 10 seconds or less.
@@ -353,8 +353,6 @@ The judge listed what would make us revisit this:
   catching planted cleanup bugs that lint misses. (The skipped-cleanup seed
   slipped past both arms here.)
 - A later design catches seeds 2, 4, 8, and 9 with Effect itself.
-
-If any of those show up, we'll look at this again.
 
 ## What's next
 
@@ -375,8 +373,8 @@ through. That hasn't started yet.
 I gave Effect a real trial, and I went in wanting it to win. For Kody's request
 handlers, it didn't. I still think it's good code once you know it. But I'm not
 the one writing it, and on our priorities, plain promises with some guardrails
-did better for a lot less cost. If the things on that list above change, I'll
-happily give it another trial.
+did better for a lot less cost. That tradeoff could look different if Effect
+loaded lazily and its check got fast.
 
 Thanks again to everyone who gave feedback on the early PRs. This trial got a
 lot better because of you.
