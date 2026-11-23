@@ -1,3 +1,4 @@
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	approvalItemKey,
 	parseApprovalItemKey,
@@ -256,4 +257,42 @@ export async function deleteApprovalBundlesForMember(input: {
 		.bind(input.orgId, input.personId)
 		.run()
 	return result.meta?.changes ?? 0
+}
+
+/**
+ * Pairs of the given packages where one's published bundles import the other
+ * (`dependent` imports `dependency`). A dependent built while its dependency
+ * is still publishing captures the old dependency version.
+ */
+export async function listPackageDependencyEdges(
+	db: D1Database,
+	input: { ownerUserId: string; packageIds: ReadonlyArray<string> },
+): Promise<Array<{ dependent: string; dependency: string }>> {
+	if (input.packageIds.length < 2) return []
+	const placeholders = input.packageIds.map(() => '?').join(', ')
+	const result = await db
+		.prepare(
+			`SELECT DISTINCT dependent.id AS dependent, dependency.id AS dependency
+			FROM published_bundle_artifacts AS artifact
+			JOIN entity_sources AS source
+				ON source.id = artifact.source_id
+				AND source.user_id = artifact.user_id
+				AND source.entity_kind = 'package'
+				AND source.published_commit = artifact.published_commit
+			JOIN saved_packages AS dependent
+				ON dependent.id = source.entity_id
+				AND dependent.user_id = artifact.user_id
+			JOIN json_each(artifact.dependencies_json) AS imported
+			JOIN saved_packages AS dependency
+				ON dependency.source_id = json_extract(imported.value, '$.sourceId')
+				AND dependency.user_id = artifact.user_id
+			WHERE artifact.user_id = ?
+				AND dependent.id IN (${placeholders})
+				AND dependency.id IN (${placeholders})
+				AND dependency.id <> dependent.id
+				${andLiveDeletedAtSql('source')}${andLiveDeletedAtSql('dependent')}${andLiveDeletedAtSql('dependency')}`,
+		)
+		.bind(input.ownerUserId, ...input.packageIds, ...input.packageIds)
+		.all<{ dependent: string; dependency: string }>()
+	return result.results ?? []
 }

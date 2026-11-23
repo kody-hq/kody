@@ -383,6 +383,78 @@ test('Approve all runs separate packages in parallel, up to its concurrency', as
 	])
 })
 
+test('Approve all starts at most four packages at once', async () => {
+	const t = await setup()
+	const created = await createApprovalBundle({
+		viewer: t.viewerFor('bea'),
+		items: [{ type: 'publish', requestId: (await t.pausePublish()).id }],
+	})
+	const { events } = await t.approveAll({
+		bundleId: created.bundle.id,
+		items: ['a', 'b', 'c', 'd', 'e'].map((id) => ({
+			item: `capabilities:gone-${id}`,
+			fingerprint: 'reviewed',
+		})),
+	})
+	expect(events.slice(0, 5).map((event) => event.phase)).toEqual([
+		'approving',
+		'approving',
+		'approving',
+		'approving',
+		'done',
+	])
+})
+
+test('Approve all runs a package after a package it imports', async () => {
+	const t = await setup()
+	const now = '2026-10-13T00:00:00.000Z'
+	const mailerId = crypto.randomUUID()
+	await t.db.batch([
+		t.db
+			.prepare(
+				`INSERT INTO saved_packages (
+					id, user_id, name, kody_id, description, tags_json, source_id,
+					has_app, hidden, is_private, created_at, updated_at
+				) VALUES (?, ?, '@acme/mailer', 'mailer', 'mailer', '[]', ?, 0, 0, 1, ?, ?)`,
+			)
+			.bind(mailerId, t.acmeId, `source-${mailerId}`, now, now),
+		t.db
+			.prepare(
+				`INSERT INTO published_bundle_artifacts (
+					id, user_id, source_id, published_commit, artifact_kind,
+					artifact_name, entry_point, kv_key, dependencies_json,
+					created_at, updated_at
+				) VALUES ('digest-module', ?, ?, 'commit-1', 'module', NULL,
+					'index.ts', 'bundle:digest', ?, ?, ?)`,
+			)
+			.bind(
+				t.acmeId,
+				t.savedPackage.sourceId,
+				JSON.stringify([
+					{ sourceId: `source-${mailerId}`, publishedCommit: 'mailer-1' },
+				]),
+				now,
+				now,
+			),
+	])
+	const created = await createApprovalBundle({
+		viewer: t.viewerFor('bea'),
+		items: [{ type: 'publish', requestId: (await t.pausePublish()).id }],
+	})
+	const digest = `capabilities:${t.savedPackage.id}`
+	const mailer = `capabilities:${mailerId}`
+	const { events } = await t.approveAll({
+		bundleId: created.bundle.id,
+		items: [digest, mailer].map((item) => ({ item, fingerprint: 'reviewed' })),
+	})
+	expect(events.map((event) => [event.phase, event.item])).toEqual([
+		['approving', mailer],
+		['done', mailer],
+		['approving', digest],
+		['done', digest],
+	])
+})
+
 test('denying a paused publish drops it and records the denial', async () => {
 	const t = await setup()
 	const request = await t.pausePublish()

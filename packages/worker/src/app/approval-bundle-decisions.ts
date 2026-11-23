@@ -21,6 +21,7 @@ import {
 	finalizeApprovalBundleDecisionStatement,
 	getApprovalBundleForPerson,
 	listApprovalBundleDecisions,
+	listPackageDependencyEdges,
 	releaseApprovalBundleDecision,
 	type ApprovalBundleRecord,
 } from '#worker/approval-bundles/repo.ts'
@@ -556,16 +557,10 @@ export async function approveApprovalBundleItems(input: {
 	const packageKeys = await Promise.all(
 		unique.map((entry) => approvalItemPackageKey(viewer, entry.item)),
 	)
-	const groups = new Map<string, Array<ApproveAllEntry>>()
-	for (const [index, entry] of unique.entries()) {
-		const key = packageKeys[index]!
-		groups.set(key, [...(groups.get(key) ?? []), entry])
-	}
-	const rank = (entry: ApproveAllEntry) => {
-		const ref = parseApprovalItemKey(entry.item)
-		return ref ? samePackageOrder[ref.type] : 0
-	}
-	for (const group of groups.values()) group.sort((a, b) => rank(a) - rank(b))
+	const lanes = await approveAllLanes(
+		viewer,
+		unique.map((entry, index) => ({ entry, key: packageKeys[index]! })),
+	)
 	const results: Array<{
 		item: string
 		result: ApprovalBundleDecisionResponse
@@ -597,32 +592,106 @@ export async function approveApprovalBundleItems(input: {
 		results.push({ item: entry.item, result })
 		input.onEvent?.({ item: entry.item, phase: 'done', result })
 	}
-	const queue = [...groups.values()]
+	const queue = [...lanes]
 	const lane = async () => {
 		for (let group = queue.shift(); group; group = queue.shift()) {
 			for (const entry of group) await approveOne(entry)
 		}
 	}
-	const lanes = Math.min(
+	const laneCount = Math.min(
 		Math.max(1, input.concurrency ?? approvalBundleApproveConcurrency),
 		queue.length,
 	)
-	await Promise.all(Array.from({ length: lanes }, lane))
+	await Promise.all(Array.from({ length: laneCount }, lane))
 	return results
 }
 
 /**
- * The package an item acts on. Items with no package each get their own key;
- * items whose package could not be read share one lane, so they stay serial.
+ * Splits Approve all into lanes that may run at the same time. Each lane holds
+ * one package's items (credential picks, capabilities, publish). Packages
+ * where one imports the other share a lane, dependency first, so the
+ * dependent builds against the newly published dependency. When an item's
+ * package cannot be read, everything runs in one lane.
  */
-async function approvalItemPackageKey(viewer: ApprovalViewer, key: string) {
+async function approveAllLanes(
+	viewer: ApprovalViewer,
+	entries: ReadonlyArray<{ entry: ApproveAllEntry; key: string | null }>,
+): Promise<Array<Array<ApproveAllEntry>>> {
+	const rank = (entry: ApproveAllEntry) => {
+		const ref = parseApprovalItemKey(entry.item)
+		return ref ? samePackageOrder[ref.type] : 0
+	}
+	if (entries.some(({ key }) => key === null)) {
+		return [entries.map(({ entry }) => entry)]
+	}
+	const byPackage = new Map<string, Array<ApproveAllEntry>>()
+	for (const { entry, key } of entries) {
+		byPackage.set(key!, [...(byPackage.get(key!) ?? []), entry])
+	}
+	for (const group of byPackage.values())
+		group.sort((a, b) => rank(a) - rank(b))
+	const packageIds = [...byPackage.keys()]
+		.filter((key) => key.startsWith('package:'))
+		.map((key) => key.slice('package:'.length))
+	const edges = await listPackageDependencyEdges(viewer.env.APP_DB, {
+		ownerUserId: viewer.request.org.id,
+		packageIds,
+	})
+	const lane = new Map<string, string>(
+		[...byPackage.keys()].map((key) => [key, key]),
+	)
+	const root = (key: string): string => {
+		const parent = lane.get(key)!
+		return parent === key ? key : root(parent)
+	}
+	for (const { dependent, dependency } of edges) {
+		lane.set(root(`package:${dependent}`), root(`package:${dependency}`))
+	}
+	const dependsOn = new Map<string, Set<string>>()
+	for (const { dependent, dependency } of edges) {
+		const key = `package:${dependent}`
+		dependsOn.set(
+			key,
+			(dependsOn.get(key) ?? new Set()).add(`package:${dependency}`),
+		)
+	}
+	const lanes = new Map<string, Array<string>>()
+	for (const key of byPackage.keys()) {
+		const id = root(key)
+		lanes.set(id, [...(lanes.get(id) ?? []), key])
+	}
+	return [...lanes.values()].map((keys) => {
+		const ordered: Array<string> = []
+		const visit = (key: string, path: Set<string>) => {
+			if (ordered.includes(key) || path.has(key)) return
+			path.add(key)
+			for (const dependency of dependsOn.get(key) ?? []) {
+				if (keys.includes(dependency)) visit(dependency, path)
+			}
+			path.delete(key)
+			ordered.push(key)
+		}
+		for (const key of keys) visit(key, new Set())
+		return ordered.flatMap((key) => byPackage.get(key)!)
+	})
+}
+
+/** The package an item acts on; null when it could not be read. */
+async function approvalItemPackageKey(
+	viewer: ApprovalViewer,
+	key: string,
+): Promise<string | null> {
 	const ref = parseApprovalItemKey(key)
 	if (!ref) return `item:${key}`
 	if (ref.type === 'capabilities') return `package:${ref.packageId}`
 	try {
 		const view = await loadApprovalItemView(viewer, ref, null)
 		return view.package ? `package:${view.package.id}` : `item:${key}`
-	} catch {
-		return 'unknown'
+	} catch (error) {
+		console.error('Approve all could not read an item package:', {
+			item: key,
+			error: getErrorMessage(error),
+		})
+		return null
 	}
 }
