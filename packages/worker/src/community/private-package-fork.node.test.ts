@@ -346,6 +346,53 @@ test('a private fork rewrites self-imports using the recovered manifest name', a
 	)
 })
 
+test('a fork of a package that declares kody.emits renames its topics and their references to the fork scope', async () => {
+	const seeded = await seed()
+	artifactMocks.resolveArtifactSourceHead.mockResolvedValue({
+		commit: 'commit-2',
+		branch: 'main',
+	})
+	artifactMocks.readArtifactTreeAtCommit.mockResolvedValue({
+		...noteFiles('Emits `@pf-owner/notes.*` events.'),
+		'package.json': JSON.stringify({
+			name: '@pf-owner/notes',
+			version: '1.0.0',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'notes',
+				description: 'notes',
+				emits: {
+					'@pf-owner/notes.note.created': { description: 'Note created' },
+				},
+				subscriptions: {
+					'@pf-owner/notes.note.created': { handler: './src/on-note.ts' },
+				},
+			},
+		}),
+		'src/index.ts':
+			"export const noteCreated = '@pf-owner/notes.note.created'\n",
+	})
+
+	const prepared = await prepareReaderFork(seeded, 'commit-2')
+
+	const manifest = JSON.parse(prepared.files['package.json']!) as {
+		name: string
+		kody: { emits: object; subscriptions: object }
+	}
+	expect(manifest.name).toBe('@pf-reader/notes')
+	expect(Object.keys(manifest.kody.emits)).toEqual([
+		'@pf-reader/notes.note.created',
+	])
+	expect(Object.keys(manifest.kody.subscriptions)).toEqual([
+		'@pf-reader/notes.note.created',
+	])
+	expect(prepared.files['src/index.ts']).toBe(
+		"export const noteCreated = '@pf-reader/notes.note.created'\n",
+	)
+	expect(prepared.files['README.md']).toBe('Emits `@pf-reader/notes.*` events.')
+	expect(JSON.stringify(prepared.files)).not.toContain('@pf-owner/')
+})
+
 test('a private fork without package.json at HEAD is a caller error', async () => {
 	const seeded = await seed()
 	artifactMocks.resolveArtifactSourceHead.mockResolvedValue({

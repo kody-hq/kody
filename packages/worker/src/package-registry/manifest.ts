@@ -76,7 +76,7 @@ function assertPackageEmittedEventTopics(input: {
 		const topicScope = getPackageNameScope(topic)
 		if (topicScope !== packageScope) {
 			throw new Error(
-				`Invalid ${input.manifestPath ?? packageManifestPath}:\nkody.emits topic "${topic}" must use the package scope "@${packageScope}".`,
+				`Invalid ${input.manifestPath ?? packageManifestPath}:\nkody.emits topic "${topic}" must use the package scope "@${packageScope}" (for example "@${packageScope}/${topic.slice(topic.indexOf('/') + 1)}").`,
 			)
 		}
 		if (emittedEvent.payloadSchema !== undefined) {
