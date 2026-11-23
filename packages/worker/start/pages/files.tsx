@@ -3680,6 +3680,8 @@ function WorkspaceDocumentPanel({
 		<div
 			aria-busy={stale ? 'true' : undefined}
 			data-stale-preview={stale ? '' : undefined}
+			// The kept file is read-only: no pointer, keyboard, or tab stops.
+			inert={stale}
 			css={
 				stale
 					? {
@@ -3688,7 +3690,6 @@ function WorkspaceDocumentPanel({
 							flex: 1,
 							minWidth: 0,
 							minHeight: 0,
-							pointerEvents: 'none',
 							animation: 'stale-preview-dim 0.2s ease 300ms forwards',
 							'@media (prefers-reduced-motion: reduce)': {
 								animationDuration: '0s',

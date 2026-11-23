@@ -56,6 +56,7 @@ test('switching workspace files keeps the previous file readable while the next 
 	await columns.getByRole('link', { name: 'Second.md', exact: true }).click()
 	const stale = page.locator('[data-stale-preview]')
 	await expect(stale).toHaveAttribute('aria-busy', 'true')
+	await expect(stale).toHaveAttribute('inert', '')
 	await expect(stale.getByText('Kept on screen.')).toBeVisible()
 	await expect(
 		page.getByRole('status', { name: 'Loading file', exact: true }),

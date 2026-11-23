@@ -455,6 +455,9 @@ function PackageFilesExplorerContent({
 																	: {
 																			'aria-busy': 'true',
 																			'data-stale-preview': '',
+																			// Read-only: no pointer, keyboard,
+																			// or tab stops.
+																			inert: true,
 																		})}
 																css={
 																	file.id === data.selectedPath
@@ -509,7 +512,6 @@ const stalePreviewCss: CSSObject = {
 	flex: 1,
 	minWidth: 0,
 	minHeight: 0,
-	pointerEvents: 'none',
 	animation: 'stale-preview-dim 0.2s ease 300ms forwards',
 	'@media (prefers-reduced-motion: reduce)': { animationDuration: '0s' },
 }
