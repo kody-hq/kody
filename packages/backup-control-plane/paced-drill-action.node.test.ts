@@ -71,6 +71,10 @@ test('paced drill action drills the chosen sealed day, defaults to the newest, a
 			/2026-11-18 has no sealed paced manifest/,
 		)
 		assert.equal(created.length, 2)
+
+		const malformed = await post('day=not-a-day')
+		assert.equal(malformed.status, 400)
+		assert.equal(created.length, 2)
 	} finally {
 		vi.useRealTimers()
 		consoleLog.mockRestore()

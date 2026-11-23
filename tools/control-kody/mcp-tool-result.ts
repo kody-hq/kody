@@ -82,6 +82,21 @@ export function readExecuteResult(toolResult: unknown) {
 	return structured.result ?? null
 }
 
+/** The idempotency key of an execute run still going at the transport budget. */
+export function readExecuteFollowKey(toolResult: unknown): string | null {
+	const record = toolResult as CallToolResult | null
+	const structured = record?.structuredContent as
+		| { result?: unknown; inProgress?: unknown; idempotencyKey?: unknown }
+		| null
+		| undefined
+	if (!structured || record?.isError) return null
+	return structured.inProgress === true &&
+		!Object.hasOwn(structured, 'result') &&
+		typeof structured.idempotencyKey === 'string'
+		? structured.idempotencyKey
+		: null
+}
+
 export function readSearchResult(toolResult: unknown) {
 	return readStructuredResult('search', toolResult)
 }

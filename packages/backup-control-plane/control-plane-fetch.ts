@@ -72,7 +72,11 @@ function requireDay(value: string | null): string {
 		throw new BackupError('invalid-day', 'day is required')
 	}
 	const day = value.trim()
-	assertBackupDay(day)
+	try {
+		assertBackupDay(day)
+	} catch {
+		throw new BackupError('invalid-day', 'day must be YYYY-MM-DD')
+	}
 	return day
 }
 

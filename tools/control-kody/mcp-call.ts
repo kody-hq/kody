@@ -8,6 +8,7 @@ import {
 import { isProductionKodyOrigin } from './package-create.ts'
 import {
 	defaultMcpCallOptions,
+	readExecuteFollowKey,
 	readExecuteResult,
 	readApiResult,
 	readSearchResult,
@@ -61,8 +62,8 @@ export async function executeAppMcp(input: {
 	if (isProductionKodyOrigin(input.origin)) {
 		throw new Error('execute refuses to run against https://kody.codes')
 	}
-	const followDeadline =
-		Date.now() + (input.followTimeoutMs ?? defaultExecuteFollowTimeoutMs)
+	const followTimeoutMs = input.followTimeoutMs ?? defaultExecuteFollowTimeoutMs
+	let followDeadline: number | null = null
 	const followIntervalMs =
 		input.followIntervalMs ?? defaultExecuteFollowIntervalMs
 	const baseArguments = {
@@ -79,9 +80,11 @@ export async function executeAppMcp(input: {
 			? { ...baseArguments, idempotencyKey: input.idempotencyKey }
 			: baseArguments,
 		readResult: readExecuteResult,
-		async followUp(result) {
-			const idempotencyKey = inProgressIdempotencyKey(result)
-			if (!idempotencyKey || Date.now() >= followDeadline) return null
+		async followUp(toolResult) {
+			const idempotencyKey = readExecuteFollowKey(toolResult)
+			if (!idempotencyKey) return null
+			followDeadline ??= Date.now() + followTimeoutMs
+			if (Date.now() >= followDeadline) return null
 			await new Promise((resolve) => setTimeout(resolve, followIntervalMs))
 			return { ...baseArguments, idempotencyKey }
 		},
@@ -94,14 +97,6 @@ export async function executeAppMcp(input: {
 
 const defaultExecuteFollowTimeoutMs = 15 * 60_000
 const defaultExecuteFollowIntervalMs = 5_000
-
-function inProgressIdempotencyKey(result: unknown) {
-	if (!result || typeof result !== 'object') return null
-	const handle = result as { inProgress?: unknown; idempotencyKey?: unknown }
-	return handle.inProgress === true && typeof handle.idempotencyKey === 'string'
-		? handle.idempotencyKey
-		: null
-}
 
 export async function searchAppMcp(input: {
 	origin: string
@@ -202,7 +197,7 @@ async function callAppMcpTool(input: {
 	arguments: Record<string, unknown>
 	readResult: (toolResult: unknown) => unknown
 	/** Arguments for another call on the same connection, or null to stop. */
-	followUp?: (result: unknown) => Promise<Record<string, unknown> | null>
+	followUp?: (toolResult: unknown) => Promise<Record<string, unknown> | null>
 	cookieHeader?: string
 	oauth?: AppMcpOAuthSession
 	orgSlug?: string | null
@@ -221,15 +216,27 @@ async function callAppMcpTool(input: {
 		let toolArguments: Record<string, unknown> | null = input.arguments
 		let result: unknown
 		while (toolArguments) {
-			const toolResult = await connection.client.callTool(
-				{
-					name: input.tool,
-					arguments: toolArguments,
-				},
-				defaultMcpCallOptions,
-			)
+			const isFollowUp = toolArguments !== input.arguments
+			const followKey = toolArguments['idempotencyKey']
+			const toolResult: unknown = await connection.client
+				.callTool(
+					{
+						name: input.tool,
+						arguments: toolArguments,
+					},
+					defaultMcpCallOptions,
+				)
+				.catch((error: unknown) => {
+					if (!isFollowUp || typeof followKey !== 'string') throw error
+					throw new Error(
+						`${input.tool} is still running but re-reading it failed; resume with --idempotency-key ${followKey}: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+						{ cause: error },
+					)
+				})
 			result = input.readResult(toolResult)
-			toolArguments = input.followUp ? await input.followUp(result) : null
+			toolArguments = input.followUp ? await input.followUp(toolResult) : null
 		}
 		return {
 			ok: true,
