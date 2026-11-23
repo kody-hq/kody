@@ -48,12 +48,12 @@ That was a gut reaction, and plenty of people pushed back. The fair version of
 that pushback was "try it before saying never." They were right. So we did:
 seven rounds, and I went in leaning toward it.
 
-Earlier in that thread, Sebastian said he was
+Back then, Sebastian kindly said he was
 ["respectfully placing a counter bet"](https://x.com/thefubhy/status/1784275505971077240)
-on my take. For the record, the bet had nothing to do with this. I didn't steer
-my agents away from Effect to win it. And even if they'd picked Effect, I
-wouldn't count the bet as lost, because I still wouldn't be the one using it. My
-agents would. Sebastian, I'm happy to hear your appeal.
+on my take. I always appreciated how gracious he was about it. To be clear, that
+bet had nothing to do with this. And honestly, if my agents had picked Effect,
+I'd have happily called it a win for Sebastian, even though technically I still
+wouldn't be the one writing it. 😄
 
 The bigger point is that my 2024 objection matters a lot less now. When agents
 are the authors, "it feels like a different language to me" isn't a good reason
