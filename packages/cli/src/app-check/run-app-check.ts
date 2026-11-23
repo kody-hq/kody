@@ -247,7 +247,7 @@ function attachDevPreview(input: {
 	const seenSeq = lastSeq(input.status.serverErrors ?? [])
 	return {
 		url: input.status.url,
-		collectServerErrors: async () => {
+		async collectServerErrors() {
 			const status = await fetch(new URL(devStatusPath, input.origin), {
 				signal: AbortSignal.timeout(5_000),
 			})
@@ -269,7 +269,7 @@ function attachDevPreview(input: {
 			}
 			for (const error of fresh) input.onServerError(error.message)
 		},
-		close: async () => {},
+		async close() {},
 	}
 }
 
