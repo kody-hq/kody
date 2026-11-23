@@ -22,12 +22,13 @@ about 400 days).
 
 ## Credential contract
 
-`CLOUDFLARE_API_TOKEN` (Account D1 Edit on the production account) is used only
-by graduated production restore: the pre-restore safety export and the D1
-import. Cloudflare grants that permission account-wide; the Worker's UUID/name
-allowlist reduces operator mistakes but does not scope the token to one
-database. Keep it separate from destination R2 administration and from drill
-credentials (`DRILL_API_TOKEN`).
+`CLOUDFLARE_API_TOKEN` (Account D1 Edit on the production account) serves
+[live D1 size lookups on the dashboard](./control-plane-ui.ts) and
+[graduated production restore](./production-restore.ts), including its
+pre-restore safety export. Cloudflare grants that permission account-wide; the
+Worker's [source configuration checks](./backup-policy.ts) do not scope the
+token to one database. Keep it separate from destination R2 administration and
+from drill credentials (`DRILL_API_TOKEN`).
 
 Set `BACKUP_MANIFEST_SIGNING_KEY_ID` and
 `BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64` as reviewed non-secret vars.

@@ -20,7 +20,7 @@ snapshot.
 Retention (UTC):
 
 - `daily/` — ~35 days (immutable lock + lifecycle)
-- `weekly/` — ~400 days (Sunday UTC paced D1 full bases under
+- `weekly/` — ~400 days (Sunday UTC paced full bases under
   `weekly/d1-paced/...`)
 - `blobs/sha256/` — long-retention content-addressed store shared across days
 - Failed or incomplete sets never replace a sealed day
@@ -103,19 +103,19 @@ Contract: `packages/shared/src/backup-staging.ts`.
    not converted, modified, or manually deleted; they expire under R2 lifecycle
    (`daily/` about 35 days, so the last REST-era daily full manifest,
    2026-11-16, ages out in late December 2026; `weekly/d1/` about 400 days, with
-   no weekly full manifest to restore them through). `SOURCE_DATABASES`
-   (`{ id, name }` entries) lists the D1 databases graduated restore may target;
-   `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` remain the primary APP_DB
-   identity. Gates: `ENABLE_PRODUCTION_D1_BACKUPS` and
-   `BACKUP_BENCHMARK_APPROVED` must both be exactly `"true"` for the seal cron
-   to run. The production `kody-jobs` UUID is resolved by name in
-   `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`). **D1 paced walk
-   (production worker)** — When `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the
-   same DR S3 credentials are set, the production worker walks APP_DB, AUDIT_DB,
-   and JOBS_DB page-by-page (`packages/worker/src/dr/d1-paced-backup.ts`) in the
-   same nightly window as non-D1 staging. Staging lives under
-   `staging/{day}/d1-paced/{databaseName}/`. Completed nights seal to
-   `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
+   no weekly full manifest to restore them through). `SOURCE_DATABASES` lists
+   the D1 databases for dashboard size lookups; restore uses `D1_PACED_SOURCES`
+   and the day's signed `d1Paced` list. See the
+   [source settings](../environment-variables.md#backup-control-plane-dr-account-worker).
+   Gates: `ENABLE_PRODUCTION_D1_BACKUPS` and `BACKUP_BENCHMARK_APPROVED` must
+   both be exactly `"true"` for the seal cron to run. The production `kody-jobs`
+   UUID is resolved by name in `tools/ci/jobs-worker-resources.ts`
+   (`jobs_d1_database_id`). **D1 paced walk (production worker)** — When
+   `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the same DR S3 credentials are
+   set, the production worker walks APP_DB, AUDIT_DB, and JOBS_DB page-by-page
+   (`packages/worker/src/dr/d1-paced-backup.ts`) in the same nightly window as
+   non-D1 staging. Staging lives under `staging/{day}/d1-paced/{databaseName}/`.
+   Completed nights seal to `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
    `weekly/d1-paced/{databaseId}/{day}/` (Sunday UTC full bases). Tick writers
    flush TSV parts at 4 MiB on page boundaries. Each table walk stops after 32
    MiB emitted so the next tick can resume; see
@@ -249,21 +249,21 @@ Contract: `packages/shared/src/backup-staging.ts`.
    fails with `restore-paced-verify-mismatch` when a count or checksum differs
    from the sealed tip manifest. A paced source without a sealed manifest is
    refused before the safety export (`restore-paced-seal-missing`). REST
-   evidence on a v3 day is never imported. Schema-v1 and schema-v2 days are
-   refused before any production call (`restore-rest-era-day`). Already-sealed
-   days short-circuit before source checks. The hourly `:45` cron attempts to
-   seal the last sixteen complete days synchronously. The UI seal action
-   enqueues workflow `kody-production-seal-day` for that day and returns
-   immediately.
+   evidence on a v3 day is not used to select restore targets.
+   [Restore rejects schema-v1 and schema-v2 days before the first production API call](../../../packages/backup-control-plane/production-restore.node.test.ts)
+   with `restore-rest-era-day`. Already-sealed days short-circuit before source
+   checks. The hourly `:45` cron attempts to seal the last sixteen complete days
+   synchronously. The UI seal action enqueues workflow
+   `kody-production-seal-day` for that day and returns immediately.
 
 ### Restore-safe row sizes
 
 D1's import path rejects individual SQL statements above its ~100 KB
-statement-length limit (`statement too long: SQLITE_TOOBIG`), and D1 exports
-write one INSERT per row — so a single oversized row makes the whole D1 backup
-un-importable. This is not hypothetical: drills of the 2026-07-26 production
-export failed on oversized `package_invocations.response_json` rows until the
-rows were bounded.
+statement-length limit (`statement too long: SQLITE_TOOBIG`). The legacy REST
+exports wrote one INSERT per row; drills of the 2026-07-26 production export
+failed on oversized `package_invocations.response_json` rows. The
+[paced restore SQL generator](../../../packages/shared/src/backup-d1-paced-restore.ts)
+splits oversized text and BLOB values into smaller statements.
 
 - Write paths bound large text columns via
   `packages/shared/src/backup-restore-safety.ts` (64 KiB per column):
@@ -318,7 +318,7 @@ Restore rebuilds the derived stores below; do not treat them as recovery media:
   (`DR_D1_PACED_SOURCES`) and restored from it by graduated production restore
   on schema-v3 days. Paced sealed nights are the backup lane for this evidence.
   Scheduled job definitions live in `JOBS_DB` (`kody-jobs`) and are part of the
-  paced D1 walk; APP_DB does not store them.
+  nightly paced D1 backup; APP_DB does not store them.
 
 ### Honest gaps
 

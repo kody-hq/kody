@@ -241,9 +241,8 @@ function pollSleepMs(pollIndex: number, options: ApiOptions): number {
 }
 
 /**
- * Drive an export from a start/pending/lost state to completion using the
- * live-API-aware cadence: poll immediately, ~2s for the first few waits, then
- * the longer interval. Restarts bare exports when the result expires.
+ * Short early waits pick up fast safety exports promptly; longer waits limit
+ * API calls for exports that take more time.
  */
 export async function awaitExportReady(
 	env: BackupEnvironment,
