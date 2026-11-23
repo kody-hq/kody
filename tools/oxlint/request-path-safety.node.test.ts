@@ -74,6 +74,29 @@ test('require-outbound-deadline treats imported boundary helpers as outbound cal
 	expect(result.count('require-outbound-deadline')).toBe(2)
 })
 
+test('require-outbound-deadline flags stub factory calls and their bound receivers', async () => {
+	const result = await lint([
+		'export async function step(env: any) {',
+		'	await sessionStub(env, "ec").recordRunPackages({})',
+		'	const session = sessionStub(env, "ec")',
+		'	await session.authorizeRunCall({})',
+		'}',
+	])
+	expect(result.count('require-outbound-deadline')).toBe(2)
+})
+
+test('require-outbound-deadline flags outbound calls in the withDeadline options', async () => {
+	const result = await lint([
+		'export async function step(env: any) {',
+		'	await withDeadline(',
+		"		{ label: await env.CONFIG_KV.get('label'), timeoutMs: 1 },",
+		'		() => fetch("https://example.com"),',
+		'	)',
+		'}',
+	])
+	expect(result.count('require-outbound-deadline')).toBe(1)
+})
+
 test('require-outbound-deadline allows calls inside withDeadline', async () => {
 	const result = await lint([
 		"import { routeExecute } from '#worker/execution-contexts/routing.ts'",

@@ -230,9 +230,25 @@ function isOutboundCall(call, outboundNames = new Set()) {
 		return true
 	}
 	if (receiver && ARTIFACT_REPO_RECEIVER_PATTERN.test(receiver)) return true
+	if (callee.object.type === 'CallExpression') {
+		const factory = calleeName(callee.object)
+		return Boolean(factory && STUB_PATTERN.test(factory))
+	}
 	return (
-		callee.object.type === 'Identifier' && STUB_PATTERN.test(callee.object.name)
+		callee.object.type === 'Identifier' &&
+		(STUB_PATTERN.test(callee.object.name) ||
+			outboundNames.has(callee.object.name))
 	)
+}
+
+/** `const session = sessionStub(env, id)` makes `session` a stub receiver. */
+function stubBinding(node) {
+	if (node.id.type !== 'Identifier' || !node.init) return null
+	const init =
+		node.init.type === 'AwaitExpression' ? node.init.argument : node.init
+	if (init.type !== 'CallExpression') return null
+	const factory = calleeName(init)
+	return factory && STUB_PATTERN.test(factory) ? node.id.name : null
 }
 
 function isInsideDeadline(node) {
@@ -241,7 +257,7 @@ function isInsideDeadline(node) {
 	while (current) {
 		if (
 			current.type === 'CallExpression' &&
-			current.callee !== child &&
+			current.arguments[1] === child &&
 			calleeName(current) === DEADLINE_HELPER
 		) {
 			return true
@@ -332,6 +348,10 @@ export const requireOutboundDeadlineRule = {
 				for (const name of outboundLocals(context.filename, node)) {
 					outboundNames.add(name)
 				}
+			},
+			VariableDeclarator(node) {
+				const name = stubBinding(node)
+				if (name) outboundNames.add(name)
 			},
 			CallExpression(node) {
 				if (!isOutboundCall(node, outboundNames) || isInsideDeadline(node))
