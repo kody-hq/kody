@@ -55,6 +55,18 @@ non-closing reference (Related to #1234, or a plain link). Never write
 closing keyword.
 -->
 
+<!--
+Factory cards: reference a card by its link, the same way as an issue.
+Closes https://factory.kody.build/c/<card id>
+Fixes https://factory.kody.build/c/<card id>
+A closing keyword (Closes / Fixes / Resolves) marks the card shipped when this
+PR merges and links the PR on the card. A bare link only links the PR:
+Related to https://factory.kody.build/c/<card id>
+The short form factory:<card id> works too (Closes factory:<card id>).
+Copy the link from the card's "Card link" row. Same caution as issues: never
+write "does not close <card link>"; the substring still counts as closing.
+-->
+
 ## Testing
 
 <!-- What you ran or verified (validate, focused suites, local control-kody,
