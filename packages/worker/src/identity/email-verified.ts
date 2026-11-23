@@ -21,6 +21,8 @@ export async function onEmailVerified(input: {
 				latestReferrerPaidPeriodEnd({ env: input.env, referrerOrgId }),
 		})
 	} catch (error) {
+		// Verification still succeeds; the held credits stay ungranted until the
+		// next verification or the referee's next paid invoice retries them.
 		console.warn('referral-held-reward-failed', error)
 	}
 }
