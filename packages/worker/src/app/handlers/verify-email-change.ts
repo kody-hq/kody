@@ -17,6 +17,7 @@ import {
 } from '#app/email-change.ts'
 import { waitUntil } from 'cloudflare:workers'
 import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { onEmailVerified } from '#worker/identity/email-verified.ts'
 
 function getRequestCountry(request: Request) {
 	const cf = (request as Request & { cf?: { country?: string } }).cf
@@ -106,6 +107,7 @@ export async function executeVerifyEmailChange({
 	waitUntil(
 		recordWhatsNewVerifiedAccount({ env, stableUserId: result.stableUserId }),
 	)
+	await onEmailVerified({ env, stableUserId: result.stableUserId })
 
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),

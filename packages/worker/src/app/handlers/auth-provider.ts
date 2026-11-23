@@ -66,6 +66,7 @@ import { getAvailableUsernameFromBase } from '#worker/identity/generated-usernam
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { getCallbackRedirectUri } from '#worker/identity/oauth-provider-redirect.ts'
 import { recordOnboardingFunnelEvent } from '#worker/identity/onboarding-funnel.ts'
+import { onEmailVerified } from '#worker/identity/email-verified.ts'
 import { unusablePasswordHash } from '#worker/identity/usable-password.ts'
 import { usernameFromEmail } from '#worker/identity/username.ts'
 import type { OAuthGrantHelpers } from '#worker/oauth-grants.ts'
@@ -691,6 +692,10 @@ export function createAuthProviderCallbackHandler(env: Env) {
 						userId: personalOrgId(
 							personIdFromStored(existingUser.stable_user_id),
 						),
+					})
+					await onEmailVerified({
+						env,
+						stableUserId: existingUser.stable_user_id,
 					})
 				}
 				if ((stamped.meta.changes ?? 0) !== 1) {

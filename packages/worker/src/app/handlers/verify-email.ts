@@ -11,8 +11,7 @@ import { sendFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
 import { openVerifiedNoMcpCampaignEvent } from '#app/user-usage-campaign-emails.ts'
 import { resolveVerifyEmailSuccessCta } from '#universal/safe-redirect.ts'
 import { waitUntil } from 'cloudflare:workers'
-import { maybeRewardHeldReferralAfterEmailVerified } from '#worker/entitlements/referral-program.ts'
-import { latestReferrerPaidPeriodEnd } from '#worker/billing/stripe-webhooks.ts'
+import { onEmailVerified } from '#worker/identity/email-verified.ts'
 import { recordOnboardingFunnelEvent } from '#worker/identity/onboarding-funnel.ts'
 
 function getVerifyEmailError(
@@ -111,16 +110,7 @@ export async function executeVerifyEmail({
 			email: result.email,
 			stableUserId: result.stableUserId,
 		})
-		waitUntil(
-			maybeRewardHeldReferralAfterEmailVerified({
-				db: env.APP_DB,
-				stableUserId: result.stableUserId,
-				resolveReferrerPaidPeriodEnd: (referrerOrgId) =>
-					latestReferrerPaidPeriodEnd({ env, referrerOrgId }),
-			}).catch((error) => {
-				console.warn('referral-held-reward-failed', error)
-			}),
-		)
+		await onEmailVerified({ env, stableUserId: result.stableUserId })
 	}
 	const cta = resolveVerifyEmailSuccessCta(redirectTo ?? null)
 	return {

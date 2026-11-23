@@ -6,7 +6,7 @@ import { buildEmailVerificationUrl } from '#worker/identity/email-verification-t
 import { sendFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
 import { openVerifiedNoMcpCampaignEvent } from '#app/user-usage-campaign-emails.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
-import { maybeRewardHeldReferralAfterEmailVerified } from '#worker/entitlements/referral-program.ts'
+import { onEmailVerified } from '#worker/identity/email-verified.ts'
 import { auditEventSummaries } from '#worker/test-support/audit-log-spy.ts'
 
 const waitUntilImpl = vi.hoisted(() => vi.fn())
@@ -42,11 +42,8 @@ vi.mock('#worker/kit/subscriber-sync.ts', () => ({
 	scheduleKitSubscriberSync: vi.fn(),
 }))
 
-vi.mock('#worker/entitlements/referral-program.ts', () => ({
-	maybeRewardHeldReferralAfterEmailVerified: vi.fn(async () => ({
-		outcome: 'ignored',
-		reason: 'no_held',
-	})),
+vi.mock('#worker/identity/email-verified.ts', () => ({
+	onEmailVerified: vi.fn(async () => {}),
 }))
 
 test('verify-email handler wires success CTA from redirectTo and rejects open redirects', async () => {
@@ -102,7 +99,7 @@ test('verify-email handler wires success CTA from redirectTo and rejects open re
 	expect(openVerifiedNoMcpCampaignEvent).not.toHaveBeenCalled()
 	expect(waitUntilImpl).not.toHaveBeenCalled()
 	expect(scheduleKitSubscriberSync).not.toHaveBeenCalled()
-	expect(maybeRewardHeldReferralAfterEmailVerified).not.toHaveBeenCalled()
+	expect(onEmailVerified).not.toHaveBeenCalled()
 })
 
 test('signup verification resumes the original package-app authorization request', async () => {
@@ -202,10 +199,8 @@ test('verify-email sends the founder welcome now and defers the connect-agent ti
 		email: 'verified@example.com',
 		stableUserId: ownerIdFromStored('user_verified'),
 	})
-	expect(maybeRewardHeldReferralAfterEmailVerified).toHaveBeenCalledWith(
-		expect.objectContaining({
-			db: expect.anything(),
-			stableUserId: ownerIdFromStored('user_verified'),
-		}),
-	)
+	expect(onEmailVerified).toHaveBeenCalledWith({
+		env: expect.anything(),
+		stableUserId: ownerIdFromStored('user_verified'),
+	})
 })
