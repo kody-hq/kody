@@ -37,7 +37,10 @@ counts for a great deal." I meant both.
 
 ## Why I said no in 2024
 
-In April 2024, replying to Sebastian Lorenz from the Effect team,
+In April 2024, I quote posted Matt Pocock sharing an Effect snippet. I compared
+it to RxJS and said I'd never use it. I later deleted that post because it was
+spicier than I like to be. Replying to Sebastian Lorenz from the Effect team in
+that same thread,
 [I wrote](https://x.com/kentcdodds/status/1784281743165731316): "I'm not talking
 about overlap. I'm talking about perception. And the size of your API. It's
 enormous. And it feels like writing a completely different language. Which is
