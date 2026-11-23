@@ -62,7 +62,7 @@ export async function requestAddReferrer(input: {
 		})
 		return {
 			ok: true as const,
-			referrerUsername: result.referrerUsername,
+			referrerHandle: result.referrerHandle,
 		}
 	} catch (error) {
 		if (isRedirect(error)) throw error

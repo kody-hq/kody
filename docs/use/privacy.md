@@ -26,18 +26,19 @@ attribution captured on public-site visits when UTM or landing context is
 present and associated with the account at signup (`utm_source` / `utm_medium` /
 `utm_campaign` / `utm_content` / `utm_term`, landing path, and referrer),
 referral attribution when a signup used a `kody_ref` cookie from
-`?ref=<username>` (the referred and referring stable user ids, reward status,
-and the Stripe invoice id after a paid reward), first-seen activation timestamps
-(email verified, first MCP connection, first execute, first saved package, first
-secret, first integration, first job), MCP client name when known, last-active
-day stamps used for return metrics, credentials, memories, packages and their
-source, jobs, email inboxes and messages, durable storage, MCP server
-configuration, OAuth grants, short-lived execution history (see
-[Activity](./activity.md)), stored community activity events, and any platform
-feedback you approve for submission. All of this remains scoped to your account
-except for content you deliberately make public (public packages published to
-Community and a public profile), the narrow admin review of approved platform
-feedback, and the community activity metadata described below.
+`?ref=<username>` or `?ref=<org slug>` (the referred stable user id, the
+credited personal or team org id, reward status, and the Stripe invoice id after
+a paid reward), first-seen activation timestamps (email verified, first MCP
+connection, first execute, first saved package, first secret, first integration,
+first job), MCP client name when known, last-active day stamps used for return
+metrics, credentials, memories, packages and their source, jobs, email inboxes
+and messages, durable storage, MCP server configuration, OAuth grants,
+short-lived execution history (see [Activity](./activity.md)), stored community
+activity events, and any platform feedback you approve for submission. All of
+this remains scoped to your account except for content you deliberately make
+public (public packages published to Community and a public profile), the narrow
+admin review of approved platform feedback, and the community activity metadata
+described below.
 
 When you sign in to someone's package app with Sign in with Kody, people who
 manage that app can see your username, display name, avatar, when you first

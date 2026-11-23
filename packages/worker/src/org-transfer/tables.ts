@@ -249,7 +249,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	pending_email_claim_releases: keep(personOwned),
 	pending_email_destination_verifications: keep(personOwned),
 	platform_feedback: keep(personOwned),
-	referrals: keep(personOwned),
+	referrals: keep(
+		'Referral attribution stays with the referee person and the referrer org that earns the credit.',
+	),
 	repo_session_due_owners: keep(
 		'Repo session scheduling; sessions on moved sources are discarded after commit.',
 	),

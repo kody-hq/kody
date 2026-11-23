@@ -46,7 +46,7 @@ export type ReferredByState =
 	| { state: 'open' }
 	| {
 			state: 'attributed'
-			referrerUsername: string | null
+			referrerHandle: string | null
 			status: 'pending' | 'rewarded'
 	  }
 	| { state: 'closed' }

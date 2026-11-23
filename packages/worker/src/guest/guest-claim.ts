@@ -451,9 +451,9 @@ export async function mergeGuestIntoAccount(
 			.bind(target.personId, guest.personId, target.personId),
 		db
 			.prepare(
-				`UPDATE referrals SET referrer_stable_user_id = ? WHERE referrer_stable_user_id = ?`,
+				`UPDATE referrals SET referrer_org_id = ? WHERE referrer_org_id = ?`,
 			)
-			.bind(target.personId, guest.personId),
+			.bind(toOrgId, fromOrgId),
 		db
 			.prepare(
 				`UPDATE api_tokens SET user_id = ?, org_id = ?, updated_at = ?

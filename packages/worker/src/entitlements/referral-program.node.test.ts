@@ -425,7 +425,7 @@ test('referral billing summary counts every row, not only the displayed page', a
 		await db
 			.prepare(
 				`INSERT INTO referrals (
-					referrer_stable_user_id, referee_stable_user_id, created_at, status
+					referrer_org_id, referee_stable_user_id, created_at, status
 				) VALUES (?, ?, ?, ?)`,
 			)
 			.bind(
@@ -438,8 +438,8 @@ test('referral billing summary counts every row, not only the displayed page', a
 	}
 	const summary = await loadReferralProgramSummary({
 		db,
-		stableUserId: referrer.stableUserId,
-		username: 'countreferrer',
+		orgId: referrer.stableUserId,
+		handle: 'countreferrer',
 		origin: 'https://kody.codes',
 		now,
 	})
@@ -464,7 +464,7 @@ test('existing Free user can add a referrer once, before first payment, and the 
 			listPaidInvoices: noPaidInvoices,
 			now,
 		}),
-	).resolves.toEqual({ outcome: 'attributed', referrerUsername: 'alice' })
+	).resolves.toEqual({ outcome: 'attributed', referrerHandle: 'alice' })
 	await expect(
 		attributeReferralBeforeFirstPayment({
 			db,
@@ -512,11 +512,11 @@ test('billing-page referrer never replaces signup attribution', async () => {
 	).resolves.toEqual({ outcome: 'rejected', reason: 'already_attributed' })
 	const row = await db
 		.prepare(
-			`SELECT referrer_stable_user_id FROM referrals WHERE referee_stable_user_id = ?`,
+			`SELECT referrer_org_id FROM referrals WHERE referee_stable_user_id = ?`,
 		)
 		.bind(referee.stableUserId)
-		.first<{ referrer_stable_user_id: string }>()
-	expect(row?.referrer_stable_user_id).toBe(alice.stableUserId)
+		.first<{ referrer_org_id: string }>()
+	expect(row?.referrer_org_id).toBe(alice.stableUserId)
 })
 
 test('billing-page referrer rejects invalid, unknown, self, and same-person referrers', async () => {
@@ -690,10 +690,10 @@ test('billing summary reports the Referred by state', async () => {
 	const summary = (personHasPaid?: () => Promise<boolean>) =>
 		loadReferralProgramSummary({
 			db,
-			stableUserId: referee.stableUserId,
-			username: referee.username,
+			orgId: referee.stableUserId,
+			handle: referee.username,
 			origin: 'https://kody.codes',
-			personHasPaid,
+			referee: { stableUserId: referee.stableUserId, personHasPaid },
 			now,
 		}).then((result) => result.referredBy)
 	await expect(summary(async () => false)).resolves.toEqual({ state: 'open' })
@@ -718,7 +718,7 @@ test('billing summary reports the Referred by state', async () => {
 	})
 	await expect(summary(async () => true)).resolves.toEqual({
 		state: 'attributed',
-		referrerUsername: 'alice',
+		referrerHandle: 'alice',
 		status: 'pending',
 	})
 })
@@ -762,10 +762,13 @@ test('billing-page referrer is only open within 72 hours of signup', async () =>
 	const referredBy = (user: TestUser) =>
 		loadReferralProgramSummary({
 			db,
-			stableUserId: user.stableUserId,
-			username: user.username,
+			orgId: user.stableUserId,
+			handle: user.username,
 			origin: 'https://kody.codes',
-			personHasPaid: async () => false,
+			referee: {
+				stableUserId: user.stableUserId,
+				personHasPaid: async () => false,
+			},
 			now,
 		}).then((result) => result.referredBy)
 
@@ -785,7 +788,7 @@ test('billing-page referrer is only open within 72 hours of signup', async () =>
 	})
 	await expect(attempt(inside)).resolves.toEqual({
 		outcome: 'attributed',
-		referrerUsername: 'alice',
+		referrerHandle: 'alice',
 	})
 	const count = await db
 		.prepare(`SELECT COUNT(*) AS total FROM referrals`)
@@ -801,4 +804,217 @@ test('parseReferrerInput accepts usernames, @handles, and share links', () => {
 	expect(parseReferrerInput('kody.codes/pricing')).toBeNull()
 	expect(parseReferrerInput('')).toBeNull()
 	expect(parseReferrerInput(42)).toBeNull()
+})
+
+async function insertTeamOrg(
+	db: D1Database,
+	slug: string,
+	members: Array<{ user: TestUser; role: 'owner' | 'admin' | 'member' }>,
+) {
+	const orgId = `org-${slug}`
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, display_name, plan, created_at, updated_at)
+			 VALUES (?, ?, ?, 'free', ?, ?)`,
+		)
+		.bind(orgId, slug, slug, now.toISOString(), now.toISOString())
+		.run()
+	for (const member of members) {
+		await db
+			.prepare(
+				`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+				 VALUES (?, ?, ?, ?)`,
+			)
+			.bind(orgId, member.user.stableUserId, member.role, now.toISOString())
+			.run()
+	}
+	return orgId
+}
+
+async function orgCreditExpiry(db: D1Database, orgId: string) {
+	const row = await db
+		.prepare(
+			`SELECT referral_standard_credit_expires_at FROM orgs WHERE id = ?`,
+		)
+		.bind(orgId)
+		.first<{ referral_standard_credit_expires_at: string | null }>()
+	return row?.referral_standard_credit_expires_at ?? null
+}
+
+test('an org referral link credits that org, not the sharer’s personal account', async () => {
+	const db = await createDb()
+	const alice = await insertUser(db, 'alice')
+	const acme = await insertTeamOrg(db, 'acme', [{ user: alice, role: 'owner' }])
+	const bob = await insertUser(db, 'bob')
+
+	await expect(attribute(db, bob, 'acme')).resolves.toEqual({
+		outcome: 'attributed',
+	})
+	await expect(reward(db, bob, 'in_org_link')).resolves.toEqual({
+		outcome: 'rewarded',
+	})
+	expect(await orgCreditExpiry(db, acme)).toBe(firstCreditExpiresAt)
+	expect(await creditExpiry(db, bob)).toBe(firstCreditExpiresAt)
+	expect(await creditExpiry(db, alice)).toBeNull()
+
+	const orgSummary = await loadReferralProgramSummary({
+		db,
+		orgId: acme,
+		handle: 'acme',
+		origin: 'https://kody.codes',
+		now,
+	})
+	expect(orgSummary).toMatchObject({
+		shareUrl: 'https://kody.codes/?ref=acme',
+		rewardedCount: 1,
+		pendingCount: 0,
+		creditExpiresAt: firstCreditExpiresAt,
+		creditActive: true,
+		referredBy: { state: 'closed' },
+		referrals: [{ refereeUsername: 'bob', status: 'rewarded' }],
+	})
+	const personalSummary = await loadReferralProgramSummary({
+		db,
+		orgId: alice.stableUserId,
+		handle: alice.username,
+		origin: 'https://kody.codes',
+		now,
+	})
+	expect(personalSummary).toMatchObject({
+		shareUrl: 'https://kody.codes/?ref=alice',
+		rewardedCount: 0,
+		creditExpiresAt: null,
+	})
+})
+
+test('a Free user can add an org as referrer after signup, but not an org they belong to', async () => {
+	const db = await createDb()
+	const alice = await insertUser(db, 'alice')
+	const carol = await insertUser(db, 'carol')
+	await insertTeamOrg(db, 'acme', [
+		{ user: alice, role: 'owner' },
+		{ user: carol, role: 'member' },
+	])
+	const bob = await insertUser(db, 'bob')
+	const attempt = (user: TestUser, referrerInput: string) =>
+		attributeReferralBeforeFirstPayment({
+			db,
+			refereeStableUserId: user.stableUserId,
+			referrerInput,
+			listPaidInvoices: async () => [],
+			now,
+		})
+
+	await expect(attempt(carol, '@acme')).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'self',
+	})
+	await expect(attempt(bob, 'kody.codes/?ref=acme')).resolves.toEqual({
+		outcome: 'attributed',
+		referrerHandle: 'acme',
+	})
+	const summary = await loadReferralProgramSummary({
+		db,
+		orgId: bob.stableUserId,
+		handle: bob.username,
+		origin: 'https://kody.codes',
+		referee: {
+			stableUserId: bob.stableUserId,
+			personHasPaid: async () => false,
+		},
+		now,
+	})
+	expect(summary.referredBy).toEqual({
+		state: 'attributed',
+		referrerHandle: 'acme',
+		status: 'pending',
+	})
+})
+
+test('org referrals reject members at payment time and wait for a verified owner', async () => {
+	const db = await createDb()
+	const owner = await insertUser(db, 'owner', { verified: false })
+	const beta = await insertTeamOrg(db, 'beta', [{ user: owner, role: 'owner' }])
+	const erin = await insertUser(db, 'erin')
+	await attribute(db, erin, 'beta')
+
+	await expect(reward(db, erin, 'in_held')).resolves.toEqual({
+		outcome: 'held_unverified',
+	})
+	expect(await orgCreditExpiry(db, beta)).toBeNull()
+
+	await db
+		.prepare(`UPDATE users SET email_verified_at = ? WHERE stable_user_id = ?`)
+		.bind(now.toISOString(), owner.stableUserId)
+		.run()
+	await expect(
+		maybeRewardHeldReferralAfterEmailVerified({
+			db,
+			stableUserId: owner.stableUserId,
+			now,
+		}),
+	).resolves.toEqual({ outcome: 'rewarded' })
+	expect(await orgCreditExpiry(db, beta)).toBe(firstCreditExpiresAt)
+	expect(await creditExpiry(db, erin)).toBe(firstCreditExpiresAt)
+
+	const frank = await insertUser(db, 'frank')
+	await attribute(db, frank, 'beta')
+	await db
+		.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'member', ?)`,
+		)
+		.bind(beta, frank.stableUserId, now.toISOString())
+		.run()
+	await expect(reward(db, frank, 'in_member')).resolves.toEqual({
+		outcome: 'rejected',
+		reason: 'self_referral',
+	})
+})
+
+test('personal links credit the personal org when its id differs from the person', async () => {
+	const db = await createDb()
+	const email = 'distinct@example.com'
+	const stableUserId = testStableUserIdFromEmail(email)
+	const personalOrgId = 'org-distinct-personal'
+	await db
+		.prepare(
+			`INSERT INTO users (
+				username, email, password_hash, stable_user_id, personal_org_id,
+				email_verified_at, created_at
+			) VALUES ('distinct', ?, 'hash', ?, ?, ?, ?)`,
+		)
+		.bind(
+			email,
+			stableUserId,
+			personalOrgId,
+			now.toISOString(),
+			now.toISOString(),
+		)
+		.run()
+	await provisionPersonalOrg(db, {
+		stableUserId,
+		orgId: personalOrgId,
+		username: 'distinct',
+		plan: 'free',
+		createdAt: now.toISOString(),
+	})
+	const bob = await insertUser(db, 'bob')
+	await attribute(db, bob, 'distinct')
+	await expect(reward(db, bob, 'in_distinct')).resolves.toEqual({
+		outcome: 'rewarded',
+	})
+	expect(await orgCreditExpiry(db, personalOrgId)).toBe(firstCreditExpiresAt)
+	const summary = await loadReferralProgramSummary({
+		db,
+		orgId: personalOrgId,
+		handle: 'distinct',
+		origin: 'https://kody.codes',
+		now,
+	})
+	expect(summary).toMatchObject({
+		shareUrl: 'https://kody.codes/?ref=distinct',
+		rewardedCount: 1,
+		creditExpiresAt: firstCreditExpiresAt,
+	})
 })

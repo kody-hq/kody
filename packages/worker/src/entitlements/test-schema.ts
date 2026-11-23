@@ -49,7 +49,7 @@ export async function ensureReferralProgramTestSchema(db: D1Database) {
 		.prepare(
 			`CREATE TABLE IF NOT EXISTS referrals (
 	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-	referrer_stable_user_id TEXT NOT NULL,
+	referrer_org_id TEXT NOT NULL,
 	referee_stable_user_id TEXT NOT NULL,
 	created_at TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'pending',
@@ -70,8 +70,8 @@ export async function ensureReferralProgramTestSchema(db: D1Database) {
 		.run()
 	await db
 		.prepare(
-			`CREATE INDEX IF NOT EXISTS idx_referrals_referrer
-			 ON referrals(referrer_stable_user_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_referrals_referrer_org
+			 ON referrals(referrer_org_id)`,
 		)
 		.run()
 	await db
