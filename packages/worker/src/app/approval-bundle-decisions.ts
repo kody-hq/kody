@@ -611,7 +611,7 @@ export async function approveApprovalBundleItems(input: {
  * one package's items (credential picks, capabilities, publish). Packages
  * where one imports the other share a lane, dependency first, so the
  * dependent builds against the newly published dependency. When an item's
- * package cannot be read, everything runs in one lane.
+ * package cannot be read, everything runs in one lane, publishes last.
  */
 async function approveAllLanes(
 	viewer: ApprovalViewer,
@@ -622,7 +622,7 @@ async function approveAllLanes(
 		return ref ? samePackageOrder[ref.type] : 0
 	}
 	if (entries.some(({ key }) => key === null)) {
-		return [entries.map(({ entry }) => entry)]
+		return [entries.map(({ entry }) => entry).sort((a, b) => rank(a) - rank(b))]
 	}
 	const byPackage = new Map<string, Array<ApproveAllEntry>>()
 	for (const { entry, key } of entries) {

@@ -269,7 +269,7 @@ export async function listPackageDependencyEdges(
 	input: { ownerUserId: string; packageIds: ReadonlyArray<string> },
 ): Promise<Array<{ dependent: string; dependency: string }>> {
 	if (input.packageIds.length < 2) return []
-	const placeholders = input.packageIds.map(() => '?').join(', ')
+	const ids = JSON.stringify(input.packageIds)
 	const result = await db
 		.prepare(
 			`SELECT DISTINCT dependent.id AS dependent, dependency.id AS dependency
@@ -287,12 +287,12 @@ export async function listPackageDependencyEdges(
 				ON dependency.source_id = json_extract(imported.value, '$.sourceId')
 				AND dependency.user_id = artifact.user_id
 			WHERE artifact.user_id = ?
-				AND dependent.id IN (${placeholders})
-				AND dependency.id IN (${placeholders})
+				AND dependent.id IN (SELECT value FROM json_each(?))
+				AND dependency.id IN (SELECT value FROM json_each(?))
 				AND dependency.id <> dependent.id
 				${andLiveDeletedAtSql('source')}${andLiveDeletedAtSql('dependent')}${andLiveDeletedAtSql('dependency')}`,
 		)
-		.bind(input.ownerUserId, ...input.packageIds, ...input.packageIds)
+		.bind(input.ownerUserId, ids, ids)
 		.all<{ dependent: string; dependency: string }>()
 	return result.results ?? []
 }
