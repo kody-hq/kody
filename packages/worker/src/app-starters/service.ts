@@ -1,3 +1,4 @@
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { getCommunityListingByOwnerAndPackage } from '#worker/community/repo.ts'
 import { getOrgBySlug } from '#worker/orgs/repo.ts'
 import {
@@ -49,7 +50,12 @@ export type AppStarterEntry = AppStarterInspection & {
 	note: string | null
 }
 
-export class AppStarterError extends Error {
+/**
+ * A starter request the admin can fix from the message (bad ref, unknown
+ * package, duplicate, failed fields). Web admin maps `status` to the response;
+ * MCP keeps it off Sentry as a caller error.
+ */
+export class AppStarterError extends McpCallerError {
 	readonly status: 400 | 404 | 409
 	readonly fieldErrors: Array<AppStarterFieldError>
 	constructor(
@@ -448,7 +454,10 @@ export async function addAppStarter(input: {
 	const savedPackage = await findStarterPackage(input.env, input.packageRef)
 	const rows = await listAppStarterRows(input.env.APP_DB)
 	if (rows.some((row) => row.packageId === savedPackage.id)) {
-		throw new AppStarterError(`${savedPackage.name} is already a starter.`, 409)
+		throw new AppStarterError(
+			`${savedPackage.name} is already a starter. To change its rank, note, or enabled state, update the existing starter (package id ${savedPackage.id}) instead of adding it again.`,
+			409,
+		)
 	}
 	const { problems } = await inspectStarterPackage(input.env, savedPackage)
 	if (problems.length > 0) {
