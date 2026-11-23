@@ -20,7 +20,7 @@ export const Route = createFileRoute('/_app/admin/starter-templates_/new')({
 		...textSearch(search),
 		package: searchText(search['package']),
 	}),
-	context: ({ location }) => ({
+	beforeLoad: ({ location }) => ({
 		pageQueryInput: {
 			returnTo: location.pathname,
 			view: 'new' as const,
