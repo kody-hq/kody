@@ -1177,7 +1177,7 @@ async function workSourceTick(input: {
 				mode === 'delta' && prevTable
 					? {
 							schemaHash: prevTable.schemaHash,
-							openIndex: async () => {
+							async openIndex() {
 								prevIndex = await openPrevIndex({
 									s3: input.s3,
 									source: input.source,
