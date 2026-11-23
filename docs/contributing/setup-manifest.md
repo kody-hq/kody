@@ -344,8 +344,8 @@ The production Worker also stages non-D1 canonical stores into the same bucket
 when `DR_EXPORT_ENABLED=true` (StorageRunner dumps, `EMAIL_BLOBS` /
 `COMMUNITY_ASSETS` blobs, published `BUNDLE_ARTIFACTS_KV` source snapshots).
 When `DR_D1_PACED_BACKUP_ENABLED=true` and the DR S3 credentials are set, the
-same worker walks APP_DB and JOBS_DB into `d1-paced/` prefixes; REST D1 export
-on the control plane stays the UI drill and production-restore path.
+same Worker walks APP_DB, AUDIT_DB, and JOBS_DB into `d1-paced/` prefixes. The
+UI drill and graduated production restore replay sealed paced chains.
 `REPO_SESSION_BLOBS` is ephemeral RepoSession Workspace scratch and is not
 exported. The control plane seals complete days and hosts the Access-protected
 Admin UI for drills and graduated production restore. See
@@ -367,23 +367,24 @@ node tools/ci/backup-resources-cli.ts plan \
 
 `apply` is an explicit mutation and must be run only after reviewing the plan.
 The control-plane runtime receives a source-account token with Cloudflare
-Account D1 Edit as `CLOUDFLARE_API_TOKEN` (export + production D1 import).
-Cloudflare grants this permission account-wide and it can mutate D1; the
-runtime's UUID/name allowlist reduces mistakes but does not scope the token.
-Keep that token separate from the provisioner token, drill token
-(`DRILL_API_TOKEN`), and production→DR S3 credentials on the app Worker.
-Scheduling remains inert until the blocking-export benchmark is approved and
-both `ENABLE_PRODUCTION_D1_BACKUPS` and `BACKUP_BENCHMARK_APPROVED` are exactly
-`"true"`.
+Account D1 Edit as `CLOUDFLARE_API_TOKEN` for dashboard D1 size lookups and
+graduated production restore (including pre-restore safety exports). Cloudflare
+grants this permission account-wide and it can mutate D1; the
+[runtime's source configuration checks](../../packages/backup-control-plane/backup-policy.ts)
+do not scope the token. Keep that token separate from the provisioner token,
+drill token (`DRILL_API_TOKEN`), and production→DR S3 credentials on the app
+Worker. The control-plane seal cron runs when both
+`ENABLE_PRODUCTION_D1_BACKUPS` and `BACKUP_BENCHMARK_APPROVED` are exactly
+`"true"`. The production Worker's paced D1 capture has its own
+`DR_D1_PACED_BACKUP_ENABLED` gate.
 
 Reviewed non-secret control-plane vars include manifest signing key id /
-verifying public key, trusted restore baseline id/digest, Access
-(`ACCESS_TEAM_DOMAIN`, `ACCESS_APP_AUD`, `ACCESS_ALLOWED_EMAIL`),
-`DRILL_ACCOUNT_ID`, and `PRIMARY_WORKER_ORIGIN`. Worker secrets include
-`BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64`, `DRILL_API_TOKEN`,
-`RESTORE_CONFIRM_SECRET`, and `DR_RESTORE_SECRET`. Never commit private keys.
-Offline CLI restore still trusts only the checked-in manifest public-key,
-production-identity, and restore-baseline registries.
+verifying public key, Access (`ACCESS_TEAM_DOMAIN`, `ACCESS_APP_AUD`,
+`ACCESS_ALLOWED_EMAIL`), `DRILL_ACCOUNT_ID`, and `PRIMARY_WORKER_ORIGIN`. Worker
+secrets include `BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64`,
+`DRILL_API_TOKEN`, `RESTORE_CONFIRM_SECRET`, and `DR_RESTORE_SECRET`. Never
+commit private keys. Offline CLI restore still trusts only the checked-in
+manifest public-key, production-identity, and restore-baseline registries.
 
 ### Status page worker
 
