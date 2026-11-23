@@ -1,3 +1,4 @@
+import { isAppStarterPackage } from '#worker/app-starters/repo.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
@@ -1345,9 +1346,15 @@ export async function prepareCommunityFork(
 			`Catalog entry "${input.listingId}" was not found.`,
 		)
 	}
-	const source = await getEntitySourceById(input.env.APP_DB, listing.sourceId)
+	const [source, isStarter] = await Promise.all([
+		getEntitySourceById(input.env.APP_DB, listing.sourceId),
+		isAppStarterPackage(input.env.APP_DB, listing.packageId),
+	])
 	let preferredCommit = listing.pinnedCommit
-	if (source) {
+	if (source && isStarter) {
+		// Starter checks validate the published revision, so forks copy that one.
+		preferredCommit = source.published_commit || listing.pinnedCommit
+	} else if (source) {
 		try {
 			const head = await resolveArtifactSourceHead(input.env, source.repo_id)
 			if (head.commit) preferredCommit = head.commit
@@ -1360,7 +1367,9 @@ export async function prepareCommunityFork(
 		sourceId: listing.sourceId,
 		repoId: source?.repo_id ?? null,
 		preferredCommit,
-		fallbackCommits: [listing.pinnedCommit, source?.published_commit],
+		fallbackCommits: isStarter
+			? []
+			: [listing.pinnedCommit, source?.published_commit],
 	})
 	if (!resolved) {
 		throw new CommunityActionError(
