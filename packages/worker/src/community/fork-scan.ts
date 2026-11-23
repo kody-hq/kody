@@ -1,3 +1,4 @@
+import { isBinarySnapshotFile } from '#worker/package-codemods/apply-write-plan.ts'
 import { listKodyPackageDependencyNames } from '#worker/package-registry/types.ts'
 import type { CrossScopeReference } from './types.ts'
 
@@ -56,6 +57,17 @@ export function planForkedEmittedTopics(input: {
 				: body
 		const next = `@${targetScope}/${nextBody}`
 		if (next !== topic) renames[topic] = next
+	}
+	const owners = new Map<string, string>()
+	for (const topic of input.topics) {
+		const next = renames[topic] ?? topic
+		const other = owners.get(next)
+		if (other != null && other !== topic) {
+			throw new Error(
+				`Forking as "${input.targetName}" would rename kody.emits topics "${other}" and "${topic}" to the same topic "${next}". Choose a different package name for the fork.`,
+			)
+		}
+		owners.set(next, topic)
 	}
 	return renames
 }
@@ -236,9 +248,10 @@ export function rewriteScopedReferences(input: {
 	const pattern = new RegExp(`${escaped}${scopedReferenceEnds[input.end]}`, 'g')
 	const files: Record<string, string> = {}
 	for (const [path, content] of Object.entries(input.files)) {
-		files[path] = content.includes(origin)
-			? content.replace(pattern, next)
-			: content
+		files[path] =
+			content.includes(origin) && !isBinarySnapshotFile(path, content)
+				? content.replace(pattern, next)
+				: content
 	}
 	return files
 }
@@ -259,6 +272,7 @@ export function rewriteForkedPackageSelfReferences(input: {
 	const topicRenames = input.topicRenames ?? {}
 	if (Object.keys(topicRenames).length === 0) return files
 	for (const [path, content] of Object.entries(files)) {
+		if (isBinarySnapshotFile(path, content)) continue
 		files[path] = rewriteEmittedTopicReferences(content, topicRenames)
 	}
 	return files

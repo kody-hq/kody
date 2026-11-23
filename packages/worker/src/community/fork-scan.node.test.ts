@@ -276,3 +276,37 @@ test('rewriteForkedPackageSelfReferences rewrites own topic references in emit c
 		'Emits `@jane/github.*` events such as @jane/github.issue.opened.',
 	)
 })
+
+test('rewritePackageManifestForFork refuses a fork name that merges two emits topics', () => {
+	expect(() =>
+		rewritePackageManifestForFork({
+			manifestContent: githubManifest,
+			expectedPackageScope: 'jane',
+			targetKodyId: 'ci',
+		}),
+	).not.toThrow()
+	const manifest = githubManifest.replace(
+		'"@kody/ci.completed"',
+		'"@kody/github.completed": { "description": "x" },\n\t\t\t\t"@kody/ci.completed"',
+	)
+	expect(() =>
+		rewritePackageManifestForFork({
+			manifestContent: manifest,
+			expectedPackageScope: 'jane',
+			targetKodyId: 'ci',
+		}),
+	).toThrow(
+		/"@kody\/github\.completed" and "@kody\/ci\.completed" to the same topic "@jane\/ci\.completed"/,
+	)
+})
+
+test('rewriteForkedPackageSelfReferences leaves binary files untouched', () => {
+	const binary = 'PNG\0@kody/github.pr.merged @kody/github'
+	const files = rewriteForkedPackageSelfReferences({
+		files: { 'logo.png': binary, 'data.bin': binary },
+		originPackageName: '@kody/github',
+		nextPackageName: '@jane/github',
+		topicRenames: { '@kody/github.pr.merged': '@jane/github.pr.merged' },
+	})
+	expect(files).toEqual({ 'logo.png': binary, 'data.bin': binary })
+})
