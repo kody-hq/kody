@@ -1351,10 +1351,17 @@ export async function prepareCommunityFork(
 		isAppStarterPackage(input.env.APP_DB, listing.packageId),
 	])
 	let preferredCommit = listing.pinnedCommit
+	let starterHeadIsPublished = false
 	if (source && isStarter) {
 		// Starter checks validate the published revision, so forks copy that one.
-		// Permanent: a source with no published commit forks the listing pin.
+		// Permanent: the listing pin also passed publish checks, so it stands in
+		// for a source that has no published commit.
 		preferredCommit = source.published_commit || listing.pinnedCommit
+		const head = await resolveArtifactSourceHead(
+			input.env,
+			source.repo_id,
+		).catch(() => null)
+		starterHeadIsPublished = head?.commit === preferredCommit
 	} else if (source) {
 		try {
 			const head = await resolveArtifactSourceHead(input.env, source.repo_id)
@@ -1393,8 +1400,10 @@ export async function prepareCommunityFork(
 		originCommit,
 		originName: listing.name,
 		originKodyId: listing.kodyId,
-		// A storage-layer repo fork would copy the unpublished branch tip.
-		originRepoId: isStarter ? null : (source?.repo_id ?? null),
+		// A storage-layer repo fork copies the branch tip (and binary files), so
+		// starters use it only when that tip is the published revision.
+		originRepoId:
+			isStarter && !starterHeadIsPublished ? null : (source?.repo_id ?? null),
 		lineage: {
 			listingId: input.listingId,
 			upstreamOwnerId: null,

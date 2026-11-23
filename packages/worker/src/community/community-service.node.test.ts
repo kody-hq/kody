@@ -1083,7 +1083,6 @@ test('forkCommunityListing copies the published revision of a recommended starte
 		expect.anything(),
 		'package-1',
 	)
-	expect(mockModule.resolveArtifactSourceHead).not.toHaveBeenCalled()
 	expect(mockModule.forkArtifactRepo).not.toHaveBeenCalled()
 	expect(mockModule.insertCommunityFork).toHaveBeenCalledWith(
 		expect.anything(),
