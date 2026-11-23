@@ -9,32 +9,33 @@ order: 1
 category: technical
 ---
 
-**TL;DR:** I went into this wanting to use Effect. After seven rounds of
-testing, Kody's request handlers are staying on plain async/await, with a few
+**TL;DR:** I went into this wanting to use Effect, so I gave it a real trial:
+seven rounds, blind builders, planted bugs, and an independent judge. Effect
+didn't win. Kody's request handlers are staying on plain async/await, with a few
 required helpers, some custom lint rules, and zod at every edge where input
 comes in. Effect might still make sense for our Durable Objects and queues, so
 I'm not closing that door.
 
-## Why my agents did the testing
+## Who ran the trial
 
 I'm not writing Kody's code by hand anymore. My agents are. So picking a library
 because I like how it reads would be kind of silly. I'd be picking it for
 someone else.
 
-So here's how I split it up. I decided what "good" meant and what would make me
-happy. I told my agent that nothing merges until an agent recommends Effect and
-it's truly the right long-term call. My agents built, hunted bugs, and judged.
-And when I wasn't convinced, I pushed back and we ran another round. After round
-4, I said finding bugs still felt like a good reason to use Effect, so we kept
+So my agents ran the trial. They built, hunted bugs, and judged. My part was the
+bar, the pushback, and the call. I told my agent that nothing merges until an
+agent recommends Effect and it's truly the right long-term call. After round 4,
+I said finding bugs still felt like a good reason to use Effect, so we kept
 going. After round 5, I asked whether XState (which Kody already uses) would
-catch the same bugs, so round 6 tested that too. Then I read the evidence and
-made the call.
+catch the same bugs, so round 6 tested that too. I also told the judge that the
+numbers don't decide this on their own. Then I read the evidence and made the
+call.
 
 And I had a preference going in. Early on I said, "I mean to use effect." I also
 said that something that "catches bugs increases the pit of success and that
 counts for a great deal." I meant both.
 
-## About that 2024 post
+## Why I said no in 2024
 
 In April 2024, replying to Sebastian Lorenz from the Effect team,
 [I wrote](https://x.com/kentcdodds/status/1784281743165731316): "I'm not talking
@@ -63,7 +64,7 @@ I think of libraries and frameworks as tools for my agents now. I want the ones
 they do their best work with. That's the same reason we
 [moved Kody from Remix 3 to TanStack Start](/blog/why-we-moved-kody-from-remix-3-to-tanstack-start).
 
-## Why we ran this at all
+## What I wanted Effect to do
 
 The goal is a pit of success: the easy way to write worker code should also be
 the correct way. A contributor or agent in a hurry shouldn't be able to forget
@@ -81,9 +82,8 @@ Our first attempt ([#5450](https://github.com/kody-hq/kody/pull/5450)) was an
 agent converting a newsletter slice of the worker to Effect 4. Thank you to
 [@mj-meyer](https://github.com/mj-meyer) and
 [@joelhooks](https://github.com/joelhooks) for thoughtful feedback on it. That
-feedback is what pushed us to redo the trial properly instead of drawing
-conclusions from a quick port. Thanks also to
-[@KrishRVH](https://github.com/KrishRVH) and
+feedback is why this turned into a real trial instead of a quick port. Thanks
+also to [@KrishRVH](https://github.com/KrishRVH) and
 [@mikearnaldi](https://github.com/mikearnaldi) for their feedback on
 [#5461](https://github.com/kody-hq/kody/pull/5461), which shaped later rounds.
 Krish suggested one `ManagedRuntime` per isolate, converting shared helpers
@@ -91,9 +91,10 @@ once, Schema at boundaries, and measuring a tree-shaken bundle. Mike pushed for
 comparing against a Promise baseline with the same telemetry, typed boundaries,
 and explicit errors.
 
-## The short history
+## Seven rounds, quickly
 
-This post is about round seven. Here's the quick version of how we got here:
+This post is mostly about round seven. Here's the quick version of how we got
+here:
 
 - **Round 1** ([#5450](https://github.com/kody-hq/kody/pull/5450)): the
   newsletter slice in Effect 4.
@@ -105,22 +106,21 @@ This post is about round seven. Here's the quick version of how we got here:
   feedback from round 2.
 - **Rounds 4 and 5**: Effect against a production-grade Promise baseline on
   background cleanup lanes, with seeded bugs and follow-up changes. The bug
-  evidence favored the Promise build. That's when I said finding bugs felt like
-  a good reason to use Effect, so we kept going.
+  evidence favored the Promise build, so round 5 checked whether Effect's rules
+  find real bugs as it spreads to more code.
 - **Round 6**: four arms on scheduled cleanup lanes (Effect, plain Promises,
   Promises plus lint and helpers, and XState for stateful lanes). Promises plus
   lint and helpers scored highest (7.67, then XState 6.28, plain Promises 6.08,
   Effect 5.63). Effect's static checks caught 0 of 9 planted bugs, and it added
-  about 30 ms of startup and about 177 KB gzip. (XState was in there because I
-  asked whether something Kody already uses would catch the same bugs.)
+  about 30 ms of startup and about 177 KB gzip.
 
 Round 6 was about background jobs. Request handlers have a different shape, so
 round 7 asked: does that result hold on a real request path? Same rubric, just
 Effect versus Promises plus helpers and lint.
 
-## How the agents ran it
+## How round 7 worked
 
-Here's how round 7 worked. Agents ran every step.
+Agents ran every step.
 
 **The rubric came first, and it was hidden.** My agent wrote the scoring rubric
 before any code was built. No builder, follow-up author, or bug hunter ever saw
@@ -188,8 +188,8 @@ The judge kept raw scores so we could reweight them, and I'll come back to that.
 | Adoption cost                 | 4.0        | 8.0                 |
 | **Weighted total**            | **5.76**   | **7.32**            |
 
-I told the judge up front that the numbers don't decide this on their own.
-Here's what's behind each one.
+Like I said, the numbers don't decide this on their own. Here's what's behind
+each one.
 
 **Seeded bugs: Effect 6.11, Promises 5.56.** Effect caught 5.5 of 9, Promises
 5.0, and every catch on both arms was static. Both caught the same four
@@ -325,10 +325,10 @@ prevention column, 5.17 to 3.33. But most of that lead comes from schema
 decoding finding bugs on main, and that's portable. On planted bugs, both caught
 the same four, and both missed the same important ones.
 
-I still think it does. What I didn't expect is that most of the catching came
-from patterns (exhaustive failure mapping, required deadlines, no floating
-promises, schema decoding at the edge), and we can have those without switching
-runtimes.
+So yes, I still think catching bugs counts for a great deal. What I didn't
+expect is that most of the catching came from patterns (exhaustive failure
+mapping, required deadlines, no floating promises, schema decoding at the edge),
+and we can have those without switching runtimes.
 
 ## The decision
 
@@ -367,15 +367,16 @@ startup CPU or check time.
 Next up is the worker's webhooks code, which has 73 lint findings to work
 through. That hasn't started yet.
 
-## Wrapping up
+## So, how did the trial go?
 
-I started this wanting Effect, and I still think it's good code once you know
-it. But I'm not the one writing it, and on our priorities, plain promises with
-some guardrails did better. If that changes (say Effect loads lazily and the
-check gets fast), we'll run it again.
+I gave Effect a real trial, and I went in wanting it to win. For Kody's request
+handlers, it didn't. I still think it's good code once you know it. But I'm not
+the one writing it, and on our priorities, plain promises with some guardrails
+did better for a lot less cost. If the things on that list above change, I'll
+happily give it another trial.
 
-Thanks again to everyone who gave feedback on the early PRs. This got a lot
-better because of you.
+Thanks again to everyone who gave feedback on the early PRs. This trial got a
+lot better because of you.
 
 If you want to dig in, the trial PRs are all there (now closed, superseded by
 [#5542](https://github.com/kody-hq/kody/pull/5542)): Arm A Effect
