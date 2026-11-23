@@ -1360,7 +1360,11 @@ export async function prepareCommunityFork(
 		const head = await resolveArtifactSourceHead(
 			input.env,
 			source.repo_id,
-		).catch(() => null)
+		).catch((error: unknown) => {
+			// Without the tip, the fork copies the published text snapshot.
+			console.warn('community-fork-starter-head-failed', error)
+			return null
+		})
 		starterHeadIsPublished = head?.commit === preferredCommit
 	} else if (source) {
 		try {
