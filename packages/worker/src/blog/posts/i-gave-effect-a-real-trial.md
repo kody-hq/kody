@@ -1,40 +1,38 @@
 ---
-title: How my agents decided to not use Effect
+title: I gave Effect a real trial
 date: 2026-11-25
 description:
-  I made this call, and my agents did the investigation. They ran a blind trial,
-  built the same Kody request path in Effect and in plain Promises with lint
-  rules, planted bugs in both, and scored them against priorities I set.
+  I went into this wanting to use Effect. After seven rounds of testing, Kody's
+  request handlers are staying on plain async/await with a few guardrails.
+  Here's how we tested it and what we found.
 order: 1
 category: technical
 ---
 
-**TL;DR:** Kody's worker request handlers will stay plain async/await Promises,
-made safe by a few small required helpers and custom lint rules that are on by
-default, plus zod decoding everywhere input arrives. Effect is not being adopted
-worker-wide, but it stays a candidate for long-lived resource-lifecycle code
-like Durable Objects and queues. This was my call and I own it. I set the
-priorities and designed the process, my agents did the investigation, and I
-actually started out leaning toward Effect.
+**TL;DR:** I went into this wanting to use Effect. After seven rounds of
+testing, Kody's request handlers are staying on plain async/await, with a few
+required helpers, some custom lint rules, and zod at every edge where input
+comes in. Effect might still make sense for our Durable Objects and queues, so
+I'm not closing that door.
 
-## I made this call
+## Why my agents did the testing
 
-This was my decision, and I didn't make it on a gut feeling. I wrote down what I
-care about and how much. When our first attempt was a quick port, I didn't
-accept it as proof. I pushed for a blind trial with planted bugs, where no
-builder knew about the other and nobody who wrote code got to grade it. I went
-in leaning toward Effect. Then I read the evidence and approved the
-recommendation.
+I'm not writing Kody's code by hand anymore. My agents are. So picking a library
+because I like how it reads would be kind of silly. I'd be picking it for
+someone else.
 
-Agents did the investigation because agents write the code. I'm not writing
-Kody's code myself anymore, and picking a side based on what I like reading
-would mean deciding for authors who aren't me. My job is to say what matters,
-how we'll find out, and to make the call. Their job is to find out, rigorously.
+So here's how I split it up. I decided what "good" meant and what would make me
+happy. I told my agent that nothing merges until an agent recommends Effect and
+it's truly the right long-term call. My agents built, hunted bugs, and judged.
+And when I wasn't convinced, I pushed back and we ran another round. After round
+4, I said finding bugs still felt like a good reason to use Effect, so we kept
+going. After round 5, I asked whether XState (which Kody already uses) would
+catch the same bugs, so round 6 tested that too. Then I read the evidence and
+made the call.
 
 And I had a preference going in. Early on I said, "I mean to use effect." I also
 said that something that "catches bugs increases the pit of success and that
-counts for a great deal." I meant both. This post is about what happened when we
-actually tested that.
+counts for a great deal." I meant both.
 
 ## About that 2024 post
 
@@ -44,9 +42,11 @@ about overlap. I'm talking about perception. And the size of your API. It's
 enormous. And it feels like writing a completely different language. Which is
 why I'm not planning on using it."
 
-That was a gut reaction, and plenty of people pushed back. The fair version of
-that pushback was "try it before saying never." They were right. So we did:
-seven rounds, and I went in leaning toward it.
+My reasons were practical. The API is huge, and learning a whole new way to
+write TypeScript wasn't worth it to me. Plenty of people pushed back, and the
+fair version of that pushback was basically: try it before you write it off.
+Fair enough. So we did. Seven rounds of it. And this time I went in hoping it
+would win.
 
 Back then, Sebastian kindly said he was
 ["respectfully placing a counter bet"](https://x.com/thefubhy/status/1784275505971077240)
@@ -55,17 +55,13 @@ bet had nothing to do with this. And honestly, if my agents had picked Effect,
 I'd have happily called it a win for Sebastian, even though technically I still
 wouldn't be the one writing it. 😄
 
-The bigger point is that my 2024 objection matters a lot less now. When agents
-are the authors, "it feels like a different language to me" isn't a good reason
-to reject a library. That's exactly why Effect got a real trial instead of a
-tweet.
+Here's what changed since 2024: I'm not the one writing the code anymore. If my
+agents can write Effect well, then "it feels like a different language to me"
+just isn't a very good reason to skip it.
 
-## Libraries are tools for my agents
-
-I think of libraries and frameworks as tools for my agents now, and I'm looking
-for the ones my agents find good to work with. Our
-[move from Remix 3 to TanStack Start](/blog/why-we-moved-kody-from-remix-3-to-tanstack-start)
-came from the same place. This is another round of that.
+I think of libraries and frameworks as tools for my agents now. I want the ones
+they do their best work with. That's the same reason we
+[moved Kody from Remix 3 to TanStack Start](/blog/why-we-moved-kody-from-remix-3-to-tanstack-start).
 
 ## Why we ran this at all
 
@@ -78,8 +74,8 @@ before review.
 [Effect](https://effect.website) was a serious contender for that. It's a
 TypeScript library for typed errors, dependency injection, resource safety, and
 structured concurrency. In Effect, the errors a function can fail with are part
-of its type, so "you forgot to handle this" can be a compile error. That's
-exactly the kind of thing I want.
+of its type, so "you forgot to handle this" can be a compile error. That's a big
+deal to me, and it's the main reason I wanted Effect to win.
 
 Our first attempt ([#5450](https://github.com/kody-hq/kody/pull/5450)) was an
 agent converting a newsletter slice of the worker to Effect 4. Thank you to
@@ -97,7 +93,7 @@ and explicit errors.
 
 ## The short history
 
-This post is about round seven. Here's the rest in one breath:
+This post is about round seven. Here's the quick version of how we got here:
 
 - **Round 1** ([#5450](https://github.com/kody-hq/kody/pull/5450)): the
   newsletter slice in Effect 4.
@@ -115,7 +111,8 @@ This post is about round seven. Here's the rest in one breath:
   Promises plus lint and helpers, and XState for stateful lanes). Promises plus
   lint and helpers scored highest (7.67, then XState 6.28, plain Promises 6.08,
   Effect 5.63). Effect's static checks caught 0 of 9 planted bugs, and it added
-  about 30 ms of startup and about 177 KB gzip.
+  about 30 ms of startup and about 177 KB gzip. (XState was in there because I
+  asked whether something Kody already uses would catch the same bugs.)
 
 Round 6 was about background jobs. Request handlers have a different shape, so
 round 7 asked: does that result hold on a real request path? Same rubric, just
@@ -123,7 +120,7 @@ Effect versus Promises plus helpers and lint.
 
 ## How the agents ran it
 
-Here's the process. I designed it; agents did every step.
+Here's how round 7 worked. Agents ran every step.
 
 **The rubric came first, and it was hidden.** My agent wrote the scoring rubric
 before any code was built. No builder, follow-up author, or bug hunter ever saw
@@ -161,7 +158,7 @@ measured startup and bundle size, scored everything, and wrote a recommendation.
 
 ## The rubric
 
-These were my priorities, written down as weights:
+My agent proposed these weights:
 
 | Criterion                               | Weight |
 | --------------------------------------- | ------ |
@@ -175,8 +172,7 @@ Bug prevention was split three ways: seeded bugs (60% of it), residual bugs from
 the blind hunts (25%), and bugs on main that the approach's own machinery
 surfaced while building (15%).
 
-The weights were a proposal. The judge kept raw scores so we could reweight
-them, and I'll come back to that.
+The judge kept raw scores so we could reweight them, and I'll come back to that.
 
 ## The scores
 
@@ -192,7 +188,7 @@ them, and I'll come back to that.
 | Adoption cost                 | 4.0        | 8.0                 |
 | **Weighted total**            | **5.76**   | **7.32**            |
 
-Numbers alone don't decide this, and the judge was told so from the start.
+I told the judge up front that the numbers don't decide this on their own.
 Here's what's behind each one.
 
 **Seeded bugs: Effect 6.11, Promises 5.56.** Effect caught 5.5 of 9, Promises
@@ -235,7 +231,7 @@ Effect.
 
 ## Being fair to Effect
 
-Effect deserves real credit here, so let me give it.
+I want to be fair to Effect here, because it did some things really well.
 
 **Schema decoding found real bugs on main.** While building, Effect's builder
 found two real bugs on main _through the approach itself_, by decoding untrusted
@@ -249,24 +245,25 @@ input with a schema:
 The judge verified both against main. That's the pit of success working as
 advertised: the schema made the author handle malformed input.
 
-Now the honest other half. The Promise builder found those same bugs (and three
-more) by plain reading, so they don't count as machinery there. And schema
-decoding at trust boundaries isn't Effect-specific. zod is already in the repo.
-That's a lesson we're taking with us, not a reason to change runtimes.
+But the Promise builder found those same bugs (and three more) by plain reading,
+so they don't count as machinery there. And schema decoding at trust boundaries
+isn't Effect-specific. zod is already in the repo. So we're keeping that lesson.
+We're just keeping it with zod.
 
 **Effect's static checks did much better than last time.** This was the
 surprise. In round 6, Effect's static checks caught 0 of 9 seeds. Here they
 caught 4 of 9 specifically. The judge's explanation is that request handlers
 "have the shapes those checks understand (an Effect value, an error channel, a
-Promise API)." The other half of that sentence matters just as much: "The
-Promise lint caught exactly the same shapes."
+Promise API)." But the very next sentence was: "The Promise lint caught exactly
+the same shapes."
 
 **The code was good.** Effect's handlers weren't hard to read. They were hard to
 read _if you don't know Effect_.
 
 ## What neither approach caught
 
-This is the part I think matters most.
+Honestly, I think this is the most important part, and it doesn't have much to
+do with Effect.
 
 | Seed                                       | Effect     | Promises + lint |
 | ------------------------------------------ | ---------- | --------------- |
@@ -285,14 +282,13 @@ errors. Once the dead code was removed, nothing caught them on either arm.
 
 So look at what slipped through everywhere: writing state in the wrong order,
 accepting an expired ticket, skipping a cleanup, and reporting a partial write
-as success. Those are the bugs that would actually hurt. None of them is a
-type-shaped mistake. They're business rules. As the judge wrote, they "need
-tests and state-machine invariants, not typing."
+as success. Those are the bugs that would actually hurt. A type checker can't
+know that a ticket expired or that we saved things in the wrong order. As the
+judge put it, those "need tests and state-machine invariants, not typing."
 
 ## Beside the scores: things that got no points
 
-The judge also assessed a few things with no points attached. They sit beside
-the scores, not inside them.
+I asked the judge to look at a few things without scoring them:
 
 **Day-to-day developer experience.** Effect gets trace spans for free and
 precise (if long) type errors, but `effect:check` is a 52 second leg and tests
@@ -319,7 +315,7 @@ rule list is unguarded.
 already writes. The judge named Effect 4 being a recent major version, plus the
 slow check, as the costs most likely to be felt every day.
 
-## So what about my own two quotes?
+## So was I right that catching bugs counts for a lot?
 
 The judge was told not to decide for me, just to say how the evidence bears on
 what I'd said.
@@ -329,17 +325,17 @@ prevention column, 5.17 to 3.33. But most of that lead comes from schema
 decoding finding bugs on main, and that's portable. On planted bugs, both caught
 the same four, and both missed the same important ones.
 
-So "catches bugs" counts for a great deal, and it still does. What I learned is
-that most of the catching here came from patterns (exhaustive failure mapping,
-required deadlines, no floating promises, schema decoding at the edge), and we
-can get those without changing runtimes.
+I still think it does. What I didn't expect is that most of the catching came
+from patterns (exhaustive failure mapping, required deadlines, no floating
+promises, schema decoding at the edge), and we can have those without switching
+runtimes.
 
 ## The decision
 
 - **Request handlers use Promises with required helpers and lint rules.** The
   rules are on by default for request-path directories, not opt-in.
-- **zod decoding at every edge where input arrives.** That's the lesson Effect
-  taught us, kept.
+- **zod decoding at every edge where input arrives.** That's the big thing
+  Effect taught us.
 - **Effect is not adopted worker-wide.** It stays a candidate for long-lived
   resource-lifecycle code (Durable Objects, queues), loaded lazily so it costs
   nothing at startup.
@@ -371,12 +367,15 @@ startup CPU or check time.
 Next up is the worker's webhooks code, which has 73 lint findings to work
 through. That hasn't started yet.
 
-## I made the call, agents did the legwork
+## Wrapping up
 
-I started this wanting Effect, and it's good code once you know it. But I'm not
-the one writing it. So I set the priorities, agents tested them blind, and I
-made the call on the evidence. That's how I want to make decisions like this
-from now on.
+I started this wanting Effect, and I still think it's good code once you know
+it. But I'm not the one writing it, and on our priorities, plain promises with
+some guardrails did better. If that changes (say Effect loads lazily and the
+check gets fast), we'll run it again.
+
+Thanks again to everyone who gave feedback on the early PRs. This got a lot
+better because of you.
 
 If you want to dig in, the trial PRs are all there (now closed, superseded by
 [#5542](https://github.com/kody-hq/kody/pull/5542)): Arm A Effect
