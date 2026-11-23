@@ -455,8 +455,8 @@ function PackageFilesExplorerContent({
 																	: {
 																			'aria-busy': 'true',
 																			'data-stale-preview': '',
-																			// Read-only: no pointer, keyboard,
-																			// or tab stops.
+																			// Its buttons would act on a file the
+																			// reader has left.
 																			inert: true,
 																		})}
 																css={
