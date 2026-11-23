@@ -425,16 +425,16 @@ Restore rebuilds the derived stores below; do not treat them as recovery media:
 
 No single credential should both erase production and erase the retained backup.
 
-| Credential                   | Where                                                                                       | Purpose                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Source Account D1 Edit token | Control-plane secret `CLOUDFLARE_API_TOKEN`                                                 | Dashboard size lookups and graduated production restore (including safety exports) |
-| DR R2 provisioner token      | Operator env only (`backup-resources-cli`)                                                  | Bucket / lock / lifecycle setup — never a Worker secret                            |
-| Production → DR S3 keys      | Production Worker secrets `DR_BACKUP_ACCESS_KEY_ID` / `DR_BACKUP_SECRET_ACCESS_KEY`         | Stage into the DR bucket                                                           |
-| Drill D1 Edit token          | Control-plane secret `DRILL_API_TOKEN`                                                      | Create/import/query/delete drill D1 in `DRILL_ACCOUNT_ID` only                     |
-| Restore confirm HMAC         | Control-plane secret `RESTORE_CONFIRM_SECRET`                                               | Short-lived (10 min) prepare→execute token                                         |
-| Production restore bearer    | Both sides: `DR_RESTORE_SECRET`                                                             | Control plane → `POST /__maintenance/dr-restore`                                   |
-| Manifest signing key         | Control-plane secret `BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64`                     | Sign D1 + full manifests                                                           |
-| Escrow passphrase            | Operator password manager only (`SECRET_ESCROW_PASSPHRASE` in GitHub for the seal workflow) | Unseal `SECRET_STORE_KEY`                                                          |
+| Credential                   | Where                                                                                       | Purpose                                                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Source Account D1 Edit token | Control-plane secret `CLOUDFLARE_API_TOKEN`                                                 | Dashboard size lookups and graduated production restore (including safety exports)                                             |
+| DR R2 provisioner token      | Operator env only (`backup-resources-cli`)                                                  | Bucket / lock / lifecycle setup — never a Worker secret                                                                        |
+| Production → DR S3 keys      | Production Worker secrets `DR_BACKUP_ACCESS_KEY_ID` / `DR_BACKUP_SECRET_ACCESS_KEY`         | Stage into the DR bucket                                                                                                       |
+| Drill D1 Edit token          | Control-plane secret `DRILL_API_TOKEN`                                                      | Create/import/query/delete drill D1 in `DRILL_ACCOUNT_ID` only                                                                 |
+| Restore confirm HMAC         | Control-plane secret `RESTORE_CONFIRM_SECRET`                                               | Short-lived (10 min) prepare→execute token                                                                                     |
+| Production restore bearer    | Both sides: `DR_RESTORE_SECRET`                                                             | Control plane → `POST /__maintenance/dr-restore`                                                                               |
+| Manifest signing key         | Control-plane secret `BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64`                     | Sign the [full manifest](../../packages/backup-control-plane/seal-full-backup.ts), which records the paced D1 manifest digests |
+| Escrow passphrase            | Operator password manager only (`SECRET_ESCROW_PASSPHRASE` in GitHub for the seal workflow) | Unseal `SECRET_STORE_KEY`                                                                                                      |
 
 Admin UI auth is dual-layer:
 
