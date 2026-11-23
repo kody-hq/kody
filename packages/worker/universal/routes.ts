@@ -113,6 +113,7 @@ export const routes = {
 	},
 	adminRoles: { href: () => '/admin/roles' },
 	adminReservedUsernames: { href: () => '/admin/reserved-usernames' },
+	adminStarterTemplates: { href: () => '/admin/starter-templates' },
 	adminFeatureFlags: { href: () => '/admin/feature-flags' },
 	youtubeThumb: {
 		href: (params: { videoId: string | number }) =>

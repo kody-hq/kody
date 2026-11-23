@@ -569,6 +569,22 @@ primitives:
       - docs/contributing/architecture/data-storage.md
     adrs: []
 
+  - id: app-starters
+    group: assistant
+    name: App starters
+    summary:
+      Admin-ranked list of @kody package apps that search recommends when an
+      agent makes an app, validated against package.json kody.starter.
+    code:
+      - packages/worker/src/app-starters
+      - packages/worker/src/mcp/capabilities/admin/admin-app-starter-add.ts
+      - packages/worker/src/mcp/capabilities/admin/app-starter-shared.ts
+      - packages/worker/src/mcp/tools/search-app-starters.ts
+      - packages/worker/start/pages/admin-starter-templates.tsx
+    docs:
+      - docs/guides/making-great-apps.md
+    adrs: []
+
   - id: account-export
     group: assistant
     name: Account data export

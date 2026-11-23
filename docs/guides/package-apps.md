@@ -14,6 +14,9 @@ category: platform
 
 # Package apps
 
+Making a new app? Start with [Making a great app](./making-great-apps.md)
+(`guide:making_great_apps`) and fork a recommended starter.
+
 Use this doc when authoring or debugging a package **app**, a community fork of
 an app, or a hosted-app load. Package shape, README / AGENTS.md, Intent, and
 export JSDoc stay in [Package authoring](./package-authoring.md)

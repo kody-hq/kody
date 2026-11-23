@@ -12,6 +12,10 @@ import {
 	clearFeatureFlagOrgOverrideSchema,
 	deleteStaleFlagSchema,
 	reservedUsernamesSchema,
+	addAppStarterSchema,
+	updateAppStarterSchema,
+	removeAppStarterSchema,
+	reorderAppStartersSchema,
 } from '#universal/admin-setting-mutations.ts'
 import {
 	assignAdminUserRoleSchema,
@@ -406,5 +410,49 @@ export const adminCodemodRunStop = createServerFn({ method: 'POST' })
 				url: new URL('/admin/codemods', request.url),
 				body: data,
 			}),
+		)
+	})
+
+export const addAdminAppStarter = createServerFn({ method: 'POST' })
+	.validator(addAppStarterSchema)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { addAdminAppStarter } =
+			await import('../../src/admin/app-starters-operations.ts')
+		return withWebsiteMutation({}, async ({ request, env }) =>
+			addAdminAppStarter({ request, env, fields: data }),
+		)
+	})
+
+export const updateAdminAppStarter = createServerFn({ method: 'POST' })
+	.validator(updateAppStarterSchema)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { updateAdminAppStarter } =
+			await import('../../src/admin/app-starters-operations.ts')
+		return withWebsiteMutation({}, async ({ request, env }) =>
+			updateAdminAppStarter({ request, env, fields: data }),
+		)
+	})
+
+export const removeAdminAppStarter = createServerFn({ method: 'POST' })
+	.validator(removeAppStarterSchema)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { removeAdminAppStarter } =
+			await import('../../src/admin/app-starters-operations.ts')
+		return withWebsiteMutation({}, async ({ request, env }) =>
+			removeAdminAppStarter({ request, env, fields: data }),
+		)
+	})
+
+export const reorderAdminAppStarters = createServerFn({ method: 'POST' })
+	.validator(reorderAppStartersSchema)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { reorderAdminAppStarters } =
+			await import('../../src/admin/app-starters-operations.ts')
+		return withWebsiteMutation({}, async ({ request, env }) =>
+			reorderAdminAppStarters({ request, env, fields: data }),
 		)
 	})

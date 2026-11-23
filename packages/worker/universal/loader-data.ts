@@ -645,6 +645,43 @@ export type AdminReservedUsernamesLoaderData = {
 	updatedBy: string | null
 }
 
+export type AdminStarterTemplateCheck = {
+	id: string
+	label: string
+	ok: boolean
+	detail: string
+}
+
+export type AdminStarterTemplate = {
+	packageId: string
+	packageName: string
+	rank: number
+	enabled: boolean
+	note: string | null
+	updatedAt: string
+	name: string
+	description: string
+	tags: Array<string>
+	previewUrl: string | null
+	status: 'ready' | 'failed'
+}
+
+export type AdminStarterTemplateCandidate = {
+	packageName: string
+	checks: Array<AdminStarterTemplateCheck>
+	previewPath: string | null
+	previewUrl: string | null
+	canAdd: boolean
+}
+
+export type AdminStarterTemplatesLoaderData = {
+	ok: true
+	starters: Array<AdminStarterTemplate>
+	candidates: Array<{ packageName: string; kodyId: string }>
+	candidate: AdminStarterTemplateCandidate | null
+	candidateError: string | null
+}
+
 export type AdminFeatureFlagsLoaderData = {
 	ok: true
 	featureFlags: Array<AdminFeatureFlag>
@@ -3350,6 +3387,7 @@ export type AppLoaderData = {
 	adminRoles?: AdminRolesLoaderData
 	adminCommunityReports?: AdminCommunityReportsLoaderData
 	adminReservedUsernames?: AdminReservedUsernamesLoaderData
+	adminStarterTemplates?: AdminStarterTemplatesLoaderData
 	adminFeatureFlags?: AdminFeatureFlagsLoaderData
 	youtubeWatch?: YoutubeWatchLoaderData
 	landingHeroVideos?: Array<LandingHeroVideo>

@@ -148,6 +148,7 @@ export type SearchPhaseTimings = {
 	firstSearchStampMs?: number
 	onboardingNoticeMs?: number
 	waitingItemsMs?: number
+	appStartersMs?: number
 	exclusiveMs?: number
 	unaccountedMs?: number
 }

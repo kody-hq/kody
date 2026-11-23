@@ -52,6 +52,7 @@ export const packageExportCandidateMinScore = 0.45
  * answer, so a slow probe fan-out skips the block instead of delaying results.
  */
 export const SEARCH_WAITING_ITEMS_BUDGET_MS = 1_500
+export const SEARCH_APP_STARTERS_BUDGET_MS = 1_500
 /**
  * Bound wait for the post-list onboarding courtesy notice. It is a nudge, not
  * the answer, so a slow checklist probe skips the notice instead of delaying

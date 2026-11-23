@@ -26,6 +26,7 @@ const searchServerTimingPhases = [
 	['memoryEnrichment', 'memoryEnrichmentMs'],
 	['formatting', 'formattingMs'],
 	['waitingItems', 'waitingItemsMs'],
+	['appStarters', 'appStartersMs'],
 	['unaccounted', 'unaccountedMs'],
 ] as const satisfies ReadonlyArray<readonly [string, keyof SearchPhaseTimings]>
 
@@ -67,6 +68,7 @@ export const searchExclusivePhaseKeys = [
 	'firstSearchStampMs',
 	'onboardingNoticeMs',
 	'waitingItemsMs',
+	'appStartersMs',
 	'formattingMs',
 ] as const satisfies ReadonlyArray<keyof SearchPhaseTimings>
 

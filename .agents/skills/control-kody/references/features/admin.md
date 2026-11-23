@@ -22,7 +22,11 @@ npm run control-kody -- request GET /admin 403
 ## Assert
 
 - `/admin/`, `/admin/$`, `/admin/users`, `/admin/orgs`, `/admin/orgs/$orgSlug`,
-  `/admin/feature-flags`
+  `/admin/feature-flags`, `/admin/starter-templates`,
+  `/admin/starter-templates/new`
+- Starter templates list existing `@kody` packages with rank, enabled, and a
+  Ready or Failed manifest badge. Add validates `package.json#kody.starter` and
+  blocks until every check passes.
 - Organization inventory and detail reads include lifecycle state, seats,
   budgets, and wallet history. User detail links memberships to their org view;
   Deleted users remain read-only.

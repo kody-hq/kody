@@ -18,6 +18,23 @@ export const deleteStaleFlagSchema = z.object({ key: z.string() })
 export const reservedUsernamesSchema = z.object({
 	usernames: z.array(z.string()),
 })
+export const addAppStarterSchema = z.object({
+	package: z.string(),
+	rank: z.number().int().min(1).optional(),
+	enabled: z.boolean(),
+})
+export const reorderAppStartersSchema = z.object({
+	packageIds: z.array(z.string().min(1)),
+})
+export const updateAppStarterSchema = z.object({
+	packageId: z.string().min(1),
+	rank: z.number().int().min(1).optional(),
+	enabled: z.boolean().optional(),
+	note: z.string().optional(),
+})
+export const removeAppStarterSchema = z.object({
+	packageId: z.string().min(1),
+})
 export type SetGlobalFeatureFlagInput = z.infer<
 	typeof setGlobalFeatureFlagSchema
 >
@@ -42,3 +59,7 @@ export type SetFeatureFlagOverrideInput = z.infer<
 export type ClearFeatureFlagOverrideInput = z.infer<
 	typeof clearFeatureFlagOverrideSchema
 >
+export type AddAppStarterInput = z.infer<typeof addAppStarterSchema>
+export type UpdateAppStarterInput = z.infer<typeof updateAppStarterSchema>
+export type RemoveAppStarterInput = z.infer<typeof removeAppStarterSchema>
+export type ReorderAppStartersInput = z.infer<typeof reorderAppStartersSchema>

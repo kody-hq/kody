@@ -151,6 +151,7 @@ export type SearchResultStructuredContent = {
 		firstSearchStampMs?: number
 		onboardingNoticeMs?: number
 		waitingItemsMs?: number
+		appStartersMs?: number
 		exclusiveMs?: number
 		unaccountedMs?: number
 	}

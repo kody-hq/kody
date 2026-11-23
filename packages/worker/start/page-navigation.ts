@@ -30,6 +30,7 @@ const pageNavigationItems = [
 	'packages',
 	'platform-feedback',
 	'platform-integrations',
+	'starter-templates',
 	'profile',
 	'profiles',
 	'provider-marks',

@@ -93,6 +93,10 @@ import { adminRunLogSqlBillingCapability } from './admin-run-log-sql-billing.ts'
 import { adminWorkflowStoppedAttemptsCloseCapability } from './admin-workflow-stopped-attempts-close.ts'
 import { adminUserMeterStorageReconcileCapability } from './admin-user-meter-storage-reconcile.ts'
 import { adminMailboxMaintenanceCapability } from './admin-mailbox-maintenance.ts'
+import { adminAppStarterAddCapability } from './admin-app-starter-add.ts'
+import { adminAppStarterListCapability } from './admin-app-starter-list.ts'
+import { adminAppStarterRemoveCapability } from './admin-app-starter-remove.ts'
+import { adminAppStarterUpdateCapability } from './admin-app-starter-update.ts'
 import { adminReservedUsernameAddCapability } from './admin-reserved-username-add.ts'
 import { adminReservedUsernameListCapability } from './admin-reserved-username-list.ts'
 import { adminReservedUsernameRemoveCapability } from './admin-reserved-username-remove.ts'
@@ -283,6 +287,10 @@ export const adminDomain = defineDomain({
 		adminFeatureFlagRepoCheckCapability,
 		adminFeatureFlagDeleteStaleCapability,
 		adminRepoPushQueueCostCapability,
+		adminAppStarterListCapability,
+		adminAppStarterAddCapability,
+		adminAppStarterUpdateCapability,
+		adminAppStarterRemoveCapability,
 		adminReservedUsernameListCapability,
 		adminReservedUsernameAddCapability,
 		adminReservedUsernameRemoveCapability,
