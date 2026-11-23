@@ -883,7 +883,8 @@ CLI is available).
 Hosted apps get a [fallback 404 and HTML head tags](#page-response-defaults),
 plus
 [write rate limits and asset path checks](#write-requests-and-static-assets).
-Use the `x-kody-default` response header to identify the default Kody applied.
+The `x-kody-default` response header identifies a platform response or HTML head
+rewrite pass.
 
 ### Page response defaults
 
@@ -893,7 +894,8 @@ Use the `x-kody-default` response header to identify the default Kody applied.
   that header. Apps can supply a custom HTML 404 body.
 - **`head`.** For HTML bodies on successful `GET` responses and HTML 404s on
   `GET`, Kody looks for a `<head>` and fills in missing viewport, title,
-  description, Open Graph tags, and favicon. The unscoped package name fills an
+  description, Open Graph tags, and favicon. The header also appears when the
+  app already supplies all of those tags. The unscoped package name fills an
   absent or empty title and supplies the generated icon. Kody uses
   `kody.description` for a missing description. Default `og:title` follows the
   page title, and default `og:description` uses the page's description or falls
