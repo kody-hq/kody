@@ -39,6 +39,7 @@ import {
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
 import { captureInfraHiccup } from '#worker/infra-hiccup-sentry.ts'
+import { isDeadlineExceededError } from '#worker/outbound/with-deadline.ts'
 import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { readRemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
@@ -230,6 +231,16 @@ export function toApiError(
 	},
 ): ApiError {
 	if (error instanceof ApiError) return error
+	const deadline = getErrorCauseChain(error).find(isDeadlineExceededError)
+	if (deadline) {
+		return new ApiError({
+			status: 503,
+			code: 'internal_error',
+			message: `Kody did not get an answer in time (${deadline.label}). Try again in a moment.`,
+			headers: { 'Retry-After': transientDatabaseRetryAfterSeconds },
+			cause: error,
+		})
+	}
 	if (error instanceof GuestRestrictionError) {
 		return new ApiError({
 			status: 403,
