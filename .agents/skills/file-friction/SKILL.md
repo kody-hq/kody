@@ -23,18 +23,11 @@ not help the next agent.
 **Where:** always pass required
 `target: { host: 'github' | 'kody', repo: string }`.
 
-- Platform / this repo: `{ host: 'github', repo: 'kody-hq/kody' }` (never raw
-  `gh`).
-- Kody package: `{ host: 'kody', repo: '@owner/leaf' }` (wakes Patch; no GitHub
-  issue).
+- Platform / this repo: `{ host: 'github', repo: 'kody-hq/kody' }`.
+- Kody package: `{ host: 'kody', repo: '@owner/leaf' }`.
 
-Prefer `kody:@kody/kody-factory/friction/file` (run with `--org kody`) for one
-or many leftovers via prefer-local CLI execute
-([prefer-local-cli-execute](../prefer-local-cli-execute/SKILL.md)). Pass
-`target` + `items` (a one-element `items` array is fine). If `--local` cannot
-run, fix the environment so local works. Open API / MCP `api` cannot invoke this
-package export, and hosted MCP `execute` is banned. Do not invent issues via
-`gh`. If nothing meets the bar, skip the call.
-
-The old `kody:@kentcdodds/friction-log/file` (run without `--org kody`) still
-works with the same params. Use it if the factory export errors.
+Run `kody:@kody/kody-factory/friction/file` hosted with
+`npx @kodycodes/cli execute --org kody --context cloud --invoke kody:@kody/kody-factory/friction/file --params '…'`.
+Pass `target` + `items` (a one-element `items` array is fine). Hosted runs emit
+`@kody/factory.card.created`, which drives push and routing; `--local` runs skip
+it. If nothing meets the bar, skip the call.

@@ -41,9 +41,9 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Release notes](./release-notes.md) (PR bodies / Discord; **May break
   packages** heading)
 - [Writing blog posts](./blog.md) (category, series, frontmatter schema)
-- [Friction log](./friction-log.md) (when/where/how-to-fix policy; filing at
-  [@kody/kody-factory](https://kody.codes/@kody/kody-factory), daily sweep at
-  [@kentcdodds/friction-log](https://kody.codes/@kentcdodds/friction-log))
+- [Friction log](./friction-log.md) (when/where/how-to-fix policy; friction
+  cards and the nightly card run at
+  [@kody/kody-factory](https://kody.codes/@kody/kody-factory))
 - [Repo health](./repo-health.md) (CI + in-repo budgets: AGENTS.md cap, Validate
   unit-job timing, ship-pr review-bot sort)
 - Local CLI execute (when, command, failure):
