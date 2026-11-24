@@ -23,15 +23,17 @@ export function fakeReplicatedD1(flag: ReplicaReadFlag) {
 	const sessions: Array<string> = []
 	let flagRow = flag
 	let flagReadFails = false
-	let flagReadHangs = false
+	let flagGate: Promise<void> | undefined
+	let releaseFlagReads = () => {}
 
 	function statement(sql: string, read: () => Copy, by: string) {
 		const run = async () => {
 			served.push(`${by}:${sql}`)
 			if (sql.includes('feature_flags')) {
-				if (flagReadHangs) await new Promise(() => {})
+				const row = flagRow
+				await flagGate
 				if (flagReadFails) throw new Error('D1 is down')
-				return { results: flagRow ? [flagRow] : [], meta: {} }
+				return { results: row ? [row] : [], meta: {} }
 			}
 			if (sql === 'UPDATE revoke') {
 				primary.member = false
@@ -90,8 +92,19 @@ export function fakeReplicatedD1(flag: ReplicaReadFlag) {
 		sessions,
 		setFlag: (next: ReplicaReadFlag) => (flagRow = next),
 		failFlagReads: () => (flagReadFails = true),
-		/** A read Workers dropped with its request: it never settles. */
-		hangFlagReads: (hangs: boolean) => (flagReadHangs = hangs),
+		/**
+		 * Flag reads from now on do not settle, like a read Workers dropped
+		 * with its request, until the returned function lets them through
+		 * with the flag they started with.
+		 */
+		hangFlagReads() {
+			flagGate = new Promise((resolve) => (releaseFlagReads = resolve))
+			const release = releaseFlagReads
+			return () => {
+				flagGate = undefined
+				return release
+			}
+		},
 		replicate: () => Object.assign(replica, primary),
 	}
 }

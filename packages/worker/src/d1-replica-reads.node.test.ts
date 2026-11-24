@@ -199,11 +199,10 @@ test('a GET that wrote on the primary leaves a bookmark for the page it redirect
 	expect(next).toMatchObject({ member: false })
 })
 
-test('a write on a new Worker instance still leaves a bookmark once the flag has loaded', async () => {
+test('a write on a new Worker instance leaves a bookmark before the flag has loaded', async () => {
 	const d1 = fakeReplicatedD1(on)
 	const env = { APP_DB: d1.db } as Env
 	installD1ReplicaReads(env)
-	// The flag read starts with this request and lands before it answers.
 	const write = await visit(env, 'UPDATE revoke', { method: 'POST' })
 	expect(write.setCookie).toMatch(/^kody_d1=00000003-/)
 })
@@ -268,26 +267,39 @@ test('turning the flag off, or a failed flag read, returns reads to the primary'
 	expect(sessions).toEqual([])
 })
 
-test('a flag read that never settles is replaced after the interval', async () => {
+test('a flag read that never settles is replaced, and cannot set the flag late', async () => {
 	vi.useFakeTimers()
 	try {
 		const { env, sessions, setFlag, hangFlagReads } = await setup(on)
-		setFlag({ enabled: 0, rollout_percent: null })
-		hangFlagReads(true)
+		const resume = hangFlagReads()
 		vi.advanceTimersByTime(31_000)
 		await visit(env, 'SELECT role')
-		hangFlagReads(false)
-		// Within the interval the dropped read is still the one in flight.
+		const settleStalled = resume()
+		setFlag({ enabled: 0, rollout_percent: null })
+		// Within the interval the stalled read is still the one in flight.
 		await visit(env, 'SELECT role')
 		expect(sessions).toEqual(['first-unconstrained', 'first-unconstrained'])
 		vi.advanceTimersByTime(31_000)
 		await visit(env, 'SELECT role')
+		await refreshD1ReplicaReadRollout(env)
+		// The stalled read saw the flag on; it settles after its replacement.
+		settleStalled()
+		await Promise.resolve()
 		sessions.length = 0
 		await visit(env, 'SELECT role')
 		expect(sessions).toEqual([])
 	} finally {
 		vi.useRealTimers()
 	}
+})
+
+test('a write answers with a bookmark while the first flag read is stalled', async () => {
+	const d1 = fakeReplicatedD1(on)
+	d1.hangFlagReads()
+	const env = { APP_DB: d1.db } as Env
+	installD1ReplicaReads(env)
+	const write = await visit(env, 'UPDATE revoke', { method: 'POST' })
+	expect(write.setCookie).toMatch(/^kody_d1=00000003-/)
 })
 
 test('a read started on the primary moves to the replica once it has caught up', async () => {

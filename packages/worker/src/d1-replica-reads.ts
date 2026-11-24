@@ -87,7 +87,16 @@ export function refreshD1ReplicaReadRollout(env: Env): Promise<void> {
 	if (cache.loading && Date.now() - cache.loadedAt <= rolloutTtlMs)
 		return cache.loading
 	cache.loadedAt = Date.now()
-	const loading = (async () => {
+	// A read replaced after the interval may still settle, later than its
+	// replacement; only the latest read sets the flag.
+	const apply = (value: Rollout) => {
+		if (cache.loading !== loading) return
+		cache.value = value
+		cache.loaded = true
+	}
+	const loading: Promise<void> = (async () => {
+		// Let `cache.loading` be set before a result can arrive.
+		await Promise.resolve()
 		try {
 			const row = await real
 				.prepare(
@@ -95,17 +104,17 @@ export function refreshD1ReplicaReadRollout(env: Env): Promise<void> {
 				)
 				.bind(d1ReplicaReadsFlagKey)
 				.first<{ enabled: number; rollout_percent: number | null }>()
-			cache.value = row
-				? { enabled: row.enabled === 1, percent: row.rollout_percent }
-				: off
+			apply(
+				row
+					? { enabled: row.enabled === 1, percent: row.rollout_percent }
+					: off,
+			)
 		} catch (error) {
 			// A database that cannot answer the flag read keeps reading the primary.
-			cache.value = off
+			apply(off)
 			// A database not migrated yet has no flag, which is not a failure.
 			if (!String(error).includes('no such table: feature_flags'))
 				console.warn('D1 replica read rollout was not read:', String(error))
-		} finally {
-			cache.loaded = true
 		}
 	})()
 	cache.loading = loading
@@ -341,11 +350,11 @@ export async function d1FreshReadSetCookie(
 	const real = realDatabases.get(env)
 	if (!state || !real) return undefined
 	if (isRead(request) && !state.wrote) return undefined
-	// The flag as it is now: on a new Worker instance it loads during the
-	// request, and the next page load would already read a replica.
+	// On a new Worker instance the flag may not have loaded yet, and the next
+	// page load could already read a replica, so an unknown flag counts as on.
+	// Never wait for the flag: its read may not settle.
 	const cache = rollouts.get(real)
-	if (cache && !cache.loaded) await cache.loading
-	if (!cache?.value.enabled) return undefined
+	if (cache?.loaded && !cache.value.enabled) return undefined
 	let value = noBookmark
 	try {
 		const session = timeD1RoundTrips(real).withSession('first-primary')
