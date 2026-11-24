@@ -485,7 +485,7 @@ const payloadMissing = Effect.fn('webhookDispatch.payloadMissing')(function* (
 				queueMessageId: queueMessage.id,
 				endpointId: message.endpoint.id,
 				error: outboundCause(error),
-			}).pipe(Effect.as(retryDispatch)),
+			}).pipe(Effect.as(ackDispatch)),
 		),
 	)
 })
