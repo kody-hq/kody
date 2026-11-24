@@ -724,3 +724,158 @@ test('deferral delay doubles per deferral and stops at five minutes', () => {
 	expect([0, 1, 2, 6, 50].map(longest)).toEqual([5, 10, 20, 300, 300])
 	expect(ownerCapDeferralDelaySeconds(6, () => 0)).toBe(150)
 })
+
+test('a spilled message whose payload is gone is retried, not recorded as missing, when its run record cannot be read', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.getRunRecord.mockRejectedValueOnce(new Error('run log unavailable'))
+	const spilled = createMessage()
+	spilled.params.request.body = ''
+	spilled.params.request.json = null
+	const redelivered = createQueueMessage('redelivered', {
+		...spilled,
+		payloadKvKey: webhookDispatchPayloadKvKey('user-1', 'delivery-1'),
+	})
+	const kv = { get: vi.fn(async () => null), delete: vi.fn() }
+
+	await handleWebhookDispatchQueue(createBatch([redelivered]), {
+		BUNDLE_ARTIFACTS_KV: kv,
+	} as unknown as Env)
+
+	expect(queueOutcome(redelivered)).toEqual(retried)
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	expect(mocks.dispatchWebhookInvocation).not.toHaveBeenCalled()
+})
+
+test('a deferral that was re-sent acks the original even when marking the row deferred fails, so only one live copy remains', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.startAckWebhookDeliveryAttempt.mockResolvedValueOnce(false)
+	mocks.markAckWebhookDelivery.mockRejectedValueOnce(new Error('run log down'))
+	const send = vi.fn(async () => {})
+	const overLimit = createQueueMessage('over-limit', createMessage())
+
+	await handleWebhookDispatchQueue(createBatch([overLimit]), {
+		WEBHOOK_DISPATCH_QUEUE: { send },
+	} as unknown as Env)
+
+	expect(send).toHaveBeenCalledTimes(1)
+	expect(queueOutcome(overLimit)).toEqual(acked)
+	expect(consoleError).toHaveBeenCalledWith(
+		'webhook-dispatch-deferral-mark-failed',
+		expect.objectContaining({ queueMessageId: 'over-limit' }),
+	)
+})
+
+test('an owner at the started limit is never invoked: not on a late deferral, not on the last attempt, and not when the re-send fails', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.startAckWebhookDeliveryAttempt.mockResolvedValue(false)
+	const send = vi
+		.fn<(body: unknown, options?: { delaySeconds?: number }) => Promise<void>>()
+		.mockResolvedValueOnce()
+		.mockResolvedValueOnce()
+		.mockRejectedValueOnce(new Error('queue unavailable'))
+	const env = { WEBHOOK_DISPATCH_QUEUE: { send } } as unknown as Env
+	const lateDeferral = createQueueMessage('late-deferral', {
+		...createMessage(),
+		deferrals: 40,
+		priorAttempts: 1,
+	})
+	const lastAttempt = {
+		...createQueueMessage('last-attempt', createMessage()),
+		attempts: webhookDispatchMaxRetries,
+	}
+	const failedResend = createQueueMessage('failed-resend', createMessage())
+
+	await handleWebhookDispatchQueue(
+		createBatch([lateDeferral, lastAttempt, failedResend]),
+		env,
+	)
+
+	expect(mocks.dispatchWebhookInvocation).not.toHaveBeenCalled()
+	expect(mocks.startAckWebhookDeliveryAttempt).toHaveBeenCalledTimes(3)
+	expect([lateDeferral, lastAttempt, failedResend].map(queueOutcome)).toEqual([
+		acked,
+		acked,
+		retried,
+	])
+	expect(send.mock.calls.map(([body]) => body)).toEqual([
+		expect.objectContaining({ deferrals: 41, priorAttempts: 1 }),
+		expect.objectContaining({ priorAttempts: webhookDispatchMaxRetries - 1 }),
+		expect.objectContaining({ deferrals: 1 }),
+	])
+	expect(send.mock.calls[0]?.[1]?.delaySeconds).toBeLessThanOrEqual(300)
+})
+
+test('every retry on the last attempt ends in a terminal Activity row instead of a silent dead letter', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.startAckWebhookDeliveryAttempt
+		.mockResolvedValueOnce(false)
+		.mockResolvedValue(true)
+	mocks.getRunRecord.mockRejectedValueOnce(new Error('run log unavailable'))
+	const last = (id: string, body: unknown) => ({
+		...createQueueMessage(id, body),
+		attempts: webhookDispatchMaxRetries,
+	})
+	const deferralFailed = last('deferral-failed', createMessage())
+	const spilled = createMessage()
+	spilled.params.request.body = ''
+	spilled.params.request.json = null
+	const readFailed = last('read-failed', {
+		...spilled,
+		payloadKvKey: webhookDispatchPayloadKvKey('user-1', 'delivery-1'),
+	})
+	const env = {
+		WEBHOOK_DISPATCH_QUEUE: {
+			send: vi.fn(async () => {
+				throw new Error('queue unavailable')
+			}),
+		},
+		BUNDLE_ARTIFACTS_KV: { get: vi.fn(async () => null), delete: vi.fn() },
+	} as unknown as Env
+
+	await handleWebhookDispatchQueue(
+		createBatch([deferralFailed, readFailed]),
+		env,
+	)
+
+	expect([deferralFailed, readFailed].map(queueOutcome)).toEqual([acked, acked])
+	expect(
+		mocks.recordWebhookDelivery.mock.calls.map(([input]) => [
+			input.error,
+			input.invocationErrorCode,
+		]),
+	).toEqual([
+		['invocation_retry_exhausted', 'deferral_send_failed'],
+		['invocation_retry_exhausted', 'run_record_read_failed'],
+	])
+})
+
+test('a last attempt whose terminal row cannot be written is retried, not acked', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.dispatchWebhookInvocation.mockRejectedValueOnce(new Error('boom'))
+	mocks.recordWebhookDelivery.mockRejectedValueOnce(new Error('run log down'))
+	const last = {
+		...createQueueMessage('last', createMessage()),
+		attempts: webhookDispatchMaxRetries,
+	}
+
+	await handleWebhookDispatchQueue(createBatch([last]), {} as Env)
+
+	expect(queueOutcome(last)).toEqual(retried)
+})
+
+test('a processing failure is logged once and the export call gets the deadline signal', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.dispatchWebhookInvocation.mockRejectedValueOnce(new Error('boom'))
+	const failing = createQueueMessage('failing', createMessage())
+
+	await handleWebhookDispatchQueue(createBatch([failing]), {} as Env)
+
+	expect(queueOutcome(failing)).toEqual(retried)
+	expect(
+		consoleError.mock.calls.filter(
+			([event]) => event === 'webhook-dispatch-queue-processing-failed',
+		),
+	).toHaveLength(1)
+	const [invocation] = mocks.dispatchWebhookInvocation.mock.calls[0] ?? []
+	expect(invocation?.signal).toBeInstanceOf(AbortSignal)
+})

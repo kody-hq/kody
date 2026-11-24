@@ -14,7 +14,7 @@ import {
 	publishComputeLimitMessage,
 	uploadedBuildPersistLimitMessage,
 } from '#worker/repo/isolated-runner-limit-message.ts'
-import { DeadlineExceededError } from '#worker/outbound/with-deadline.ts'
+import { DeadlineExceededError } from '@kody-internal/shared/with-deadline.ts'
 import { RemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
 	ApiError,

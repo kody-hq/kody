@@ -4,7 +4,7 @@ import {
 	type DeadlineClock,
 	DeadlineExceededError,
 	withDeadline,
-} from './with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 
 function manualClock() {
 	const timers: Array<{ ms: number; onExpire: () => void; cleared: boolean }> =

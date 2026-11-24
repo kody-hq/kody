@@ -1,4 +1,4 @@
-import { withDeadline } from '#worker/outbound/with-deadline.ts'
+import { withDeadline } from '@kody-internal/shared/with-deadline.ts'
 import { reportHandledError } from '#worker/outbound/typed-failure.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import {

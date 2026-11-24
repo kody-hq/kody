@@ -1,7 +1,7 @@
 import {
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { reportHandledError } from '#worker/outbound/typed-failure.ts'
 import { loadProfileChain } from '#worker/profiles/store.ts'
 import { profileStatus } from '#worker/profiles/rules.ts'

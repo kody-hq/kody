@@ -68,7 +68,7 @@ export function withDeadline<T>(
 		)
 		let pending: Promise<T>
 		try {
-			pending = call(controller.signal)
+			pending = Promise.resolve(call(controller.signal))
 		} catch (error) {
 			cancel()
 			reject(error)

@@ -11,7 +11,7 @@ import {
 import {
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { packagePublishDefinitionSchema } from '#worker/package-registry/types.ts'
 import { readArtifactFileAtCommit } from '#worker/repo/artifact-file.ts'
 import {

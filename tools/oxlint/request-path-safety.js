@@ -9,7 +9,13 @@ import path from 'node:path'
 
 const repoRoot = path.resolve(import.meta.dirname, '../..')
 const DEADLINE_HELPER = 'withDeadline'
-const ERROR_REPORTER = 'reportHandledError'
+const ERROR_REPORTERS = new Set([
+	'reportHandledError',
+	'reportConsumerError',
+	'reportConsumerWarning',
+])
+/** Queue message settlement calls; only `settleQueueBatch` may make them. */
+const QUEUE_SETTLEMENT_METHODS = new Set(['ack', 'retry', 'ackAll', 'retryAll'])
 /**
  * Boundary helpers that do outbound I/O inside (D1, Durable Objects, the
  * Artifacts repo, routed context runs). A call to one is an outbound call.
@@ -46,6 +52,22 @@ const OUTBOUND_IMPORTS = {
 		'resolveArtifactSourceHead',
 		'resolveArtifactSourceRepo',
 	],
+	'packages/worker/src/run-records/service.ts': ['getRunRecord'],
+	'packages/worker/src/webhooks/delivery.ts': [
+		'dispatchWebhookInvocation',
+		'markAckWebhookDelivery',
+		'recordWebhookDelivery',
+		'startAckWebhookDeliveryAttempt',
+	],
+	'packages/worker/src/webhooks/dispatch-payload-store.ts': [
+		'deleteWebhookDispatchPayload',
+		'hydrateWebhookDispatchQueueMessage',
+	],
+	'packages/jobs-worker/src/store.ts': [
+		'advanceStuckSkippedJobNextRunAt',
+		'getWorkerStateValue',
+		'putWorkerStateValue',
+	],
 }
 /** Artifacts repo handles: every method is an RPC. */
 const ARTIFACT_REPO_RECEIVER_PATTERN = /^repo$|ArtifactRepo$/
@@ -61,6 +83,9 @@ const STORAGE_METHODS = new Set([
 ])
 const STORAGE_RECEIVER_PATTERN =
 	/^(?:kv|blobs|bucket|storage|r2)$|(?:_KV|_BLOBS|_BUCKET|_R2|Kv|KV|Blobs|Bucket)$/
+/** Queue producer bindings (`env.WEBHOOK_DISPATCH_QUEUE`, `queue`, `dispatchQueue`). */
+const QUEUE_PRODUCER_METHODS = new Set(['send', 'sendBatch'])
+const QUEUE_RECEIVER_PATTERN = /^queue$|_QUEUE$|Queue$/
 const RPC_FACTORY_PATTERN = /Rpc$/
 const STUB_PATTERN = /^stub$|Stub$/
 const DB_RECEIVER_PATTERN = /db$/i
@@ -230,6 +255,13 @@ function isOutboundCall(call, outboundNames = new Set()) {
 		return true
 	}
 	if (receiver && ARTIFACT_REPO_RECEIVER_PATTERN.test(receiver)) return true
+	if (
+		QUEUE_PRODUCER_METHODS.has(method) &&
+		receiver &&
+		QUEUE_RECEIVER_PATTERN.test(receiver)
+	) {
+		return true
+	}
 	if (callee.object.type === 'CallExpression') {
 		const factory = calleeName(callee.object)
 		return Boolean(factory && STUB_PATTERN.test(factory))
@@ -302,7 +334,7 @@ function handlesError(node) {
 	if (node.type !== 'CallExpression') return false
 	const name = calleeName(node)
 	if (
-		name === ERROR_REPORTER ||
+		ERROR_REPORTERS.has(name ?? '') ||
 		FAILURE_CALL_PATTERN.test(name ?? '') ||
 		ERROR_RECORDER_PATTERN.test(name ?? '') ||
 		ERROR_RESPONSE_PATTERN.test(name ?? '')
@@ -335,7 +367,7 @@ export const requireOutboundDeadlineRule = {
 		schema: [],
 		messages: {
 			missingDeadline:
-				'Wrap this outbound call in withDeadline({ label, timeoutMs }, (signal) => ...) from #worker/outbound/with-deadline.ts so a hung call fails with a typed DeadlineExceededError. Pick timeoutMs explicitly; there is no default. See docs/contributing/request-handlers.md.',
+				'Wrap this outbound call in withDeadline({ label, timeoutMs }, (signal) => ...) from @kody-internal/shared/with-deadline.ts so a hung call fails with a typed DeadlineExceededError. Pick timeoutMs explicitly; there is no default. See docs/contributing/request-handlers.md.',
 		},
 	},
 	createOnce(context) {
@@ -464,7 +496,7 @@ export const noSwallowedErrorRule = {
 		schema: [],
 		messages: {
 			swallowed:
-				'This handler swallows the error. Rethrow it, return a typed failure ({ kind: ... } or a ...Failure(...) builder) for the edge mapper, map it with an ...ErrorResponse(...) edge mapper, push it onto warnings/failures, or report it with reportHandledError from #worker/outbound/typed-failure.ts. See docs/contributing/request-handlers.md.',
+				'This handler swallows the error. Rethrow it, return a typed failure ({ kind: ... } or a ...Failure(...) builder) for the edge mapper, map it with an ...ErrorResponse(...) edge mapper, push it onto warnings/failures, or report it with reportHandledError from #worker/outbound/typed-failure.ts (reportConsumerError or reportConsumerWarning from #worker/outbound/consumer-errors.ts in queue consumers, alarms, and crons). See docs/contributing/request-handlers.md.',
 		},
 	},
 	createOnce(context) {
@@ -483,6 +515,32 @@ export const noSwallowedErrorRule = {
 							: undefined
 				if (!handler || handlerHandlesError(handler)) return
 				context.report({ node: handler, messageId: 'swallowed' })
+			},
+		}
+	},
+}
+
+export const noDirectQueueSettlementRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Queue consumers settle messages through settleQueueBatch, not by calling ack/retry directly.',
+		},
+		schema: [],
+		messages: {
+			direct:
+				'Return a QueueDisposition from the decide callback of settleQueueBatch (#worker/outbound/queue-settlement.ts) instead of calling {{method}}() here. It settles every message exactly once, retries a thrown decision, and runs afterAck cleanup only after the ack. See docs/contributing/request-handlers.md.',
+		},
+	},
+	createOnce(context) {
+		return {
+			CallExpression(node) {
+				if (node.callee.type !== 'MemberExpression') return
+				const method = propertyName(node.callee)
+				if (!QUEUE_SETTLEMENT_METHODS.has(method ?? '')) return
+				if (node.arguments.length > 1) return
+				context.report({ node, messageId: 'direct', data: { method } })
 			},
 		}
 	},

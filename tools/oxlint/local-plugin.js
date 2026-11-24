@@ -1,4 +1,5 @@
 import {
+	noDirectQueueSettlementRule,
 	noFloatingPromiseRule,
 	noSwallowedErrorRule,
 	requireOutboundDeadlineRule,
@@ -1108,6 +1109,7 @@ const plugin = {
 		'no-test-hooks-in-production': noTestHooksInProductionRule,
 		'require-exit-condition-comment': requireExitConditionCommentRule,
 		'require-outbound-deadline': requireOutboundDeadlineRule,
+		'no-direct-queue-settlement': noDirectQueueSettlementRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
 		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,
 	},

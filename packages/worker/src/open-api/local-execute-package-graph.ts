@@ -4,7 +4,7 @@ import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { sessionStub } from '#worker/execution-contexts/store.ts'
 import { serveLocalExecutePackageGraph } from '#worker/package-runtime/isolated-local-execute-package-graph.ts'
 import {

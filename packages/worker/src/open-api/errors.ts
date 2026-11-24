@@ -39,7 +39,7 @@ import {
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
 import { captureInfraHiccup } from '#worker/infra-hiccup-sentry.ts'
-import { isDeadlineExceededError } from '#worker/outbound/with-deadline.ts'
+import { isDeadlineExceededError } from '@kody-internal/shared/with-deadline.ts'
 import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { readRemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {

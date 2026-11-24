@@ -14,7 +14,7 @@ import {
 	materializeDependencyArtifactModules,
 } from '#worker/package-runtime/module-graph-artifacts.ts'
 import { resolveCurrentDynamicPackageArtifact } from '#worker/package-runtime/module-graph-hydration.ts'
-import { withDeadline } from '#worker/outbound/with-deadline.ts'
+import { withDeadline } from '@kody-internal/shared/with-deadline.ts'
 import { runtimeModulePath } from '#worker/package-runtime/module-graph-path-basics.ts'
 import {
 	createRelativeImportSpecifier,

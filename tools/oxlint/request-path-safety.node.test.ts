@@ -9,6 +9,7 @@ const rules = [
 	'require-outbound-deadline',
 	'no-floating-promise',
 	'no-swallowed-error',
+	'no-direct-queue-settlement',
 ] as const
 
 async function lint(
@@ -59,6 +60,20 @@ test('require-outbound-deadline flags D1, KV, R2, fetch, RPC, stub and artifacts
 		'}',
 	])
 	expect(result.count('require-outbound-deadline')).toBe(7)
+	expect(result.status).not.toBe(0)
+})
+
+test('require-outbound-deadline flags queue producer send and sendBatch calls outside withDeadline', async () => {
+	const result = await lint([
+		'export async function step(env: any, queue: any, dispatchQueue: any, mailer: any) {',
+		'	await env.WEBHOOK_DISPATCH_QUEUE.send({ id: 1 }, { delaySeconds: 5 })',
+		'	await env.PACKAGE_EVENT_QUEUE.sendBatch([{ body: 1 }])',
+		'	await queue.send({ id: 2 })',
+		'	await dispatchQueue.sendBatch([])',
+		'	await mailer.send({ to: 1 })',
+		'}',
+	])
+	expect(result.count('require-outbound-deadline')).toBe(4)
 	expect(result.status).not.toBe(0)
 })
 
@@ -251,10 +266,67 @@ test('the request-path rules are errors for the request-path directories and eve
 		expect(pathOverride?.files).toContain(directory)
 	}
 	for (const rule of rules) {
+		if (rule === 'no-direct-queue-settlement') continue
 		expect(pathOverride?.rules[`kody-custom/${rule}`]).toBe('error')
 	}
 	for (const file of pathOverride?.files ?? []) {
 		if (file.endsWith('/**')) continue
 		await access(path.join(repoRoot, file.replace(/^\*\*\//, '')))
 	}
+	const consumerOverride = config.overrides.find(
+		(override) =>
+			override.rules['kody-custom/no-direct-queue-settlement'] === 'error',
+	)
+	for (const rule of rules) {
+		expect(consumerOverride?.rules[`kody-custom/${rule}`]).toBe('error')
+	}
+	expect(consumerOverride?.files).toContain(
+		'**/packages/worker/src/webhooks/dispatch-queue.ts',
+	)
+	for (const file of consumerOverride?.files ?? []) {
+		await access(path.join(repoRoot, file.replace(/^\*\*\//, '')))
+	}
+})
+
+test('require-outbound-deadline treats webhook delivery and run record helpers as outbound calls', async () => {
+	const result = await lint([
+		"import { markAckWebhookDelivery } from '#worker/webhooks/delivery.ts'",
+		"import { getRunRecord } from '#worker/run-records/service.ts'",
+		'export async function step(input: any) {',
+		'	await markAckWebhookDelivery(input)',
+		'	await getRunRecord(input)',
+		'}',
+	])
+	expect(result.count('require-outbound-deadline')).toBe(2)
+})
+
+test('no-swallowed-error accepts the consumer reporters', async () => {
+	const result = await lint([
+		"import { reportConsumerError, reportConsumerWarning } from '#worker/outbound/consumer-errors.ts'",
+		'export async function step(run: () => Promise<void>) {',
+		'	try {',
+		'		await run()',
+		'	} catch (error) {',
+		"		reportConsumerWarning('step-failed', { error })",
+		'	}',
+		"	await run().catch((error: unknown) => reportConsumerError('step-failed', { error }))",
+		'	try {',
+		'		await run()',
+		'	} catch {}',
+		'}',
+	])
+	expect(result.count('no-swallowed-error')).toBe(1)
+})
+
+test('no-direct-queue-settlement flags ack and retry calls on queue messages and batches', async () => {
+	const result = await lint([
+		'export function settle(batch: any, message: any) {',
+		'	message.ack()',
+		'	message.retry({ delaySeconds: 30 })',
+		'	batch.ackAll()',
+		'	batch.retryAll()',
+		'}',
+	])
+	expect(result.count('no-direct-queue-settlement')).toBe(4)
+	expect(result.output).toContain('settleQueueBatch')
 })

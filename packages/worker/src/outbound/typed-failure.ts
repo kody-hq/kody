@@ -1,4 +1,4 @@
-import { isDeadlineExceededError } from './with-deadline.ts'
+import { isDeadlineExceededError } from '@kody-internal/shared/with-deadline.ts'
 
 /**
  * Typed failures for request paths. A step returns (or its edge catches) a
