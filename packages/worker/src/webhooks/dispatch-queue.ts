@@ -254,7 +254,6 @@ const kvDeadline = (label: string) => ({
 	label: `webhook dispatch: ${label}`,
 	timeoutMs: outboundTimeoutMs.kv,
 })
-const queueSendTimeoutMs = 30_000
 /** The executor has its own timeout; this only catches a call that never settles. */
 const webhookInvokeTimeoutMs = backgroundExecutorTimeoutMs + 60_000
 
@@ -331,20 +330,13 @@ async function deferForOwnerCap(
 	// long wait behind the owner's own backlog would dead-letter it.
 	const deferrals = message.deferrals ?? 0
 	try {
-		await withDeadline(
+		await env.WEBHOOK_DISPATCH_QUEUE.send(
 			{
-				label: 'webhook dispatch: re-send deferred message',
-				timeoutMs: queueSendTimeoutMs,
-			},
-			() =>
-				env.WEBHOOK_DISPATCH_QUEUE.send(
-					{
-						...message,
-						deferrals: deferrals + 1,
-						priorAttempts: attempts - 1,
-					} satisfies WebhookDispatchQueueMessage,
-					{ delaySeconds: ownerCapDeferralDelaySeconds(deferrals) },
-				),
+				...message,
+				deferrals: deferrals + 1,
+				priorAttempts: attempts - 1,
+			} satisfies WebhookDispatchQueueMessage,
+			{ delaySeconds: ownerCapDeferralDelaySeconds(deferrals) },
 		)
 	} catch (error) {
 		reportConsumerError('webhook-dispatch-deferral-send-failed', {
