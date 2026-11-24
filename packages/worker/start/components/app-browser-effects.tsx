@@ -1,11 +1,65 @@
 /** @jsxImportSource @emotion/react */
 import { useRef, useState } from 'react'
 import { useRouterState } from '@tanstack/react-router'
+import { visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import { colors, transitions } from '#universal/styles/tokens.ts'
 import { useResourceLifetime } from '../lib/primitives.ts'
 
 export function AppBrowserEffects() {
-	return <NavigationProgress />
+	return (
+		<>
+			<NavigationProgress />
+			<PendingPageFade />
+		</>
+	)
+}
+
+/**
+ * Dims the page on screen once a navigation has been pending for a while, so
+ * the wait is visible without the page being taken away. Held for a minimum
+ * time once shown, so it never flickers.
+ */
+function PendingPageFade() {
+	const pending = useRouterState({ select: (state) => state.isLoading })
+	const faded = useSpinDelay(pending, { delay: 1000, minDuration: 300 })
+	useResourceLifetime(() => {
+		if (!faded) return () => {}
+		document.documentElement.setAttribute('data-route-pending', '')
+		return () => document.documentElement.removeAttribute('data-route-pending')
+	}, [faded])
+	// The dimming is visual only; this announces the same wait.
+	return (
+		<span role="status" css={visuallyHiddenCss}>
+			{faded ? 'Loading' : ''}
+		</span>
+	)
+}
+
+/**
+ * True once `loading` has lasted `delay`, and then for at least `minDuration`.
+ * Same contract as npm's spin-delay, which ships only a UMD build that the
+ * Workers server render cannot load.
+ */
+function useSpinDelay(
+	loading: boolean,
+	{ delay, minDuration }: { delay: number; minDuration: number },
+) {
+	const [shown, setShown] = useState(false)
+	const shownAt = useRef(0)
+	useResourceLifetime(() => {
+		if (loading === shown) return () => {}
+		const timeout = setTimeout(
+			() => {
+				if (loading) shownAt.current = Date.now()
+				setShown(loading)
+			},
+			loading
+				? delay
+				: Math.max(0, minDuration - (Date.now() - shownAt.current)),
+		)
+		return () => clearTimeout(timeout)
+	}, [loading, shown, delay, minDuration])
+	return shown
 }
 
 function NavigationProgress() {

@@ -598,6 +598,20 @@ html.is-settled {
 	}
 }
 
+#main {
+	transition: opacity 200ms ease;
+}
+
+[data-route-pending] #main {
+	opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#main {
+		transition: none;
+	}
+}
+
 @keyframes stale-preview-dim {
 	to {
 		opacity: 0.5;

@@ -46,6 +46,10 @@ export function getRouter() {
 		caseSensitive: true,
 		defaultErrorComponent: RouteErrorPage,
 		defaultPendingComponent: LoadingIndicator,
+		// A page already on screen is never swapped for the loader while the
+		// next one loads. The loader stays as the fallback where nothing has
+		// rendered yet.
+		defaultPendingMs: Infinity,
 		defaultOnCatch: captureClientException,
 		defaultViewTransition: false,
 		scrollRestoration: true,
