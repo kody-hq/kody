@@ -427,3 +427,28 @@ test('telemetry marked for the primary writes there without a second run', async
 		'replica:SELECT role',
 	])
 })
+
+test('env objects that share one database share one installation', async () => {
+	const { env, real, served, sessions } = await setup(on)
+	const installed = env.APP_DB
+	// The runtime can hand each request a new env object over the same bindings.
+	const perRequestEnvs = [1, 2, 3].map(() => ({ APP_DB: env.APP_DB }) as Env)
+	for (const next of perRequestEnvs) installD1ReplicaReads(next)
+	const [last] = perRequestEnvs.slice(-1) as [Env]
+	expect(last.APP_DB).toBe(installed)
+	const unwrapped = { APP_DB: real } as Env
+	installD1ReplicaReads(unwrapped)
+	expect(unwrapped.APP_DB).toBe(installed)
+
+	const request = new Request('https://kody.codes/@jane')
+	const timing = await runWithRequestContext(request, async () => {
+		beginD1ReplicaReads(request, last)
+		allowReplicaReads(request)
+		await last.APP_DB.prepare('SELECT role').bind(1).all()
+		return d1RoundTripServerTiming(getRequestContext()?.d1)
+	})
+	// One round trip counted once, on the replica the shared flag state chose.
+	expect(timing[0]).toMatchObject({ name: 'd1', desc: '1' })
+	expect(sessions).toEqual(['first-unconstrained'])
+	expect(served).toEqual(['replica:SELECT role'])
+})

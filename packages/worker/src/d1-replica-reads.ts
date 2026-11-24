@@ -319,10 +319,16 @@ export function routeD1ReplicaReads(real: D1Database): D1Database {
 }
 
 const installedEnvs = new WeakSet<object>()
+/** Each installed database, by the wrapper that replaced it. */
+const installedDatabases = new WeakMap<object, D1Database>()
+/** The wrapper installed for each database. */
+const installedWrappers = new WeakMap<object, D1Database>()
 
 /**
  * Route and time `APP_DB` for every request this Worker env serves. Replaces
- * the binding in place, once, so the env object keeps its identity.
+ * the binding in place, once per database: the runtime can hand each request
+ * a new env object over the same bindings, and wrapping an already wrapped
+ * database again would add a layer per request.
  */
 export function installD1ReplicaReads(env: Env | undefined) {
 	if (!env || typeof env !== 'object') return
@@ -330,9 +336,20 @@ export function installD1ReplicaReads(env: Env | undefined) {
 		if (installedEnvs.has(env)) return
 		installedEnvs.add(env)
 		if (!env.APP_DB) return
+		const installed = installedDatabases.get(env.APP_DB)
+		if (installed) {
+			realDatabases.set(env, installed)
+			return
+		}
 		const real = env.APP_DB
+		let wrapped = installedWrappers.get(real)
+		if (!wrapped) {
+			wrapped = timeD1RoundTrips(routeD1ReplicaReads(real))
+			installedWrappers.set(real, wrapped)
+			installedDatabases.set(wrapped, real)
+		}
 		realDatabases.set(env, real)
-		env.APP_DB = timeD1RoundTrips(routeD1ReplicaReads(real))
+		env.APP_DB = wrapped
 	} catch (error) {
 		console.warn('D1 replica reads are not installed:', String(error))
 	}
