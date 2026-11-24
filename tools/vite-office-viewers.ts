@@ -70,11 +70,6 @@ export function officeViewers(): Plugin {
 		},
 		generateBundle() {
 			if (this.environment.name === 'client') {
-				this.emitFile({
-					type: 'asset',
-					fileName: '_headers',
-					source: `${base}office-viewers/*\n  Cache-Control: public, max-age=31536000, immutable\n  X-Content-Type-Options: nosniff\n`,
-				})
 				for (const [fileName, source] of assets)
 					this.emitFile({ type: 'asset', fileName, source })
 			}
