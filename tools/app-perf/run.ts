@@ -280,7 +280,9 @@ async function bundle(argv: Array<string>) {
 		for (const name of [...sources.keys()].filter((file) =>
 			file.includes(part),
 		)) {
-			const added = staticClosure(graph, [name]).difference(base)
+			const added = new Set(
+				[...staticClosure(graph, [name])].filter((file) => !base.has(file)),
+			)
 			console.log(
 				`\n${name}: +${added.size} chunks, +${(gzipBytes(graph, added) / 1024).toFixed(0)} KB gzip\n${largest(added, 8)}`,
 			)
