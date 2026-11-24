@@ -1,17 +1,14 @@
-### Admin organization billing and seat reporting
-
-The admin user detail page is metadata-only for billing and links administrators
-to the user's personal organization. User-targeted billing tools are deprecated
-forwarders to organization mutations. Seat synchronization records
-`billing_seat_quantity_synced` organization audit events, and
-`adminOrgSeatQuantityReport` provides an aggregate, read-only report without
-exposing organization or Stripe identifiers.
-
 # Entitlements (plans and quotas)
+
+Kody plans set resource limits for accounts and organizations. Start with the
+[plan model](#plan-model) for what a plan includes, [plan lookup](#plan-lookup)
+for how Kody chooses it, or [enforcement points](#enforcement-points) for where
+usage is checked. [Stripe billing](#billing) uses separate price configuration.
 
 ## Contents
 
 - [Plan model](#plan-model)
+- [Referral Pro credit](#referral-pro-credit)
 - [Prepaid credits](#prepaid-credits)
 - [Compute rate limits](#compute-rate-limits)
 - [UserMeter](#usermeter)
@@ -25,12 +22,6 @@ exposing organization or Stripe identifiers.
 - [Enforcement points](#enforcement-points)
 - [Billing](#billing)
 - [Related tables and coordination](#related-tables-and-coordination)
-
-Per-user plans with per-plan resource limits. This is Kody's denial-of-wallet
-protection for open signup: it bounds how many billable resources a single
-account can consume. Stripe subscription billing lives in a separate module
-(`packages/worker/src/billing/`); see [Billing](#billing) below. Limit numbers
-in `planLimits` stay independently configured from Stripe list prices.
 
 Module: `packages/worker/src/entitlements/` plus the client-safe plan registry
 at `packages/worker/universal/plans.ts`.
@@ -66,12 +57,8 @@ at `packages/worker/universal/plans.ts`.
   Standard; the overlay uses the retired Pro table without a credit wallet.
   `describeSecondAgentStandardGift` is the flag for lifecycle email /
   PackagedSingleClient. Enforcement goes through `getUserEntitlement`.
-- `referral-program.ts` (universal + worker) — uncapped referral Pro credit.
-  Share links write a last-wins one-week `kody_ref` cookie; signup persists a
-  pending `referrals` row from that cookie. `invoice.paid` grants both parties
-  one stacked month after the first qualifying paid invoice. Enforcement
-  composes the later overlay with the second-agent gift in `getUserEntitlement`;
-  Stripe is not mutated.
+- `referral-program.ts` (universal + worker) — attribution and
+  [invoice-gated referral Pro credit](#referral-pro-credit).
 
 ## Plan model
 
@@ -186,62 +173,61 @@ The onboarding loader exposes that object as `secondAgentStandardGift`.
 
 ### Referral Pro credit
 
-A referral code is a handle, and each `referrals` row records the org it credits
-in `referrer_org_id`. A personal link (`/?ref=<username>`) credits the person's
-personal org; a team org link (`/?ref=<org slug>`) credits that team org, never
-the personal account of whoever shared it. Usernames resolve first, then live
-team org slugs (they share one namespace). The referee's month always lands on
-the referee's personal org, and their personal org's first qualifying invoice is
-the one that triggers the reward.
+A qualifying paid invoice for the referee's personal org can earn that org and
+the referrer org 30 days each of retired Pro limits, without a credit wallet or
+a Stripe subscription change. See [attribution](#referral-attribution) for who
+gets credit and [reward checks](#referral-reward-checks-and-stacking) for when
+it starts.
 
-Share links add `?ref=` to any page and set a last-wins `kody_ref` cookie that
-expires after one week. A later share link overwrites the previous referrer for
-the rest of that window. Signup (password and OAuth) persists a pending
-`referrals` row from the cookie or a same-request share link. First-touch UTMs
-stay write-once and do not carry the referral code. Reward runs on
-`invoice.paid` after the referee's first qualifying paid Stripe invoice
-(`amount_paid > 0`, not a $0 trial, not a historical compute-overage invoice).
-The referrer org and the referee's personal org each receive one stacked month
-(30 days) of Pro via `orgs.referral_standard_credit_expires_at` (retired Pro
-ceilings, no credit wallet — same as the second-agent gift). There is no annual
-or lifetime cap on how many months a referrer can earn. Paid subscribers stack
-from the later of an existing credit and the current paid period end so the
-month starts after paid access rather than overlapping it. Referee invoices use
-the latest line `period.end`. A failed Stripe lookup of the referrer's
-subscription fails the webhook so Stripe can retry instead of stacking from now.
-Email-verify leaves a held row pending if that lookup fails; the referrer’s
-later `invoice.paid` retries it. Stripe subscriptions are not mutated.
+#### Referral attribution
 
-Existing accounts without an attribution can add one from **Referred by** on
-their personal `/@<slug>/-/billing` page (username, org slug, `@handle`, or
-share link; an org handle credits that org). It is write-once (the unique
-referee index; a signup attribution is never replaced), only within 72 hours of
-the account's signup (`users.created_at`), and only before the person's first
-paid Kody invoice: refused when any live org they own or bill has
-`orgs.referral_first_paid_at` or a qualifying paid Stripe invoice (a full page
-of paid invoices with none qualifying also counts). `invoice.paid` stamps that
-marker before it looks for a pending referral, and the insert re-checks the
-marker in the same statement, so an invoice paid mid-request either blocks the
-row or rewards it. The panel is hidden after the 72-hour window or once the
-person has paid so it never implies a retroactive reward. It is a referral, not
-a Stripe promo code, and earns the same month of Pro through the same reward
-path.
+Share links use `?ref=<handle>`. The
+[referral resolver](../../../packages/worker/src/entitlements/referral-program.ts)
+checks live usernames first (crediting the person's personal org), then live
+team org slugs (crediting the team org). A later link refreshes the last-wins
+one-week `kody_ref` cookie. Password and OAuth signup can use the cookie or a
+same-request share link to create a pending `referrals` row with
+`referrer_org_id`. First-touch UTMs use a separate cookie.
 
-Fraud basics before a reward: the referee's email and at least one referrer org
-owner's email verified, attribution persisted at signup or from Referred by
-within 72 hours of signup and before the first payment, no self-referral (the
-referee is not a member of the referrer org), no plus-tag / Gmail-dot email
-collapse with any referrer org member, and no shared Stripe customer. An
-unverified party holds the qualifying invoice id on the pending row; email
-verification (the referee, or any owner of the referrer org) retries the grant.
-Every `/@<slug>/-/billing` page shows that org's share link and referrer status
-to the same owners and billing admins who can open it; Referred by is personal
-billing only. A team org with no paid plan still earns the month: the Pro
-overlay lifts its Free base for every seat, and a paid team org's month starts
-after its current paid period.
+The
+[billing summary loader](../../../packages/worker/src/app/account-billing-data.ts)
+uses the billed org for the share link and referral status, and supplies
+**Referred by** state for personal billing. An existing account without
+attribution can enter a username, org slug, `@handle`, or share link within 72
+hours of signup. The
+[attribution checks](../../../packages/worker/src/entitlements/referral-program.node.test.ts)
+cover the write-once rule and rejection after a qualifying payment. The
+[implementation](../../../packages/worker/src/entitlements/referral-program.ts)
+checks the personal org and every live org where the person has an Owner or
+Billing membership. It treats Stripe's `hasMore` as paid even when the returned
+page has no qualifying invoice. The insert rechecks the paid marker, which the
+[webhook](../../../packages/worker/src/billing/stripe-webhooks.ts) stamps before
+looking for pending referrals on the paying org's personal account, if any.
 
-`getUserEntitlement` overlays Pro through the later of the second-agent gift and
-this referral credit (retired Pro table, no wallet).
+#### Referral reward checks and stacking
+
+The [invoice webhook](../../../packages/worker/src/billing/stripe-webhooks.ts)
+looks up a pending referee on the paying personal org after a qualifying
+`invoice.paid`. The
+[qualification and reward code](../../../packages/worker/src/entitlements/referral-program.ts)
+requires a paid invoice with a positive amount and excludes compute overage,
+upcoming invoices, and manual invoices without a subscription. It rejects
+referrals to the referee's own org or an org where they are a member, matching
+normalized email with a referrer org member (plus tags and Gmail dots), and
+matching non-empty Stripe customer IDs on the two orgs.
+
+A reward waits for the referee's email and at least one referrer org owner's
+email to be verified. The same reward code holds the invoice on the pending row
+and retries after verification by the referee or a referrer org owner. If the
+referrer subscription lookup fails, the webhook fails so Stripe can retry. Email
+verification leaves the row pending on lookup failure; a later `invoice.paid`
+for the referrer org also retries held rewards.
+
+Credit stacks from the latest of now, existing referral expiry, and paid period
+end (the referee invoice's latest line `period.end`). The referrer has no annual
+or lifetime cap. `getUserEntitlement` overlays retired Pro limits through the
+later of the second-agent gift and `orgs.referral_standard_credit_expires_at`,
+including on a Free team org.
 
 ### `max` plan limits
 
@@ -1546,6 +1532,16 @@ interval. The `?billing=updated` page view runs the usual on-view refresh and
 arms the `StripePlanRefresh` backstop; `customer.subscription.updated` webhooks
 refresh the plan independently.
 
+### Admin organization billing and seat reporting
+
+The admin user detail page links to the user's personal organization for
+billing. Deprecated user-targeted billing tools forward to organization
+mutations. Seat synchronization records `billing_seat_quantity_synced` audit
+events. The
+[`adminOrgSeatQuantityReport` response schema](../../../packages/worker/src/mcp/capabilities/admin/admin-org-seat-quantity-report.ts)
+exposes aggregate counts and seat quantities rather than organization or Stripe
+identifiers.
+
 ### Account deletion refunds
 
 Account deletion is the one automatic refund path (the Terms of Service say so).
@@ -1709,7 +1705,5 @@ existing subscribers only. Env vars and deploy wiring are documented in
   the granting subscription changes plan, price, product, or interval. Admin
   plan writes clear `legacy` when a remaining manual Pro grant is removed
   without a paid Stripe tier.
-- `orgs.referral_standard_credit_expires_at` and `referrals` — uncapped referral
-  program ledger. Attribution is persisted at signup from the last-wins
-  `kody_ref` cookie; reward is invoice-gated. See
-  [Referral Pro credit](#referral-pro-credit).
+- `orgs.referral_standard_credit_expires_at` and `referrals` —
+  [referral attribution and reward ledger](#referral-pro-credit).

@@ -247,6 +247,12 @@ is not community-banned. It upserts D1 metadata including optional browse
 `category` from `package.json#kody.category` or well-known tags, and writes a
 SHA-keyed source snapshot.
 
+[`fork-scan.ts`](../../packages/worker/src/community/fork-scan.ts) rewrites the
+manifest name, sets `private: true`, and drops authored `kody.id`. It rewrites
+whole package self-references and renamed emits-topic references in text files,
+skipping byte snapshots. The cross-scope scan reports textual `kody:@scope/`
+matches and manifest Kody dependencies; it does not resolve imports.
+
 `forkCommunityListing` reads the KV snapshot for rewrite/scan (Worker), then
 copies the origin Artifacts repo with `POST .../repos/{source}/fork` so the tree
 never enters a RepoSession isolate as `Record<path, string>` edits. When the

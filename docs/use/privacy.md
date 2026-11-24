@@ -1,7 +1,16 @@
 # Privacy
 
-How Kody stores your data, how connected accounts work, and what a deployment
-admin can see. The hosted legal policy is `/privacy`.
+Kody handles account data, content you save, and requests to services you
+connect. Use **Account settings** to export your data or delete your account.
+For the hosted legal policy, see `/privacy`.
+
+- [Account data and cookies](#what-kody-stores-per-account)
+- [Connected services and Google data](#connected-accounts)
+- [Admin access](#what-a-deployment-admin-can-see) and
+  [deployment operator access](#deployment-operator-access)
+- [Retention](#how-long-kody-keeps-data),
+  [service providers](#service-providers), and
+  [your rights](#your-choices-and-rights)
 
 ## Who is responsible for your data
 
@@ -17,28 +26,35 @@ consent to that transfer.
 
 ## What Kody stores per account
 
-Each signed-in account holds isolated data for that person or team org. Kody
-stores account profile information (email, username, optional display name and
-bio, profile visibility, the experiments opt-in preference at
-`/account/experiments`, and extra email destinations, including pending
-unverified extras until you confirm or remove them), first-touch marketing
-attribution captured on public-site visits when UTM or landing context is
-present and associated with the account at signup (`utm_source` / `utm_medium` /
-`utm_campaign` / `utm_content` / `utm_term`, landing path, and referrer),
-referral attribution when a signup used a `kody_ref` cookie from
-`?ref=<username>` or `?ref=<org slug>` (the referred stable user id, the
-credited personal or team org id, reward status, and the Stripe invoice id after
-a paid reward), first-seen activation timestamps (email verified, first MCP
-connection, first execute, first saved package, first secret, first integration,
-first job), MCP client name when known, last-active day stamps used for return
-metrics, credentials, memories, packages and their source, jobs, email inboxes
-and messages, durable storage, MCP server configuration, OAuth grants,
-short-lived execution history (see [Activity](./activity.md)), stored community
-activity events, and any platform feedback you approve for submission. All of
-this remains scoped to your account except for content you deliberately make
-public (public packages published to Community and a public profile), the narrow
-admin review of approved platform feedback, and the community activity metadata
-described below.
+Kody stores the following kinds of account data:
+
+- **Profile:** email, username, optional display name and bio, profile
+  visibility, the experiments opt-in at `/account/experiments`, and extra email
+  destinations (including pending addresses until you confirm or remove them).
+- **Attribution:** when present, first-touch UTM fields (`utm_source`,
+  `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`), landing path, and
+  referrer. If you sign up with a referral or add one from personal billing, the
+  referral record holds your stable user ID, the credited personal or team org
+  ID, reward status, and the Stripe invoice ID for a held or granted reward.
+- **Usage:** first-seen activation timestamps (email verification, MCP
+  connection, execute, saved package, secret, integration, and job), MCP client
+  name when known, and last-active day stamps for return metrics.
+- **Content and configuration:** credentials, memories, packages and their
+  source, jobs, email inboxes and messages, durable storage, MCP server
+  configuration, and OAuth grants.
+- **Activity and submissions:** short-lived [execution history](./activity.md),
+  stored community activity events, and platform feedback you approve for
+  submission.
+
+For visibility details, see
+[public profiles](./community-packages.md#public-profiles),
+[deployment admin access](#what-a-deployment-admin-can-see), and
+[platform feedback](#platform-feedback).
+
+If an org refers you, its
+[billing summary](../../packages/worker/start/pages/account-billing.tsx) can
+show your username, whether the referral is pending or rewarded, and the reward
+date when recorded.
 
 When you sign in to someone's package app with Sign in with Kody, people who
 manage that app can see your username, display name, avatar, when you first
@@ -51,9 +67,11 @@ metadata, and public activity are visible on `/@username`. When visibility is
 **private**, the public profile is not found. See
 [Public packages](./community-packages.md#public-profiles).
 
-The only cookies are the session cookie (`kody_session`), the one-week last-wins
-referral cookie (`kody_ref`) set by share links that add `?ref=` to any page
-(for example `/?ref=<username>`), the one-week first-party first-touch cookie
+### Browser cookies
+
+Kody uses the session cookie (`kody_session`), the one-week last-wins referral
+cookie (`kody_ref`) set by share links with `?ref=<username>` or
+`?ref=<org slug>`, the one-week first-party first-touch cookie
 (`kody_first_touch`) that keeps the UTMs, landing path, and referrer of your
 first visit until signup reads and clears it, and the package-app session cookie
 on `kody.run` (`__Host-kody_pkg_session_<hash>` on HTTPS,
@@ -61,6 +79,8 @@ on `kody.run` (`__Host-kody_pkg_session_<hash>` on HTTPS,
 Short-lived cookies support two-factor verification, passkey challenges, and
 OAuth login. Analytics (Fathom and Scarf) are cookieless. The browser uses
 sessionStorage for scroll restoration, not tracking cookies.
+
+### Export and deletion
 
 Account export includes your profile columns and activity you authored. The
 browser download is a bounded metadata manifest; use its `accountExportSection`

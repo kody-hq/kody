@@ -4,7 +4,7 @@ import {
 	parseState,
 } from '@kody-internal/shared/state-machine.ts'
 /**
- * Referral attribution at signup and invoice-gated Standard credit.
+ * Signup and early billing-page attribution for invoice-gated Pro credit.
  * A referral code is a handle: a username credits that person's personal
  * org, a team org slug credits that org. Reward is one stacked month for
  * the referrer org and the referee's personal org; there is no annual or
@@ -221,8 +221,8 @@ export async function attributeReferralAtSignup(input: {
 
 /**
  * Resolve a referral handle to the org it credits: a username credits that
- * person's personal org, a team org slug credits that team org. Usernames and
- * org slugs share one namespace, so at most one matches.
+ * person's personal org, a team org slug credits that team org. Look up live
+ * usernames first, then live non-personal org slugs.
  */
 export async function resolveReferrerByCode(
 	db: D1Database,
@@ -306,10 +306,9 @@ export type ListCustomerPaidInvoices = (
 ) => Promise<{ invoices: Array<Record<string, unknown>>; hasMore: boolean }>
 
 /**
- * True when any org this person owns or bills has a qualifying paid Kody
- * invoice: the write-once `referral_first_paid_at` marker, or Stripe history
- * (covers invoices paid before the marker existed). A full page with no
- * qualifying invoice still counts as paid, so a lookup gap never opens entry.
+ * Checks the paid marker and Stripe history for the personal org and live orgs
+ * this person owns or bills. A Stripe page with `hasMore` also counts as paid,
+ * even without a qualifying invoice on that page.
  */
 export async function personHasPaidKodyInvoice(input: {
 	db: D1Database
@@ -354,10 +353,9 @@ export async function personHasPaidKodyInvoice(input: {
 /**
  * Billing-page "Referred by" for an existing account. Write-once (unique
  * referee index), only within 72 hours of signup, and only before the
- * person's first paid Kody invoice. The
- * insert re-checks the paid marker in the same statement, and invoice.paid
- * stamps that marker before it looks for a pending referral, so an invoice
- * paid during this call either blocks the insert or rewards it.
+ * person's first paid Kody invoice. The insert rechecks the paid marker;
+ * invoice.paid stamps it before looking for a pending referral to reward on
+ * the paying org's personal account, if any.
  */
 export async function attributeReferralBeforeFirstPayment(input: {
 	db: D1Database

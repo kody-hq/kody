@@ -33,7 +33,7 @@ type TextInputType = Exclude<
 export type InputProps = Omit<ComponentProps<'input'>, 'size' | 'type'> &
 	FieldControlStyleOptions & { type?: TextInputType }
 
-/** Text-like input. Use `Checkbox`, `Radio`, or `Button` for the other types. */
+/** Text-like input. Inside an `InputGroup`, the group supplies field styles. */
 export function Input({ size, background, ...props }: InputProps) {
 	const fieldProps = useFieldControl(props)
 	const group = use(InputGroupContext)
@@ -56,9 +56,8 @@ const InputGroupContext = createContext<FieldControlStyleOptions | null>(null)
 export type InputGroupProps = ComponentProps<'span'> & FieldControlStyleOptions
 
 /**
- * Joins an `InputAddon` and an `Input` into one control: one border, rounded
- * outer corners, square inner corners, and a focus ring around the whole
- * group. Set `size` and `background` here; the `Input` inside follows them.
+ * Visual wrapper for an `InputAddon` and an `Input`. The wrapper owns the
+ * border, background, and focus ring; set `size` and `background` here.
  */
 export function InputGroup({ size, background, ...props }: InputGroupProps) {
 	return (
