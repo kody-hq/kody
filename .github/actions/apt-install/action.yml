@@ -1,0 +1,31 @@
+name: 📦 apt-get install
+description: >-
+  apt-get update and install on Linux runners with acquire timeouts, retries,
+  and a per-attempt time limit, so a stalled Ubuntu mirror fails or retries in
+  minutes instead of hanging until the job timeout. Set the caller step's
+  timeout-minutes as the overall backstop.
+
+inputs:
+  packages:
+    description: Space-separated apt package names.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: apt-get update and install
+      shell: bash
+      env:
+        APT_PACKAGES: ${{ inputs.packages }}
+      run: |
+        apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120)
+        for attempt in 1 2; do
+          if sudo timeout 240 apt-get "${apt_opts[@]}" update; then break; fi
+          if [ "$attempt" = 2 ]; then
+            echo "::error::apt-get update failed or ran past 4 min twice (stalled mirror?). Re-run the job."
+            exit 1
+          fi
+          echo "::warning::apt-get update attempt $attempt failed or ran past 4 min; retrying."
+        done
+        read -ra packages <<<"$APT_PACKAGES"
+        sudo timeout 300 apt-get "${apt_opts[@]}" install -y "${packages[@]}"
