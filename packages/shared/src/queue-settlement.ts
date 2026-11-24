@@ -61,16 +61,17 @@ export async function settleQueueBatch<
 		const disposition = await decideOrFallBack(message)
 		switch (disposition.kind) {
 			case 'ack': {
-				message.ack()
-				if (!disposition.afterAck) return
-				try {
-					await disposition.afterAck()
-				} catch (error) {
-					reportConsumerError(`${input.consumer}-after-ack-failed`, {
-						queueMessageId: message.id,
-						error,
-					})
+				if (disposition.afterAck) {
+					try {
+						await disposition.afterAck()
+					} catch (error) {
+						reportConsumerError(`${input.consumer}-after-ack-failed`, {
+							queueMessageId: message.id,
+							error,
+						})
+					}
 				}
+				message.ack()
 				return
 			}
 			case 'retry':
