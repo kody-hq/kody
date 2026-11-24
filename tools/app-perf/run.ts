@@ -340,8 +340,12 @@ export async function main(argv = process.argv.slice(2)) {
 		} else if (token.kind === 'positional') {
 			rest.push(token.value)
 		} else if (token.kind === 'option' && !common.has(token.name)) {
-			rest.push(token.rawName)
-			if (token.value !== undefined) rest.push(token.value)
+			if (token.inlineValue) rest.push(`${token.rawName}=${token.value}`)
+			else
+				rest.push(
+					token.rawName,
+					...(token.value === undefined ? [] : [token.value]),
+				)
 		}
 	}
 	if (command === 'ssr') return ssr(options, rest)
