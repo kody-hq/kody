@@ -321,6 +321,8 @@ export function routeD1ReplicaReads(real: D1Database): D1Database {
 const installedEnvs = new WeakSet<object>()
 /** Each installed database, by the wrapper that replaced it. */
 const installedDatabases = new WeakMap<object, D1Database>()
+/** The wrapper installed for each database. */
+const installedWrappers = new WeakMap<object, D1Database>()
 
 /**
  * Route and time `APP_DB` for every request this Worker env serves. Replaces
@@ -340,8 +342,12 @@ export function installD1ReplicaReads(env: Env | undefined) {
 			return
 		}
 		const real = env.APP_DB
-		const wrapped = timeD1RoundTrips(routeD1ReplicaReads(real))
-		installedDatabases.set(wrapped, real)
+		let wrapped = installedWrappers.get(real)
+		if (!wrapped) {
+			wrapped = timeD1RoundTrips(routeD1ReplicaReads(real))
+			installedWrappers.set(real, wrapped)
+			installedDatabases.set(wrapped, real)
+		}
 		realDatabases.set(env, real)
 		env.APP_DB = wrapped
 	} catch (error) {

@@ -429,13 +429,16 @@ test('telemetry marked for the primary writes there without a second run', async
 })
 
 test('env objects that share one database share one installation', async () => {
-	const { env, served, sessions } = await setup(on)
+	const { env, real, served, sessions } = await setup(on)
 	const installed = env.APP_DB
 	// The runtime can hand each request a new env object over the same bindings.
 	const perRequestEnvs = [1, 2, 3].map(() => ({ APP_DB: env.APP_DB }) as Env)
 	for (const next of perRequestEnvs) installD1ReplicaReads(next)
 	const [last] = perRequestEnvs.slice(-1) as [Env]
 	expect(last.APP_DB).toBe(installed)
+	const unwrapped = { APP_DB: real } as Env
+	installD1ReplicaReads(unwrapped)
+	expect(unwrapped.APP_DB).toBe(installed)
 
 	const request = new Request('https://kody.codes/@jane')
 	const timing = await runWithRequestContext(request, async () => {
