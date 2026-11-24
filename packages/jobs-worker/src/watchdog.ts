@@ -65,7 +65,7 @@ function summarizeJobs(rows: Array<JobRow>) {
 }
 
 /** One hung JobManager must not stall the tick for every later user. */
-export const jobManagerSyncTimeoutMs = 30_000
+const jobManagerSyncTimeoutMs = 30_000
 
 const errorText = (error: OutboundCallError) => {
 	const cause = outboundCause(error)
