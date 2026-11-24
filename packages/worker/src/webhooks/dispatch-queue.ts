@@ -455,7 +455,7 @@ async function payloadMissing(
 			endpointId: message.endpoint.id,
 			error,
 		})
-		return retryDispatch
+		return { kind: 'ack' }
 	}
 	return { kind: 'ack' }
 }
