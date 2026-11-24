@@ -17,7 +17,10 @@ test('opening Apps from a scrolled page starts at the top', async ({
 	await page.setViewportSize({ width: 390, height: 320 })
 	await page.goto(`/@${username}/-/overview`)
 	await waitForClientHydration(page)
-	await page.evaluate(() => window.scrollTo({ top: 200, behavior: 'instant' }))
+	await page.evaluate(() => {
+		window.scrollTo({ top: 200, behavior: 'instant' })
+		;(window as { sameDocument?: boolean }).sameDocument = true
+	})
 	expect(await page.evaluate(() => window.scrollY)).toBe(200)
 	await page
 		.locator(`a[href="/@${username}/-/apps"]`)
@@ -29,4 +32,10 @@ test('opening Apps from a scrolled page starts at the top', async ({
 		page.getByRole('heading', { name: 'Apps', level: 1 }),
 	).toBeVisible()
 	await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+	// A full page load would also start at the top.
+	expect(
+		await page.evaluate(
+			() => (window as { sameDocument?: boolean }).sameDocument,
+		),
+	).toBe(true)
 })
