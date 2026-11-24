@@ -23,11 +23,13 @@ export function fakeReplicatedD1(flag: ReplicaReadFlag) {
 	const sessions: Array<string> = []
 	let flagRow = flag
 	let flagReadFails = false
+	let flagReadHangs = false
 
 	function statement(sql: string, read: () => Copy, by: string) {
 		const run = async () => {
 			served.push(`${by}:${sql}`)
 			if (sql.includes('feature_flags')) {
+				if (flagReadHangs) await new Promise(() => {})
 				if (flagReadFails) throw new Error('D1 is down')
 				return { results: flagRow ? [flagRow] : [], meta: {} }
 			}
@@ -58,16 +60,22 @@ export function fakeReplicatedD1(flag: ReplicaReadFlag) {
 		...queries(() => primary, 'primary'),
 		withSession(start: string) {
 			sessions.push(start)
-			const wanted =
+			// The version the next read must have. `first-primary` asks the
+			// primary once, then any copy at least that fresh will do.
+			let wanted =
 				start === 'first-primary'
 					? Infinity
 					: start === 'first-unconstrained'
 						? 0
 						: parseInt(start.slice(0, 8), 16)
 			let read: Copy | undefined
-			const source = () =>
-				(read = replica.version >= wanted ? replica : primary)
-			const by = () => (source() === replica ? 'replica' : 'primary-session')
+			const source = () => {
+				read = replica.version >= wanted ? replica : primary
+				wanted = read.version
+				return read
+			}
+			const by = () =>
+				replica.version >= wanted ? 'replica' : 'primary-session'
 			return {
 				prepare: (sql: string) => statement(sql, source, by()),
 				batch: (statements: Array<D1PreparedStatement>) =>
@@ -82,6 +90,8 @@ export function fakeReplicatedD1(flag: ReplicaReadFlag) {
 		sessions,
 		setFlag: (next: ReplicaReadFlag) => (flagRow = next),
 		failFlagReads: () => (flagReadFails = true),
+		/** A read Workers dropped with its request: it never settles. */
+		hangFlagReads: (hangs: boolean) => (flagReadHangs = hangs),
 		replicate: () => Object.assign(replica, primary),
 	}
 }
