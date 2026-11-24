@@ -223,7 +223,6 @@ export async function runJobScheduleWatchdogTick(input: {
 	}
 
 	for (const row of stuckRows) {
-		usersNeedingSync.add(row.user_id)
 		try {
 			// Advance from the stuck occurrence, not wall clock, so late repair
 			// cannot skip intermediate firings (at-most-one catch-up per pass).
@@ -250,6 +249,7 @@ export async function runJobScheduleWatchdogTick(input: {
 			)
 			if (repaired) {
 				repairedStuckJobCount += 1
+				usersNeedingSync.add(row.user_id)
 				logJobSchedulerEvent({
 					event: 'watchdog_repaired_stuck_skipped_job',
 					userId: row.user_id,
