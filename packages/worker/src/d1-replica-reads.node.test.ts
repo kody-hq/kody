@@ -453,7 +453,8 @@ test('env objects that share one database share one installation', async () => {
 	expect(served).toEqual(['replica:SELECT role'])
 })
 
-test.each(['first', 'batch'] as const)(
+// 'caught' is Router's case: it answers a failed loader with an error page.
+test.each(['first', 'batch', 'caught'] as const)(
 	'a failed replica %s runs the whole request again on the primary',
 	async (call) => {
 		const { env, served, failReplicaReads } = await setup(on)
@@ -468,7 +469,14 @@ test.each(['first', 'batch'] as const)(
 				runs++
 				const statement = env.APP_DB.prepare('SELECT role')
 				if (call === 'first') await statement.first()
-				else await env.APP_DB.batch([statement])
+				else if (call === 'batch') await env.APP_DB.batch([statement])
+				else {
+					try {
+						await statement.first()
+					} catch {
+						return new Response('error page', { status: 500 })
+					}
+				}
 				return new Response('ok')
 			})
 		})
