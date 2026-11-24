@@ -134,6 +134,8 @@ test('a GET after a mutation in the same browser reads its own write', async () 
 	expect(write.setCookie).toBe(
 		`kody_d1=${bookmark}; Path=/; Max-Age=60; HttpOnly; SameSite=Lax; Secure`,
 	)
+	// The bookmark read is in the request's D1 total: two writes and it.
+	expect(write.timing[0]).toMatchObject({ name: 'd1', desc: '3' })
 	const cookie = `kody_session=abc; kody_d1=${bookmark}`
 
 	served.length = 0
@@ -175,8 +177,48 @@ test('a write whose bookmark cannot be taken still sends later reads to the prim
 	vi.spyOn(real, 'withSession').mockImplementationOnce(() => {
 		throw new Error('no sessions')
 	})
+	consoleWarn.mockImplementation(() => {})
 	const write = await visit(env, 'UPDATE revoke', { method: 'POST' })
 	expect(write.setCookie).toMatch(/^kody_d1=1; /)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'D1 bookmark was not taken:',
+		'Error: no sessions',
+	)
+})
+
+test('a GET that wrote on the primary leaves a bookmark for the page it redirects to', async () => {
+	const { env, sessions } = await setup(on)
+	// A sign-in callback: a route with its own handler, so it reads the primary.
+	const callback = await visit(env, 'UPDATE revoke', { page: false })
+	expect(callback.setCookie).toMatch(/^kody_d1=00000003-/)
+	sessions.length = 0
+	const next = await visit(env, 'SELECT role', {
+		cookie: callback.setCookie!.split(';')[0],
+	})
+	expect(sessions).toEqual([fakeD1Bookmark(3)])
+	expect(next).toMatchObject({ member: false })
+})
+
+test('a write on a new Worker instance still leaves a bookmark once the flag has loaded', async () => {
+	const d1 = fakeReplicatedD1(on)
+	const env = { APP_DB: d1.db } as Env
+	installD1ReplicaReads(env)
+	// The flag read starts with this request and lands before it answers.
+	const write = await visit(env, 'UPDATE revoke', { method: 'POST' })
+	expect(write.setCookie).toMatch(/^kody_d1=00000003-/)
+})
+
+test('telemetry on a page load leaves no bookmark', async () => {
+	const { env } = await setup(on)
+	const request = new Request('https://kody.codes/@jane')
+	const cookie = await runWithRequestContext(request, async () => {
+		beginD1ReplicaReads(request, env)
+		allowReplicaReads(request)
+		await env.APP_DB.prepare('SELECT role').first()
+		await runOnD1Primary(() => env.APP_DB.prepare('UPDATE revoke').run())
+		return d1FreshReadSetCookie(request, env)
+	})
+	expect(cookie).toBeUndefined()
 })
 
 test('a percentage rollout keeps a signed-in browser on one side', async () => {
@@ -216,9 +258,46 @@ test('turning the flag off, or a failed flag read, returns reads to the primary'
 
 	sessions.length = 0
 	failFlagReads()
+	consoleWarn.mockImplementation(() => {})
 	await refreshD1ReplicaReadRollout(env)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'D1 replica read rollout was not read:',
+		'Error: D1 is down',
+	)
 	await visit(env, 'SELECT role')
 	expect(sessions).toEqual([])
+})
+
+test('a flag read that never settles is replaced after the interval', async () => {
+	vi.useFakeTimers()
+	try {
+		const { env, sessions, setFlag, hangFlagReads } = await setup(on)
+		setFlag({ enabled: 0, rollout_percent: null })
+		hangFlagReads(true)
+		vi.advanceTimersByTime(31_000)
+		await visit(env, 'SELECT role')
+		hangFlagReads(false)
+		// Within the interval the dropped read is still the one in flight.
+		await visit(env, 'SELECT role')
+		expect(sessions).toEqual(['first-unconstrained', 'first-unconstrained'])
+		vi.advanceTimersByTime(31_000)
+		await visit(env, 'SELECT role')
+		sessions.length = 0
+		await visit(env, 'SELECT role')
+		expect(sessions).toEqual([])
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('a read started on the primary moves to the replica once it has caught up', async () => {
+	const { env, served, replicate } = await setup(on)
+	await visit(env, 'UPDATE revoke', { method: 'POST' })
+	replicate()
+	served.length = 0
+	const read = await visit(env, 'SELECT role', { cookie: 'kody_d1=1' })
+	expect(served).toEqual(['primary-session:SELECT role', 'replica:SELECT role'])
+	expect(read).toMatchObject({ member: false, batchedMember: false })
 })
 
 test('a new Worker instance reads the primary until the flag has loaded', async () => {
