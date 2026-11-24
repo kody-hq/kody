@@ -1,8 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import {
-	getRequestContext,
-	runWithRequestContext,
-} from '../src/request-context.ts'
+import { getRequestContext, runWithRequestContext } from '../request-context.ts'
 import { logDocumentErrors } from './document-error-log.ts'
 
 test.each([

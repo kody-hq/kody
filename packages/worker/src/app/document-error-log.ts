@@ -1,4 +1,4 @@
-import { getRequestContext } from '../src/request-context.ts'
+import { getRequestContext } from '../request-context.ts'
 
 /**
  * Router turns a failed loader into a 500 page without throwing, so nothing

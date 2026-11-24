@@ -13,7 +13,7 @@ import {
 	recordServerTiming,
 } from '../src/request-context.ts'
 import { d1RoundTripServerTiming } from '../src/d1-round-trip-timing.ts'
-import { logDocumentErrors } from './document-error-log.ts'
+import { logDocumentErrors } from '../src/app/document-error-log.ts'
 import { applyServerTimingHeader } from '../src/server-timing.ts'
 
 const startHandler = createStartHandler(async (context) => {
