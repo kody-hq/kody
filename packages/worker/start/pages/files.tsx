@@ -844,6 +844,9 @@ export function FilesPage({
 		)
 	}
 	function contextActions(target: Element): ContextAction[] | undefined {
+		// A file kept on screen while the next one loads is not the selected
+		// file, so no action here would mean what the reader sees.
+		if (target.closest('[data-stale-preview]')) return
 		if (target.closest('[data-package-item]')) return
 		if (target.closest('[data-system-directory]'))
 			return [
@@ -3686,12 +3689,9 @@ function WorkspaceDocumentPanel({
 			} as const)
 		: ({ display: 'contents' } as const)
 	return (
-		// The page's context menu acts on the selected file, which is not the
-		// one still on screen, so the kept preview offers no menu of ours.
 		<div
 			aria-busy={stale ? 'true' : undefined}
 			data-stale-preview={stale ? '' : undefined}
-			onContextMenu={stale ? (event) => event.stopPropagation() : undefined}
 			css={{
 				...keptCss,
 				...(stale && {
