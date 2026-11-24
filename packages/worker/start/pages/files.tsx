@@ -3686,12 +3686,12 @@ function WorkspaceDocumentPanel({
 			} as const)
 		: ({ display: 'contents' } as const)
 	return (
-		// While the next file loads, this wrapper stands for the file still on
-		// screen, so its context menu acts on what the reader sees.
+		// The page's context menu acts on the selected file, which is not the
+		// one still on screen, so the kept preview offers no menu of ours.
 		<div
 			aria-busy={stale ? 'true' : undefined}
 			data-stale-preview={stale ? '' : undefined}
-			data-workspace-item={stale ? query.data.file.id : undefined}
+			onContextMenu={stale ? (event) => event.stopPropagation() : undefined}
 			css={{
 				...keptCss,
 				...(stale && {
