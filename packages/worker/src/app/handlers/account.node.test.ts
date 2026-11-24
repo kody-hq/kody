@@ -245,7 +245,7 @@ test('native account loader redirects to login with a session-destroy cookie for
 	}
 })
 
-test('native account and session reads batch user/role and flag reads into two round trips', async () => {
+test('native account and session reads batch user/role, flag, and organization reads', async () => {
 	const email = 'account@example.com'
 	const stableUserId = testStableUserIdFromEmail(email)
 	const { env, counts } = createAccountEnv({
@@ -285,12 +285,12 @@ test('native account and session reads batch user/role and flag reads into two r
 		'accountProfile',
 		'onboarding',
 	])
-	// Session batches: users+roles, then flags+overrides+experiments_opt_in.
-	// Organization list, invite list, and pending invite-link list are extra
-	// prepares on the session shell only; the account page itself no longer
+	// Session batches: users+roles, then flags+overrides+experiments_opt_in
+	// alongside the organization list (memberships+grants). The invite list
+	// and pending invite-link list are extra prepares on the session shell only; the account page itself no longer
 	// lists organizations (inviteCount derives from the listed invites and
 	// links, so there is no separate COUNT query).
-	expect(counts.batchSizes).toEqual([2, 3])
+	expect(counts.batchSizes).toEqual([2, 3, 2])
 	expect(counts.prepare).toBe(10)
-	expect(counts.batch).toBe(2)
+	expect(counts.batch).toBe(3)
 })

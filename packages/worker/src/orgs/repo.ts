@@ -14,7 +14,10 @@ import {
 	type GrantSubjectChoices,
 	grantSubjectMatchSql,
 } from '#worker/authorization/grant-subjects.ts'
-import { memoizePerRequest } from '#worker/request-context.ts'
+import {
+	memoizePerRequest,
+	memoizeReadPerRequest,
+} from '#worker/request-context.ts'
 import { personalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
 import {
 	andActiveOrgSql,
@@ -57,25 +60,33 @@ export type PersonOrg = OrgRecord & {
 const orgSelect = `id, slug, display_name, avatar_key, plan, entitlement_ladder`
 
 export async function getOrgById(db: D1Database, orgId: string) {
-	return await db
-		.prepare(
-			`SELECT ${orgSelect}
-			 FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(orgId)
-		.first<OrgRecord>()
+	return await memoizeReadPerRequest({
+		key: `org:id:${orgId}`,
+		load: () =>
+			db
+				.prepare(
+					`SELECT ${orgSelect}
+					 FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
+				)
+				.bind(orgId)
+				.first<OrgRecord>(),
+	})
 }
 
 export async function getOrgBySlug(db: D1Database, slug: string) {
 	const normalized = slug.trim().toLowerCase()
 	if (!normalized) return null
-	return await db
-		.prepare(
-			`SELECT ${orgSelect}
-			 FROM orgs WHERE slug = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(normalized)
-		.first<OrgRecord>()
+	return await memoizeReadPerRequest({
+		key: `org:slug:${normalized}`,
+		load: () =>
+			db
+				.prepare(
+					`SELECT ${orgSelect}
+					 FROM orgs WHERE slug = ?${andLiveDeletedAtSql()}`,
+				)
+				.bind(normalized)
+				.first<OrgRecord>(),
+	})
 }
 
 export async function getLiveOwnerMembership(
@@ -181,8 +192,14 @@ export async function loadOrgBindingForSlug(
 	personId: string,
 	slug: string,
 ): Promise<OrgBinding | null> {
-	const bindings = await loadOrgBindingsForSlugs(db, personId, [slug])
-	return bindings.get(slug.trim().toLowerCase()) ?? null
+	const normalized = slug.trim().toLowerCase()
+	return await memoizeReadPerRequest({
+		key: `org-binding:slug:${personId}:${normalized}`,
+		load: async () =>
+			(await loadOrgBindingsForSlugs(db, personId, [normalized])).get(
+				normalized,
+			) ?? null,
+	})
 }
 
 /**
@@ -242,7 +259,7 @@ export async function listOrganizationsForPerson(
 	personId: string,
 ): Promise<Array<ListedOrganization>> {
 	const now = new Date().toISOString()
-	const memberships = await db
+	const membershipStatement = db
 		.prepare(
 			`SELECT o.slug AS slug,
 			        o.display_name AS display_name,
@@ -262,14 +279,7 @@ export async function listOrganizationsForPerson(
 			   AND m.deleted_at IS NULL${andActiveOrgSql('o')}`,
 		)
 		.bind(personId, personId, personId)
-		.all<{
-			slug: string
-			display_name: string | null
-			avatar_key: string | null
-			role: OrgRole
-			personal: number
-		}>()
-	const grants = await db
+	const grantStatement = db
 		.prepare(
 			`SELECT DISTINCT o.slug AS slug, o.display_name AS display_name,
 			        o.avatar_key AS avatar_key
@@ -309,11 +319,23 @@ export async function listOrganizationsForPerson(
 			   )`,
 		)
 		.bind(now, personId, personId, now, personId, personId)
-		.all<{
+	const [memberships, grants] = (await db.batch([
+		membershipStatement,
+		grantStatement,
+	])) as [
+		D1Result<{
 			slug: string
 			display_name: string | null
 			avatar_key: string | null
-		}>()
+			role: OrgRole
+			personal: number
+		}>,
+		D1Result<{
+			slug: string
+			display_name: string | null
+			avatar_key: string | null
+		}>,
+	]
 	const listed = [
 		...(memberships.results ?? []).map((row) => ({
 			slug: row.slug,
@@ -479,11 +501,14 @@ export async function loadOrgBindingForPerson(
 	db: D1Database,
 	personId: string,
 ): Promise<OrgBinding> {
-	const row = await orgBindingForPersonStatement(
-		db,
-		personId,
-	).first<OrgBindingRow>()
-	return orgBindingForPersonFromRow(personId, row)
+	return await memoizeReadPerRequest({
+		key: `org-binding:personal:${personId}`,
+		load: async () =>
+			orgBindingForPersonFromRow(
+				personId,
+				await orgBindingForPersonStatement(db, personId).first<OrgBindingRow>(),
+			),
+	})
 }
 
 /**

@@ -1,3 +1,4 @@
+import { memoizeReadPerRequest } from '#worker/request-context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	chunkArray,
@@ -81,13 +82,18 @@ export async function getEntitySourceById(
 	db: D1Database,
 	id: string,
 ): Promise<EntitySourceRow | null> {
-	const result = await db
-		.prepare(
-			`SELECT * FROM entity_sources WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(id)
-		.first<Record<string, unknown>>()
-	return result ? mapEntitySourceRow(result) : null
+	return await memoizeReadPerRequest({
+		key: `entity-source:${id}`,
+		load: async () => {
+			const result = await db
+				.prepare(
+					`SELECT * FROM entity_sources WHERE id = ?${andLiveDeletedAtSql()}`,
+				)
+				.bind(id)
+				.first<Record<string, unknown>>()
+			return result ? mapEntitySourceRow(result) : null
+		},
+	})
 }
 
 export async function listEntitySourcesByIds(

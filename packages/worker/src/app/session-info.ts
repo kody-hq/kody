@@ -68,22 +68,21 @@ export async function loadSessionInfo(
 		}
 	}
 
-	const featureFlags = await loadRequestFeatureFlags(
-		request,
-		env,
-		{
-			userId: resolved.user.userId,
-			stableUserId: resolved.user.mcpUser.userId,
-		},
-		pathname,
-	)
-	const organizations = await loadAccountOrganizationSnapshot(
-		env,
-		resolved.user,
-	)
-	const guest = resolved.user.email.endsWith(`@${guestEmailDomain}`)
-		? await loadSessionGuestInfo(env, request, resolved.user.mcpUser.userId)
-		: null
+	const [featureFlags, organizations, guest] = await Promise.all([
+		loadRequestFeatureFlags(
+			request,
+			env,
+			{
+				userId: resolved.user.userId,
+				stableUserId: resolved.user.mcpUser.userId,
+			},
+			pathname,
+		),
+		loadAccountOrganizationSnapshot(env, resolved.user),
+		resolved.user.email.endsWith(`@${guestEmailDomain}`)
+			? loadSessionGuestInfo(env, request, resolved.user.mcpUser.userId)
+			: null,
+	])
 
 	return {
 		session: {

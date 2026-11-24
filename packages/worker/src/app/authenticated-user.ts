@@ -52,29 +52,29 @@ async function readAuthenticatedAppUserInternal(
 	// session, so every consumer of this helper fails closed.
 	if (resolved.user.accountSuspended) return null
 
-	const resolution = await loadRequestOrgResolution(
-		resourceRequest,
-		env,
-		resolved.user.mcpUser.userId,
-	)
 	// Every live person must have a personal-org membership. Check that even
 	// when the request is bound to a team org, so a broken personal row cannot
-	// keep acting on team surfaces.
-	let personalBinding
-	try {
-		personalBinding = await loadOrgBindingForPerson(
-			env.APP_DB,
+	// keep acting on team surfaces. The two reads are independent.
+	const [resolution, personalBinding] = await Promise.all([
+		loadRequestOrgResolution(
+			resourceRequest,
+			env,
 			resolved.user.mcpUser.userId,
-		)
-	} catch (error) {
-		// Soft-deleted people (or otherwise missing personal-org membership)
-		// must not 500 on every authenticated surface — fail closed as signed
-		// out and destroy the cookie so /login does not bounce them back.
-		if (error instanceof PersonalOrgBindingMissingError) {
-			await markResolvedRequestAuthSignedOut(request)
-			return null
-		}
-		throw error
+		),
+		loadOrgBindingForPerson(env.APP_DB, resolved.user.mcpUser.userId).catch(
+			(error: unknown) => {
+				// Soft-deleted people (or otherwise missing personal-org
+				// membership) must not 500 on every authenticated surface: fail
+				// closed as signed out and destroy the cookie so /login does not
+				// bounce them back.
+				if (error instanceof PersonalOrgBindingMissingError) return null
+				throw error
+			},
+		),
+	])
+	if (!personalBinding) {
+		await markResolvedRequestAuthSignedOut(request)
+		return null
 	}
 	// Denied resources cannot inherit the personal workspace.
 	if (resolution === 'denied') return null

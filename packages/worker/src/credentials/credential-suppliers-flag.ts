@@ -1,7 +1,7 @@
 import { isolateState } from '@kody-internal/shared/isolate-state.ts'
 import { memoizeForFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import {
-	evaluateFeatureFlagBatched,
+	evaluateFeatureFlag,
 	isMissingFeatureFlagsTable,
 } from '#worker/feature-flags/service.ts'
 import { packageCredentialSuppliersFlagKey } from '#universal/feature-flags/registry.ts'
@@ -32,7 +32,7 @@ async function evaluateForOrg(input: {
 	// Two round trips on a cache miss: the owner, then one batch for the flag.
 	try {
 		return (
-			await evaluateFeatureFlagBatched(
+			await evaluateFeatureFlag(
 				input.db,
 				packageCredentialSuppliersFlagKey,
 				owner?.id ?? null,

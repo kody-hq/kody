@@ -5,6 +5,7 @@ import type {
 	AccountPendingInvite,
 	AccountRestorableOrganization,
 } from '#universal/loader-data.ts'
+import { memoizeReadPerRequest } from '#worker/request-context.ts'
 import { orgRoleLabel } from '#universal/org-pages.ts'
 import { packageCollaboratorPresetLabel } from '#universal/package-collaborators.ts'
 import {
@@ -128,12 +129,24 @@ export async function listPendingInvitesForViewer(
 	]
 }
 
-export async function loadAccountOrganizationSnapshot(
+export function loadAccountOrganizationSnapshot(
 	env: Env,
 	user: PendingInviteViewer,
 	options?: { includeRestorable?: boolean },
 ): Promise<AccountOrganizationSnapshot> {
 	const includeRestorable = options?.includeRestorable === true
+	// The shell and a page's own session read both ask within one request.
+	return memoizeReadPerRequest({
+		key: `account-organizations:${user.mcpUser.userId}:${includeRestorable}`,
+		load: () => readAccountOrganizationSnapshot(env, user, includeRestorable),
+	})
+}
+
+async function readAccountOrganizationSnapshot(
+	env: Env,
+	user: PendingInviteViewer,
+	includeRestorable: boolean,
+): Promise<AccountOrganizationSnapshot> {
 	const [organizations, restorableOrganizations, pendingInvites] =
 		await Promise.all([
 			listOrganizationsForPerson(env.APP_DB, user.mcpUser.userId),
