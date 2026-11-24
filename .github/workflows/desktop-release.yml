@@ -115,7 +115,7 @@ jobs:
           cache: npm
       - name: Install Linux runtime libraries
         if: runner.os == 'Linux'
-        timeout-minutes: 14
+        timeout-minutes: 15
         uses: ./.github/actions/apt-install
         with:
           packages:

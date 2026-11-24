@@ -11,6 +11,7 @@ on:
       - 'package-lock.json'
       - '.github/workflows/desktop-binaries.yml'
       - '.github/workflows/desktop-release.yml'
+      - '.github/actions/apt-install/**'
   pull_request:
     paths:
       - 'packages/desktop/**'
@@ -20,6 +21,7 @@ on:
       - 'package-lock.json'
       - '.github/workflows/desktop-binaries.yml'
       - '.github/workflows/desktop-release.yml'
+      - '.github/actions/apt-install/**'
   workflow_dispatch:
 
 permissions:
@@ -76,7 +78,7 @@ jobs:
           cache: npm
       - name: Install Linux runtime libraries
         if: runner.os == 'Linux'
-        timeout-minutes: 14
+        timeout-minutes: 15
         uses: ./.github/actions/apt-install
         with:
           packages:

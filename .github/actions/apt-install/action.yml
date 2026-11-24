@@ -19,13 +19,14 @@ runs:
         APT_PACKAGES: ${{ inputs.packages }}
       run: |
         apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120)
-        for attempt in 1 2; do
-          if sudo timeout 240 apt-get "${apt_opts[@]}" update; then break; fi
-          if [ "$attempt" = 2 ]; then
+        # The first attempt also fails on any index that did not download, so a
+        # mirror timeout gets a retry; the second accepts apt's usual warnings.
+        if ! sudo timeout -k 30 240 apt-get "${apt_opts[@]}" --error-on=any update; then
+          echo "::warning::apt-get update failed, skipped an index, or ran past 4 min; retrying."
+          if ! sudo timeout -k 30 240 apt-get "${apt_opts[@]}" update; then
             echo "::error::apt-get update failed or ran past 4 min twice (stalled mirror?). Re-run the job."
             exit 1
           fi
-          echo "::warning::apt-get update attempt $attempt failed or ran past 4 min; retrying."
-        done
+        fi
         read -ra packages <<<"$APT_PACKAGES"
-        sudo timeout 300 apt-get "${apt_opts[@]}" install -y "${packages[@]}"
+        sudo timeout -k 30 300 apt-get "${apt_opts[@]}" install -y "${packages[@]}"
