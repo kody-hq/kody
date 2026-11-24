@@ -69,7 +69,7 @@ test('a quick page load never dims the page', async ({
 	await login({ ...owner, mode: 'login' })
 	await page.goto(`/@${username}/-/overview`)
 	await waitForClientHydration(page)
-	// The page's clock only moves when told to, so the load below lasts 400 ms
+	// The page's clock only moves when told to, so the load below lasts 900 ms
 	// however long the server takes.
 	await page.clock.install()
 	await page.clock.pauseAt(Date.now() + 60_000)
@@ -91,7 +91,7 @@ test('a quick page load never dims the page', async ({
 		.locator(`a[href="/@${username}/-/apps"]`)
 		.first()
 		.evaluate((link: HTMLElement) => link.click())
-	await page.clock.runFor(400)
+	await page.clock.runFor(900)
 	release()
 	await expect(
 		page.getByRole('heading', { name: 'Apps', level: 1 }),
@@ -132,8 +132,8 @@ test('a page that arrives just after dimming stays dimmed briefly', async ({
 		.locator(`a[href="/@${username}/-/apps"]`)
 		.first()
 		.evaluate((link: HTMLElement) => link.click())
-	// Dimmed at 500 ms; the page arrives 100 ms later.
-	await page.clock.runFor(600)
+	// Dimmed at one second; the page arrives 100 ms later.
+	await page.clock.runFor(1_100)
 	await expect(html).toHaveAttribute('data-route-pending', '')
 	release()
 	await expect(

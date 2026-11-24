@@ -21,7 +21,7 @@ export function AppBrowserEffects() {
  */
 function PendingPageFade() {
 	const pending = useRouterState({ select: (state) => state.isLoading })
-	const faded = useSpinDelay(pending, { delay: 500, minDuration: 300 })
+	const faded = useSpinDelay(pending, { delay: 1000, minDuration: 300 })
 	useResourceLifetime(() => {
 		if (!faded) return () => {}
 		document.documentElement.setAttribute('data-route-pending', '')
