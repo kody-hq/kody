@@ -683,6 +683,9 @@ export class FileRoom extends DurableObject<Env> {
 		await this.broadcast({
 			type: 'update',
 			update: encodeCollaborationBytes(difference),
+			...(actor.kind === 'agent' && {
+				agent: { id: actor.id, name: actor.name },
+			}),
 			sequence: next.sequence,
 			revisionId: next.revisionId,
 		})

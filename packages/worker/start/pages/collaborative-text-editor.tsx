@@ -1,7 +1,16 @@
 /** @jsxImportSource @emotion/react */
-import { useExternalInstanceSync, useLayoutMeasure } from '../lib/primitives.ts'
+import {
+	useExternalInstanceSync,
+	useLayoutMeasure,
+	useResourceLifetime,
+} from '../lib/primitives.ts'
 import { useCallback, useRef, useState } from 'react'
 import * as Y from 'yjs'
+import {
+	agentEditLayerStyle,
+	editRangeRects,
+	mountAgentEditOverlay,
+} from './file-agent-edit-overlay.ts'
 import type {
 	CommentAnchor,
 	FilePresence,
@@ -38,6 +47,55 @@ export function CollaborativeTextEditor({
 }) {
 	const input = useRef<HTMLTextAreaElement>(null),
 		mirror = useRef<HTMLPreElement>(null)
+	const editLayer = useRef<HTMLDivElement>(null)
+	useResourceLifetime(() => {
+		const surface = mirror.current
+		const viewport = input.current
+		const layer = editLayer.current
+		if (!surface || !viewport || !layer) return () => {}
+		const text = client.doc.getText('content')
+		return mountAgentEditOverlay(
+			client,
+			surface,
+			viewport,
+			layer,
+			({ start, end }) => {
+				const from = Y.createAbsolutePositionFromRelativePosition(
+					start,
+					client.doc,
+				)
+				const to = Y.createAbsolutePositionFromRelativePosition(end, client.doc)
+				if (from?.type !== text || to?.type !== text || to.index < from.index)
+					return []
+				const rects: DOMRect[] = []
+				for (const span of surface.querySelectorAll<HTMLElement>(
+					'[data-text-start]',
+				)) {
+					const offset = Number(span.dataset.textStart)
+					const node = span.firstChild
+					if (!(node instanceof Text)) continue
+					const left = Math.max(from.index - offset, 0)
+					const right = Math.min(to.index - offset, node.length)
+					if (right < left || (right === left && from.index !== to.index))
+						continue
+					rects.push(
+						...editRangeRects({ node, offset: left }, { node, offset: right }),
+					)
+					if (from.index === to.index) break
+				}
+				if (
+					!rects.length &&
+					from.index === to.index &&
+					surface.lastChild instanceof Text
+				) {
+					const node = surface.lastChild
+					return editRangeRects({ node, offset: 0 }, { node, offset: 0 })
+				}
+				return rects
+			},
+		)
+	}, [client])
+
 	const [selectedAnchor, setSelectedAnchor] = useState<CommentAnchor | null>(
 		null,
 	)
@@ -336,6 +394,7 @@ export function CollaborativeTextEditor({
 				))}
 				{'\u200b'}
 			</pre>
+			<div ref={editLayer} aria-hidden="true" css={agentEditLayerStyle} />
 			{markers.map(({ top, ids }) => {
 				const active = ids.indexOf(activeThreadId ?? '')
 				return (

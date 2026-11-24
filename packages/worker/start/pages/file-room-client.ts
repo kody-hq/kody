@@ -1,4 +1,9 @@
 import * as Y from 'yjs'
+import {
+	agentEditRanges,
+	agentSelectionMs,
+	type AgentEdit,
+} from './file-agent-edit-ranges.ts'
 import { actorColor, sessionNumber } from '#universal/collaboration-color.ts'
 import { Awareness, applyAwarenessUpdate } from 'y-protocols/awareness'
 import * as encoding from 'lib0/encoding'
@@ -104,6 +109,12 @@ export class FileRoomClient {
 		'participants',
 	)
 	private listeners = new Set<() => void>()
+	private editListeners = new Set<
+		(edit: AgentEdit, phase: 'before' | 'after') => boolean
+	>()
+	private stagedUpdate:
+		| { timer: ReturnType<typeof setTimeout>; apply: () => void }
+		| undefined
 	private value: RoomConnection = {
 		status: 'connecting',
 		ready: false,
@@ -156,6 +167,14 @@ export class FileRoomClient {
 		this.listeners.add(listener)
 		return () => {
 			this.listeners.delete(listener)
+		}
+	}
+	subscribeToAgentEdits(
+		listener: (edit: AgentEdit, phase: 'before' | 'after') => boolean,
+	) {
+		this.editListeners.add(listener)
+		return () => {
+			this.editListeners.delete(listener)
 		}
 	}
 	getSnapshot = () => this.value
@@ -264,7 +283,21 @@ export class FileRoomClient {
 		}
 		socket.onerror = () => this.set({ status: 'offline' })
 	}
+	private finishStagedUpdate() {
+		const staged = this.stagedUpdate
+		if (!staged) return
+		this.stagedUpdate = undefined
+		clearTimeout(staged.timer)
+		staged.apply()
+	}
 	private receive(message: RoomServerMessage) {
+		if (
+			message.type === 'snapshot' ||
+			message.type === 'update' ||
+			message.type === 'ack' ||
+			message.type === 'file'
+		)
+			this.finishStagedUpdate()
 		if (message.type === 'snapshot') {
 			Y.applyUpdate(
 				this.doc,
@@ -303,19 +336,39 @@ export class FileRoomClient {
 					},
 				})
 		} else if (message.type === 'update') {
-			Y.applyUpdate(
-				this.doc,
-				decodeCollaborationBytes(message.update),
-				'remote',
+			const update = decodeCollaborationBytes(message.update)
+			const edit =
+				message.agent && this.editListeners.size
+					? { agent: message.agent, ...agentEditRanges(this.doc, update) }
+					: undefined
+			const apply = () => {
+				Y.applyUpdate(this.doc, update, 'remote')
+				if (this.value.snapshot)
+					this.set({
+						snapshot: {
+							...this.value.snapshot,
+							revisionId: message.revisionId,
+							sequence: message.sequence,
+						},
+					})
+				if (edit)
+					for (const listener of this.editListeners) listener(edit, 'after')
+			}
+			let selecting = false
+			if (
+				edit?.before.length &&
+				document.visibilityState === 'visible' &&
+				!matchMedia('(prefers-reduced-motion: reduce)').matches
 			)
-			if (this.value.snapshot)
-				this.set({
-					snapshot: {
-						...this.value.snapshot,
-						revisionId: message.revisionId,
-						sequence: message.sequence,
-					},
-				})
+				for (const listener of this.editListeners)
+					selecting = listener(edit, 'before') || selecting
+			if (selecting) {
+				const timer = setTimeout(
+					() => this.finishStagedUpdate(),
+					agentSelectionMs,
+				)
+				this.stagedUpdate = { timer, apply }
+			} else apply()
 		} else if (message.type === 'ack') {
 			this.awaiting.get(message.operationId)?.resolve()
 			this.awaiting.delete(message.operationId)
@@ -569,6 +622,8 @@ export class FileRoomClient {
 
 	dispose() {
 		this.disposed = true
+		this.editListeners.clear()
+		this.finishStagedUpdate()
 		if (this.reconnect) clearTimeout(this.reconnect)
 		if (this.heartbeat) clearInterval(this.heartbeat)
 		if (this.presenceTimer) clearTimeout(this.presenceTimer)
