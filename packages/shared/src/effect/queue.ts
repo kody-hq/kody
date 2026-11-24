@@ -55,14 +55,14 @@ export const settleQueueBatch = <
 						message.retry({ delaySeconds: disposition.delaySeconds }),
 					)
 				}
-				return Effect.sync(() => message.ack()).pipe(
-					Effect.andThen(disposition.afterAck ?? Effect.void),
+				return (disposition.afterAck ?? Effect.void).pipe(
 					Effect.catchCause((cause) =>
 						Effect.logError(`${input.consumer}-after-ack-failed`, {
 							queueMessageId: message.id,
 							error: Cause.squash(cause),
 						}),
 					),
+					Effect.andThen(Effect.sync(() => message.ack())),
 				)
 			}),
 			Effect.withSpan(`${input.consumer}.message`, {
