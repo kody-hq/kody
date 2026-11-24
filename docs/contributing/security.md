@@ -521,7 +521,10 @@ Deploy health checks hit the origin at `APP_BASE_URL/health` when that var is
 set, and fall back to the workers.dev URL from `wrangler deploy` output.
 Platform and runtime health checks always use the workers.dev URL
 (`/__platform/health`, `/__runtime/health`). Those exact probe paths stay
-reachable on any host; every other workers.dev path in production is `404`.
+reachable on any host; every other workers.dev path that reaches a Worker in
+production is `404`. Public static files that Cloudflare serves before the
+Worker runs (`/favicon.svg`, `/fonts/…`, `/images/…`, hashed `/assets/…`
+bundles) answer on any host; they carry no user data and set no cookies.
 
 ## Auth rate limiting
 
