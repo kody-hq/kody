@@ -27,6 +27,7 @@ export const Route = createFileRoute('/_app/@{$username}')({
 			'view',
 		],
 		workspaceLayout: 'profile',
+		anonymousDocumentCache: 'visibility',
 		navigation: { rail: 'workspace', item: 'public-profile' },
 		shell: { gutters: 'page' },
 	},

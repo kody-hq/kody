@@ -259,19 +259,20 @@ workerd honors `stale-while-revalidate` and persists `caches.default` under
 `.wrangler/state`, so a stored page would keep replaying for minutes after the
 edit that changed it. The `workers-unit` suite still exercises the store.
 
-The public package surfaces (`/@:username/:kodyId`,
+The public profile (`/@:username`) and package surfaces (`/@:username/:kodyId`,
 `/@:username/:kodyId/tree/:ref/*`, `/@:username/:kodyId/raw/:ref/*`,
 `/community/:id`, `/community/:id/files/*`, `/community/:id/raw/*`) are shared
 too, but with `public, max-age=60` and no stale-while-revalidate
 (`anonymousDocumentCache: 'visibility'`): an owner can unpublish or make a
 package private and nothing purges shared caches, so a stale public response is
-bounded to one minute. They are shared only when the document is a `200` (a
-`401` or `404` to a stranger stays `no-store` so making a package public takes
-effect at once). The Cache API store is HTML-only. Landing-hero video metadata
-is KV-cached with SWR on the homepage load. The response stays `no-store` when
-the request carries a `kody_session` cookie, `loadSessionInfo` resolves a
-session, or the response sets a cookie. Auth, OAuth, account, and every other
-HTML path stay `no-store`.
+bounded to one minute. A profile's package list lags a publish or a visibility
+change by the same minute for signed-out visitors. They are shared only when the
+document is a `200` (a `401` or `404` to a stranger stays `no-store` so making a
+package public takes effect at once). The Cache API store is HTML-only.
+Landing-hero video metadata is KV-cached with SWR on the homepage load. The
+response stays `no-store` when the request carries a `kody_session` cookie,
+`loadSessionInfo` resolves a session, or the response sets a cookie. Auth,
+OAuth, account, and every other HTML path stay `no-store`.
 
 ## Request context
 
