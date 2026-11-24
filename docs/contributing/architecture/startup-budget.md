@@ -173,9 +173,8 @@ runner before any sampled CPU is measured. The budget still compares active CPU,
 so the longer boot allowance does not loosen it. Refresh the patch when bumping
 Wrangler.
 
-Byte overages against the reviewed ceiling **warn and open/update a GitHub
-issue** on main CI (`Startup budget overage: <worker>`, marker
-`<!-- kody-startup-bundle-overage:<worker> -->`, `friction` label). They do
+Byte overages against the reviewed ceiling **warn** in the 🧹 Static check
+output (`Startup budget overage: <worker>` annotations) and job summary. They do
 **not** fail 🧹 Static / ✅ Validate or block 🚀 Deploy. Deferred-source and
 additional-module regressions still fail hard. Shrink the graph when you can;
 raise the committed budget (with a notes ledger entry) when the growth is
