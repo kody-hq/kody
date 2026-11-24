@@ -223,11 +223,14 @@ referrer subscription lookup fails, the webhook fails so Stripe can retry. Email
 verification leaves the row pending on lookup failure; a later `invoice.paid`
 for the referrer org also retries held rewards.
 
-Credit stacks from the latest of now, existing referral expiry, and paid period
-end (the referee invoice's latest line `period.end`). The referrer has no annual
-or lifetime cap. `getUserEntitlement` overlays retired Pro limits through the
-later of the second-agent gift and `orgs.referral_standard_credit_expires_at`,
-including on a Free team org.
+For each org, credit stacks from the latest of now, that org's existing referral
+expiry, and its own paid period end. The referrer uses the latest end from its
+qualifying Kody subscriptions; the referee uses the latest line `period.end` on
+its qualifying invoice. The referrer has no annual or lifetime cap.
+`getUserEntitlement` uses the later of the second-agent gift and
+`orgs.referral_standard_credit_expires_at` to apply retired Pro limits while the
+credit is active and the org's effective base plan (manual and Stripe) is Free.
+A non-Free base plan keeps its own limits.
 
 ### `max` plan limits
 
