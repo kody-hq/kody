@@ -307,8 +307,9 @@ export type ListCustomerPaidInvoices = (
 
 /**
  * Checks the paid marker and Stripe history for the personal org and live orgs
- * this person owns or bills. A Stripe page with `hasMore` also counts as paid,
- * even without a qualifying invoice on that page.
+ * this person owns or bills. A Stripe page with `hasMore` counts as paid even
+ * without a qualifying invoice on that page, so an unseen payment cannot
+ * reopen late referral entry.
  */
 export async function personHasPaidKodyInvoice(input: {
 	db: D1Database
