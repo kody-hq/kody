@@ -122,11 +122,20 @@ export async function ensurePageQuery<TData, TKey extends QueryKey>(
 				return client.fetchQuery({ ...options, staleTime: Infinity })
 			}
 		}
-		// A preload repeats an older read so the click that follows finds one
-		// inside the window. It leaves a read in flight alone, since a
-		// navigation may be waiting on it.
-		if (preload && state?.fetchStatus === 'fetching') {
-			return client.fetchQuery(options)
+		if (preload) {
+			// The page on screen already holds this read. Hovering a link back
+			// to it, such as a filter or view link, must not start another.
+			const mounted = client
+				.getQueryCache()
+				.find({ queryKey: options.queryKey, exact: true })
+				?.isActive()
+			if (mounted && !state?.isInvalidated) {
+				return client.ensureQueryData({ ...options, revalidateIfStale: true })
+			}
+			// Otherwise a preload repeats an older read so the click that
+			// follows finds one inside the window. It leaves a read in flight
+			// alone, since a navigation may be waiting on it.
+			if (state?.fetchStatus === 'fetching') return client.fetchQuery(options)
 		}
 		// An older read may predate a revocation. Its late result must not
 		// satisfy the foreground authorization check.

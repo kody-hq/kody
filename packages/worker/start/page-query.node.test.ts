@@ -219,6 +219,22 @@ describe('page query ownership', () => {
 		await ensurePageQuery(cache, query, false)
 		expect(read).toHaveBeenCalledTimes(2)
 	})
+	it('hovering a link back to the page on screen starts no read', async () => {
+		vi.useFakeTimers()
+		const cache = client()
+		const read = vi.fn(async () => ({ forbidden: false }))
+		const query = createPageQuery('loadSkills', read, {
+			freshAuthorization: true,
+		})('same-actor', '/skills')
+		await ensurePageQuery(cache, query, false)
+		const unsubscribe = new QueryObserver(cache, query).subscribe(() => {})
+		vi.advanceTimersByTime(freshAuthorizationWindowMs)
+		await ensurePageQuery(cache, query, true)
+		expect(read).toHaveBeenCalledTimes(1)
+		unsubscribe()
+		await ensurePageQuery(cache, query, true)
+		expect(read).toHaveBeenCalledTimes(2)
+	})
 	it('awaits an explicitly invalidated revision so Router metadata cannot reuse the old title', async () => {
 		const cache = client()
 		const next = deferred<{ title: string }>()
