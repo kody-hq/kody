@@ -1,3 +1,4 @@
+import { memoizeReadPerRequest } from '#worker/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 /**
@@ -11,6 +12,13 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
  * that used to be platform accounts.
  */
 export async function isPersonalOrg(db: D1Database, orgId: string) {
+	return await memoizeReadPerRequest({
+		key: `org:personal:${orgId}`,
+		load: () => readIsPersonalOrg(db, orgId),
+	})
+}
+
+async function readIsPersonalOrg(db: D1Database, orgId: string) {
 	const row = await db
 		.prepare(
 			`SELECT 1 AS ok

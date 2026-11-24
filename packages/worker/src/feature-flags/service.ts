@@ -14,6 +14,7 @@ import {
 } from '#universal/feature-flags/registry.ts'
 import type { AdminFeatureFlag } from '#universal/feature-flags/types.ts'
 import { memoizeForFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
+import { memoizeReadPerRequest } from '#worker/request-context.ts'
 import {
 	andActiveOrgSql,
 	andLiveDeletedAtSql,
@@ -314,15 +315,24 @@ function orgOverrideStatement(
 		)
 }
 
+/**
+ * One flag for one user in one D1 round trip: the experiments opt-in, user
+ * override, org override, and global row are read in a single batch, then
+ * resolved by precedence. A GET request evaluates each flag once however many
+ * layers ask (page handler, capability gates).
+ */
 export async function evaluateFeatureFlag(
 	db: D1Database,
 	key: FeatureFlagKey,
 	userId: number | null,
 	orgContext: FeatureFlagOrgContext = null,
 ): Promise<FeatureFlagEvaluation> {
-	return await memoizeForFeatureFlagExecution(
-		`evaluate:${key}:${userId ?? ''}:${orgContext?.orgId ?? ''}`,
-		() => readFeatureFlagEvaluation(db, key, userId, orgContext),
+	const memoKey = `evaluate:${key}:${userId ?? ''}:${orgContext?.orgId ?? ''}`
+	return await memoizeForFeatureFlagExecution(memoKey, () =>
+		memoizeReadPerRequest({
+			key: `feature-flag:${memoKey}`,
+			load: () => readFeatureFlagEvaluation(db, key, userId, orgContext),
+		}),
 	)
 }
 
@@ -332,133 +342,51 @@ async function readFeatureFlagEvaluation(
 	userId: number | null,
 	orgContext: FeatureFlagOrgContext,
 ): Promise<FeatureFlagEvaluation> {
-	const experimentsOptIn = await readExperimentsOptInForUser(db, userId)
-
-	if (userId !== null) {
-		const override = await db
-			.prepare(
-				`SELECT enabled
-				 FROM feature_flag_user_overrides
-				 WHERE flag_key = ? AND user_id = ?`,
-			)
-			.bind(key, userId)
-			.first<{ enabled: number }>()
-		if (override) {
-			return applyAudienceGate({
-				evaluation: {
-					enabled: override.enabled === 1,
-					source: 'override',
-				},
-				// Overrides skip the audience gate; audience value is unused.
-				audience: defaultFeatureFlagAudience,
-				experimentsOptIn,
-			})
-		}
-	}
-
-	if (userId !== null && orgContext) {
-		const orgRow = await orgOverrideStatement(db, {
-			userId,
-			orgId: orgContext.orgId,
-			key,
-		}).first<OverrideEnabledRow>()
-		if (orgRow) return { enabled: orgRow.enabled === 1, source: 'org' }
-	}
-
-	const global = await db
+	const globalStatement = db
 		.prepare(
 			`SELECT enabled, rollout_percent, audience
 			 FROM feature_flags
 			 WHERE key = ?`,
 		)
 		.bind(key)
-		.first<{
-			enabled: number
-			rollout_percent: number | null
-			audience: string | null
-		}>()
-
-	return evaluateFlagState({
-		key,
-		rolloutSubject: userId,
-		overrideEnabled: null,
-		global: global
-			? {
-					enabled: global.enabled === 1,
-					rolloutPercent: global.rollout_percent,
-					audience: normalizeAudience(global.audience),
-				}
-			: null,
-		defaultEnabled: getFeatureFlagDefinition(key).defaultEnabled,
-		defaultAudience: getFeatureFlagDefaultAudience(key),
-		experimentsOptIn,
-	})
-}
-
-/**
- * {@link evaluateFeatureFlag} in one D1 round trip: the experiments opt-in,
- * user override, org override, and global row are read in a single batch,
- * then resolved with the same precedence. For hot paths that cannot afford
- * the sequential reads (package-app serve's supplier flag).
- */
-export async function evaluateFeatureFlagBatched(
-	db: D1Database,
-	key: FeatureFlagKey,
-	userId: number | null,
-	orgContext: FeatureFlagOrgContext = null,
-): Promise<FeatureFlagEvaluation> {
-	return await memoizeForFeatureFlagExecution(
-		`evaluate:${key}:${userId ?? ''}:${orgContext?.orgId ?? ''}`,
-		() => readFeatureFlagEvaluationBatched(db, key, userId, orgContext),
-	)
-}
-
-async function readFeatureFlagEvaluationBatched(
-	db: D1Database,
-	key: FeatureFlagKey,
-	userId: number | null,
-	orgContext: FeatureFlagOrgContext,
-): Promise<FeatureFlagEvaluation> {
-	// Without a user only the global row applies: already one read.
-	if (userId === null) {
-		return await readFeatureFlagEvaluation(db, key, userId, orgContext)
-	}
-	const [globalResult, overrideResult, optInResult, orgResult] = await db.batch(
-		[
-			db
-				.prepare(
-					`SELECT enabled, rollout_percent, audience
-					 FROM feature_flags
-					 WHERE key = ?`,
-				)
-				.bind(key),
-			db
-				.prepare(
-					`SELECT enabled
-					 FROM feature_flag_user_overrides
-					 WHERE flag_key = ? AND user_id = ?`,
-				)
-				.bind(key, userId),
-			db
-				.prepare(
-					`SELECT experiments_opt_in FROM users WHERE id = ?${andLiveDeletedAtSql()}`,
-				)
-				.bind(userId),
-			...(orgContext
-				? [orgOverrideStatement(db, { userId, orgId: orgContext.orgId, key })]
-				: []),
-		],
-	)
+	// Without a user only the global row applies.
+	const [globalResult, overrideResult, optInResult, orgResult] =
+		userId === null
+			? [await globalStatement.all()]
+			: await db.batch([
+					globalStatement,
+					db
+						.prepare(
+							`SELECT enabled
+							 FROM feature_flag_user_overrides
+							 WHERE flag_key = ? AND user_id = ?`,
+						)
+						.bind(key, userId),
+					db
+						.prepare(
+							`SELECT experiments_opt_in FROM users WHERE id = ?${andLiveDeletedAtSql()}`,
+						)
+						.bind(userId),
+					...(orgContext
+						? [
+								orgOverrideStatement(db, {
+									userId,
+									orgId: orgContext.orgId,
+									key,
+								}),
+							]
+						: []),
+				])
 	const global = d1ResultRows<{
 		enabled: number
 		rollout_percent: number | null
 		audience: string | null
 	}>(globalResult as D1Result<GlobalEvaluationRow>)[0]
 	const override = d1ResultRows<{ enabled: number }>(
-		overrideResult as D1Result<{ enabled: number }>,
+		overrideResult as D1Result<{ enabled: number }> | undefined,
 	)[0]
 	const optIn = d1ResultRows<{ experiments_opt_in: number }>(
-		optInResult as D1Result<{ experiments_opt_in: number }>,
+		optInResult as D1Result<{ experiments_opt_in: number }> | undefined,
 	)[0]
 	const orgRow = d1ResultRows<OverrideEnabledRow>(
 		orgResult as D1Result<OverrideEnabledRow> | undefined,

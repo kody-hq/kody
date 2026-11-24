@@ -15,6 +15,7 @@ import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	getEntitySourceByEntity,
 	getEntitySourceById,
+	readEntitySourceById,
 } from '#worker/repo/entity-sources.ts'
 import { identityIconCommitForSource } from '#worker/repo/identity-icon.ts'
 import { getUserRepoByName } from '#worker/repo/user-repos.ts'
@@ -139,7 +140,7 @@ async function servePackageIdentityIcon(input: {
 		includePackageAppIcon: true,
 		cacheControl: guestVisible ? undefined : ownerIdentityIconCacheControl,
 		isServableCommit: async () => {
-			const current = await getEntitySourceById(env.APP_DB, source.id)
+			const current = await readEntitySourceById(env.APP_DB, source.id)
 			if (
 				!current ||
 				current.user_id !== userId ||

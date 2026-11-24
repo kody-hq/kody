@@ -1,3 +1,4 @@
+import { memoizeReadPerRequest } from '#worker/request-context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	chunkArray,
@@ -78,6 +79,21 @@ export async function insertEntitySource(
 }
 
 export async function getEntitySourceById(
+	db: D1Database,
+	id: string,
+): Promise<EntitySourceRow | null> {
+	return await memoizeReadPerRequest({
+		key: `entity-source:${id}`,
+		load: () => readEntitySourceById(db, id),
+	})
+}
+
+/**
+ * Reads the row from D1 every time. For a check that must see a write made
+ * by another request after this one started, where
+ * {@link getEntitySourceById} would return the row this request already read.
+ */
+export async function readEntitySourceById(
 	db: D1Database,
 	id: string,
 ): Promise<EntitySourceRow | null> {

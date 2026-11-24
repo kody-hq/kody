@@ -960,13 +960,30 @@ test('durable re-entry finalizes an uploaded build without the upload bucket bin
 			row = { id: 1 }
 		} else if (sql.includes('FROM feature_flag_user_overrides')) {
 			row = { enabled: 1 }
+		} else if (
+			sql.includes('FROM feature_flags') ||
+			sql.includes('FROM feature_flag_org_overrides')
+		) {
+			row = null
+		} else if (sql.includes('experiments_opt_in')) {
+			row = { experiments_opt_in: 0 }
 		} else {
 			return prepare(sql)
 		}
 		return {
-			bind: () => ({ first: async () => row }),
-		} as D1PreparedStatement
+			bind: () => ({
+				first: async () => row,
+				all: async () => ({ results: row ? [row] : [] }),
+			}),
+		} as unknown as D1PreparedStatement
 	})
+	// The publish-offload flag is read as one batch.
+	ctx.env.APP_DB.batch = (async (
+		statements: Array<{ all: () => Promise<unknown> }>,
+	) =>
+		await Promise.all(
+			statements.map((statement) => statement.all()),
+		)) as unknown as D1Database['batch']
 
 	const result = await publishExternalPushCapability.handler(
 		{

@@ -3,6 +3,7 @@ import {
 	collectServerTiming,
 	getRequestContext,
 	memoizePerRequest,
+	memoizeReadPerRequest,
 	recordServerTiming,
 	runWithRequestContext,
 } from './request-context.ts'
@@ -97,4 +98,34 @@ test('recordServerTiming appends to the request entries and collectServerTiming 
 	const context = getRequestContext(request)
 	expect(collectServerTiming(request, context?.serverTiming)).toHaveLength(2)
 	expect(collectServerTiming(makeRequest())).toEqual([])
+})
+
+test('memoizeReadPerRequest shares a read within a GET request', async () => {
+	let loads = 0
+	const load = () => Promise.resolve(++loads)
+
+	const results = await runWithRequestContext(makeRequest(), () =>
+		Promise.all([
+			memoizeReadPerRequest({ key: 'org', load }),
+			memoizeReadPerRequest({ key: 'org', load }),
+		]),
+	)
+
+	expect(results).toEqual([1, 1])
+})
+
+test('memoizeReadPerRequest reads live in a request that may write', async () => {
+	let loads = 0
+	const load = () => Promise.resolve(++loads)
+	const request = new Request('https://kody.test/@owner/demo', {
+		method: 'POST',
+	})
+
+	const results = await runWithRequestContext(request, async () => [
+		await memoizeReadPerRequest({ key: 'org', load }),
+		await memoizeReadPerRequest({ key: 'org', load }),
+	])
+
+	expect(results).toEqual([1, 2])
+	expect(await memoizeReadPerRequest({ key: 'org', load })).toBe(3)
 })

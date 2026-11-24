@@ -84,6 +84,21 @@ export function memoizePerRequest<Value>(input: {
 	return reloadMemo(context.memo, input.key, load)
 }
 
+/**
+ * {@link memoizePerRequest} for identity, organization, and flag rows that
+ * every layer of a page re-reads (shell, session check, page auth, handler).
+ * Only GET and HEAD requests share the read: a request that may write those
+ * rows always reads them live, so it can never act on its own stale value.
+ */
+export function memoizeReadPerRequest<Value>(input: {
+	key: string
+	load: () => Promise<Value>
+}): Promise<Value> {
+	const method = getRequestContext()?.request.method
+	if (method !== 'GET' && method !== 'HEAD') return input.load()
+	return memoizePerRequest(input)
+}
+
 function reloadMemo<Value>(
 	memo: Map<string, Promise<unknown>>,
 	key: string,

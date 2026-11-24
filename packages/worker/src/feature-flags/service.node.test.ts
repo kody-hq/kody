@@ -4,7 +4,6 @@ import {
 	clearFeatureFlagUserOverride,
 	deleteStaleFeatureFlag,
 	evaluateFeatureFlag,
-	evaluateFeatureFlagBatched,
 	getFeatureFlagEvaluationsForUser,
 	getFeatureFlagsForUser,
 	isFeatureEnabled,
@@ -186,7 +185,9 @@ function createFeatureFlagsTestDb(
 						),
 					)
 				}
-				throw new Error(`Unsupported all query: ${query}`)
+				// Single-row reads arrive through `all` when they ride a batch.
+				const row = await this.first<T>()
+				return allResults<T>(row ? [row] : [])
 			},
 			async run() {
 				if (
@@ -800,17 +801,19 @@ test('profiles first insert without audience uses registry defaultAudience', asy
 	expect(await enabledFor(db, [7, 8], 'profiles')).toEqual([true, false])
 })
 
-test('evaluateFeatureFlagBatched matches evaluateFeatureFlag in one batch', async () => {
+test('evaluateFeatureFlag reads every layer of a flag in one batch', async () => {
 	const now = '2026-10-31T00:00:00.000Z'
 	const scenarios: Array<{
 		name: string
+		expected: { enabled: boolean; source: string }
 		globals?: Array<GlobalRow>
 		overrides?: Array<OverrideRow>
 		optIn?: number
 	}> = [
-		{ name: 'default' },
+		{ name: 'default', expected: { enabled: false, source: 'default' } },
 		{
 			name: 'global on',
+			expected: { enabled: true, source: 'global' },
 			globals: [
 				{
 					key: 'package-credential-suppliers',
@@ -825,6 +828,7 @@ test('evaluateFeatureFlagBatched matches evaluateFeatureFlag in one batch', asyn
 		},
 		{
 			name: 'opt-in audience without opt-in',
+			expected: { enabled: false, source: 'global' },
 			globals: [
 				{
 					key: 'package-credential-suppliers',
@@ -839,6 +843,7 @@ test('evaluateFeatureFlagBatched matches evaluateFeatureFlag in one batch', asyn
 		},
 		{
 			name: 'opt-in audience with opt-in',
+			expected: { enabled: true, source: 'global' },
 			optIn: 1,
 			globals: [
 				{
@@ -854,6 +859,7 @@ test('evaluateFeatureFlagBatched matches evaluateFeatureFlag in one batch', asyn
 		},
 		{
 			name: 'user override wins over global',
+			expected: { enabled: true, source: 'override' },
 			globals: [
 				{
 					key: 'package-credential-suppliers',
@@ -903,14 +909,9 @@ test('evaluateFeatureFlagBatched matches evaluateFeatureFlag in one batch', asyn
 				return prepare(query)
 			},
 		}) as D1Database
-		const expected = await evaluateFeatureFlag(
-			db,
-			'package-credential-suppliers',
-			3,
-		)
 		await expect(
-			evaluateFeatureFlagBatched(counted, 'package-credential-suppliers', 3),
-		).resolves.toEqual(expected)
+			evaluateFeatureFlag(counted, 'package-credential-suppliers', 3),
+		).resolves.toEqual(scenario.expected)
 		expect({ scenario: scenario.name, batches, prepares }).toEqual({
 			scenario: scenario.name,
 			batches: 1,

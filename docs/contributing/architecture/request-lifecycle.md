@@ -286,6 +286,13 @@ SSR frames render after the async scope has exited; repo-layer code without a
 request falls back to the store. Without any context the helpers just run the
 load, so unit tests and jobs are unaffected.
 
+`memoizeReadPerRequest` is the same memo for the identity rows every layer of a
+page re-reads: the org by id or slug, a person's org binding, the personal-org
+check, one feature flag evaluation, the account organization list, and an entity
+source by id. The shell, the session check, page auth, and the handler share one
+read each. It only shares within `GET` and `HEAD` requests (page loads and `GET`
+server functions); a request that may write those rows reads them live.
+
 ## Page Server-Timing
 
 Loaders record request-scoped phases (`{ name, durationMs, desc? }`, same helper
