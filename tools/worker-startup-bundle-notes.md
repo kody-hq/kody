@@ -5,7 +5,7 @@ Append-only ledger of reviewed `maxEntryBytes` bumps. Live ceilings live in
 re-flow older notes when you bump a number.
 
 Byte overages no longer fail CI: `tools/check-worker-startup-bundles.ts` warns
-and upserts a tracking GitHub issue on main pushes. Keep this ledger honest when
+in the 🧹 Static check annotations and job summary. Keep this ledger honest when
 you intentionally raise a ceiling.
 
 ## origin

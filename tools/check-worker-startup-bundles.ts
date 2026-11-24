@@ -29,7 +29,7 @@ import {
 import {
 	reportStartupBundleOverages,
 	type StartupBundleOverage,
-} from './startup-bundle-overage-issue.ts'
+} from './startup-bundle-overage-report.ts'
 import {
 	attributeGeneratedBytes,
 	diffAttributedSources,
@@ -538,7 +538,7 @@ async function inspectStartupBundle(
  * import graph); `check-worker-startup-time.ts` adds the sampled-CPU
  * tripwire on top of it.
  *
- * Byte overages warn and open/update a tracking GitHub issue on main CI; they
+ * Byte overages warn as check annotations and a job summary section; they
  * never fail this check or block Deploy. Deferred-source / additional-module
  * regressions still fail hard.
  */
