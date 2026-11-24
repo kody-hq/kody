@@ -103,7 +103,8 @@ the request's D1 round trips, with the count as its description. `d1-reported`
 is the same for the round trips D1 returned metadata for (`all`, `run`, `batch`;
 not `first`), and `d1-sql` is the SQL time D1 reported for those, described by
 the region, data center, and role that served them (`WNAM-SJC-primary`).
-`d1-reported` minus `d1-sql` is time spent reaching D1 and back, not running
-SQL. Compare several samples; the first after a deploy is cold.
+`d1-reported` minus `d1-sql` is time outside SQL: travel to D1 and back,
+queueing at D1, and any attempts D1 retried (it reports SQL time for the last
+attempt only). Compare several samples; the first after a deploy is cold.
 [Weekly site performance](./weekly-site-perf.md) tracks the landing page
 budgets, and [`/health`](./control-kody.md) shows which commit is live.

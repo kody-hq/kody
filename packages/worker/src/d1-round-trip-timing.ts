@@ -146,6 +146,9 @@ const installedEnvs = new WeakSet<object>()
 /**
  * Time `APP_DB` for every request this Worker env serves. Replaces the
  * binding in place, once, so the env object keeps its identity.
+ *
+ * Remove when: the D1 read replication plan (factory plan
+ * plan_b06be7edb75a49ef) is decided either way.
  */
 export function installD1RoundTripTiming(env: Env | undefined) {
 	if (!env || typeof env !== 'object') return
