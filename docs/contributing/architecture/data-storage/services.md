@@ -47,11 +47,11 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   Pre-signup attribution lives in two one-week first-party cookies: the
   first-touch-wins `kody_first_touch` (UTMs, landing path, referrer; the browser
   writes it, signup reads it server-side and clears it) and the last-wins
-  `kody_ref` referral cookie. `referrals` stores the signup-time row
-  (`referrer_org_id` — the personal or team org the link credits —
-  `referee_stable_user_id`) and the invoice-gated reward ledger (`status`,
-  `reward_invoice_id`, held invoice fields while email is unverified). See
-  [Entitlements](../entitlements.md#referral-pro-credit). The
+  `kody_ref` referral cookie. `referrals` stores the attribution row from signup
+  or early personal billing (`referrer_org_id` — the personal or team org the
+  link credits — `referee_stable_user_id`) and the invoice-gated reward ledger
+  (`status`, `reward_invoice_id`, held invoice fields while email is
+  unverified). See [Entitlements](../entitlements.md#referral-pro-credit). The
   `d1_storage_reconciliation` lane sweeps live owners (personal orgs by
   `users.stable_user_id` and team orgs by `orgs.id`) in one keyset from the
   platform-owned `d1_storage_reconcile_cursor` singleton. UserMeter

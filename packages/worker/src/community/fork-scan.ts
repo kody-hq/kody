@@ -28,11 +28,11 @@ function addCrossScopeReference(
 const scopedTopicPattern = /^@([a-z0-9][a-z0-9._-]*)\/(.+)$/
 
 /**
- * Map each `kody.emits` topic the origin declares to the fork's topic. A
+ * Map each changed scoped `kody.emits` topic to the fork's topic. A
  * topic named after the origin package (`@kody/github.issue.opened`) takes
  * the fork's scope and leaf (`@jane/my-github.issue.opened`); any other
- * topic body keeps its body and only takes the fork's scope. Unchanged
- * topics are left out.
+ * topic keeps its body and takes the fork's scope. Reject a rename that
+ * makes two distinct declarations share a topic.
  */
 export function planForkedEmittedTopics(input: {
 	topics: Array<string>
@@ -121,9 +121,9 @@ export function rewritePackageManifestForFork(input: {
 	targetName: string
 	originName: string | null
 	/**
-	 * Origin `kody.emits` topic → fork topic. Emits topics must use the
-	 * package scope, so a fork renames them with the package; apply these to
-	 * every other file with `rewriteForkedPackageSelfReferences`.
+	 * Changed emits topics and, when an own-prefix topic changes, its
+	 * `@scope/leaf.*` glob. Pass this map to
+	 * `rewriteForkedPackageSelfReferences` for text files.
 	 */
 	topicRenames: Record<string, string>
 } {

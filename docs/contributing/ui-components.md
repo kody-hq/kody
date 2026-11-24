@@ -72,17 +72,19 @@ to the control win.
 `start/components/input.tsx`
 
 ```tsx
-<InputGroup>
-	<InputAddon aria-hidden="true">kody.codes/@</InputAddon>
-	<Input name="slug" />
-</InputGroup>
+<Field label="Profile slug" description="Your address is kody.codes/@<slug>.">
+	<InputGroup size="sm" background="canvas">
+		<InputAddon aria-hidden="true">kody.codes/@</InputAddon>
+		<Input name="slug" />
+	</InputGroup>
+</Field>
 ```
 
-One joined control: a single border, rounded outer corners, square inner
-corners, and a focus ring around the whole group. Never butt a styled `span`
-against an `Input` with radius overrides.
+The wrapper draws the outer border, corners, background, and focus ring. The
+input has no separate border or focus ring; the addon draws a divider.
 
-- `size` and `background` go on `InputGroup`; the `Input` inside follows them.
+- Set `size` and `background` on `InputGroup`, not on the nested `Input`.
+- Label the `Input` itself or wrap the group in a `Field`.
 - `InputAddon` is static text. Mark it `aria-hidden` when the field's
   description already says the full value.
 

@@ -60,19 +60,24 @@ export function PrivacyRoute() {
 					and bio, profile visibility, and the experiments opt-in preference at{' '}
 					<code>/account/experiments</code>), first-touch marketing attribution
 					captured on public-site visits when UTM or landing context is present
-					and associated with the account at signup, first-seen activation
-					timestamps (email verified, first MCP connection, first execute, first
-					saved package, first secret, first integration, first job), MCP client
-					name when known, last-active day stamps used for return metrics,
-					secrets, memories, packages and their source, jobs, email inboxes and
-					messages, durable storage, MCP server configuration, OAuth grants,
-					package invocation tokens, short-lived execution history, stored
-					community activity events, and any platform feedback you approve for
-					submission. All of this remains scoped to your account except for
-					content you deliberately make public (public packages published to
-					Community and a public profile), the narrow admin review of approved
-					platform feedback, and the community activity metadata described
-					below.
+					and associated with the account at signup, referral attribution,
+					first-seen activation timestamps (email verified, first MCP
+					connection, first execute, first saved package, first secret, first
+					integration, first job), MCP client name when known, last-active day
+					stamps used for return metrics, secrets, memories, packages and their
+					source, jobs, email inboxes and messages, durable storage, MCP server
+					configuration, OAuth grants, package invocation tokens, short-lived
+					execution history, stored community activity events, and any platform
+					feedback you approve for submission. All of this remains scoped to
+					your account except for content you deliberately make public (public
+					packages published to Community and a public profile), the narrow
+					admin review of approved platform feedback, the community activity
+					metadata described below, and the referral details described here.
+				</p>
+				<p css={descriptionCss}>
+					If an organization refers you, its billing summary can show your
+					username, whether the referral is pending or rewarded, and the reward
+					date when recorded.
 				</p>
 				<p css={descriptionCss}>
 					When profile visibility is <strong>public</strong>, display name, bio,

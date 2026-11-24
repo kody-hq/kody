@@ -152,7 +152,10 @@ button on the package page or `packageFork` (`{ "package": "@owner/leaf" }`). It
 works like a listing fork below: a new package in your own org, with a fork
 record for upstream tracking. It never grants more access to the source.
 
-`communityFork` copies **HEAD** into your account as an **inert** source:
+`communityFork` copies the package into your account as an **inert** source.
+Preparation prefers the default-branch tip for non-starter listings and can fall
+back to the listing pin or published revision. For starters, preparation uses
+the published revision, or the listing pin if there is no published revision.
 
 - `package.json` `name` is rewritten to your username scope (`@you/<leaf>`).
   When you omit a name, the leaf is the listing leaf. If that leaf is already
@@ -164,22 +167,24 @@ record for upstream tracking. It never grants more access to the source.
   when you want a second fork of the same listing.
 - Its own event topics follow the new name. `kody.emits` topics named after the
   origin (`@kody/github.issue.opened`) become `@you/<leaf>.issue.opened`; any
-  other emits topic keeps its body and takes your scope. Exact references to
-  those topics in the manifest (subscriptions) and source (emit calls, topic
-  constants, docs) are rewritten too. Subscribers to the origin's topics do not
-  receive your fork's events. When you port upstream changes later, keep that
-  rename: publish rejects emits topics outside your scope.
+  other scoped emits topic keeps its body and takes your scope. The rewrite
+  updates matching references in the manifest and text files, including the
+  origin's `@scope/leaf.*` glob when a topic with that prefix is renamed. If two
+  declared topics would end up with the same name, choose a different fork name.
+  See the
+  [fork rewrite tests](../../packages/worker/src/community/fork-scan.node.test.ts).
 - **No saved package row is created**, so nothing runs yet — no imports, jobs,
   subscriptions, or package app. Lookups that need a saved package
   (`packageGet`, `packageGetGitRemote`) name the pending fork and point at
   `repoOpenSession` with its `source_id`. After the first publish, those lookups
   work with the `package_id` and name.
 
-The fork result lists **cross-scope references** that can never resolve across
-user scopes:
+The fork's **cross-scope scan** checks the files loaded during preparation. If
+the storage copy uses a different revision, the scan can miss references present
+only in the copy. Check the fork itself before publishing. The scan looks for:
 
-- static `kody:@originuser/...` imports
-- `package.json#kody.dependencies` entries pointing at other users' scopes
+- `kody:@scope/` text matches outside the fork's scope, including in docs
+- `package.json#kody.dependencies` entries pointing at another scope
 
 The capability also returns optional **`serverTiming`** entries
 (`{ name, durationMs }`), the same shape as execute. They are request-scoped
