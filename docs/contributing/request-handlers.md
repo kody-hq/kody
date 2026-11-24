@@ -42,3 +42,28 @@ directories (see [Oxlint JS plugins](./oxlint-js-plugins.md)).
   response.
 - Enforce per-resource limits with one atomic statement (a conditional D1
   `UPDATE`) so concurrent requests count against the same total.
+
+## Queue consumers, Durable Object alarms, and crons
+
+The same rules apply off the request path, with three additions. The webhook
+dispatch consumer and the jobs schedule watchdog follow them, and the
+request-path safety override in `tools/oxlint/oxlint-rules.json` lists the files
+lint enforces them on.
+
+- Settle queue messages with `settleQueueBatch` from
+  `@kody-internal/shared/queue-settlement.ts`. Return a `QueueDisposition`
+  (`ack` or `retry` with a delay) from `decide`; it settles each message exactly
+  once, turns a thrown decision into `onDecideFailure`'s disposition, and keeps
+  one bad message from failing the batch.
+  `kody-custom/no-direct-queue-settlement` rejects direct `ack()` and `retry()`
+  calls.
+- Put cleanup that must only follow an ack (a spilled payload delete) in
+  `afterAck`. Put backpressure in `concurrency` and in explicit caps (users per
+  tick, rows per scan), and count what a cap skipped.
+- When a loop keeps going after one item fails (fan-out to many Durable Objects,
+  best-effort repair), give each call its own `withDeadline`, count the failure,
+  and report it with `reportConsumerError` or `reportConsumerWarning` from
+  `@kody-internal/shared/consumer-errors.ts`. A state read that only gates an
+  alert fails open.
+- When a lookup that decides between ack and a terminal record fails, retry.
+  Never treat an unknown answer as "not found".

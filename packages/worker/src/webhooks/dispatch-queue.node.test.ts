@@ -724,3 +724,24 @@ test('deferral delay doubles per deferral and stops at five minutes', () => {
 	expect([0, 1, 2, 6, 50].map(longest)).toEqual([5, 10, 20, 300, 300])
 	expect(ownerCapDeferralDelaySeconds(6, () => 0)).toBe(150)
 })
+
+test('a spilled message whose payload is gone is retried, not recorded as missing, when its run record cannot be read', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.getRunRecord.mockRejectedValueOnce(new Error('run log unavailable'))
+	const spilled = createMessage()
+	spilled.params.request.body = ''
+	spilled.params.request.json = null
+	const redelivered = createQueueMessage('redelivered', {
+		...spilled,
+		payloadKvKey: webhookDispatchPayloadKvKey('user-1', 'delivery-1'),
+	})
+	const kv = { get: vi.fn(async () => null), delete: vi.fn() }
+
+	await handleWebhookDispatchQueue(createBatch([redelivered]), {
+		BUNDLE_ARTIFACTS_KV: kv,
+	} as unknown as Env)
+
+	expect(queueOutcome(redelivered)).toEqual(retried)
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	expect(mocks.dispatchWebhookInvocation).not.toHaveBeenCalled()
+})

@@ -12,6 +12,11 @@ import { logJobSchedulerEvent } from '@kody-internal/shared/jobs/scheduler-loggi
 import type { JobsWorkerEnv } from './env.ts'
 import { jobManagerStub } from './manager.ts'
 import { getWorkerStateValue, putWorkerStateValue } from './store.ts'
+import { reportConsumerWarning } from '@kody-internal/shared/consumer-errors.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '@kody-internal/shared/with-deadline.ts'
 
 /**
  * Platform cron that detects enabled recurring jobs that should already have
@@ -57,13 +62,52 @@ function summarizeJobs(rows: Array<JobRow>) {
 	}))
 }
 
+/** One hung JobManager must not stall the tick for every later user. */
+export const jobManagerSyncTimeoutMs = 30_000
+
+const d1Deadline = (label: string) => ({
+	label: `job watchdog: ${label}`,
+	timeoutMs: outboundTimeoutMs.d1,
+})
+
+async function readAlertCooldownActive(input: {
+	env: JobsWorkerEnv
+	now: Date
+}): Promise<boolean> {
+	try {
+		const lastSentRaw = await runD1WithRetry(() =>
+			withDeadline(d1Deadline('read alert cooldown'), () =>
+				getWorkerStateValue(
+					input.env.JOBS_DB,
+					jobScheduleWatchdogAlertStateKey,
+				),
+			),
+		)
+		const lastSentMs = lastSentRaw ? Number(lastSentRaw) : NaN
+		return (
+			Number.isFinite(lastSentMs) &&
+			input.now.getTime() - lastSentMs <
+				jobScheduleWatchdogAlertCooldownMinutes * 60_000
+		)
+	} catch (error) {
+		// Fail open: a missed cooldown costs a duplicate alert, a thrown one
+		// costs the alert.
+		reportConsumerWarning('job-schedule-watchdog-cooldown-read-failed', {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return false
+	}
+}
+
 async function collectPagedJobRows(input: {
 	page: (afterId: string | null) => Promise<Array<JobRow>>
 }): Promise<{ rows: Array<JobRow>; truncated: boolean }> {
 	const rows: Array<JobRow> = []
 	let afterId: string | null = null
 	while (true) {
-		const page = await runD1WithRetry(() => input.page(afterId))
+		const page = await runD1WithRetry(() =>
+			withDeadline(d1Deadline('scan page'), () => input.page(afterId)),
+		)
 		if (page.length === 0) break
 		rows.push(...page)
 		if (page.length < jobScheduleWatchdogPageSize) {
@@ -96,24 +140,23 @@ async function maybeCaptureWatchdogAlert(input: {
 
 	// Cooldown lives in the jobs D1 (jobs_worker_state), replacing the main
 	// worker's BUNDLE_ARTIFACTS_KV cooldown key from before the extraction.
-	let alerted = true
-	const lastSentRaw = await getWorkerStateValue(
-		input.env.JOBS_DB,
-		jobScheduleWatchdogAlertStateKey,
-	)
-	const lastSentMs = lastSentRaw ? Number(lastSentRaw) : NaN
-	if (
-		Number.isFinite(lastSentMs) &&
-		input.now.getTime() - lastSentMs <
-			jobScheduleWatchdogAlertCooldownMinutes * 60_000
-	) {
-		alerted = false
-	} else {
-		await putWorkerStateValue(
-			input.env.JOBS_DB,
-			jobScheduleWatchdogAlertStateKey,
-			String(input.now.getTime()),
-		)
+	const alerted = !(await readAlertCooldownActive(input))
+	if (alerted) {
+		try {
+			await runD1WithRetry(() =>
+				withDeadline(d1Deadline('write alert cooldown'), () =>
+					putWorkerStateValue(
+						input.env.JOBS_DB,
+						jobScheduleWatchdogAlertStateKey,
+						String(input.now.getTime()),
+					),
+				),
+			)
+		} catch (error) {
+			reportConsumerWarning('job-schedule-watchdog-cooldown-write-failed', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 	}
 
 	const payload = {
@@ -121,7 +164,7 @@ async function maybeCaptureWatchdogAlert(input: {
 		overdueSample: summarizeJobs(input.overdueSample),
 		stuckSample: summarizeJobs(input.stuckSample),
 	}
-	console.warn('job-schedule-watchdog-overdue', payload)
+	reportConsumerWarning('job-schedule-watchdog-overdue', payload)
 	if (alerted) {
 		Sentry.withScope((scope) => {
 			scope.setTag('scheduled.lane', 'job_schedule_watchdog')
@@ -194,13 +237,17 @@ export async function runJobScheduleWatchdogTick(input: {
 			// JobsService.purgeUser (which deletes every row for the user), so a
 			// stuck-fence advance racing a purge at worst repairs a row that is
 			// deleted moments later.
-			const repaired = await advanceStuckSkippedJobNextRunAt({
-				db: input.env.JOBS_DB,
-				userId: row.user_id,
-				jobId: row.id,
-				nextRunAt,
-				updatedAt: nowIso,
-			})
+			const repaired = await runD1WithRetry(() =>
+				withDeadline(d1Deadline('advance stuck job'), () =>
+					advanceStuckSkippedJobNextRunAt({
+						db: input.env.JOBS_DB,
+						userId: row.user_id,
+						jobId: row.id,
+						nextRunAt,
+						updatedAt: nowIso,
+					}),
+				),
+			)
 			if (repaired) {
 				repairedStuckJobCount += 1
 				logJobSchedulerEvent({
@@ -213,7 +260,7 @@ export async function runJobScheduleWatchdogTick(input: {
 				})
 			}
 		} catch (error) {
-			console.warn('job-schedule-watchdog-repair-failed', {
+			reportConsumerWarning('job-schedule-watchdog-repair-failed', {
 				jobId: row.id,
 				userId: row.user_id,
 				error: error instanceof Error ? error.message : String(error),
@@ -231,7 +278,13 @@ export async function runJobScheduleWatchdogTick(input: {
 	let usersFailedSync = 0
 	for (const userId of usersToSync) {
 		try {
-			await jobManagerStub(input.env, userId).syncAlarm({ userId })
+			await withDeadline(
+				{
+					label: 'job watchdog: JobManager syncAlarm',
+					timeoutMs: jobManagerSyncTimeoutMs,
+				},
+				() => jobManagerStub(input.env, userId).syncAlarm({ userId }),
+			)
 			usersSynced += 1
 			logJobSchedulerEvent({
 				event: 'watchdog_sync_alarm',
@@ -240,7 +293,7 @@ export async function runJobScheduleWatchdogTick(input: {
 			})
 		} catch (error) {
 			usersFailedSync += 1
-			console.warn('job-schedule-watchdog-sync-failed', {
+			reportConsumerWarning('job-schedule-watchdog-sync-failed', {
 				userId,
 				error: error instanceof Error ? error.message : String(error),
 			})
