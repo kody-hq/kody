@@ -79,6 +79,7 @@ import { BlockPicker, type BlockChoice } from './block-picker.tsx'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { workspaceProse } from './workspace-prose.ts'
 import { Input } from '../components/input.tsx'
+import { renderIcon } from '../components/icon.tsx'
 import { Checkbox } from '../components/choice-controls.tsx'
 
 const MermaidPreview = lazy(() => import('./workspace-mermaid.tsx'))
@@ -128,22 +129,6 @@ const control = {
 function isolateEditorControl(event: { stopPropagation(): void }) {
 	event.stopPropagation()
 }
-function PlusIcon() {
-	return (
-		<svg
-			aria-hidden="true"
-			width="14"
-			height="14"
-			viewBox="0 0 16 16"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="1.3"
-		>
-			<path d="M8 3v10M3 8h10" />
-		</svg>
-	)
-}
-
 function blockPlainText(block: Exclude<PageBlock, { kind: 'file' }>) {
 	if (block.kind === 'table')
 		return block.rows.map((row) => row.join('\t')).join('\n')
@@ -772,7 +757,7 @@ export function WorkspacePageEditor({
 								})
 							}
 						>
-							<PlusIcon />
+							{renderIcon('plus', { size: '14px' })}
 							Add block
 						</button>
 					)}
@@ -982,7 +967,7 @@ function WorkspaceBlockView({
 							})
 						}
 					>
-						<PlusIcon />
+						{renderIcon('plus', { size: '14px' })}
 					</button>
 					<span data-drag-handle="">
 						<ContextMenuButton

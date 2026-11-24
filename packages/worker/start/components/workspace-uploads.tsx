@@ -15,6 +15,7 @@ import { detectFileMediaType } from '#universal/file-viewers.ts'
 import { fileByteLimit, fileMediaTypeSchema } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { uploadFetch } from './upload-fetch.ts'
+import { renderIcon } from './icon.tsx'
 import { LoadingIndicator } from './loading-indicator.tsx'
 
 type Status =
@@ -179,19 +180,9 @@ export function WorkspaceUploads({ children }: { children: ReactNode }) {
 							onClick={() => setOpen(!open)}
 						>
 							<span role="status">{title}</span>
-							<svg
-								aria-hidden="true"
-								width="14"
-								height="14"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							>
-								<path d={open ? 'm4 6 4 4 4-4' : 'm4 10 4-4 4 4'} />
-							</svg>
+							{renderIcon(open ? 'chevron-down' : 'chevron-up', {
+								size: '16px',
+							})}
 						</button>
 						{!running && canClear && (
 							<button

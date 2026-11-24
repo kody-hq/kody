@@ -5,6 +5,7 @@ const FileStorageSettings = lazy(
 	() => import('../pages/file-storage-settings.tsx'),
 )
 import { Button } from './button.tsx'
+import { renderIcon } from './icon.tsx'
 import {
 	Menu,
 	MenuContent,
@@ -38,17 +39,7 @@ export function WorkspaceCreateMenu({
 						<Button variant="ghost" size="xs" iconOnly css={denseIconCss} />
 					}
 				>
-					<svg
-						width="16"
-						height="16"
-						viewBox="0 0 16 16"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="1.3"
-						aria-hidden="true"
-					>
-						<path d="M8 2v12M2 8h12" />
-					</svg>
+					{renderIcon('plus', { size: '16px' })}
 				</MenuTrigger>
 				<MenuContent aria-label="Create item">
 					{canCreate && (

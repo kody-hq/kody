@@ -443,21 +443,7 @@ export function WorkspaceLayout() {
 										aria-pressed={rail.mode === 'compact'}
 										css={sidebarModeButton}
 									>
-										<svg
-											aria-hidden="true"
-											width="14"
-											height="14"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="1.8"
-											strokeLinecap="round"
-											strokeLinejoin="round"
-										>
-											<rect x="3" y="4" width="18" height="16" rx="2" />
-											<path d="M9 4v16" />
-											<path d="M15.5 9.5 13 12l2.5 2.5" />
-										</svg>
+										{renderIcon('sidebar-collapse', { size: '12px' })}
 										<span data-rail-label>Hide</span>
 									</button>
 									<button
@@ -467,21 +453,7 @@ export function WorkspaceLayout() {
 										aria-pressed={rail.mode === 'auto'}
 										title="Adjust sidebar to screen width"
 									>
-										<svg
-											aria-hidden="true"
-											width="14"
-											height="14"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="1.8"
-											strokeLinecap="round"
-											strokeLinejoin="round"
-										>
-											<rect x="3" y="4" width="18" height="16" rx="2" />
-											<path d="M9 4v16" />
-											<path d="M12.5 12h6M14 10.5 12.5 12l1.5 1.5M17 10.5l1.5 1.5-1.5 1.5" />
-										</svg>
+										{renderIcon('sidebar-auto', { size: '12px' })}
 										Auto
 									</button>
 									<button
@@ -492,18 +464,7 @@ export function WorkspaceLayout() {
 										data-rail-label
 										css={sidebarModeButton}
 									>
-										<svg
-											aria-hidden="true"
-											width="14"
-											height="14"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="1.8"
-										>
-											<rect x="5" y="10" width="14" height="11" rx="2" />
-											<path d="M8 10V7a4 4 0 0 1 8 0v3" />
-										</svg>
+										{renderIcon('lock', { size: '12px' })}
 										Keep open
 									</button>
 								</div>
