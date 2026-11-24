@@ -112,7 +112,9 @@ export function refreshD1ReplicaReadRollout(env: Env): Promise<void> {
 		} catch (error) {
 			// A database that cannot answer the flag read keeps reading the primary.
 			apply(off)
-			// A database not migrated yet has no flag, which is not a failure.
+			// Permanent: a database without the flags table (a test or preview
+			// database created without migrations) has no flag; that is not a
+			// failed read.
 			if (!String(error).includes('no such table: feature_flags'))
 				console.warn('D1 replica read rollout was not read:', String(error))
 		}
