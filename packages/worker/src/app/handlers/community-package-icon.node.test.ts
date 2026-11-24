@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 	resolvePackagePageUrl: vi.fn(),
 	getCommunityListingById: vi.fn(),
 	getEntitySourceById: vi.fn(),
+	readEntitySourceById: vi.fn(),
 	getEntitySourceByEntity: vi.fn(),
 	findPublicOwnerIdentityByHandle: vi.fn(),
 	getUserRepoByName: vi.fn(),
@@ -34,6 +35,8 @@ vi.mock('#worker/community/repo.ts', () => ({
 vi.mock('#worker/repo/entity-sources.ts', () => ({
 	getEntitySourceById: (...args: Array<unknown>) =>
 		mocks.getEntitySourceById(...args),
+	readEntitySourceById: (...args: Array<unknown>) =>
+		mocks.readEntitySourceById(...args),
 	getEntitySourceByEntity: (...args: Array<unknown>) =>
 		mocks.getEntitySourceByEntity(...args),
 }))
@@ -143,6 +146,32 @@ test('package identity icon serves the published commit for guest-visible packag
 			cacheControl: undefined,
 		}),
 	)
+})
+
+test('a publish that retires the commit while the icon renders is seen by the post-write check', async () => {
+	mocks.resolvePackagePageUrl.mockResolvedValue({
+		kind: 'package',
+		username: 'kent',
+		kodyId: 'notes',
+		userId: ownerIdFromStored('owner-1'),
+		savedPackage: publicPackage,
+		listingId: null,
+	})
+	mocks.readAuthenticatedAppUser.mockResolvedValue(null)
+	mocks.getEntitySourceById.mockResolvedValue(source)
+	mocks.readEntitySourceById.mockResolvedValue({
+		...source,
+		published_commit: 'pub-2',
+	})
+	mocks.serveIdentityIcon.mockResolvedValue(
+		new Response('icon', { status: 200 }),
+	)
+
+	await callHandler()
+	const { isServableCommit } = mocks.serveIdentityIcon.mock.lastCall?.[0] as {
+		isServableCommit: () => Promise<boolean>
+	}
+	expect(await isServableCommit()).toBe(false)
 })
 
 test('private package identity icons use a private cache for the owner and 404 for other viewers', async () => {
