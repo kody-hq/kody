@@ -53,6 +53,8 @@ export type D1ReplicaReadState = {
 	/** A write was refused; the request must run again on the primary. */
 	retry?: string
 	responded?: boolean
+	/** A replica read failed; later reads go to the primary. */
+	replicaFailed?: boolean
 }
 
 type Rollout = { enabled: boolean; percent: number | null }
@@ -233,6 +235,7 @@ function requestSession(real: D1Database, sqls: Array<string | undefined>) {
 		return undefined
 	}
 	if (reads) {
+		if (state.replicaFailed) return undefined
 		// One session per request, whichever copy of the binding asks first.
 		state.session ??= real.withSession(state.start)
 		return state.session
@@ -250,6 +253,32 @@ function requestSession(real: D1Database, sqls: Array<string | undefined>) {
 	return undefined
 }
 
+/**
+ * Run a call on the request's replica session, or on the primary. A read the
+ * replica fails is run once more on the primary, and the rest of the request
+ * stays there: an unavailable replica must not fail a page the primary can
+ * serve.
+ */
+async function readWithPrimaryFallback<Result>(
+	real: D1Database,
+	sqls: Array<string | undefined>,
+	run: (session: D1DatabaseSession | undefined) => Promise<Result>,
+) {
+	const session = requestSession(real, sqls)
+	if (!session) return run(undefined)
+	try {
+		return await run(session)
+	} catch (error) {
+		const state = getRequestContext()?.d1ReplicaReads
+		if (state) state.replicaFailed = true
+		console.warn(
+			'D1 replica read failed; reading the primary instead:',
+			String(error),
+		)
+		return run(undefined)
+	}
+}
+
 function statementFor(
 	session: D1DatabaseSession | undefined,
 	statement: D1PreparedStatement,
@@ -264,12 +293,14 @@ function statementFor(
 function routeStatement(real: D1Database, routed: RoutedStatement) {
 	const call =
 		(method: StatementMethod) =>
-		async (...args: Array<unknown>) =>
-			(
-				statementFor(requestSession(real, [routed.sql]), statement)[method] as (
-					...methodArgs: Array<unknown>
-				) => Promise<unknown>
-			)(...args)
+		(...args: Array<unknown>) =>
+			readWithPrimaryFallback(real, [routed.sql], (session) =>
+				(
+					statementFor(session, statement)[method] as (
+						...methodArgs: Array<unknown>
+					) => Promise<unknown>
+				)(...args),
+			)
 	const statement = {
 		bind: (...values: Array<unknown>) =>
 			routeStatement(real, {
@@ -298,15 +329,15 @@ export function routeD1ReplicaReads(real: D1Database): D1Database {
 				sql,
 				values: undefined,
 			}),
-		batch: async (statements: Array<D1PreparedStatement>) => {
-			const session = requestSession(
+		batch: (statements: Array<D1PreparedStatement>) =>
+			readWithPrimaryFallback(
 				real,
 				statements.map((statement) => routedStatements.get(statement)?.sql),
-			)
-			return (session ?? real).batch(
-				statements.map((statement) => statementFor(session, statement)),
-			)
-		},
+				(session) =>
+					(session ?? real).batch(
+						statements.map((statement) => statementFor(session, statement)),
+					),
+			),
 		exec: async (query: string) => {
 			requestSession(real, [])
 			return real.exec(query)
