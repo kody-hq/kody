@@ -35,6 +35,7 @@ import {
 	ContextMenuButton,
 } from '../components/context-menu-surface.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { renderIcon } from '../components/icon.tsx'
 import { Input, Select } from '../components/input.tsx'
 import { Checkbox } from '../components/choice-controls.tsx'
 
@@ -306,17 +307,7 @@ export default function FilePermissionsPanel({
 					</h2>
 				</div>
 				<button aria-label="Close details" css={button} onClick={onClose}>
-					<svg
-						width="16"
-						height="16"
-						viewBox="0 0 16 16"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="1.5"
-						aria-hidden="true"
-					>
-						<path d="m4 4 8 8M12 4l-8 8" />
-					</svg>
+					{renderIcon('close', { size: '16px' })}
 				</button>
 			</header>
 			<Tabs

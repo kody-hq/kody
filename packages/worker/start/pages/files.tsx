@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
 import { FileGlyph } from '../components/file-glyph.tsx'
+import { renderIcon } from '../components/icon.tsx'
 import { WorkspaceFileStatus } from './workspace-file-status.tsx'
 import { workspaceProse, workspaceMarkdownCss } from './workspace-prose.ts'
 import {
@@ -144,13 +145,7 @@ const primary = { ...compactControl }
 const hover = `color-mix(in srgb, ${colors.text} 7%, transparent)`
 
 const iconPaths = {
-	search: 'M10.5 10.5 14 14M12 7a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z',
-	back: 'm9.5 3.5-4.5 4.5 4.5 4.5M5 8h8',
-	add: 'M8 3v10M3 8h10',
 	upload: 'M8 11V2.5m-3 3 3-3 3 3M3 10v3.5h10V10',
-	more: 'M3 8h.1M8 8h.1M13 8h.1',
-	right: 'm6 4 4 4-4 4',
-	down: 'm4 6 4 4 4-4',
 	open: 'M9 3h4v4m0-4L7 9m5 0v4H3V4h4',
 }
 
@@ -163,7 +158,7 @@ function WorkspaceIcon({ name }: { name: keyof typeof iconPaths }) {
 			viewBox="0 0 16 16"
 			fill="none"
 			stroke="currentColor"
-			strokeWidth={name === 'more' ? 2 : 1.35}
+			strokeWidth="1.35"
 			strokeLinecap="round"
 			strokeLinejoin="round"
 		>
@@ -1406,7 +1401,7 @@ export function FilesPage({
 									},
 								}}
 							>
-								<WorkspaceIcon name="search" />
+								{renderIcon('search', { size: '16px' })}
 								<Input
 									ref={explorerSearch}
 									role="searchbox"
@@ -1448,18 +1443,7 @@ export function FilesPage({
 											explorerSearch.current?.focus()
 										}}
 									>
-										<svg
-											aria-hidden="true"
-											width="14"
-											height="14"
-											viewBox="0 0 16 16"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="1.5"
-											strokeLinecap="round"
-										>
-											<path d="m4 4 8 8m0-8-8 8" />
-										</svg>
+										{renderIcon('close', { size: '14px' })}
 									</Button>
 								)}
 							</div>
@@ -1488,9 +1472,12 @@ export function FilesPage({
 											aria-expanded={packagesExpanded}
 											onClick={() => setPackagesExpanded(!packagesExpanded)}
 										>
-											<WorkspaceIcon
-												name={packagesExpanded ? 'down' : 'right'}
-											/>
+											{renderIcon(
+												packagesExpanded ? 'chevron-down' : 'chevron-right',
+												{
+													size: '16px',
+												},
+											)}
 										</Button>
 										<SiteLink
 											href={packagesDirectoryHref(data.orgSlug)}
@@ -1572,9 +1559,12 @@ export function FilesPage({
 													aria-expanded={!collapsed.has(file.id)}
 													onClick={() => onToggleBranch(file.id)}
 												>
-													<WorkspaceIcon
-														name={collapsed.has(file.id) ? 'right' : 'down'}
-													/>
+													{renderIcon(
+														collapsed.has(file.id)
+															? 'chevron-right'
+															: 'chevron-down',
+														{ size: '16px' },
+													)}
 												</Button>
 											) : (
 												<span css={{ width: 20, flexShrink: 0 }} />
@@ -1665,7 +1655,7 @@ export function FilesPage({
 														title="New subpage"
 														href={`/@${data.orgSlug}/-/files?new=page&parent=${file.id}`}
 													>
-														<WorkspaceIcon name="add" />
+														{renderIcon('plus', { size: '16px' })}
 													</Button>
 												)}
 										</div>
@@ -1960,7 +1950,7 @@ export function FilesPage({
 														aria-expanded={actionsOpen}
 														onClick={() => setActionsOpen(!actionsOpen)}
 													>
-														<WorkspaceIcon name="more" />
+														{renderIcon('dots-horizontal', { size: '16px' })}
 													</Button>
 													{actionsOpen && (
 														<div css={menuCss}>

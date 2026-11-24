@@ -67,29 +67,6 @@ export type ProfileContentProps = {
 	queryAppliedByLoader?: boolean
 }
 
-function renderForkIcon() {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width="16"
-			height="16"
-			aria-hidden="true"
-			focusable={false}
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="2"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-		>
-			<circle cx="12" cy="18" r="3" />
-			<circle cx="6" cy="6" r="3" />
-			<circle cx="18" cy="6" r="3" />
-			<path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9" />
-			<path d="M12 12v3" />
-		</svg>
-	)
-}
-
 /**
  * Package cards carry two unrelated timestamps: the community listing's
  * published_at and the owner's local saved-package edit time. Only the
@@ -452,7 +429,7 @@ export function ProfileContent(props: ProfileContentProps) {
 													aria-label="fork"
 													css={forkButtonCss}
 												>
-													{renderForkIcon()}
+													{renderIcon('git-fork', { size: '16px' })}
 												</SiteLink>
 											) : null}
 											<h3 css={packageNameCss}>

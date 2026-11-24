@@ -14,6 +14,7 @@ import {
 	saveSidebarPreferences,
 } from './sidebar-preferences.tsx'
 import { colors } from '#universal/styles/tokens.ts'
+import { renderIcon } from './icon.tsx'
 
 const key = 'kody.files.explorer'
 const defaults = { width: 232, hidden: false }
@@ -83,23 +84,6 @@ const control = {
 	'&:hover': {
 		background: `color-mix(in srgb, ${colors.text} 8%, transparent)`,
 	},
-}
-function PanelIcon({ open }: { open: boolean }) {
-	return (
-		<svg
-			aria-hidden="true"
-			width="16"
-			height="16"
-			viewBox="0 0 16 16"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="1.2"
-		>
-			<rect x="1.5" y="2" width="13" height="12" rx="2" />
-			<path d="M6 2v12" />
-			<path d={open ? 'm10 5-3 3 3 3' : 'm8 5 3 3-3 3'} />
-		</svg>
-	)
 }
 export function WorkspaceExplorerLayout({
 	sidebar,
@@ -334,7 +318,9 @@ export function WorkspaceExplorerLayout({
 						setFlyout(false)
 					}}
 				>
-					<PanelIcon open={!hidden} />
+					{renderIcon(hidden ? 'sidebar-expand' : 'sidebar-collapse', {
+						size: '16px',
+					})}
 				</button>
 				<div
 					role="separator"
@@ -439,18 +425,7 @@ export function WorkspaceExplorerLayout({
 						}}
 						onClick={() => reveal()}
 					>
-						<svg
-							aria-hidden="true"
-							width="16"
-							height="16"
-							viewBox="0 0 16 16"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.35"
-							strokeLinecap="round"
-						>
-							<path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
-						</svg>
+						{renderIcon('menu', { size: '16px' })}
 					</button>
 				) : null,
 			)}
