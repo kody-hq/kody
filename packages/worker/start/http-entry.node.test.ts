@@ -29,7 +29,8 @@ function createEnv(overrides: Record<string, unknown> = {}) {
 		COOKIE_SECRET: 'LOCAL_TEST_COOKIE_SECRET_32_CHARS_MINIMUM',
 		SECRET_STORE_KEY: 'LOCAL_TEST_SECRET_STORE_KEY_32_CHARS_MINIMUM',
 		...testOidcSigningEnv,
-		APP_DB: {},
+		// Answers the replica rollout read: no flag row, so reads stay primary.
+		APP_DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) },
 		BUNDLE_ARTIFACTS_KV: {},
 		JOB_MANAGER: {},
 		STORAGE_RUNNER: {},
@@ -315,11 +316,12 @@ test('a disconnected cold request keeps shared route initialization alive', asyn
 		createEnv(),
 		{ waitUntil },
 	)
-	expect(waitUntil).toHaveBeenCalledTimes(1)
+	// The replica rollout read, then the response itself.
+	expect(waitUntil).toHaveBeenCalledTimes(2)
 	controller.abort()
 	finishRendering(Response.json({ ok: true }))
 	await expect(response.then((result) => result.status)).resolves.toBe(200)
-	await expect(waitUntil.mock.calls[0]![0]).resolves.toBeUndefined()
+	await expect(waitUntil.mock.calls[1]![0]).resolves.toBeUndefined()
 })
 
 test('a mutation then a GET in the same browser reads the write; other browsers wait for the replica', async () => {

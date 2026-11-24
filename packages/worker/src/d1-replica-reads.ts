@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { fnv1a32 } from '@kody-internal/shared/fnv1a.ts'
+import { deferWork } from '#worker/deferred-work.ts'
 import { timeD1RoundTrips } from '#worker/d1-round-trip-timing.ts'
 import { getRequestContext } from '#worker/request-context.ts'
 
@@ -14,7 +15,7 @@ import { getRequestContext } from '#worker/request-context.ts'
  *
  * Read-your-writes: while the flag is on, a non-GET response sets the
  * `kody_d1` cookie to the primary's D1 bookmark, taken after the request's
- * writes. A replica read carrying it starts its session at that bookmark, so
+ * writes, and so does a GET that wrote. A replica read carrying it starts its session at that bookmark, so
  * it reads a replica only once that replica has the browser's writes. When
  * no bookmark could be taken the cookie says so, and reads start on the
  * primary. Reads never set the cookie, so a slow read cannot replace the
@@ -45,9 +46,9 @@ const rolloutTtlMs = 30_000
 export type D1ReplicaReadState = {
 	/** Null: this request reads the primary. */
 	start: D1SessionConstraint | null
-	/** Whether the flag is on at all, so writes leave the cookie. */
-	rolloutOn: boolean
 	allowed: boolean
+	/** The request wrote to the primary, so its response carries a bookmark. */
+	wrote?: boolean
 	session?: D1DatabaseSession
 	/** A write was refused; the request must run again on the primary. */
 	retry?: string
@@ -57,7 +58,9 @@ export type D1ReplicaReadState = {
 type Rollout = { enabled: boolean; percent: number | null }
 type RolloutCache = {
 	value: Rollout
+	/** When the latest read started; 0 before the first. */
 	loadedAt: number
+	loaded: boolean
 	loading?: Promise<void>
 }
 
@@ -73,11 +76,18 @@ const realDatabases = new WeakMap<object, D1Database>()
 export function refreshD1ReplicaReadRollout(env: Env): Promise<void> {
 	const real = realDatabases.get(env)
 	if (!real) return Promise.resolve()
-	const cache = rollouts.get(real) ?? { value: off, loadedAt: 0 }
+	const cache = rollouts.get(real) ?? {
+		value: off,
+		loadedAt: 0,
+		loaded: false,
+	}
 	rollouts.set(real, cache)
-	if (cache.loading) return cache.loading
+	// Workers can drop a read whose request already answered; such a read
+	// never settles, so one older than the interval is started again.
+	if (cache.loading && Date.now() - cache.loadedAt <= rolloutTtlMs)
+		return cache.loading
 	cache.loadedAt = Date.now()
-	cache.loading = (async () => {
+	const loading = (async () => {
 		try {
 			const row = await real
 				.prepare(
@@ -88,21 +98,29 @@ export function refreshD1ReplicaReadRollout(env: Env): Promise<void> {
 			cache.value = row
 				? { enabled: row.enabled === 1, percent: row.rollout_percent }
 				: off
-		} catch {
+		} catch (error) {
 			// A database that cannot answer the flag read keeps reading the primary.
 			cache.value = off
+			console.warn('D1 replica read rollout was not read:', String(error))
 		} finally {
-			cache.loading = undefined
+			cache.loaded = true
 		}
 	})()
-	return cache.loading
+	cache.loading = loading
+	void loading.then(() => {
+		if (cache.loading === loading) cache.loading = undefined
+	})
+	return loading
 }
 
 function currentRollout(env: Env) {
 	const real = realDatabases.get(env)
 	const cache = real && rollouts.get(real)
 	if (!cache || Date.now() - cache.loadedAt > rolloutTtlMs) {
-		void refreshD1ReplicaReadRollout(env)
+		// Deferred so the read outlives a response that finishes first.
+		void deferWork('D1 replica read rollout was not read:', () =>
+			refreshD1ReplicaReadRollout(env),
+		)
 	}
 	return cache?.value ?? off
 }
@@ -139,7 +157,6 @@ export function beginD1ReplicaReads(request: Request, env: Env) {
 		start: selected
 			? startFromCookie(readCookie(request, d1FreshReadCookieName))
 			: null,
-		rolloutOn: rollout.enabled,
 		allowed: false,
 	}
 }
@@ -195,16 +212,21 @@ function isReadStatement(sql: string | undefined) {
  */
 function requestSession(real: D1Database, sqls: Array<string | undefined>) {
 	const state = getRequestContext()?.d1ReplicaReads
-	if (!state?.allowed || !state.start) return undefined
-	if (primaryScope.getStore()) return undefined
+	if (!state || primaryScope.getStore()) return undefined
 	const write = sqls.find((sql) => !isReadStatement(sql))
-	if (sqls.length > 0 && write === undefined) {
+	const reads = sqls.length > 0 && write === undefined
+	if (!state.allowed || !state.start) {
+		if (!reads) state.wrote = true
+		return undefined
+	}
+	if (reads) {
 		// One session per request, whichever copy of the binding asks first.
 		state.session ??= real.withSession(state.start)
 		return state.session
 	}
 	// From the first write on, the request reads and writes the primary.
 	state.allowed = false
+	state.wrote = true
 	if (!state.session) return undefined
 	const statement = (write ?? 'exec').trim().slice(0, 80)
 	if (!state.responded) {
@@ -304,24 +326,33 @@ export function installD1ReplicaReads(env: Env | undefined) {
 }
 
 /**
- * The cookie a response to a write carries while the flag is on: the
- * primary's bookmark after the request's writes, so the browser's next
- * replica reads are at least that fresh.
+ * The cookie the response of a request that wrote carries while the flag is
+ * on: the primary's bookmark after the request's writes, so the browser's
+ * next replica reads are at least that fresh. A GET that wrote counts too:
+ * a sign-in callback creates the session its redirect target reads.
  */
 export async function d1FreshReadSetCookie(
 	request: Request,
 	env: Env,
 ): Promise<string | undefined> {
 	const state = getRequestContext(request)?.d1ReplicaReads
-	if (!state?.rolloutOn || isRead(request)) return undefined
+	const real = realDatabases.get(env)
+	if (!state || !real) return undefined
+	if (isRead(request) && !state.wrote) return undefined
+	// The flag as it is now: on a new Worker instance it loads during the
+	// request, and the next page load would already read a replica.
+	const cache = rollouts.get(real)
+	if (cache && !cache.loaded) await cache.loading
+	if (!cache?.value.enabled) return undefined
 	let value = noBookmark
 	try {
-		const session = realDatabases.get(env)?.withSession('first-primary')
-		await session?.prepare('SELECT 1').run()
-		const bookmark = session?.getBookmark()
+		const session = timeD1RoundTrips(real).withSession('first-primary')
+		await session.prepare('SELECT 1').run()
+		const bookmark = session.getBookmark()
 		if (bookmark && bookmarkPattern.test(bookmark)) value = bookmark
-	} catch {
+	} catch (error) {
 		// Without a bookmark the browser's next reads start on the primary.
+		console.warn('D1 bookmark was not taken:', String(error))
 	}
 	const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : ''
 	return `${d1FreshReadCookieName}=${value}; Path=/; Max-Age=${freshReadCookieSeconds}; HttpOnly; SameSite=Lax${secure}`
