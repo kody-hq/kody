@@ -83,6 +83,26 @@
 		},
 		{
 			"files": [
+				"**/packages/worker/src/webhooks/dispatch-queue.ts",
+				"**/packages/jobs-worker/src/watchdog.ts"
+			],
+			"rules": {
+				"kody-custom/require-outbound-deadline": "error",
+				"kody-custom/no-floating-promise": "error",
+				"kody-custom/no-swallowed-error": "error",
+				"kody-custom/no-direct-queue-settlement": "error"
+			}
+		},
+		{
+			"files": ["**/packages/worker/src/outbound/queue-settlement.ts"],
+			"rules": {
+				"kody-custom/require-outbound-deadline": "error",
+				"kody-custom/no-floating-promise": "error",
+				"kody-custom/no-swallowed-error": "error"
+			}
+		},
+		{
+			"files": [
 				"**/packages/worker/src/open-api/**/*.test.ts",
 				"**/packages/worker/src/publish-offload/**/*.test.ts"
 			],

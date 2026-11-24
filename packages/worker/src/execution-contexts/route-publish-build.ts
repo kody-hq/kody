@@ -10,7 +10,7 @@ import {
 	type DeadlineClock,
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { ExecutionContextError } from './errors.ts'
 import { routeExecute } from './routing.ts'
 

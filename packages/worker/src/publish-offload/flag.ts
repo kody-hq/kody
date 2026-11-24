@@ -4,7 +4,7 @@ import { reportHandledError } from '#worker/outbound/typed-failure.ts'
 import {
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 
 /**
  * Fails closed: an unknown person or a flag read error means off.

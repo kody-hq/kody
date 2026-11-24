@@ -396,6 +396,8 @@ type WebhookInvocationInput = {
 	idempotencyKey: string
 	idempotencyParamsHash?: 'ignore'
 	idempotencyHashParams?: Record<string, unknown>
+	/** Aborts the export run when the caller's deadline expires. */
+	signal?: AbortSignal
 	/**
 	 * Ack-queue `deliveryId` (stable across Queue retries). Lets the same
 	 * delivery take over its own dead idempotency claim without waiting the
@@ -499,6 +501,7 @@ async function invokeWebhookExport(
 			topic: `webhook:${input.packageKodyId}:${input.endpoint.webhookName}`,
 		},
 		executionTarget: { kind: 'webhook', name: input.endpoint.webhookName },
+		...(input.signal ? { signal: input.signal } : {}),
 		...(input.executorTimeoutMs === undefined
 			? {}
 			: { executorTimeoutMs: input.executorTimeoutMs }),

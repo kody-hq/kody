@@ -29,7 +29,7 @@ import {
 import {
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { isPublishOffloadEnabledFor } from '#worker/publish-offload/flag.ts'
 import { publishContextFlagsOffMessage } from '#worker/publish-offload/publish-routing.ts'
 import {

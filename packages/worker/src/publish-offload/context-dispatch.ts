@@ -12,7 +12,7 @@ import {
 	type DeadlineClock,
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { resolveArtifactSourceRepo } from '#worker/repo/artifacts.ts'
 import {
 	publishBuildCloneTokenTtlSeconds,

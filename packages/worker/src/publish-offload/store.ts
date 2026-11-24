@@ -9,7 +9,7 @@ import {
 	type DeadlineClock,
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { sha256Hex } from './module-hashes.ts'
 import { publishBuildState } from './publish-build-state.ts'

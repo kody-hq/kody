@@ -23,7 +23,7 @@ import {
 import {
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { decodeUntrusted } from '#worker/decode-request-body.ts'
 import { publishBuildDocumentSchema } from './document-schema.ts'
 import {

@@ -1,4 +1,4 @@
-import { withDeadline } from '#worker/outbound/with-deadline.ts'
+import { withDeadline } from '@kody-internal/shared/with-deadline.ts'
 import {
 	ecpRunHeader,
 	ecpSignatureHeader,

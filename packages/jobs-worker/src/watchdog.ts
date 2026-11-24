@@ -12,12 +12,17 @@ import { logJobSchedulerEvent } from '@kody-internal/shared/jobs/scheduler-loggi
 import type { JobsWorkerEnv } from './env.ts'
 import { jobManagerStub } from './manager.ts'
 import { getWorkerStateValue, putWorkerStateValue } from './store.ts'
+import { reportConsumerWarning } from './consumer-errors.ts'
+import {
+	outboundTimeoutMs,
+	withDeadline,
+} from '@kody-internal/shared/with-deadline.ts'
 
 /**
  * Platform cron that detects enabled recurring jobs that should already have
  * run (or are permanently skipped by a stuck occurrence fence) and
  * best-effort re-arms each affected user's JobManager alarm (at most 50 users
- * per tick; individual syncs may fail; scans may be truncated). Complements
+ * per tick, stalest first, 5 at a time inside a 5 minute budget; individual syncs may fail; scans may be truncated). Complements
  * at-least-once claim safety: leases recover overlapping runs, but nothing
  * else notices when a per-user Durable Object alarm is lost or a fence leaves
  * next_run_at stuck.
@@ -57,13 +62,101 @@ function summarizeJobs(rows: Array<JobRow>) {
 	}))
 }
 
+/** One hung JobManager must not stall the tick for every later user. */
+const jobManagerSyncTimeoutMs = 30_000
+const jobManagerSyncConcurrency = 5
+/**
+ * No new sync starts after this, so the alert lane runs well inside the
+ * 15 minute cron limit. In-flight syncs finish within their own deadline.
+ */
+const jobManagerSyncBudgetMs = 5 * 60 * 1_000
+
+async function syncUserAlarms(input: {
+	env: JobsWorkerEnv
+	userIds: ReadonlyArray<OwnerId>
+}): Promise<{ synced: number; failed: number; skippedBudget: number }> {
+	const startedAt = Date.now()
+	let synced = 0
+	let failed = 0
+	let next = 0
+	const lane = async () => {
+		while (
+			next < input.userIds.length &&
+			Date.now() - startedAt < jobManagerSyncBudgetMs
+		) {
+			const userId = input.userIds[next]!
+			next += 1
+			try {
+				await withDeadline(
+					{
+						label: 'job watchdog: JobManager syncAlarm',
+						timeoutMs: jobManagerSyncTimeoutMs,
+					},
+					() => jobManagerStub(input.env, userId).syncAlarm({ userId }),
+				)
+				synced += 1
+				logJobSchedulerEvent({
+					event: 'watchdog_sync_alarm',
+					userId,
+					reason: 'silently_overdue_or_stuck_skipped',
+				})
+			} catch (error) {
+				failed += 1
+				reportConsumerWarning('job-schedule-watchdog-sync-failed', {
+					userId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+	}
+	const lanes = Math.min(jobManagerSyncConcurrency, input.userIds.length)
+	await Promise.all(Array.from({ length: lanes }, lane))
+	return { synced, failed, skippedBudget: input.userIds.length - next }
+}
+
+const d1Deadline = (label: string) => ({
+	label: `job watchdog: ${label}`,
+	timeoutMs: outboundTimeoutMs.d1,
+})
+
+async function readAlertCooldownActive(input: {
+	env: JobsWorkerEnv
+	now: Date
+}): Promise<boolean> {
+	try {
+		const lastSentRaw = await runD1WithRetry(() =>
+			withDeadline(d1Deadline('read alert cooldown'), () =>
+				getWorkerStateValue(
+					input.env.JOBS_DB,
+					jobScheduleWatchdogAlertStateKey,
+				),
+			),
+		)
+		const lastSentMs = lastSentRaw ? Number(lastSentRaw) : NaN
+		return (
+			Number.isFinite(lastSentMs) &&
+			input.now.getTime() - lastSentMs <
+				jobScheduleWatchdogAlertCooldownMinutes * 60_000
+		)
+	} catch (error) {
+		// Fail open: a missed cooldown costs a duplicate alert, a thrown one
+		// costs the alert.
+		reportConsumerWarning('job-schedule-watchdog-cooldown-read-failed', {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return false
+	}
+}
+
 async function collectPagedJobRows(input: {
 	page: (afterId: string | null) => Promise<Array<JobRow>>
 }): Promise<{ rows: Array<JobRow>; truncated: boolean }> {
 	const rows: Array<JobRow> = []
 	let afterId: string | null = null
 	while (true) {
-		const page = await runD1WithRetry(() => input.page(afterId))
+		const page = await runD1WithRetry(() =>
+			withDeadline(d1Deadline('scan page'), () => input.page(afterId)),
+		)
 		if (page.length === 0) break
 		rows.push(...page)
 		if (page.length < jobScheduleWatchdogPageSize) {
@@ -96,24 +189,23 @@ async function maybeCaptureWatchdogAlert(input: {
 
 	// Cooldown lives in the jobs D1 (jobs_worker_state), replacing the main
 	// worker's BUNDLE_ARTIFACTS_KV cooldown key from before the extraction.
-	let alerted = true
-	const lastSentRaw = await getWorkerStateValue(
-		input.env.JOBS_DB,
-		jobScheduleWatchdogAlertStateKey,
-	)
-	const lastSentMs = lastSentRaw ? Number(lastSentRaw) : NaN
-	if (
-		Number.isFinite(lastSentMs) &&
-		input.now.getTime() - lastSentMs <
-			jobScheduleWatchdogAlertCooldownMinutes * 60_000
-	) {
-		alerted = false
-	} else {
-		await putWorkerStateValue(
-			input.env.JOBS_DB,
-			jobScheduleWatchdogAlertStateKey,
-			String(input.now.getTime()),
-		)
+	const alerted = !(await readAlertCooldownActive(input))
+	if (alerted) {
+		try {
+			await runD1WithRetry(() =>
+				withDeadline(d1Deadline('write alert cooldown'), () =>
+					putWorkerStateValue(
+						input.env.JOBS_DB,
+						jobScheduleWatchdogAlertStateKey,
+						String(input.now.getTime()),
+					),
+				),
+			)
+		} catch (error) {
+			reportConsumerWarning('job-schedule-watchdog-cooldown-write-failed', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 	}
 
 	const payload = {
@@ -121,7 +213,7 @@ async function maybeCaptureWatchdogAlert(input: {
 		overdueSample: summarizeJobs(input.overdueSample),
 		stuckSample: summarizeJobs(input.stuckSample),
 	}
-	console.warn('job-schedule-watchdog-overdue', payload)
+	reportConsumerWarning('job-schedule-watchdog-overdue', payload)
 	if (alerted) {
 		Sentry.withScope((scope) => {
 			scope.setTag('scheduled.lane', 'job_schedule_watchdog')
@@ -174,13 +266,15 @@ export async function runJobScheduleWatchdogTick(input: {
 	const scanTruncated = overduePage.truncated || stuckPage.truncated
 
 	let repairedStuckJobCount = 0
-	const usersNeedingSync = new Set<OwnerId>()
-	for (const row of overdueRows) {
-		usersNeedingSync.add(row.user_id)
+	const oldestDueByUser = new Map<OwnerId, string>()
+	for (const row of [...overdueRows, ...stuckRows]) {
+		const known = oldestDueByUser.get(row.user_id)
+		if (known === undefined || row.next_run_at < known) {
+			oldestDueByUser.set(row.user_id, row.next_run_at)
+		}
 	}
 
 	for (const row of stuckRows) {
-		usersNeedingSync.add(row.user_id)
 		try {
 			// Advance from the stuck occurrence, not wall clock, so late repair
 			// cannot skip intermediate firings (at-most-one catch-up per pass).
@@ -194,13 +288,17 @@ export async function runJobScheduleWatchdogTick(input: {
 			// JobsService.purgeUser (which deletes every row for the user), so a
 			// stuck-fence advance racing a purge at worst repairs a row that is
 			// deleted moments later.
-			const repaired = await advanceStuckSkippedJobNextRunAt({
-				db: input.env.JOBS_DB,
-				userId: row.user_id,
-				jobId: row.id,
-				nextRunAt,
-				updatedAt: nowIso,
-			})
+			const repaired = await runD1WithRetry(() =>
+				withDeadline(d1Deadline('advance stuck job'), () =>
+					advanceStuckSkippedJobNextRunAt({
+						db: input.env.JOBS_DB,
+						userId: row.user_id,
+						jobId: row.id,
+						nextRunAt,
+						updatedAt: nowIso,
+					}),
+				),
+			)
 			if (repaired) {
 				repairedStuckJobCount += 1
 				logJobSchedulerEvent({
@@ -213,7 +311,7 @@ export async function runJobScheduleWatchdogTick(input: {
 				})
 			}
 		} catch (error) {
-			console.warn('job-schedule-watchdog-repair-failed', {
+			reportConsumerWarning('job-schedule-watchdog-repair-failed', {
 				jobId: row.id,
 				userId: row.user_id,
 				error: error instanceof Error ? error.message : String(error),
@@ -221,31 +319,22 @@ export async function runJobScheduleWatchdogTick(input: {
 		}
 	}
 
-	const userIds = [...usersNeedingSync].sort()
-	const usersToSync = userIds.slice(0, jobScheduleWatchdogMaxUsersPerTick)
-	const usersSkippedCap = Math.max(
-		0,
-		userIds.length - jobScheduleWatchdogMaxUsersPerTick,
+	// Stalest owner first, so the per-tick cap defers the freshest backlog
+	// instead of always dropping the same owners late in id order.
+	const userIds = [...oldestDueByUser.keys()].sort(
+		(a, b) =>
+			oldestDueByUser.get(a)!.localeCompare(oldestDueByUser.get(b)!) ||
+			a.localeCompare(b),
 	)
-	let usersSynced = 0
-	let usersFailedSync = 0
-	for (const userId of usersToSync) {
-		try {
-			await jobManagerStub(input.env, userId).syncAlarm({ userId })
-			usersSynced += 1
-			logJobSchedulerEvent({
-				event: 'watchdog_sync_alarm',
-				userId,
-				reason: 'silently_overdue_or_stuck_skipped',
-			})
-		} catch (error) {
-			usersFailedSync += 1
-			console.warn('job-schedule-watchdog-sync-failed', {
-				userId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-		}
-	}
+	const usersToSync = userIds.slice(0, jobScheduleWatchdogMaxUsersPerTick)
+	const syncOutcome = await syncUserAlarms({
+		env: input.env,
+		userIds: usersToSync,
+	})
+	const usersSynced = syncOutcome.synced
+	const usersFailedSync = syncOutcome.failed
+	const usersSkippedCap =
+		userIds.length - usersToSync.length + syncOutcome.skippedBudget
 
 	const baseResult = {
 		overdueJobCount: overdueRows.length,

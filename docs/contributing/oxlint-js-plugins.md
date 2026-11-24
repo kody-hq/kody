@@ -109,11 +109,12 @@ adding a directory to that `files` list.
 them.
 
 - `kody-custom/require-outbound-deadline`: D1, KV, R2, `fetch`, `*Rpc`
-  factories, Durable Object stub calls, Artifacts repo handles, and the boundary
+  factories, Durable Object stub calls, Artifacts repo handles, queue producer
+  `send` and `sendBatch` (`*_QUEUE`, `*Queue`, `queue`), and the boundary
   helpers listed in `OUTBOUND_IMPORTS` (for example `routeExecute`) must sit
   inside `withDeadline({ label, timeoutMs }, (signal) => ...)` from
-  `#worker/outbound/with-deadline.ts`. Pick `timeoutMs` explicitly; there is no
-  default.
+  `@kody-internal/shared/with-deadline.ts`. Pick `timeoutMs` explicitly; there
+  is no default. Pass `signal` to every call that accepts one.
 - `kody-custom/no-floating-promise`: a promise is awaited, returned, or handed
   to `waitUntil`. `void promise` is reported, and so are calls to async
   functions imported from relative or `#worker/` modules.

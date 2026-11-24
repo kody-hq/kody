@@ -9,7 +9,7 @@ import {
 	type DeadlineClock,
 	outboundTimeoutMs,
 	withDeadline,
-} from '#worker/outbound/with-deadline.ts'
+} from '@kody-internal/shared/with-deadline.ts'
 import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
 import { publishBuildDocumentSchema } from './document-schema.ts'
 import { sha256Hex } from './module-hashes.ts'
