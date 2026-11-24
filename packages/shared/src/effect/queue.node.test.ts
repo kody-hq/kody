@@ -1,7 +1,11 @@
-import { Effect } from 'effect'
+import { Data, Effect } from 'effect'
 import { expect, test, vi } from 'vitest'
 import { runEdge } from './edge.ts'
 import { type QueueDisposition, settleQueueBatch } from './queue.ts'
+
+class TestFailure extends Data.TaggedError('TestFailure')<{
+	readonly message: string
+}> {}
 
 function queueMessage(id: string) {
 	const calls: Array<string> = []
@@ -24,16 +28,16 @@ test('every message in a partially failing batch is settled exactly once', async
 			consumer: 'test',
 			messages,
 			failureRetryDelaySeconds: 9,
-			decide: (message): Effect.Effect<QueueDisposition, Error> => {
+			decide: (message): Effect.Effect<QueueDisposition, TestFailure> => {
 				if (message.id === 'ok') return Effect.succeed({ kind: 'ack' })
 				if (message.id === 'retry') {
 					return Effect.succeed({ kind: 'retry', delaySeconds: 3 })
 				}
-				return Effect.fail(new Error(message.id))
+				return Effect.fail(new TestFailure({ message: message.id }))
 			},
 			onDecideFailure: (message) =>
 				message.id === 'fallback-throws'
-					? Effect.die(new Error('fallback'))
+					? Effect.die(new TestFailure({ message: 'fallback' }))
 					: Effect.succeed({ kind: 'retry', delaySeconds: 5 }),
 		}),
 	)
@@ -62,7 +66,9 @@ test('afterAck runs only after the ack and its failure is reported, not thrown',
 				Effect.succeed({
 					kind: 'ack',
 					afterAck: Effect.sync(() => message.calls.push('cleanup')).pipe(
-						Effect.andThen(Effect.fail(new Error('cleanup failed'))),
+						Effect.andThen(
+							Effect.fail(new TestFailure({ message: 'cleanup failed' })),
+						),
 					),
 				}),
 			onDecideFailure: () => Effect.succeed({ kind: 'retry', delaySeconds: 1 }),
