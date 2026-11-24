@@ -20,6 +20,27 @@ export type PageQueryPolicy<TInput = unknown> = {
 	freshAuthorization?: boolean | ((input: TInput) => boolean)
 }
 
+/**
+ * How recently a permission-sensitive read must have been sent to the server
+ * for a navigation to accept it. Covers the gap between hovering a link and
+ * clicking it, so the hover's read is the click's read.
+ */
+export const freshAuthorizationWindowMs = 5_000
+
+const readStartedAt = new WeakMap<QueryClient, Map<string, number>>()
+
+function noteReadStarted(client: QueryClient, queryKey: QueryKey) {
+	let started = readStartedAt.get(client)
+	if (!started) readStartedAt.set(client, (started = new Map()))
+	const now = Date.now()
+	if (started.size > 100) {
+		for (const [key, at] of started) {
+			if (now - at >= freshAuthorizationWindowMs) started.delete(key)
+		}
+	}
+	started.set(hashKey(queryKey), now)
+}
+
 /** Query owns transport cancellation, independently of an individual navigation. */
 export function createPageQuery<TInput, TData>(
 	resource: string,
@@ -29,7 +50,10 @@ export function createPageQuery<TInput, TData>(
 	return (actorKey: string | null, input: TInput) =>
 		queryOptions({
 			queryKey: ['page', actorKey, resource, input] as const,
-			queryFn: ({ signal }) => read({ data: input, signal }),
+			queryFn: ({ signal, client, queryKey }) => {
+				noteReadStarted(client, queryKey)
+				return read({ data: input, signal })
+			},
 			staleTime: policy.staleTime ?? 30_000,
 			gcTime: policy.gcTime ?? 5 * 60_000,
 			meta: {
@@ -57,13 +81,29 @@ export async function ensurePageQuery<TData, TKey extends QueryKey>(
 	options: FetchQueryOptions<TData, Error, TData, TKey>,
 	preload: boolean,
 ) {
-	if (!preload && options.meta?.freshAuthorization === true) {
-		// A preload may have read permissions before revocation. Its late result
-		// must not satisfy the foreground authorization check.
+	const state = client.getQueryState(options.queryKey)
+	if (options.meta?.freshAuthorization === true) {
+		const startedAt = readStartedAt.get(client)?.get(hashKey(options.queryKey))
+		const age = startedAt === undefined ? Infinity : Date.now() - startedAt
+		if (age < freshAuthorizationWindowMs && !state?.isInvalidated) {
+			// The server authorized this read moments ago. Joins it when it is
+			// still in flight, and reuses its data when it has arrived.
+			return client.fetchQuery({
+				...options,
+				staleTime: freshAuthorizationWindowMs - age,
+			})
+		}
+		// A preload repeats an older read so the click that follows finds one
+		// inside the window. It leaves a read in flight alone, since a
+		// navigation may be waiting on it.
+		if (preload && state?.fetchStatus === 'fetching') {
+			return client.fetchQuery(options)
+		}
+		// An older read may predate a revocation. Its late result must not
+		// satisfy the foreground authorization check.
 		await client.cancelQueries({ queryKey: options.queryKey, exact: true })
 		return client.fetchQuery({ ...options, staleTime: 0 })
 	}
-	const state = client.getQueryState(options.queryKey)
 	// Explicit invalidation requires authoritative data; elapsed age alone is SWR.
 	if (state?.isInvalidated) return client.fetchQuery(options)
 	return client.ensureQueryData({ ...options, revalidateIfStale: true })

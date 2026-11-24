@@ -4,6 +4,7 @@ import {
 	createPageQuery,
 	filteredPageQueryOptions,
 	ensurePageQuery,
+	freshAuthorizationWindowMs,
 	loadPageQuery,
 } from './page-query.ts'
 
@@ -15,6 +16,7 @@ function client() {
 }
 afterEach(() => {
 	for (const value of clients.splice(0)) value.clear()
+	vi.useRealTimers()
 })
 function deferred<T>() {
 	let resolve!: (value: T) => void
@@ -93,9 +95,78 @@ describe('page query ownership', () => {
 		await ensurePageQuery(cache, publicDoc, false)
 		await ensurePageQuery(cache, publicDoc, false)
 		expect(read).toHaveBeenCalledTimes(1)
+		vi.useFakeTimers()
 		await ensurePageQuery(cache, privateDoc, false)
+		vi.advanceTimersByTime(freshAuthorizationWindowMs)
 		await ensurePageQuery(cache, privateDoc, false)
 		expect(read).toHaveBeenCalledTimes(3)
+	})
+
+	it('accepts a permission read sent within the window, in flight or arrived', async () => {
+		vi.useFakeTimers()
+		const cache = client()
+		const response = deferred<{ forbidden: boolean }>()
+		const read = vi.fn(() => response.promise)
+		const query = createPageQuery('loadAdminUsers', read, {
+			freshAuthorization: true,
+		})('same-actor', '/admin/users')
+		const preload = ensurePageQuery(cache, query, true)
+		vi.advanceTimersByTime(freshAuthorizationWindowMs - 1)
+		const click = ensurePageQuery(cache, query, false)
+		response.resolve({ forbidden: false })
+		expect(await click).toEqual({ forbidden: false })
+		await preload
+		expect(await ensurePageQuery(cache, query, false)).toEqual({
+			forbidden: false,
+		})
+		expect(read).toHaveBeenCalledTimes(1)
+	})
+
+	it('repeats an older permission read on preload so the click reuses it', async () => {
+		vi.useFakeTimers()
+		const cache = client()
+		const read = vi.fn(async () => ({ forbidden: false }))
+		const query = createPageQuery('loadAdminUsers', read, {
+			freshAuthorization: true,
+		})('same-actor', '/admin/users')
+		await ensurePageQuery(cache, query, false)
+		vi.advanceTimersByTime(freshAuthorizationWindowMs)
+		await ensurePageQuery(cache, query, true)
+		expect(read).toHaveBeenCalledTimes(2)
+		await ensurePageQuery(cache, query, false)
+		expect(read).toHaveBeenCalledTimes(2)
+	})
+
+	it('does not cancel an in-flight navigation read from a preload', async () => {
+		vi.useFakeTimers()
+		const cache = client()
+		const response = deferred<{ forbidden: boolean }>()
+		const read = vi.fn(() => response.promise)
+		const query = createPageQuery('loadAdminUsers', read, {
+			freshAuthorization: true,
+		})('same-actor', '/admin/users')
+		const navigation = ensurePageQuery(cache, query, false)
+		vi.advanceTimersByTime(freshAuthorizationWindowMs)
+		const preload = ensurePageQuery(cache, query, true)
+		response.resolve({ forbidden: false })
+		expect(await navigation).toEqual({ forbidden: false })
+		expect(await preload).toEqual({ forbidden: false })
+		expect(read).toHaveBeenCalledTimes(1)
+	})
+
+	it('rechecks an invalidated permission read even within the window', async () => {
+		const cache = client()
+		const read = vi.fn(async () => ({ forbidden: false }))
+		const query = createPageQuery('loadAdminUsers', read, {
+			freshAuthorization: true,
+		})('same-actor', '/admin/users')
+		await ensurePageQuery(cache, query, true)
+		await cache.invalidateQueries({
+			queryKey: query.queryKey,
+			refetchType: 'none',
+		})
+		await ensurePageQuery(cache, query, false)
+		expect(read).toHaveBeenCalledTimes(2)
 	})
 	it('awaits an explicitly invalidated revision so Router metadata cannot reuse the old title', async () => {
 		const cache = client()
@@ -204,6 +275,7 @@ describe('page query ownership', () => {
 		expect(cache.getQueryData(query.queryKey)).toEqual({ title: 'New title' })
 	})
 	it('rechecks changed permissions instead of accepting an older in-flight preload', async () => {
+		vi.useFakeTimers()
 		const cache = client()
 		const oldResponse = deferred<{ forbidden: boolean }>()
 		const started = deferred<void>()
@@ -226,6 +298,7 @@ describe('page query ownership', () => {
 			(error: unknown) => error,
 		)
 		await started.promise
+		vi.advanceTimersByTime(freshAuthorizationWindowMs)
 		expect(await ensurePageQuery(cache, query, false)).toEqual({
 			forbidden: true,
 		})
