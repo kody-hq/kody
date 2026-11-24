@@ -102,8 +102,8 @@ Run it hosted, not with `--local`. Both write the card, but only the hosted run
 emits `@kody/factory.card.created`, which drives the card's push and routing.
 The local runtime has no `events` binding.
 
-This includes the ship-pr friction step: its example command uses `--local`, so
-run the hosted form above instead.
+This includes the ship-pr friction step: its `friction/file` example uses
+`--local`, so file with the hosted command above. Ticks stay `--local`.
 
 Each filed entry returns its `cardId` and card link (`htmlUrl`). Add
 `"dryRun": true` to preview. Fields, soft-skip shapes, and examples live in the
