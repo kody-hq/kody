@@ -67,11 +67,15 @@ export function reportStartupBundleOverages(
 		)
 	}
 	const summaryPath = env.GITHUB_STEP_SUMMARY?.trim()
-	if (summaryPath) {
+	if (!summaryPath) return
+	try {
 		appendFileSync(
 			summaryPath,
 			`${formatStartupBundleOverageSummary(overages)}\n`,
 			'utf8',
 		)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		log(`Could not write startup budget overage job summary: ${message}`)
 	}
 }
