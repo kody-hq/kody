@@ -384,7 +384,7 @@ async function dispatchAttempt(
 	if (!payloadKvKey) return { kind: 'ack' }
 	return {
 		kind: 'ack',
-		afterAck: () =>
+		afterAck: async () => {
 			withDeadline(kvDeadline('delete payload'), () =>
 				deleteWebhookDispatchPayload({
 					kv: env.BUNDLE_ARTIFACTS_KV,
@@ -396,7 +396,8 @@ async function dispatchAttempt(
 					endpointId: message.endpoint.id,
 					error,
 				})
-			}),
+			})
+		},
 	}
 }
 
