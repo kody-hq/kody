@@ -13,8 +13,8 @@ category: technical
 seven rounds, blind builders, planted bugs, and an independent judge. Effect
 didn't win. Kody's request handlers are staying on plain async/await, with a few
 required helpers, some custom lint rules, and zod at every edge where input
-comes in. Effect might still make sense for our Durable Objects and queues, so
-I'm not closing that door.
+comes in. Effect could still be a good fit for Durable Objects and queues,
+where its resource cleanup matters more, but we're not using it there today.
 
 ## Who ran the trial
 
@@ -59,7 +59,7 @@ bet had nothing to do with this. And honestly, if my agents had picked Effect,
 I'd have happily called it a win for Sebastian, even though technically I still
 wouldn't be the one writing it. 😄
 
-Here's what changed since 2024: I'm not the one writing the code anymore. If my
+What's different now is that I'm not the one writing the code. If my
 agents can write Effect well, then "it feels like a different language to me"
 just isn't a very good reason to skip it.
 
@@ -207,7 +207,7 @@ came from main, and they're about quotas, atomicity, and memory bounds, which
 neither approach claims to prevent.
 
 **Bugs on main via machinery: Effect 10, Promises 0.** This is where Effect
-earned real points. More on it below.
+really shined. More on that below.
 
 **Correctness under change: both 10.** All six follow-up PRs had zero issues.
 Every spec item had a test, every new failure was typed and mapped, and every
@@ -227,14 +227,14 @@ that tell you the fix. Effect's handlers read well once you know generators,
 **Adoption cost: Effect 4, Promises 8.** Effect brings two new dependencies and
 an `effect:check` step that took 52.4 s versus 4.7 s for oxlint on the whole
 worker package, about 10 times slower. The Promise approach adds no dependencies
-and is adopted per file by adding it to a rule list; backing out is deleting
+and is adopted by turning the rules on for a directory; backing out is removing
 that entry. The judge estimated 2 to 4 weeks of agent time to bring the rest of
 the worker's request handlers over with Promises, versus 6 to 10 weeks with
 Effect.
 
-## Being fair to Effect
+## What Effect did well
 
-I want to be fair to Effect here, because it did some things really well.
+Effect did some things really well, and I want to give it credit.
 
 **Schema decoding found real bugs on main.** While building, Effect's builder
 found two real bugs on main _through the approach itself_, by decoding untrusted
@@ -245,28 +245,27 @@ input with a schema:
 - An uploaded JSON module that wasn't valid JSON threw instead of rejecting the
   build, leaving it sealed.
 
-The judge verified both against main. That's the pit of success working as
-advertised: the schema made the author handle malformed input.
+The judge verified both against main. That's exactly the pit of success I
+want: the schema forced the code to handle bad input.
 
 But the Promise builder found those same bugs (and three more) by plain reading,
 so they don't count as machinery there. And schema decoding at trust boundaries
 isn't Effect-specific. zod is already in the repo. So we're keeping that lesson.
 We're just keeping it with zod.
 
-**Effect's static checks did much better than last time.** This was the
-surprise. In round 6, Effect's static checks caught 0 of 9 seeds. Here they
+**Effect's static checks did a lot better than last time, which surprised me.**
+In round 6, Effect's static checks caught 0 of 9 seeds. Here they
 caught 4 of 9 specifically. The judge's explanation is that request handlers
 "have the shapes those checks understand (an Effect value, an error channel, a
 Promise API)." But the very next sentence was: "The Promise lint caught exactly
 the same shapes."
 
-**The code was good.** Effect's handlers weren't hard to read. They were hard to
-read _if you don't know Effect_.
+And to be clear, the Effect code was good. If you know Effect, it reads fine.
+You just have to know Effect.
 
 ## What neither approach caught
 
-Honestly, I think this is the most important part, and it doesn't have much to
-do with Effect.
+This is the part I care about most, and it's not really about Effect.
 
 | Seed                                       | Effect     | Promises + lint |
 | ------------------------------------------ | ---------- | --------------- |
@@ -310,9 +309,9 @@ Durable Objects, and queues. The Promise approach builds on what's already here:
 our oxlint plugin and zod. Effect's resource safety (a `Scope` that releases
 things on every exit path) is the part that might matter more in long-lived
 code, and that's exactly the kind of code where the judge kept it as a candidate
-(Durable Objects and queues) rather than ruling it out. The honest weakness on
-the Promise side is that its rules are opt-in per file, and code outside the
-rule list is unguarded.
+(Durable Objects and queues). The real weakness on the Promise side is that the
+rules only apply in the request-path directories they're turned on for, and
+code outside those directories is unguarded.
 
 **Ecosystem familiarity.** Async/await is what nearly every TypeScript developer
 already writes. The judge named Effect 4 being a recent major version, plus the
@@ -328,10 +327,10 @@ prevention column, 5.17 to 3.33. But most of that lead comes from schema
 decoding finding bugs on main, and that's portable. On planted bugs, both caught
 the same four, and both missed the same important ones.
 
-So yes, I still think catching bugs counts for a great deal. What I didn't
-expect is that most of the catching came from patterns (exhaustive failure
-mapping, required deadlines, no floating promises, schema decoding at the edge),
-and we can have those without switching runtimes.
+So yes, I still think catching bugs counts for a great deal. I just didn't
+expect most of the catching to come from patterns (exhaustive failure
+mapping, required deadlines, no floating promises, schema decoding at the edge)
+that we can have without switching runtimes.
 
 ## The decision
 
@@ -371,14 +370,15 @@ through. That hasn't started yet.
 ## Conclusion
 
 I gave Effect 4 (`effect` 4.1.5) a real trial, and I went in wanting it to win.
-Here is how the tradeoff shook out for Kody's request handlers.
+Here's where it landed for Kody's request handlers.
 
 **The strongest case for Effect:**
 
 - It won the bug-prevention column (5.17 to 3.33), mostly because schema
   decoding at the edge caught two real bugs on `main` automatically.
 - Typed errors, service boundaries, and trace spans come built in once a path
-  is in Effect, without relying on per-file lint opt-in.
+  is in Effect, without relying on lint rules that only apply in the
+  directories we enable them in.
 - Startup latency was a wash; the earlier 30 ms concern didn't reproduce.
 - The code itself is clean once you know the library, and Effect's `Scope`
   resource safety still makes it a candidate for long-lived Durable Objects and
