@@ -1,5 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
+import { Effect, Layer } from 'effect'
 import { beforeEach, expect, test, vi } from 'vitest'
+import { Background } from '#worker/effect/background.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
@@ -55,12 +57,30 @@ vi.mock(
 )
 
 const {
-	deliverWhatsNewConsentOutboxRow,
+	consentOutboxLayer,
+	deliverConsentOutboxRow,
 	recordWhatsNewConsentChange,
 	whatsNewConsentFirstPartyOrgIds,
 } = await import('./consent-outbox.ts')
 
+const deliverWhatsNewConsentOutboxRow = (input: {
+	env: Env
+	outboxId: string
+}) =>
+	Effect.runPromise(
+		deliverConsentOutboxRow(input.outboxId).pipe(
+			Effect.provide(
+				Layer.merge(
+					Background.layer(() => {}),
+					consentOutboxLayer(input.env),
+				),
+			),
+		),
+	)
+
 function setup(packageOwners: Array<string>) {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	vi.setSystemTime(now)
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
 	const env = {
@@ -96,7 +116,6 @@ function setup(packageOwners: Array<string>) {
 			optedIn: true,
 			source: 'newsletter_page',
 			occurredAt: now.toISOString(),
-			now,
 		})
 		return outbox()[0]!.id
 	}
