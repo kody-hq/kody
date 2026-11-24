@@ -3,6 +3,7 @@ import {
 	pushServerTiming,
 	type ServerTimingEntry,
 } from '#worker/server-timing.ts'
+import type { D1ReplicaReadState } from '#worker/d1-replica-reads.ts'
 import type { D1RoundTripTotals } from '#worker/d1-round-trip-timing.ts'
 
 /**
@@ -23,6 +24,8 @@ export type RequestContext = {
 	memo: Map<string, Promise<unknown>>
 	/** Filled by `d1-round-trip-timing.ts` as the request reads D1. */
 	d1?: D1RoundTripTotals
+	/** Set by `d1-replica-reads.ts` at the HTTP boundary. */
+	d1ReplicaReads?: D1ReplicaReadState
 }
 
 const requestContextStorage = new AsyncLocalStorage<RequestContext>()

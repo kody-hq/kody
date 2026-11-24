@@ -26,6 +26,7 @@
  * recording must not break session loading or MCP request handling.
  */
 
+import { runOnD1Primary } from '#worker/d1-replica-reads.ts'
 import {
 	measuredFeatureFlagKeys,
 	recordsFeatureFlagExposureAtEvaluation,
@@ -83,7 +84,10 @@ export async function recordFeatureFlagExposures(
 			writeExposureDataPoints(env, input.stableUserId, exposures, timestamp)
 			return
 		}
-		await writeExposureRollups(env, input.stableUserId, exposures, timestamp)
+		// Telemetry: it must not send a page reading a replica back to the primary.
+		await runOnD1Primary(() =>
+			writeExposureRollups(env, input.stableUserId, exposures, timestamp),
+		)
 	} catch (error) {
 		console.warn('flag-exposure-record-failed', error)
 	}

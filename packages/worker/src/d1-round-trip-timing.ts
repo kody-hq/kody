@@ -8,6 +8,9 @@ import type { ServerTimingEntry } from '#worker/server-timing.ts'
  * which is the number that decides whether read replicas would help.
  *
  * Every call is forwarded unchanged and its result returned as is.
+ *
+ * Remove when: the D1 read replication plan (factory plan
+ * plan_b06be7edb75a49ef) is shipped to everyone or dropped.
  */
 export type D1RoundTripTotals = {
 	calls: number
@@ -139,26 +142,6 @@ export function timeD1RoundTrips(real: D1Database): D1Database {
 	} as unknown as D1Database
 	timedDatabases.add(database)
 	return database
-}
-
-const installedEnvs = new WeakSet<object>()
-
-/**
- * Time `APP_DB` for every request this Worker env serves. Replaces the
- * binding in place, once, so the env object keeps its identity.
- *
- * Remove when: the D1 read replication plan (factory plan
- * plan_b06be7edb75a49ef) is decided either way.
- */
-export function installD1RoundTripTiming(env: Env | undefined) {
-	if (!env || typeof env !== 'object') return
-	try {
-		if (installedEnvs.has(env)) return
-		installedEnvs.add(env)
-		if (env.APP_DB) env.APP_DB = timeD1RoundTrips(env.APP_DB)
-	} catch (error) {
-		console.warn('D1 round trips are not timed:', String(error))
-	}
 }
 
 /**

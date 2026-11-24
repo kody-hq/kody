@@ -103,6 +103,17 @@ export const featureFlagDefinitions = [
 		},
 	},
 	{
+		key: 'd1-replica-reads',
+		removeWhen:
+			'Factory plan plan_b06be7edb75a49ef ships replica reads to everyone or drops them; delete the flag and its rollout read.',
+		reviewBy: '2027-02-01',
+		defaultEnabled: false,
+		description:
+			'Browser page GET and HEAD loads read the app database from the nearest D1 read replica; every other request reads the primary. Only the global switch and rollout percent apply (audience and per-user or per-org overrides are ignored), and a change takes up to 30 seconds to reach every Worker instance.',
+		// Intentionally no successMetric: judged by the d1 Server-Timing
+		// fields per region, which no usage event stream records.
+	},
+	{
 		key: 'demo-indicator',
 		reviewBy: '2027-05-19',
 		defaultEnabled: false,

@@ -4,7 +4,13 @@ import { setAuthSessionSecret } from '../src/app/auth-session.ts'
 import { env as moduleEnv } from 'cloudflare:workers'
 import { getEnv } from '../src/app/env.ts'
 import { runWithRequestContext } from '../src/request-context.ts'
-import { installD1RoundTripTiming } from '../src/d1-round-trip-timing.ts'
+import {
+	allowReplicaReads,
+	beginD1ReplicaReads,
+	d1FreshReadSetCookie,
+	installD1ReplicaReads,
+	renderWithReplicaReads,
+} from '../src/d1-replica-reads.ts'
 import { runWithDeferredWork } from '../src/deferred-work.ts'
 import { wasSentryReported } from '../src/app/sentry-reported-error.ts'
 import {
@@ -46,8 +52,8 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 		try {
 			const bindings = getEnv(env)
 			// Document code reads `env` from `cloudflare:workers`, a separate object.
-			installD1RoundTripTiming(bindings)
-			installD1RoundTripTiming(moduleEnv)
+			installD1ReplicaReads(bindings)
+			installD1ReplicaReads(moduleEnv)
 			const probe = perfProbe ? await perfProbe : undefined
 			if (probe && new URL(request.url).pathname === probe.perfProbeDumpPath) {
 				return probe.dumpPerfProbe()
@@ -55,8 +61,16 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 			const probeHeadersReady = probe?.startPerfProbe(request, bindings)
 			setAuthSessionSecret(bindings.COOKIE_SECRET)
 			const response = inRequest(async () => {
+				beginD1ReplicaReads(request, bindings)
+				const render = () =>
+					renderWithReplicaReads(request, () =>
+						renderDocument(request, bindings),
+					)
 				if (isServerFunctionRequest(request)) {
-					const response = await renderDocument(request, bindings)
+					// Documents opt in per route. A GET that writes runs again on the
+					// primary, see `renderWithReplicaReads`.
+					allowReplicaReads(request)
+					const response = await render()
 					// Start serializes thrown redirects after request middleware finishes.
 					// Enforce RPC privacy on the final response, even when shared document
 					// loaders set public caching for their canonical document redirects.
@@ -66,13 +80,25 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 					// instead of rendering a newer loader shape (KODY-DP).
 					const buildId = normalizeDeploySkewBuildId(bindings.APP_COMMIT_SHA)
 					if (buildId) headers.set(deploySkewBuildHeader, buildId)
+					const freshRead = await d1FreshReadSetCookie(request, bindings)
+					if (freshRead) headers.append('Set-Cookie', freshRead)
 					return new Response(response.body, {
 						status: response.status,
 						statusText: response.statusText,
 						headers,
 					})
 				}
-				return renderDocument(request, bindings)
+				const document = await render()
+				const freshRead = await d1FreshReadSetCookie(request, bindings)
+				// An upgraded socket has immutable headers.
+				if (!freshRead || document.status === 101) return document
+				const headers = new Headers(document.headers)
+				headers.append('Set-Cookie', freshRead)
+				return new Response(document.body, {
+					status: document.status,
+					statusText: document.statusText,
+					headers,
+				})
 			})
 			// Start initializes shared route modules on the first request. Keep that
 			// work alive if a health probe disconnects during cold initialization,

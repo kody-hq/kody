@@ -1,4 +1,5 @@
 import { getRouterInstance } from '@tanstack/react-start'
+import { allowReplicaReads } from '../../src/d1-replica-reads.ts'
 import {
 	routeMethodRejection,
 	unknownPathRejection,
@@ -11,7 +12,7 @@ export async function rejectUnsupportedRouteMethod(request: Request) {
 		new URL(request.url).pathname,
 	)
 	const hasUnmatchedRemainder = params['**'] !== undefined
-	return (
+	const rejected =
 		unknownPathRejection(method, route, hasUnmatchedRemainder, request) ??
 		routeMethodRejection(
 			method,
@@ -19,5 +20,14 @@ export async function rejectUnsupportedRouteMethod(request: Request) {
 			Boolean(route && !hasUnmatchedRemainder),
 			request,
 		)
+	// A page with its own server handler may act on what it reads (token
+	// links, OAuth callbacks), so only plain pages read from a replica.
+	if (
+		!rejected &&
+		route &&
+		!hasUnmatchedRemainder &&
+		!route.options.server?.handlers
 	)
+		allowReplicaReads(request)
+	return rejected
 }

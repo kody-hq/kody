@@ -4,6 +4,7 @@ import { getEnv } from '../src/app/env.ts'
 import { createHttpRequestHandler } from './http-entry.ts'
 import { markSentryReported } from '../src/app/sentry-reported-error.ts'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
+import { fakeReplicatedD1 } from '#worker/test-support/replicated-d1.ts'
 import { testOidcSigningEnv } from '#worker/test-support/oidc-signing-env.ts'
 
 const captureException = vi.fn()
@@ -28,7 +29,8 @@ function createEnv(overrides: Record<string, unknown> = {}) {
 		COOKIE_SECRET: 'LOCAL_TEST_COOKIE_SECRET_32_CHARS_MINIMUM',
 		SECRET_STORE_KEY: 'LOCAL_TEST_SECRET_STORE_KEY_32_CHARS_MINIMUM',
 		...testOidcSigningEnv,
-		APP_DB: {},
+		// Answers the replica rollout read: no flag row, so reads stay primary.
+		APP_DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) },
 		BUNDLE_ARTIFACTS_KV: {},
 		JOB_MANAGER: {},
 		STORAGE_RUNNER: {},
@@ -314,9 +316,59 @@ test('a disconnected cold request keeps shared route initialization alive', asyn
 		createEnv(),
 		{ waitUntil },
 	)
-	expect(waitUntil).toHaveBeenCalledTimes(1)
+	// The replica rollout read, then the response itself.
+	expect(waitUntil).toHaveBeenCalledTimes(2)
 	controller.abort()
 	finishRendering(Response.json({ ok: true }))
 	await expect(response.then((result) => result.status)).resolves.toBe(200)
-	await expect(waitUntil.mock.calls[0]![0]).resolves.toBeUndefined()
+	await expect(waitUntil.mock.calls[1]![0]).resolves.toBeUndefined()
+})
+
+test('a mutation then a GET in the same browser reads the write; other browsers wait for the replica', async () => {
+	vi.stubEnv('TSS_SERVER_FN_BASE', '/_serverFn/')
+	try {
+		const d1 = fakeReplicatedD1({ enabled: 1, rollout_percent: null })
+		const handle = createHttpRequestHandler(async (request, env) => {
+			const sql = new URL(request.url).pathname.endsWith('revoke')
+				? 'UPDATE revoke'
+				: 'SELECT role'
+			const row = await env.APP_DB.prepare(sql).first<{ member: boolean }>()
+			return new Response(String(row?.member))
+		})
+		const env = createEnv({ APP_DB: d1.db })
+		const call = (path: string, init?: RequestInit) =>
+			handle(new Request(`https://example.com/_serverFn/${path}`, init), env)
+
+		// The first request of a Worker instance loads the flag.
+		expect(await (await call('role')).text()).toBe('true')
+		await vi.waitFor(async () => {
+			d1.sessions.length = 0
+			await call('role')
+			expect(d1.sessions).toEqual(['first-unconstrained'])
+		})
+
+		const write = await call('revoke', { method: 'POST' })
+		const cookie = write.headers.getSetCookie().join(';')
+		expect(cookie).toMatch(
+			/^kody_d1=00000002-[0-9a-f-]+; Path=\/; Max-Age=60; HttpOnly/,
+		)
+
+		// The replica is stale, and a mutation reads the primary regardless.
+		expect(await (await call('role')).text()).toBe('true')
+		expect(await (await call('role', { method: 'POST' })).text()).toBe('false')
+
+		const sameBrowser = await call('role', {
+			headers: { cookie: cookie.split(';')[0]! },
+		})
+		expect(await sameBrowser.text()).toBe('false')
+		expect(sameBrowser.headers.getSetCookie()).toEqual([])
+
+		// A document GET reads the primary until its route opts in.
+		d1.sessions.length = 0
+		const page = await handle(new Request('https://example.com/verify'), env)
+		expect(await page.text()).toBe('false')
+		expect(d1.sessions).toEqual([])
+	} finally {
+		vi.unstubAllEnvs()
+	}
 })

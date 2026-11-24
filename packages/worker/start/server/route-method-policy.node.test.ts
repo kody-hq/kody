@@ -1,5 +1,12 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-const state = vi.hoisted(() => ({ match: vi.fn(), router: vi.fn() }))
+const state = vi.hoisted(() => ({
+	match: vi.fn(),
+	router: vi.fn(),
+	allowReplicaReads: vi.fn(),
+}))
+vi.mock('../../src/d1-replica-reads.ts', () => ({
+	allowReplicaReads: state.allowReplicaReads,
+}))
 vi.mock('@tanstack/react-start', () => ({ getRouterInstance: state.router }))
 import { rejectUnsupportedRouteMethod } from './route-method-policy.ts'
 beforeEach(() => {
@@ -78,4 +85,27 @@ test('unknown paths answer 404 to JSON reads before Start can answer 406', async
 			}),
 		),
 	).toBeUndefined()
+})
+
+test('only a plain page that passed the method check may read from a replica', async () => {
+	const page = new Request('https://kody.test/pricing')
+	state.match.mockReturnValue([[], {}, { options: {} }])
+	await rejectUnsupportedRouteMethod(page)
+	expect(state.allowReplicaReads.mock.calls).toEqual([[page]])
+
+	state.allowReplicaReads.mockClear()
+	// Token links and OAuth callbacks have handlers and act on what they read.
+	state.match.mockReturnValue([
+		[],
+		{},
+		{ options: { server: { handlers: { GET: vi.fn() } } } },
+	])
+	await rejectUnsupportedRouteMethod(
+		new Request('https://kody.test/verify-email?token=secret'),
+	)
+	state.match.mockReturnValue([[], { '**': 'extra' }, { options: {} }])
+	await rejectUnsupportedRouteMethod(new Request('https://kody.test/x/extra'))
+	state.match.mockReturnValue([[], {}, undefined])
+	await rejectUnsupportedRouteMethod(new Request('https://kody.test/missing'))
+	expect(state.allowReplicaReads).not.toHaveBeenCalled()
 })
