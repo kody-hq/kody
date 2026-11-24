@@ -268,13 +268,16 @@ const watchdogTick = Effect.fn('jobWatchdog.tick')(function* (
 	)
 	const overdueRows = overduePage.rows
 	const stuckRows = stuckPage.rows
-	const usersNeedingSync = new Set<OwnerId>()
-	for (const row of [...overdueRows, ...stuckRows]) {
-		usersNeedingSync.add(row.user_id)
-	}
 	const repairs = yield* Effect.forEach(stuckRows, (row) =>
 		repairStuckJob(env, row, nowIso),
 	)
+	const usersNeedingSync = new Set<OwnerId>()
+	for (const row of overdueRows) {
+		usersNeedingSync.add(row.user_id)
+	}
+	stuckRows.forEach((row, index) => {
+		if (repairs[index]) usersNeedingSync.add(row.user_id)
+	})
 
 	const userIds = [...usersNeedingSync].sort()
 	const usersToSync = userIds.slice(0, jobScheduleWatchdogMaxUsersPerTick)
