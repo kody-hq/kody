@@ -8,8 +8,6 @@ import {
 	resolvePackageAppRunLocations,
 	resolvePublicPackageAppLocation,
 } from '#worker/package-app-public-url.ts'
-import * as packageRepo from '#worker/package-registry/repo.ts'
-import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 
 // These fixtures have no owner or package rows, so no profile package exists.
 vi.mock('#worker/package-app-profile-host.ts', () => ({
@@ -24,7 +22,10 @@ const migrationSql = readFileSync(
 	'utf8',
 )
 
-function createEnv(input?: { withHostname?: 'verified' | 'pending' | 'none' }) {
+function createEnv(input?: {
+	withHostname?: 'verified' | 'pending' | 'none'
+	queries?: Array<string>
+}) {
 	const sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(`
 		CREATE TABLE orgs (
@@ -38,6 +39,18 @@ function createEnv(input?: { withHostname?: 'verified' | 'pending' | 'none' }) {
 			user_id TEXT NOT NULL,
 			name TEXT NOT NULL,
 			kody_id TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			tags_json TEXT NOT NULL DEFAULT '[]',
+			search_text TEXT,
+			source_id TEXT NOT NULL DEFAULT '',
+			has_app INTEGER NOT NULL DEFAULT 0,
+			has_skills INTEGER NOT NULL DEFAULT 0,
+			hidden INTEGER NOT NULL DEFAULT 0,
+			is_private INTEGER NOT NULL DEFAULT 0,
+			is_internet_visible INTEGER NOT NULL DEFAULT 0,
+			locked_at TEXT,
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT '',
 			deleted_at TEXT
 		);
 		CREATE TABLE handles (
@@ -48,7 +61,7 @@ function createEnv(input?: { withHostname?: 'verified' | 'pending' | 'none' }) {
 		);
 	`)
 	sqlite.exec(migrationSql)
-	const db = createD1FromSqlite(sqlite)
+	const db = createD1FromSqlite(sqlite, { queries: input?.queries })
 	const now = '2026-10-25T00:00:00.000Z'
 	sqlite
 		.prepare(
@@ -62,10 +75,14 @@ function createEnv(input?: { withHostname?: 'verified' | 'pending' | 'none' }) {
 		.run(now)
 	sqlite
 		.prepare(
-			`INSERT INTO saved_packages (id, user_id, name, kody_id, deleted_at)
-			 VALUES ('pkg-demo', 'org-owner', '@pkg-owner/demo', 'demo', NULL)`,
+			`INSERT INTO saved_packages (id, user_id, name, kody_id, has_app, deleted_at)
+			 VALUES
+				('pkg-demo', 'org-owner', '@pkg-owner/demo', 'demo', 1, NULL),
+				('pkg-plain', 'org-owner', '@pkg-owner/plain', 'plain', 1, NULL),
+				('pkg-no-app', 'org-owner', '@pkg-owner/lib', 'lib', 0, NULL),
+				('pkg-deleted', 'org-owner', '@pkg-owner/gone', 'gone', 1, ?)`,
 		)
-		.run()
+		.run(now)
 	if (input?.withHostname === 'verified') {
 		sqlite
 			.prepare(
@@ -151,22 +168,22 @@ test('resolvePublicPackageAppLocation falls back to kody.run when no custom host
 	})
 })
 
-test('resolvePackageAppRunLocations gives each run package its served app URL, null only without an app', async () => {
-	const env = createEnv({ withHostname: 'verified' })
-	const packages: Record<string, Partial<SavedPackageRecord>> = {
-		'pkg-demo': { id: 'pkg-demo', name: '@pkg-owner/demo', hasApp: true },
-		'pkg-plain': { id: 'pkg-plain', name: '@pkg-owner/plain', hasApp: true },
-		'pkg-no-app': { id: 'pkg-no-app', name: '@pkg-owner/lib', hasApp: false },
-	}
-	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockImplementation(
-		async (_db, packageId) =>
-			(packages[packageId] as SavedPackageRecord | undefined) ?? null,
-	)
+test('resolvePackageAppRunLocations loads every run package in one query and gives each its served app URL', async () => {
+	const queries: Array<string> = []
+	const env = createEnv({ withHostname: 'verified', queries })
 	await expect(
 		resolvePackageAppRunLocations({
 			env,
 			baseUrl: 'https://kody.codes',
-			packageIds: ['pkg-demo', 'pkg-plain', 'pkg-no-app', 'pkg-gone'],
+			packageIds: [
+				'pkg-demo',
+				'pkg-plain',
+				'pkg-demo',
+				'pkg-no-app',
+				'pkg-deleted',
+				'pkg-missing',
+				'pkg-plain',
+			],
 		}),
 	).resolves.toEqual({
 		'pkg-demo': { hostedUrl: 'https://app.example.com/', appBasePath: '' },
@@ -175,8 +192,34 @@ test('resolvePackageAppRunLocations gives each run package its served app URL, n
 			appBasePath: '',
 		},
 		'pkg-no-app': { hostedUrl: null, appBasePath: null },
-		'pkg-gone': { hostedUrl: null, appBasePath: null },
+		'pkg-deleted': { hostedUrl: null, appBasePath: null },
+		'pkg-missing': { hostedUrl: null, appBasePath: null },
 	})
+	expect(
+		queries.filter((sql) => sql.includes('FROM saved_packages')),
+	).toHaveLength(1)
+})
+
+test('resolvePackageAppRunLocations chunks large package id lists under the bound-parameter limit', async () => {
+	const queries: Array<string> = []
+	const env = createEnv({ withHostname: 'none', queries })
+	const packageIds = [
+		'pkg-demo',
+		...Array.from({ length: 120 }, (_, index) => `pkg-missing-${index}`),
+	]
+	const locations = await resolvePackageAppRunLocations({
+		env,
+		baseUrl: 'https://kody.codes',
+		packageIds,
+	})
+	expect(Object.keys(locations)).toHaveLength(packageIds.length)
+	expect(locations['pkg-demo']).toEqual({
+		hostedUrl: 'https://demo--pkg-owner.kody.run/',
+		appBasePath: '',
+	})
+	expect(
+		queries.filter((sql) => sql.includes('FROM saved_packages')),
+	).toHaveLength(2)
 })
 
 test('resolvePublicPackageAppLocation never links the shared owner host path address', async () => {

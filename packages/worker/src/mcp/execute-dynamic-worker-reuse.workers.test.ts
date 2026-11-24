@@ -13,7 +13,7 @@ import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidenta
 // Runs resolve each run package's app location; this D1 has no saved
 // package rows.
 beforeEach(() => {
-	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockResolvedValue(null)
+	vi.spyOn(packageRepo, 'listSavedPackagesByIdsInAnyOrg').mockResolvedValue([])
 })
 
 /**

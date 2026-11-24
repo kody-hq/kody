@@ -744,21 +744,44 @@ export async function listSavedPackagesByIds(
 		packageIds: Array<string>
 	},
 ): Promise<Array<SavedPackageRecord>> {
-	if (input.packageIds.length === 0) return []
+	return await listLiveSavedPackagesByIds(db, {
+		ownerId: input.userId,
+		packageIds: input.packageIds,
+	})
+}
+
+/**
+ * Live saved packages by id in whichever orgs own them, one query per chunk.
+ * Same rule as {@link getSavedPackageByIdInAnyOrg}: only for facts that belong
+ * to the package itself, never for access decisions.
+ */
+export async function listSavedPackagesByIdsInAnyOrg(
+	db: D1Database,
+	packageIds: Iterable<string>,
+): Promise<Array<SavedPackageRecord>> {
+	return await listLiveSavedPackagesByIds(db, { ownerId: null, packageIds })
+}
+
+async function listLiveSavedPackagesByIds(
+	db: D1Database,
+	input: { ownerId: string | null; packageIds: Iterable<string> },
+): Promise<Array<SavedPackageRecord>> {
 	const uniquePackageIds = [...new Set(input.packageIds)]
+	if (uniquePackageIds.length === 0) return []
+	const ownerBindings = input.ownerId === null ? [] : [input.ownerId]
 	const packages: Array<SavedPackageRecord> = []
 	for (const idChunk of chunkArray(
 		uniquePackageIds,
-		maxSqlBindingsPerChunk - 1,
+		maxSqlBindingsPerChunk - ownerBindings.length,
 	)) {
 		const placeholders = idChunk.map(() => '?').join(', ')
 		const rows = await db
 			.prepare(
 				`SELECT ${savedPackageSelectColumns}
 				FROM saved_packages
-				WHERE user_id = ? AND id IN (${placeholders})${andLiveDeletedAtSql()}`,
+				WHERE ${ownerBindings.length > 0 ? 'user_id = ? AND ' : ''}id IN (${placeholders})${andLiveDeletedAtSql()}`,
 			)
-			.bind(input.userId, ...idChunk)
+			.bind(...ownerBindings, ...idChunk)
 			.all<Record<string, unknown>>()
 		for (const row of rows.results ?? []) {
 			packages.push(mapSavedPackageRow(row))

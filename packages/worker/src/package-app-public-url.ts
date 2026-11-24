@@ -9,7 +9,7 @@ import {
 	getPackageNameLeaf,
 	getPackageNameScope,
 } from '#worker/package-registry/package-name.ts'
-import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
+import { listSavedPackagesByIdsInAnyOrg } from '#worker/package-registry/repo.ts'
 
 /**
  * Where a browser should open a hosted package app when it does not need a
@@ -150,12 +150,15 @@ export async function resolvePackageAppRunLocations(input: {
 	baseUrl: string
 	packageIds: Iterable<string>
 }): Promise<Record<string, PackageAppRunLocation>> {
+	const packageIds = [...new Set(input.packageIds)]
+	const savedPackages = new Map(
+		(await listSavedPackagesByIdsInAnyOrg(input.env.APP_DB, packageIds)).map(
+			(savedPackage) => [savedPackage.id, savedPackage],
+		),
+	)
 	const entries = await Promise.all(
-		[...new Set(input.packageIds)].map(async (packageId) => {
-			const savedPackage = await getSavedPackageByIdInAnyOrg(
-				input.env.APP_DB,
-				packageId,
-			)
+		packageIds.map(async (packageId) => {
+			const savedPackage = savedPackages.get(packageId)
 			const location = savedPackage
 				? await resolvePackageAppRunLocation({
 						env: input.env,

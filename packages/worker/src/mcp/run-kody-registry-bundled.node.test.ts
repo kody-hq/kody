@@ -23,7 +23,7 @@ import { d1NetworkConnectionLostMessage } from '#worker/d1-retry.ts'
 // Runs resolve each run package's app location; these fixtures have no saved
 // package rows.
 beforeEach(() => {
-	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockResolvedValue(null)
+	vi.spyOn(packageRepo, 'listSavedPackagesByIdsInAnyOrg').mockResolvedValue([])
 })
 
 vi.mock('#worker/package-runtime/module-graph.ts', async () => {
