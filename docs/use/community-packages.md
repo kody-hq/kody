@@ -176,7 +176,11 @@ record for upstream tracking. It never grants more access to the source.
   `repoOpenSession` with its `source_id`. After the first publish, those lookups
   work with the `package_id` and name.
 
-The fork's **cross-scope scan** reports candidates to review before publishing:
+The fork's **cross-scope scan** checks the files loaded while preparing the
+fork. For a community listing, preparation prefers the default-branch tip but
+can fall back to the listing pin or published revision. If the storage copy uses
+a different revision, the scan can miss references present only in the copy.
+Check the fork itself before publishing. The scan looks for:
 
 - `kody:@scope/` text matches outside the fork's scope, including in docs
 - `package.json#kody.dependencies` entries pointing at another scope
