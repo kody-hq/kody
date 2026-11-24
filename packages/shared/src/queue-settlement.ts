@@ -40,25 +40,21 @@ export async function settleQueueBatch<
 	failureRetryDelaySeconds: number
 	concurrency?: number
 }): Promise<void> {
-	const decideOrFallBack = async (
-		message: Message,
-	): Promise<QueueDisposition> => {
+	const settle = async (message: Message) => {
+		let disposition: QueueDisposition
 		try {
-			return await input.decide(message)
+			disposition = await input.decide(message)
 		} catch (error) {
 			try {
-				return await input.onDecideFailure(message, error)
+				disposition = await input.onDecideFailure(message, error)
 			} catch (fallbackError) {
 				reportConsumerError(`${input.consumer}-failure-handling-failed`, {
 					queueMessageId: message.id,
 					error: fallbackError,
 				})
-				return { kind: 'retry', delaySeconds: input.failureRetryDelaySeconds }
+				return
 			}
 		}
-	}
-	const settle = async (message: Message) => {
-		const disposition = await decideOrFallBack(message)
 		switch (disposition.kind) {
 			case 'ack': {
 				if (disposition.afterAck) {
