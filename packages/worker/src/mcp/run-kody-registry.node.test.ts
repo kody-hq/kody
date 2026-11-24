@@ -151,7 +151,7 @@ const meCaller = () =>
 // Runs resolve each run package's app location; these fixtures have no saved
 // package rows unless a test says so.
 beforeEach(() => {
-	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockResolvedValue(null)
+	vi.spyOn(packageRepo, 'listSavedPackagesByIdsInAnyOrg').mockResolvedValue([])
 })
 
 function mockExecutor(
@@ -910,13 +910,16 @@ test('runModuleWithRegistry passes each run package its hosted app URL', async (
 	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
 		emptyRegistry,
 	)
-	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockImplementation(
-		async (_db, packageId) =>
-			({
-				id: packageId,
-				name: packageId === 'pkg-rooms' ? '@kody/rooms' : '@kody/lib',
-				hasApp: packageId === 'pkg-rooms',
-			}) as SavedPackageRecord,
+	vi.spyOn(packageRepo, 'listSavedPackagesByIdsInAnyOrg').mockImplementation(
+		async (_db, packageIds) =>
+			[...packageIds].map(
+				(packageId) =>
+					({
+						id: packageId,
+						name: packageId === 'pkg-rooms' ? '@kody/rooms' : '@kody/lib',
+						hasApp: packageId === 'pkg-rooms',
+					}) as SavedPackageRecord,
+			),
 	)
 	vi.spyOn(packageAppProfileHost, 'hasProfilePackageApp').mockResolvedValue(
 		false,
