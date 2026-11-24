@@ -345,9 +345,8 @@ const deferForOwnerCap = Effect.fn('webhookDispatch.deferForOwnerCap')(
 		// Re-send instead of retry(): a retry counts toward max_retries, so a
 		// long wait behind the owner's own backlog would dead-letter it.
 		const deferrals = message.deferrals ?? 0
-		const sent = yield* outbound(
-			'webhook dispatch: re-send deferred message',
-			() =>
+		const sent = yield* Effect.tryPromise({
+			try: async () =>
 				env.WEBHOOK_DISPATCH_QUEUE.send(
 					{
 						...message,
@@ -356,8 +355,14 @@ const deferForOwnerCap = Effect.fn('webhookDispatch.deferForOwnerCap')(
 					} satisfies WebhookDispatchQueueMessage,
 					{ delaySeconds: ownerCapDeferralDelaySeconds(deferrals) },
 				),
-			{ timeout: outboundTimeout.queueSend },
-		).pipe(
+			catch: (cause) =>
+				new OutboundCallError({
+					operation: 'webhook dispatch: re-send deferred message',
+					reason: 'failed',
+					message: cause instanceof Error ? cause.message : String(cause),
+					cause,
+				}),
+		}).pipe(
 			Effect.as(true),
 			Effect.catchTag('OutboundCallError', (error) =>
 				Effect.logError('webhook-dispatch-deferral-send-failed', {
