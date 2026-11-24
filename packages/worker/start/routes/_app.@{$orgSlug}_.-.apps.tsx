@@ -84,10 +84,11 @@ function Page() {
 		} catch {
 			// Storage can be unavailable in private browsing or restricted contexts.
 		}
+		// Runs as the page arrives, so it must not cancel that arrival's
+		// scroll to the top.
 		void navigate({
 			search: (previous) => ({ ...previous, view: preferred }),
 			replace: true,
-			resetScroll: false,
 		})
 	}, [navigate, urlView])
 	const apps = filterWorkspaceApps(data.apps, { query: q, visibility, sort })
