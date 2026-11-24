@@ -39,10 +39,13 @@ test('route-owned prefixes skip the ASSETS probe', () => {
 })
 
 test('public files and client bundles still probe ASSETS', () => {
-	const publicPaths = listPublicFiles(publicDirectory).map(
-		(filePath) =>
-			`/${relative(publicDirectory, filePath).split(sep).join('/')}`,
-	)
+	const publicPaths = listPublicFiles(publicDirectory)
+		.map(
+			(filePath) =>
+				`/${relative(publicDirectory, filePath).split(sep).join('/')}`,
+		)
+		// Cloudflare reads `_headers` as response-header rules and never serves it.
+		.filter((pathname) => pathname !== '/_headers')
 	expect(publicPaths.length).toBeGreaterThan(10)
 	const probedPaths = [
 		...publicPaths,

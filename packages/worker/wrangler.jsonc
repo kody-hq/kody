@@ -264,7 +264,9 @@
 			// load makes 8-21 D1 reads that wait on each other, and each one
 			// crossed from the visitor's edge to the database region.
 			// Cloudflare measures both placements and keeps the edge when it
-			// is faster. Static assets are still served from the edge.
+			// is faster. Files not listed in `assets.run_worker_first`,
+			// including the hashed `/assets/*` chunks, never reach the Worker
+			// and are still served from the visitor's edge.
 			"placement": { "mode": "smart" },
 			// Replaces the top-level observability block (wrangler env keys
 			// override wholesale, so "enabled" is restated): same tracing,
@@ -353,7 +355,6 @@
 					"/.well-known/apple-app-site-association",
 					"/styles.css",
 					"/client-entry.js",
-					"/assets/*",
 					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
 					"/images/blog/*",
 				],
@@ -974,7 +975,6 @@
 					"/.well-known/apple-app-site-association",
 					"/styles.css",
 					"/client-entry.js",
-					"/assets/*",
 					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
 					"/images/blog/*",
 				],
@@ -1367,7 +1367,6 @@
 					"/.well-known/apple-app-site-association",
 					"/styles.css",
 					"/client-entry.js",
-					"/assets/*",
 					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
 					"/images/blog/*",
 				],

@@ -146,11 +146,7 @@ function shouldApplyLongLivedAssetCaching(pathname: string, env: Env) {
 		return true
 	const commitSha = (env as { APP_COMMIT_SHA?: string }).APP_COMMIT_SHA?.trim()
 	if (!commitSha) return false
-	return (
-		pathname === '/client-entry.js' ||
-		pathname === '/styles.css' ||
-		pathname.startsWith('/assets/')
-	)
+	return pathname === '/client-entry.js' || pathname === '/styles.css'
 }
 
 // Credential-accepting POST endpoints share one per-IP auth rate-limit bucket
