@@ -122,6 +122,57 @@ describe('page query ownership', () => {
 		expect(read).toHaveBeenCalledTimes(1)
 	})
 
+	it('measures the window from when the cached read was sent', async () => {
+		vi.useFakeTimers()
+		const cache = client()
+		const read = vi.fn(async () => {
+			await new Promise((done) => setTimeout(done, 100))
+			return { forbidden: false }
+		})
+		const query = createPageQuery('loadAdminUsers', read, {
+			freshAuthorization: true,
+		})('same-actor', '/admin/users')
+		const first = ensurePageQuery(cache, query, false)
+		await vi.advanceTimersByTimeAsync(100)
+		await first
+		await vi.advanceTimersByTimeAsync(freshAuthorizationWindowMs - 101)
+		await ensurePageQuery(cache, query, false)
+		expect(read).toHaveBeenCalledTimes(1)
+		await vi.advanceTimersByTimeAsync(1)
+		const expired = ensurePageQuery(cache, query, false)
+		await vi.advanceTimersByTimeAsync(100)
+		await expired
+		expect(read).toHaveBeenCalledTimes(2)
+	})
+
+	it('waits for a recent in-flight read instead of older cached data', async () => {
+		vi.useFakeTimers()
+		const cache = client()
+		const slow = deferred<{ forbidden: boolean }>()
+		const recheck = deferred<{ forbidden: boolean }>()
+		const read = vi
+			.fn<() => Promise<{ forbidden: boolean }>>()
+			.mockReturnValueOnce(slow.promise)
+			.mockReturnValueOnce(recheck.promise)
+		const query = createPageQuery('loadAdminUsers', read, {
+			freshAuthorization: true,
+		})('same-actor', '/admin/users')
+		const first = ensurePageQuery(cache, query, false)
+		// The first response arrives late, so its data is new but its
+		// authorization is not.
+		await vi.advanceTimersByTimeAsync(freshAuthorizationWindowMs + 3_000)
+		slow.resolve({ forbidden: false })
+		await first
+		await vi.advanceTimersByTimeAsync(1_000)
+		const preload = ensurePageQuery(cache, query, true)
+		await vi.advanceTimersByTimeAsync(1_000)
+		const click = ensurePageQuery(cache, query, false)
+		recheck.resolve({ forbidden: true })
+		expect(await click).toEqual({ forbidden: true })
+		await preload
+		expect(read).toHaveBeenCalledTimes(2)
+	})
+
 	it('repeats an older permission read on preload so the click reuses it', async () => {
 		vi.useFakeTimers()
 		const cache = client()

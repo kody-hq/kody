@@ -27,18 +27,29 @@ export type PageQueryPolicy<TInput = unknown> = {
  */
 export const freshAuthorizationWindowMs = 5_000
 
-const readStartedAt = new WeakMap<QueryClient, Map<string, number>>()
+type ReadTimes = {
+	/** When the read now in flight was sent. */
+	inFlight?: number
+	/** When the read that produced the cached data was sent. */
+	arrived?: number
+}
 
-function noteReadStarted(client: QueryClient, queryKey: QueryKey) {
-	let started = readStartedAt.get(client)
-	if (!started) readStartedAt.set(client, (started = new Map()))
+const readTimesByClient = new WeakMap<QueryClient, Map<string, ReadTimes>>()
+
+function readTimesFor(client: QueryClient, queryKey: QueryKey) {
+	let all = readTimesByClient.get(client)
+	if (!all) readTimesByClient.set(client, (all = new Map()))
 	const now = Date.now()
-	if (started.size > 100) {
-		for (const [key, at] of started) {
-			if (now - at >= freshAuthorizationWindowMs) started.delete(key)
+	if (all.size > 100) {
+		for (const [key, times] of all) {
+			const latest = Math.max(times.inFlight ?? 0, times.arrived ?? 0)
+			if (now - latest >= freshAuthorizationWindowMs) all.delete(key)
 		}
 	}
-	started.set(hashKey(queryKey), now)
+	const key = hashKey(queryKey)
+	let times = all.get(key)
+	if (!times) all.set(key, (times = {}))
+	return times
 }
 
 /** Query owns transport cancellation, independently of an individual navigation. */
@@ -50,9 +61,18 @@ export function createPageQuery<TInput, TData>(
 	return (actorKey: string | null, input: TInput) =>
 		queryOptions({
 			queryKey: ['page', actorKey, resource, input] as const,
-			queryFn: ({ signal, client, queryKey }) => {
-				noteReadStarted(client, queryKey)
-				return read({ data: input, signal })
+			queryFn: async ({ signal, client, queryKey }) => {
+				const times = readTimesFor(client, queryKey)
+				const sentAt = Date.now()
+				times.inFlight = sentAt
+				try {
+					const data = await read({ data: input, signal })
+					// A canceled read never reaches the cache.
+					if (!signal.aborted) times.arrived = sentAt
+					return data
+				} finally {
+					if (times.inFlight === sentAt) times.inFlight = undefined
+				}
 			},
 			staleTime: policy.staleTime ?? 30_000,
 			gcTime: policy.gcTime ?? 5 * 60_000,
@@ -83,15 +103,24 @@ export async function ensurePageQuery<TData, TKey extends QueryKey>(
 ) {
 	const state = client.getQueryState(options.queryKey)
 	if (options.meta?.freshAuthorization === true) {
-		const startedAt = readStartedAt.get(client)?.get(hashKey(options.queryKey))
-		const age = startedAt === undefined ? Infinity : Date.now() - startedAt
-		if (age < freshAuthorizationWindowMs && !state?.isInvalidated) {
-			// The server authorized this read moments ago. Joins it when it is
-			// still in flight, and reuses its data when it has arrived.
-			return client.fetchQuery({
-				...options,
-				staleTime: freshAuthorizationWindowMs - age,
-			})
+		const times = readTimesByClient.get(client)?.get(hashKey(options.queryKey))
+		const now = Date.now()
+		const recent = (sentAt: number | undefined) =>
+			sentAt !== undefined && now - sentAt < freshAuthorizationWindowMs
+		if (!state?.isInvalidated) {
+			// The server is authorizing this read right now: wait for it. Cached
+			// data from an older read must not answer in its place.
+			if (state?.fetchStatus === 'fetching' && recent(times?.inFlight)) {
+				return client.fetchQuery({ ...options, staleTime: 0 })
+			}
+			// The cached data came from a read the server authorized moments ago.
+			if (
+				state?.fetchStatus === 'idle' &&
+				state.status === 'success' &&
+				recent(times?.arrived)
+			) {
+				return client.fetchQuery({ ...options, staleTime: Infinity })
+			}
 		}
 		// A preload repeats an older read so the click that follows finds one
 		// inside the window. It leaves a read in flight alone, since a
