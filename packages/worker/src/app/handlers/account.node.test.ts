@@ -286,10 +286,9 @@ test('native account and session reads batch user/role, flag, and organization r
 		'onboarding',
 	])
 	// Session batches: users+roles, then flags+overrides+experiments_opt_in
-	// alongside the organization list (memberships+grants). The invite list
-	// and pending invite-link list are extra prepares on the session shell only; the account page itself no longer
-	// lists organizations (inviteCount derives from the listed invites and
-	// links, so there is no separate COUNT query).
+	// alongside the organization list (memberships+grants). The session shell
+	// alone lists organizations, invites, and pending invite links; inviteCount
+	// derives from the listed invites and links, so there is no COUNT query.
 	expect(counts.batchSizes).toEqual([2, 3, 2])
 	expect(counts.prepare).toBe(10)
 	expect(counts.batch).toBe(3)
