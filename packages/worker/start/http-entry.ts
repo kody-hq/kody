@@ -43,7 +43,7 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 			)
 		try {
 			const bindings = getEnv(env)
-			const probe = await perfProbe
+			const probe = perfProbe ? await perfProbe : undefined
 			if (probe && new URL(request.url).pathname === probe.perfProbeDumpPath) {
 				return probe.dumpPerfProbe()
 			}
