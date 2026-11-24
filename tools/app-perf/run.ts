@@ -7,6 +7,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { playwrightCookiesFromHeader } from '../control-kody/browse.ts'
+import { sessionForOrigin } from '../control-kody/session-cookie.ts'
 import { isExecutedDirectly } from '../node-runtime.ts'
 import {
 	buildChunkGraph,
@@ -39,14 +40,18 @@ type Options = {
 	cookieFile: string
 }
 
-async function readCookie(file: string) {
-	const lines = (await readFile(file, 'utf8'))
-		.split('\n')
-		.filter((line) => line && !line.startsWith('#'))
-	const cookie = lines.at(-1)
-	if (!cookie)
-		throw new Error(`No session cookie in ${file}. Run control-kody login.`)
-	return cookie
+/** The saved cookie goes only to the origin `control-kody login` saved it for. */
+async function readCookie(file: string, origin: string) {
+	const session = sessionForOrigin(
+		await readFile(file, 'utf8').catch(() => ''),
+		origin,
+	)
+	if (!session?.cookieHeader) {
+		throw new Error(
+			`No session for ${origin} in ${file}. Run control-kody login against that origin.`,
+		)
+	}
+	return session.cookieHeader
 }
 
 async function readRoutes(
@@ -96,7 +101,7 @@ async function ssr(options: Options, argv: Array<string>) {
 			trace: { type: 'string' },
 		},
 	})
-	const cookie = await readCookie(options.cookieFile)
+	const cookie = await readCookie(options.cookieFile, options.origin)
 	const routes = await readRoutes(values.routes, {
 		org: values.org,
 		package: values.package,
@@ -183,26 +188,29 @@ async function nav(options: Options, paths: Array<string>) {
 		const context = await browser.newContext()
 		await context.addCookies(
 			playwrightCookiesFromHeader(
-				await readCookie(options.cookieFile),
+				await readCookie(options.cookieFile, options.origin),
 				options.origin,
 			),
 		)
 		const page = await context.newPage()
 		let requests: Array<{ at: number; label: string }> = []
 		page.on('request', (request) => {
-			if (!['fetch', 'xhr'].includes(request.resourceType())) return
+			if (!['fetch', 'xhr', 'script'].includes(request.resourceType())) return
 			requests.push({
 				at: Date.now(),
 				label: `${request.method()} ${requestLabel(new URL(request.url()))}`,
 			})
 		})
+		let unsettled = false
 		const settle = async () => {
 			for (let seen = -1; seen !== requests.length;) {
 				seen = requests.length
 				await page.waitForTimeout(300)
 				await page
 					.waitForLoadState('networkidle', { timeout: 5000 })
-					.catch(() => {})
+					.catch(() => {
+						unsettled = true
+					})
 			}
 		}
 		await page.goto(options.origin + paths[0])
@@ -222,9 +230,13 @@ async function nav(options: Options, paths: Array<string>) {
 			requests = []
 			const clickedAt = Date.now()
 			await link.click()
-			await page.waitForURL((url) => url.pathname === target, {
-				timeout: 15_000,
-			})
+			const destination = new URL(target, options.origin)
+			await page.waitForURL(
+				(url) =>
+					url.pathname === destination.pathname &&
+					url.search === destination.search,
+				{ timeout: 15_000 },
+			)
 			const clickToUrlMs = Date.now() - clickedAt
 			await settle()
 			steps.push({
@@ -237,6 +249,11 @@ async function nav(options: Options, paths: Array<string>) {
 			})
 		}
 		console.log(JSON.stringify(steps, null, 1))
+		if (unsettled) {
+			console.warn(
+				'The page never went network-idle within 5 s at least once; request lists may be incomplete.',
+			)
+		}
 	} finally {
 		await browser.close()
 	}
@@ -313,7 +330,7 @@ export async function main(argv = process.argv.slice(2)) {
 		origin: String(values.origin).replace(/\/$/, ''),
 		cookieFile: String(values['cookie-file']),
 	}
-	// Everything after the command except the common options goes to it.
+	// Everything except the command and the common options goes to it.
 	const common = new Set(['origin', 'cookie-file'])
 	const rest: Array<string> = []
 	let seenCommand = false
@@ -324,8 +341,7 @@ export async function main(argv = process.argv.slice(2)) {
 			rest.push(token.value)
 		} else if (token.kind === 'option' && !common.has(token.name)) {
 			rest.push(token.rawName)
-			if (token.value !== undefined && !token.inlineValue)
-				rest.push(token.value)
+			if (token.value !== undefined) rest.push(token.value)
 		}
 	}
 	if (command === 'ssr') return ssr(options, rest)

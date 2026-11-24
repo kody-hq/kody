@@ -55,7 +55,7 @@ Each line is one document request:
 | --------- | ------------------------------------------------------------- |
 | `d1`      | D1 round trips. A batch is one.                               |
 | `depth`   | Round trips that waited for an earlier one. Lower this first. |
-| `repeats` | Identical statements sent again in the same request.          |
+| `repeats` | Same SQL text sent again. Parameters are not compared.        |
 | `other`   | Calls to other bindings, by name.                             |
 | `ttfb`    | Local time to first byte. Only compare it against itself.     |
 

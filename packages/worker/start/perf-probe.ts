@@ -143,7 +143,10 @@ function install(env: Env) {
 			try {
 				bindings[name] = wrap(value, name, '')
 			} catch (error) {
-				console.warn('perf-probe: cannot wrap', name, String(error))
+				console.warn(
+					`perf-probe: cannot wrap ${name}; its round trips are missing from every count.`,
+					String(error),
+				)
 			}
 		}
 	}

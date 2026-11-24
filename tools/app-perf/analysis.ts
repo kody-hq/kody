@@ -16,9 +16,9 @@ export type RouteMeasurement = {
 	d1: number
 	/** Round trips to other bindings, by binding name. */
 	other: Record<string, number>
-	/** Round trips that had to wait for an earlier one to finish. */
+	/** Longest chain of round trips that each waited for the one before. */
 	depth: number
-	/** Identical D1 statements sent more than once, with their counts. */
+	/** D1 SQL text sent more than once, with counts. Parameters are not compared. */
 	duplicates: Record<string, number>
 	events: Array<ProbeEvent>
 }
@@ -26,25 +26,26 @@ export type RouteMeasurement = {
 const isD1 = (event: ProbeEvent) => event.binding.endsWith('_DB')
 
 /**
- * Number of sequential stages: round trips that overlap in time count as one
- * stage. Production latency is roughly this number times one round trip.
+ * Longest chain of round trips where each started after the previous one
+ * finished. A slow call running beside a chain does not hide the chain.
+ * Production latency is roughly this number times one round trip.
  */
 export function sequentialDepth(events: ReadonlyArray<ProbeEvent>) {
 	const intervals = events
-		.map((event) => [event.at, event.at + Math.max(event.ms, 0)] as const)
-		.sort((a, b) => a[0] - b[0] || a[1] - b[1])
-	let stages = 0
-	let end = -Infinity
-	for (const [start, finish] of intervals) {
-		if (start >= end) {
-			stages += 1
-			// Local D1 often answers within the same millisecond.
-			end = Math.max(finish, start + 0.5)
-		} else {
-			end = Math.max(end, finish)
+		// Local D1 often answers within the same millisecond.
+		.map((event) => [event.at, event.at + Math.max(event.ms, 0.5)] as const)
+		.sort((a, b) => a[1] - b[1] || a[0] - b[0])
+	const chain: Array<number> = []
+	for (const [index, [start]] of intervals.entries()) {
+		let longest = 0
+		for (let earlier = 0; earlier < index; earlier++) {
+			if (intervals[earlier]![1] <= start) {
+				longest = Math.max(longest, chain[earlier]!)
+			}
 		}
+		chain.push(longest + 1)
 	}
-	return stages
+	return Math.max(0, ...chain)
 }
 
 export function duplicateStatements(events: ReadonlyArray<ProbeEvent>) {
@@ -91,6 +92,13 @@ export function formatComparison(
 	for (const [route, a] of Object.entries(before)) {
 		const b = after[route]
 		if (!b) continue
+		if (a.status !== b.status) {
+			// A failed page does less work; never present that as a speedup.
+			lines.push(
+				`| \`${route}\` | status ${a.status} → ${b.status} | not comparable |`,
+			)
+			continue
+		}
 		d1[0]! += a.d1
 		d1[1]! += b.d1
 		depth[0]! += a.depth

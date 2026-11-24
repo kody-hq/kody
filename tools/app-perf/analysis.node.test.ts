@@ -25,6 +25,10 @@ test('overlapping round trips are one sequential stage', () => {
 	expect(sequentialDepth([event(0, 5), event(5, 5), event(12, 1)])).toBe(3)
 	// Same-millisecond local reads that started together still count once.
 	expect(sequentialDepth([event(3, 0), event(3, 0), event(4, 0)])).toBe(2)
+	// A slow call beside a chain of three does not hide the chain.
+	expect(
+		sequentialDepth([event(0, 30), event(1, 5), event(8, 5), event(15, 5)]),
+	).toBe(3)
 })
 
 test('a route measurement separates D1 from other bindings and names repeats', () => {
@@ -60,6 +64,15 @@ test('the comparison lists changed routes and totals every shared route', () => 
 	expect(table).toContain('| `/a` | 2 → 1 | 2 → 1 |')
 	expect(table).not.toContain('`/b`')
 	expect(table).toContain('| **All compared routes** | 3 → 2 | 3 → 2 |')
+})
+
+test('a page that started failing is not reported as faster', () => {
+	const table = formatComparison(
+		{ '/a': measureRoute(200, 1, [event(0, 1), event(2, 1)]) },
+		{ '/a': measureRoute(500, 1, []) },
+	)
+	expect(table).toContain('| `/a` | status 200 → 500 | not comparable |')
+	expect(table).toContain('| **All compared routes** | 0 → 0 | 0 → 0 |')
 })
 
 test('the static closure follows static imports and stops at dynamic ones', () => {
