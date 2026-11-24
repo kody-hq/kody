@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useRef, useState } from 'react'
 import { useRouterState } from '@tanstack/react-router'
+import { visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import { colors, transitions } from '#universal/styles/tokens.ts'
 import { useResourceLifetime } from '../lib/primitives.ts'
 
@@ -26,7 +27,12 @@ function PendingPageFade() {
 		document.documentElement.setAttribute('data-route-pending', '')
 		return () => document.documentElement.removeAttribute('data-route-pending')
 	}, [faded])
-	return null
+	// The dimming is visual only; this announces the same wait.
+	return (
+		<span role="status" css={visuallyHiddenCss} data-route-pending-status>
+			{faded ? 'Loading' : ''}
+		</span>
+	)
 }
 
 /**
