@@ -3,15 +3,18 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryRepoSessionIndexEnv } from '#worker/test-support/repo-session-index.ts'
+import { runWithRequestContext } from '#worker/request-context.ts'
 import type { RepoSessionIndexRpc } from './repo-session-index-do.ts'
 import type { RepoSessionRow } from './types.ts'
 import {
 	deleteEntitySource,
 	externalReconcileGraceMs,
+	getEntitySourceById,
 	listEntitySourcesByIds,
 	listEntitySourcesByIdsForUser,
 	listEntitySourcesForExternalReconcile,
 	markEntitySourcePendingExternalReconcile,
+	readEntitySourceById,
 	revertEntitySourcePublishedCommit,
 } from './entity-sources.ts'
 
@@ -379,4 +382,35 @@ test('reverting a failed publish only moves the pointer while the failed commit 
 		SET held_commit = 'commit-held', published_commit = 'commit-failed'`)
 	expect(await revertFailed()).toBe('commit-held')
 	expect(readPointer()).toBe('commit-held')
+})
+
+test('readEntitySourceById sees a publish that lands after the request first read the source', async () => {
+	const sqlite = entitySourcesSqlite()
+	sqlite.exec(`
+		INSERT INTO entity_sources (
+			id, user_id, entity_kind, entity_id, repo_id, published_commit,
+			manifest_path, source_root, created_at, updated_at
+		) VALUES (
+			'source-1', 'user-a', 'package', 'pkg-1', 'repo-1', 'pub-1',
+			'package.json', '/', '2026-06-24T19:00:00.000Z', '2026-06-24T19:00:00.000Z'
+		);
+	`)
+	const db = createD1FromSqlite(sqlite)
+
+	const commits = await runWithRequestContext(
+		new Request('https://kody.test/@kent/notes/icon/pub-1'),
+		async () => {
+			const before = await getEntitySourceById(db, 'source-1')
+			sqlite.exec(
+				`UPDATE entity_sources SET published_commit = 'pub-2' WHERE id = 'source-1'`,
+			)
+			return [
+				before?.published_commit,
+				(await getEntitySourceById(db, 'source-1'))?.published_commit,
+				(await readEntitySourceById(db, 'source-1'))?.published_commit,
+			]
+		},
+	)
+
+	expect(commits).toEqual(['pub-1', 'pub-1', 'pub-2'])
 })
