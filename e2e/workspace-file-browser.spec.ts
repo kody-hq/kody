@@ -497,3 +497,58 @@ test('filmstrip virtualizes horizontal pointer scrolling through thousands of fi
 	).toBeInViewport()
 	await expect.poll(() => items.count()).toBeLessThan(50)
 })
+
+test('a slow press on a deep column item keeps its selection', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 700, height: 700 })
+	await page.goto('https://browser.test/?history')
+	await page.locator('[data-workspace-item="a"]').click()
+	await page.locator('[data-workspace-item="b"]').click()
+	await expect(page).toHaveURL(/active=b/)
+	// Selecting on press adds the preview column and scrolls the item away, so
+	// the release lands on the background instead of the item.
+	await page.locator('[data-workspace-item="c"]').hover()
+	await page.mouse.down()
+	await expect(
+		page.getByRole('region', { name: 'Preview Mark.png' }),
+	).toBeVisible()
+	await page.mouse.up()
+	await expect(page).toHaveURL(/active=c/)
+	await expect(
+		page.getByRole('region', { name: 'Preview Mark.png' }),
+	).toBeVisible()
+	// The background still clears the selection on a press of its own.
+	await page
+		.locator('nav[aria-label="Workspace root"]')
+		.click({ position: { x: 100, y: 400 } })
+	await expect(page).toHaveURL(/active=root/)
+})
+
+test('selecting a column item never scrolls the window', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 420 })
+	await page.goto('https://browser.test/')
+	const columns = page.getByLabel('Browse workspace columns')
+	// Playwright's own click scrolls a clipped target into view, so select
+	// through the DOM to observe only the browser's scrolling.
+	const select = (id: string) =>
+		page
+			.locator(`[data-workspace-item="${id}"]`)
+			.first()
+			.evaluate((node: HTMLElement) => node.click())
+	await select('d')
+	await expect(
+		page.getByRole('region', { name: 'Preview Notes.txt' }),
+	).toBeVisible()
+	expect(await page.evaluate(() => window.scrollY)).toBe(0)
+	await select('a')
+	await select('b')
+	await select('c')
+	const preview = page.getByRole('region', { name: 'Preview Mark.png' })
+	await expect(preview).toBeVisible()
+	// The newest column is still brought into view horizontally.
+	await expect
+		.poll(() => columns.evaluate((node) => node.scrollLeft))
+		.toBeGreaterThan(0)
+	expect(await page.evaluate(() => window.scrollY)).toBe(0)
+})

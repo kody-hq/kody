@@ -269,39 +269,44 @@ function PackageFilesExplorerContent({
 			tabIndex={fullView ? -1 : undefined}
 			data-file-column-browser={fullView ? true : undefined}
 		>
-			<FileContent
+			<div
 				key={data.contentPath ?? data.selectedPath}
-				data={data}
-				fileHref={hrefForFile}
-				wrapLines={wrapLines}
-				onWrapLinesChange={setWrapLines}
-				fullBreadcrumbs={
-					fullView ? (
-						<WorkspaceBreadcrumbs
-							files={entries}
-							directory={entries.find(
-								(entry) => entry.id === data.selectedPath,
-							)}
-							orgSlug={data.username ?? ''}
-							rootHref={hrefForFile('')}
-							itemHref={hrefForFile}
-						/>
-					) : undefined
-				}
-				viewAction={
-					canOpen && !fullView ? (
-						<Button
-							ref={viewToggle}
-							type="button"
-							variant="secondary"
-							css={[rawLinkCss, openButtonCss]}
-							onClick={() => setFullPath(data.selectedPath)}
-						>
-							Open
-						</Button>
-					) : undefined
-				}
-			/>
+				ref={resetPreviewScroll}
+				css={{ display: 'contents' }}
+			>
+				<FileContent
+					data={data}
+					fileHref={hrefForFile}
+					wrapLines={wrapLines}
+					onWrapLinesChange={setWrapLines}
+					fullBreadcrumbs={
+						fullView ? (
+							<WorkspaceBreadcrumbs
+								files={entries}
+								directory={entries.find(
+									(entry) => entry.id === data.selectedPath,
+								)}
+								orgSlug={data.username ?? ''}
+								rootHref={hrefForFile('')}
+								itemHref={hrefForFile}
+							/>
+						) : undefined
+					}
+					viewAction={
+						canOpen && !fullView ? (
+							<Button
+								ref={viewToggle}
+								type="button"
+								variant="secondary"
+								css={[rawLinkCss, openButtonCss]}
+								onClick={() => setFullPath(data.selectedPath)}
+							>
+								Open
+							</Button>
+						) : undefined
+					}
+				/>
+			</div>
 		</section>
 	)
 
@@ -438,8 +443,30 @@ function PackageFilesExplorerContent({
 											fullView
 												? undefined
 												: (file) =>
-														file.id === data.selectedPath ? (
-															preview
+														file.id === data.selectedPath ||
+														data.kind === 'file' ? (
+															// The previous file stays readable until the
+															// next one arrives, instead of a blank column.
+															// The wrapper is always present so the kept file
+															// keeps its scroll position and view state.
+															<div
+																{...(file.id === data.selectedPath
+																	? {}
+																	: {
+																			'aria-busy': 'true',
+																			'data-stale-preview': '',
+																			// Its buttons would act on a file the
+																			// reader has left.
+																			inert: true,
+																		})}
+																css={
+																	file.id === data.selectedPath
+																		? { display: 'contents' }
+																		: stalePreviewCss
+																}
+															>
+																{preview}
+															</div>
 														) : (
 															<LoadingIndicator label="Loading file" />
 														)
@@ -474,6 +501,21 @@ function PackageFilesExplorerContent({
 	)
 }
 
+/** A new file starts at its first line, even when the preview column was reused. */
+function resetPreviewScroll(node: HTMLElement | null) {
+	node?.closest('[data-workspace-item]')?.scrollTo({ top: 0, left: 0 })
+}
+
+const stalePreviewCss: CSSObject = {
+	display: 'flex',
+	flexDirection: 'column',
+	flex: 1,
+	minWidth: 0,
+	minHeight: 0,
+	animation: 'stale-preview-dim 0.2s ease 300ms forwards',
+	'@media (prefers-reduced-motion: reduce)': { animationDuration: '0s' },
+}
+
 const maxFilterMatches = 100
 
 function renderMatches(
@@ -496,6 +538,7 @@ function renderMatches(
 					<li key={path}>
 						<SiteLink
 							href={fileHref(path)}
+							resetScroll={false}
 							aria-current={data.selectedPath === path ? 'page' : undefined}
 							css={data.selectedPath === path ? rowCurrentCss : rowCss}
 						>

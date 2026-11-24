@@ -105,16 +105,28 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 	}
 
 	const [activeColumn, setActiveColumn] = useState<number | null>(null)
+	// Pressing an item selects it on focus, which can add a column and move the
+	// item away before the pointer lifts. That click then lands on the background.
+	const pressedItem = useRef(false)
 	const scroller = useRef<HTMLDivElement>(null)
 	const scrollerRef = useCallback(
 		(node: HTMLDivElement | null) => {
 			scroller.current = node
 			if (!node) return
-			node.lastElementChild?.scrollIntoView({
-				block: 'nearest',
-				inline: 'nearest',
-				behavior: 'auto',
-			})
+			// Only the columns move. scrollIntoView also scrolls the window when
+			// the newest column is taller than the viewport.
+			const last = node.lastElementChild?.getBoundingClientRect()
+			if (last) {
+				const box = node.getBoundingClientRect()
+				const before = last.left < box.left
+				const after = last.right > box.right
+				const fits = last.width <= box.width
+				if (before !== after)
+					node.scrollBy({
+						left:
+							before === fits ? last.left - box.left : last.right - box.right,
+					})
+			}
 			const id = focusHandoff?.current
 			if (!focusHandoff || !id || id !== rootId) return
 			const frame = requestAnimationFrame(() => {
@@ -185,8 +197,13 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 			ref={scrollerRef}
 			aria-label="Browse workspace columns"
 			data-file-column-browser
+			onPointerDownCapture={(event) => {
+				pressedItem.current = Boolean(
+					(event.target as Element).closest('[data-browser-item]'),
+				)
+			}}
 			onClick={(event) => {
-				if (event.target !== event.currentTarget) return
+				if (event.target !== event.currentTarget || pressedItem.current) return
 				select([])
 				setActiveColumn(0)
 				scroller.current
@@ -255,7 +272,10 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 								?.focus()
 						}}
 						onClick={(event) => {
-							if ((event.target as Element).closest('a,button,input,select'))
+							if (
+								pressedItem.current ||
+								(event.target as Element).closest('a,button,input,select')
+							)
 								return
 							select(path.slice(0, index).map((file) => file.id))
 							setActiveColumn(Math.max(0, index - 1))

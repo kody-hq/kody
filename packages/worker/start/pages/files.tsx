@@ -316,9 +316,17 @@ export function FilesPage({
 	)
 	const explorer = useCallback(
 		(node: HTMLElement | null) => {
-			node
+			// Only the explorer's own scroller moves. scrollIntoView also scrolls
+			// the window whenever the explorer is not fully on screen.
+			const box = node?.parentElement
+			const row = node
 				?.querySelector<HTMLElement>('[aria-current="page"]')
-				?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+				?.getBoundingClientRect()
+			if (!box || !row) return
+			const view = box.getBoundingClientRect()
+			if (row.top < view.top) box.scrollTop += row.top - view.top
+			else if (row.bottom > view.bottom)
+				box.scrollTop += row.bottom - view.bottom
 		},
 		// oxlint-disable-next-line react/exhaustive-deps -- a new selection scrolls its explorer row into view
 		[selected?.file.id, selected?.file.parentId, selected?.file.name],
@@ -836,6 +844,9 @@ export function FilesPage({
 		)
 	}
 	function contextActions(target: Element): ContextAction[] | undefined {
+		// A file kept on screen while the next one loads is not the selected
+		// file, so no action here would mean what the reader sees.
+		if (target.closest('[data-stale-preview]')) return
 		if (target.closest('[data-package-item]')) return
 		if (target.closest('[data-system-directory]'))
 			return [
@@ -3653,11 +3664,10 @@ function WorkspaceDocumentPanel({
 		],
 		queryFn: () =>
 			readFilePreview({ data: { orgSlug: data.orgSlug, fileId: metadata.id } }),
+		// The previous file stays readable until the next one arrives, instead
+		// of a blank column behind a loading indicator.
 		placeholderData: (previous, previousQuery) =>
-			previousQuery?.queryKey[1] === data.orgSlug &&
-			previousQuery.queryKey[2] === metadata.id
-				? previous
-				: undefined,
+			previousQuery?.queryKey[1] === data.orgSlug ? previous : undefined,
 		retry: false,
 	})
 	if (query.isPending) return <LoadingIndicator label="Loading file" />
@@ -3668,14 +3678,41 @@ function WorkspaceDocumentPanel({
 				action={{ label: 'Try again', run: () => void query.refetch() }}
 			/>
 		)
+	const stale = query.data.file.id !== metadata.id
+	const keptCss = stale
+		? ({
+				display: 'flex',
+				flexDirection: 'column',
+				flex: 1,
+				minWidth: 0,
+				minHeight: 0,
+			} as const)
+		: ({ display: 'contents' } as const)
 	return (
-		<FilesPage
-			key={metadata.id}
-			embedded
-			data={{ ...data, selected: query.data }}
-			collapsed={new Set()}
-			onToggleBranch={() => {}}
-		/>
+		<div
+			aria-busy={stale ? 'true' : undefined}
+			data-stale-preview={stale ? '' : undefined}
+			css={{
+				...keptCss,
+				...(stale && {
+					animation: 'stale-preview-dim 0.2s ease 300ms forwards',
+					'@media (prefers-reduced-motion: reduce)': {
+						animationDuration: '0s',
+					},
+				}),
+			}}
+		>
+			{/* Inert, because its buttons would act on a file the reader has left. */}
+			<div inert={stale} css={keptCss}>
+				<FilesPage
+					key={query.data.file.id}
+					embedded
+					data={{ ...data, selected: query.data }}
+					collapsed={new Set()}
+					onToggleBranch={() => {}}
+				/>
+			</div>
+		</div>
 	)
 }
 
