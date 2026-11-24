@@ -414,6 +414,8 @@ const dispatchAttempt = Effect.fn('webhookDispatch.dispatchAttempt')(function* (
 					error: outboundCause(error),
 				}),
 			),
+			Effect.forkDetach,
+			Effect.asVoid,
 		),
 	} satisfies QueueDisposition
 })
