@@ -87,6 +87,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Writing tests](./writing-tests.md) (whether and where to add a test)
 - [Test runners](./test-runners.md) (flavor matrix, running one file, harness)
 - [End-to-end testing](./end-to-end-testing.md)
+- [Web app performance](./app-performance.md) (measure a change: round trips,
+  navigation, bundles)
 - [Weekly site performance](./weekly-site-perf.md),
   [MCP latency bench](./latency-bench.md), dated
   [performance snapshots](./performance/)

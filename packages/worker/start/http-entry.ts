@@ -14,6 +14,15 @@ import {
 	normalizeDeploySkewBuildId,
 } from '../universal/deploy-skew.ts'
 
+/**
+ * Dev server only and opt-in. Production builds replace the condition with
+ * `false`, so the binding probe never ships.
+ */
+const perfProbe =
+	import.meta.env.DEV && import.meta.env.VITE_KODY_PERF_PROBE === '1'
+		? import('./perf-probe.ts')
+		: undefined
+
 type RenderDocument = (
 	request: Request,
 	env: Env,
@@ -34,6 +43,11 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 			)
 		try {
 			const bindings = getEnv(env)
+			const probe = await perfProbe
+			if (probe && new URL(request.url).pathname === probe.perfProbeDumpPath) {
+				return probe.dumpPerfProbe()
+			}
+			const probeHeadersReady = probe?.startPerfProbe(request, bindings)
 			setAuthSessionSecret(bindings.COOKIE_SECRET)
 			const response = inRequest(async () => {
 				if (isServerFunctionRequest(request)) {
@@ -64,7 +78,9 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 					() => undefined,
 				),
 			)
-			return await response
+			const settled = await response
+			probeHeadersReady?.()
+			return settled
 		} catch (error) {
 			console.error('Native app request failed:', error)
 			if (!wasSentryReported(error)) {
