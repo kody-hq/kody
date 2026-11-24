@@ -1,0 +1,26 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"incremental": false,
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"diagnosticSeverity": {
+					"floatingEffect": "error",
+					"missingEffectContext": "error",
+					"missingEffectError": "error",
+					"missingReturnYieldStar": "error",
+					"missingStarInYieldEffectGen": "error",
+					"leakingRequirements": "error",
+					"returnEffectInGen": "error",
+					"unnecessaryEffectGen": "error",
+					"unnecessaryPipe": "error",
+					"genericEffectServices": "error",
+					"scopeInLayerEffect": "error",
+					"strictBooleanExpressions": "off"
+				}
+			}
+		]
+	},
+	"include": ["src/watchdog.ts", "../shared/src/effect/*.ts"]
+}

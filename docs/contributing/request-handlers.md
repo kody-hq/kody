@@ -42,3 +42,25 @@ directories (see [Oxlint JS plugins](./oxlint-js-plugins.md)).
   response.
 - Enforce per-resource limits with one atomic statement (a conditional D1
   `UPDATE`) so concurrent requests count against the same total.
+
+## Queue consumers and Durable Object crons (Effect trial slice)
+
+The webhook dispatch queue (`packages/worker/src/webhooks/dispatch-queue.ts`)
+and the jobs schedule watchdog (`packages/jobs-worker/src/watchdog.ts`) run on
+Effect inside a Promise edge:
+
+- Leave Effect only through `runEdge` from
+  `@kody-internal/shared/effect/edge.ts` at the queue, cron, or Durable Object
+  boundary.
+- Wrap every Promise API with `outbound()` (timeout plus span plus typed
+  `OutboundCallError`) or `d1()` (the same, retried on the shared D1 `Schedule`)
+  from `@kody-internal/shared/effect/outbound.ts`.
+- Settle queue batches with `settleQueueBatch` from
+  `@kody-internal/shared/effect/queue.ts`: decide a `QueueDisposition` per
+  message, put cleanup in `afterAck`, and use `concurrency` as backpressure.
+- Treat an unknown lookup result as a retry, not as missing.
+- Log with `Effect.log*`, read time with `Clock`, and handle failures by tag
+  (`Effect.catchTag`).
+
+`npm run effect:check` runs the Effect language service diagnostics and the
+slice rules in `tools/check-effect.ts`.

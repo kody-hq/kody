@@ -35,6 +35,7 @@ export const serialValidateCommand = 'npm run worker-startup-time:check'
 const parallelValidateLegs = [
 	{ name: 'format', command: 'npm run format:check', weight: 'check' },
 	{ name: 'lint', command: 'npm run lint', weight: 'check' },
+	{ name: 'effect-check', command: 'npm run effect:check', weight: 'check' },
 	{ name: 'typecheck', command: 'npm run typecheck', weight: 'suite' },
 	{
 		name: 'worker-types',
