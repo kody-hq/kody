@@ -108,3 +108,26 @@ queueing at D1, and any attempts D1 retried (it reports SQL time for the last
 attempt only). Compare several samples; the first after a deploy is cold.
 [Weekly site performance](./weekly-site-perf.md) tracks the landing page
 budgets, and [`/health`](./control-kody.md) shows which commit is live.
+
+## Replica reads
+
+With the `d1-replica-reads` flag on, a browser GET or HEAD of a plain page or a
+GET server function reads `APP_DB` from the nearest D1 read replica
+([`d1-replica-reads.ts`](../../packages/worker/src/d1-replica-reads.ts)). No
+call site opts in; the binding routes each call by request. Everything else
+reads the primary: every mutation, routes with their own server handler, MCP,
+API tokens, webhooks, Durable Objects, and jobs. `d1-sql` in `Server-Timing`
+names the replica that served the page.
+
+What this asks of code that runs on a GET:
+
+- **Do not write.** A write after a replica read is refused and the whole
+  request runs again on the primary, so the page pays for both runs.
+  `Server-Timing` then carries `d1-primary-retry` and the Worker logs the
+  statement. Move the write to a POST.
+- **Telemetry is the exception.** Wrap a write that nothing in the response
+  depends on and no permission gates in `runOnD1Primary`.
+- **A page can be behind.** After a browser's own write, its reads for the next
+  60 seconds use a replica only once that replica has the write (the `kody_d1`
+  cookie holds the primary's D1 bookmark). Another person's change can take as
+  long as replication does to show up.

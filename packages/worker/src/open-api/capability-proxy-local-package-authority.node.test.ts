@@ -158,6 +158,7 @@ function createContext(db: D1Database): ApiInvocationContext {
 		principal: { kind: 'mcp' },
 		getFeatureFlags: async () => ({
 			'files-workspace': false,
+			'd1-replica-reads': false,
 			'demo-indicator': false,
 			profiles: false,
 			'mcp-events-extension': false,

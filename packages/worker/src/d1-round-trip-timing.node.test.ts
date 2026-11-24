@@ -1,7 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import {
 	d1RoundTripServerTiming,
-	installD1RoundTripTiming,
 	timeD1RoundTrips,
 } from './d1-round-trip-timing.ts'
 import { getRequestContext, runWithRequestContext } from './request-context.ts'
@@ -155,14 +154,4 @@ test('outside a request nothing is recorded and no header is produced', async ()
 		timeD1RoundTrips(db).prepare('one').all(),
 	).resolves.toMatchObject({ results: [{ id: 1 }] })
 	expect(d1RoundTripServerTiming(undefined)).toEqual([])
-})
-
-test('installs once per env and keeps the env object', () => {
-	const { db } = fakeD1()
-	const env = { APP_DB: db } as Env
-	installD1RoundTripTiming(env)
-	const timedDb = env.APP_DB
-	expect(timedDb).not.toBe(db)
-	installD1RoundTripTiming(env)
-	expect(env.APP_DB).toBe(timedDb)
 })

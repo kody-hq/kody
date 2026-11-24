@@ -708,6 +708,7 @@ function localContext(person: Person): ApiInvocationContext {
 		getFeatureFlags: async () => ({
 			'demo-indicator': false,
 			'files-workspace': false,
+			'd1-replica-reads': false,
 			profiles: false,
 			'mcp-events-extension': false,
 			'package-credential-suppliers': false,

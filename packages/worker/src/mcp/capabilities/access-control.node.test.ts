@@ -64,6 +64,7 @@ vi.mock('#worker/feature-flags/exposure.ts', async (importOriginal) => {
 function createFlagMap(enabled: boolean): CallerFeatureFlags {
 	return {
 		'files-workspace': false,
+		'd1-replica-reads': false,
 		'demo-indicator': enabled,
 		profiles: false,
 		'mcp-events-extension': false,

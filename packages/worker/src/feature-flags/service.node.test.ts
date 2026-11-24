@@ -314,6 +314,7 @@ function createFeatureFlagsTestDb(
 
 const registryKeys = [
 	'files-workspace',
+	'd1-replica-reads',
 	'demo-indicator',
 	'mcp-events-extension',
 	'package-credential-suppliers',

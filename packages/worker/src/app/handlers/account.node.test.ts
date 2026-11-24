@@ -270,6 +270,7 @@ test('native account and session reads batch user/role, flag, and organization r
 	expect(body.session?.permissions).toEqual(['read:user:own'])
 	expect(body.session?.featureFlags).toEqual({
 		'files-workspace': false,
+		'd1-replica-reads': false,
 		'demo-indicator': true,
 		profiles: true,
 		'mcp-events-extension': false,

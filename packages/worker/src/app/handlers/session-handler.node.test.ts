@@ -94,6 +94,7 @@ test('session handler only renews remembered sessions after the renewal window',
 				permissions: [],
 				featureFlags: {
 					'files-workspace': false,
+					'd1-replica-reads': false,
 					'demo-indicator': false,
 					profiles: false,
 					'mcp-events-extension': false,
