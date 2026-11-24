@@ -129,34 +129,30 @@ export async function listPendingInvitesForViewer(
 	]
 }
 
-export function loadAccountOrganizationSnapshot(
+export async function loadAccountOrganizationSnapshot(
 	env: Env,
 	user: PendingInviteViewer,
 	options?: { includeRestorable?: boolean },
 ): Promise<AccountOrganizationSnapshot> {
-	const includeRestorable = options?.includeRestorable === true
-	// The shell and a page's own session read both ask within one request.
-	return memoizeReadPerRequest({
-		key: `account-organizations:${user.mcpUser.userId}:${includeRestorable}`,
-		load: () => readAccountOrganizationSnapshot(env, user, includeRestorable),
-	})
-}
-
-async function readAccountOrganizationSnapshot(
-	env: Env,
-	user: PendingInviteViewer,
-	includeRestorable: boolean,
-): Promise<AccountOrganizationSnapshot> {
-	const [organizations, restorableOrganizations, pendingInvites] =
+	const userId = user.mcpUser.userId
+	// The shell and a page's own session read both ask within one request;
+	// only the Organizations page adds the restorable list.
+	const [[organizations, pendingInvites], restorableOrganizations] =
 		await Promise.all([
-			listOrganizationsForPerson(env.APP_DB, user.mcpUser.userId),
-			includeRestorable
+			memoizeReadPerRequest({
+				key: `account-organizations:${userId}`,
+				load: () =>
+					Promise.all([
+						listOrganizationsForPerson(env.APP_DB, userId),
+						listPendingInvitesForViewer(env, user),
+					]),
+			}),
+			options?.includeRestorable === true
 				? listRestorableOrganizationsForPerson({
 						db: env.APP_DB,
-						actorUserId: user.mcpUser.userId,
+						actorUserId: userId,
 					})
 				: Promise.resolve([]),
-			listPendingInvitesForViewer(env, user),
 		])
 	return {
 		organizations: organizations.map((org) => ({
