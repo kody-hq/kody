@@ -101,8 +101,6 @@ Through September and October I kept complaining about the missing client
 router. Tanner Linsley, who created TanStack, proposed switching. This was his
 idea, start to finish.
 
-> **[Tanner quote coming: how the idea came up / why he proposed the switch]**
-
 He didn't just pitch it. He built a full-app candidate and a private comparison
 harness (build measurement, Lighthouse, edge timing, navigation, session soak,
 video capture, security and logout-isolation probes) with a written decision
@@ -142,8 +140,6 @@ no `react`, `react-dom`, or `scheduler` sources. I said afterward that
 kody.codes "is the biggest production Redact site in the world"
 ([post](https://x.com/kentcdodds/status/2114776475258028544)), and I'm still a
 little delighted by that.
-
-> **[Tanner quote coming: why Redact instead of React, and what it brings]**
 
 It has costs. It's a 0.1.x dependency, and we carry local patches to Redact and
 to Router, with upstream PRs open
@@ -203,9 +199,6 @@ It was sufficient. I used it that evening and it went fine. The opt-in ran about
 45 hours before merge, with 9 activations as the release was refreshed to track
 main. The one wrinkle: tabs left open across a release refresh hit an "Unknown
 Start release." error, fixed mid-validation with a one-shot reload.
-
-> **[Tanner quote coming: what he was watching for during the opt-in / how he
-> decided it was ready]**
 
 When your first users are the people building the thing, this kind of opt-in is
 a fantastic canary. And immutable releases plus exact-route rollback make undo
@@ -287,9 +280,6 @@ compared with React (95% CI 110 to 243 ms), while Remix 3 versus Start on React
 is within noise.
 
 That's Redact's cost to own, and I'd rather say it plainly than bury it.
-
-> **[Tanner quote coming: Redact's slow-CPU navigation cost and what's
-> planned]**
 
 ### Caveats
 
