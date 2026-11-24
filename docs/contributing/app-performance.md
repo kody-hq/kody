@@ -98,7 +98,12 @@ curl -s -o /dev/null -D - https://kody.codes/<path> | grep -i server-timing
 npm run site-perf -- --url https://kody.codes/ --json
 ```
 
-`ssr` is the time the Worker spent rendering. Compare several samples; the first
-after a deploy is cold. [Weekly site performance](./weekly-site-perf.md) tracks
-the landing page budgets, and [`/health`](./control-kody.md) shows which commit
-is live.
+`ssr` is the time the Worker spent rendering. `d1` is the summed wall time of
+the request's D1 round trips, with the count as its description. `d1-reported`
+is the same for the round trips D1 returned metadata for (`all`, `run`, `batch`;
+not `first`), and `d1-sql` is the SQL time D1 reported for those, described by
+the region, data center, and role that served them (`WNAM-SJC-primary`).
+`d1-reported` minus `d1-sql` is time spent reaching D1 and back, not running
+SQL. Compare several samples; the first after a deploy is cold.
+[Weekly site performance](./weekly-site-perf.md) tracks the landing page
+budgets, and [`/health`](./control-kody.md) shows which commit is live.

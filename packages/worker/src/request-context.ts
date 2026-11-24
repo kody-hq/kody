@@ -3,6 +3,7 @@ import {
 	pushServerTiming,
 	type ServerTimingEntry,
 } from '#worker/server-timing.ts'
+import type { D1RoundTripTotals } from '#worker/d1-round-trip-timing.ts'
 
 /**
  * Per-request scratch space shared by every loader that runs for one HTTP
@@ -20,6 +21,8 @@ export type RequestContext = {
 	request: Request
 	serverTiming: Array<ServerTimingEntry>
 	memo: Map<string, Promise<unknown>>
+	/** Filled by `d1-round-trip-timing.ts` as the request reads D1. */
+	d1?: D1RoundTripTotals
 }
 
 const requestContextStorage = new AsyncLocalStorage<RequestContext>()
