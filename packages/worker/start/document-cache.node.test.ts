@@ -38,6 +38,7 @@ test('native routes explicitly own anonymous cache eligibility and visibility TT
 	])
 		expect(policy(path)).toBe('marketing')
 	for (const path of [
+		'/@alice',
 		'/@alice/tool',
 		'/@alice/tool/tree/main/src',
 		'/community/id',
