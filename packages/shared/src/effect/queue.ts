@@ -34,20 +34,10 @@ export const settleQueueBatch = <
 	readonly failureRetryDelaySeconds: number
 	readonly concurrency?: number
 }): Effect.Effect<void> => {
-	const fallbackRetry: QueueDisposition = {
-		kind: 'retry',
-		delaySeconds: input.failureRetryDelaySeconds,
-	}
 	const settle = (message: Message) =>
 		input.decide(message).pipe(
 			Effect.catchCause((cause) =>
 				input.onDecideFailure(message, Cause.squash(cause)),
-			),
-			Effect.catchCause((cause) =>
-				Effect.logError(`${input.consumer}-failure-handling-failed`, {
-					queueMessageId: message.id,
-					error: Cause.squash(cause),
-				}).pipe(Effect.as(fallbackRetry)),
 			),
 			Effect.flatMap((disposition) => {
 				if (disposition.kind === 'retry') {
@@ -65,6 +55,12 @@ export const settleQueueBatch = <
 					Effect.andThen(Effect.sync(() => message.ack())),
 				)
 			}),
+			Effect.catchCause((cause) =>
+				Effect.logError(`${input.consumer}-failure-handling-failed`, {
+					queueMessageId: message.id,
+					error: Cause.squash(cause),
+				}),
+			),
 			Effect.withSpan(`${input.consumer}.message`, {
 				attributes: { 'kody.queue_message_id': message.id },
 			}),
