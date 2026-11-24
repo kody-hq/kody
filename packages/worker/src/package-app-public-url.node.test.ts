@@ -204,8 +204,8 @@ test('resolvePackageAppRunLocations chunks large package id lists under the boun
 	const queries: Array<string> = []
 	const env = createEnv({ withHostname: 'none', queries })
 	const packageIds = [
-		'pkg-demo',
 		...Array.from({ length: 120 }, (_, index) => `pkg-missing-${index}`),
+		'pkg-demo',
 	]
 	const locations = await resolvePackageAppRunLocations({
 		env,
