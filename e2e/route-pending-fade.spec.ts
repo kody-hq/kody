@@ -36,6 +36,9 @@ test('a slow page load keeps the current page on screen, dimmed', async ({
 	await expect(main).toHaveCSS('opacity', '1')
 	await expect(page.locator('html')).toHaveAttribute('data-route-pending', '')
 	await expect(main).toHaveCSS('opacity', '0.6')
+	await expect(page.locator('[data-route-pending-status]')).toHaveText(
+		'Loading',
+	)
 	// Longer than the router's stock one-second wait before a pending screen.
 	await page.waitForTimeout(1_600)
 	await expect(overview).toBeVisible()
@@ -100,4 +103,47 @@ test('a quick page load never dims the page', async ({
 	expect(
 		await page.evaluate(() => (window as { seen?: { dimmed: boolean } }).seen),
 	).toEqual({ dimmed: false })
+})
+
+test('a page that arrives just after dimming stays dimmed briefly', async ({
+	page,
+	seedE2eUser,
+	login,
+}) => {
+	test.setTimeout(process.env.CI ? 120_000 : 60_000)
+	const username = `pending-hold-${randomUUID().slice(0, 8)}`
+	const owner = await seedE2eUser({
+		username,
+		email: `${username}@example.com`,
+	})
+	await login({ ...owner, mode: 'login' })
+	await page.goto(`/@${username}/-/overview`)
+	await waitForClientHydration(page)
+	await page.clock.install()
+	await page.clock.pauseAt(Date.now() + 60_000)
+	const html = page.locator('html')
+	let release = () => {}
+	const held = new Promise<void>((resolve) => (release = resolve))
+	await page.route('**/_serverFn/**', async (route) => {
+		await held
+		await route.continue()
+	})
+	await page
+		.locator(`a[href="/@${username}/-/apps"]`)
+		.first()
+		.evaluate((link: HTMLElement) => link.click())
+	// Dimmed at 500 ms; the page arrives 100 ms later.
+	await page.clock.runFor(600)
+	await expect(html).toHaveAttribute('data-route-pending', '')
+	release()
+	await expect(
+		page.getByRole('heading', { name: 'Apps', level: 1 }),
+	).toBeVisible()
+	await expect(page).toHaveURL(/\/-\/apps\?view=cards$/)
+	await page.waitForLoadState('networkidle')
+	// 250 ms after dimming: still inside the 300 ms minimum.
+	await page.clock.runFor(150)
+	await expect(html).toHaveAttribute('data-route-pending', '')
+	await page.clock.runFor(100)
+	await expect(html).not.toHaveAttribute('data-route-pending')
 })
