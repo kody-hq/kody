@@ -44,6 +44,8 @@ import { stripUntrustedWebhookSyntheticFields } from './synthetic.ts'
 const webhookDispatchRetryDelaySeconds = 30
 /** Matches `kody-webhook-dispatch` consumer `max_retries` in wrangler.jsonc. */
 export const webhookDispatchMaxRetries = 10
+/** Past this many owner-cap deferrals a delivery runs anyway, so a busy owner cannot starve it. */
+const webhookDispatchMaxDeferrals = 10
 
 function resolveWebhookDispatchInvocation(
 	message: WebhookDispatchQueueMessage,
@@ -314,7 +316,9 @@ async function decideWebhookDispatch(
 			attempts: attempt.attempts,
 		}),
 	)
-	if (!started) return deferForOwnerCap(attempt, env)
+	if (!started && (message.deferrals ?? 0) < webhookDispatchMaxDeferrals) {
+		return deferForOwnerCap(attempt, env)
+	}
 	try {
 		return await dispatchAttempt(attempt, env)
 	} catch (error) {
