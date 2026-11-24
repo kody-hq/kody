@@ -8,6 +8,16 @@ declare global {
 		interface Env extends AppEnv {}
 	}
 
+	// The worker projects do not load `vite/client`; these are the Vite
+	// constants the Worker-side entry reads.
+	interface ImportMetaEnv {
+		readonly DEV: boolean
+		readonly VITE_KODY_PERF_PROBE?: string
+	}
+	interface ImportMeta {
+		readonly env: ImportMetaEnv
+	}
+
 	interface CustomExportedHandler<Props = {}> {
 		fetch: (
 			request: Request,

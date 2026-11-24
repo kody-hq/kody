@@ -1,0 +1,41 @@
+# Routes measured by `npm run app-perf -- ssr`. One path per line.
+# `!` requests the path signed out. `{org}` and `{package}` come from --org and
+# --package; lines whose placeholder has no value are skipped.
+!/
+!/pricing
+!/docs
+!/community
+!/@{org}
+!/@{package}
+/
+/community
+/@{org}
+/@{org}/-/overview
+/@{org}/-/repositories
+/@{org}/-/apps
+/@{org}/-/skills
+/@{org}/-/jobs
+/@{org}/-/workflows
+/@{org}/-/execution-contexts
+/@{org}/-/credentials
+/@{org}/-/secrets
+/@{org}/-/integrations
+/@{org}/-/mcp-servers
+/@{org}/-/webhooks
+/@{org}/-/memories
+/@{org}/-/activity
+/@{org}/-/usage
+/@{org}/-/billing
+/@{org}/-/members
+/@{org}/-/teams
+/@{org}/-/grants
+/@{org}/-/settings
+/@{org}/-/profiles
+/@{package}
+/@{package}/settings
+/@{package}/credentials
+/@{package}/collaborators
+/@{package}/triggers
+/account
+/account/security
+/account/organizations

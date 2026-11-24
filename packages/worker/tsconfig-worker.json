@@ -31,6 +31,7 @@
 	},
 	"include": [
 		"./start/http-entry.ts",
+		"./start/perf-probe.ts",
 		"./start/server.ts",
 		"./start/request-context.ts",
 		"./start/document-negotiation.ts",

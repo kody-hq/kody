@@ -41,6 +41,14 @@ for (const environment of ['client', 'server']) {
 			`${environment}: retired website rendering runtime remains in the build: ${JSON.stringify(retiredWebsiteRuntime)}`,
 		)
 	}
+	const devOnly = modules.filter((source) =>
+		/(?:^|\/)packages\/worker\/start\/perf-probe\.ts$/.test(source),
+	)
+	if (devOnly.length > 0) {
+		throw new Error(
+			`${environment}: the dev-only binding probe remains in the build: ${JSON.stringify(devOnly)}`,
+		)
+	}
 	if (environment === 'client') {
 		const serverOnly = modules.filter(
 			(source) =>
