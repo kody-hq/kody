@@ -11,6 +11,7 @@ on:
       - 'package-lock.json'
       - '.github/workflows/desktop-binaries.yml'
       - '.github/workflows/desktop-release.yml'
+      - '.github/actions/apt-install/**'
   pull_request:
     paths:
       - 'packages/desktop/**'
@@ -20,6 +21,7 @@ on:
       - 'package-lock.json'
       - '.github/workflows/desktop-binaries.yml'
       - '.github/workflows/desktop-release.yml'
+      - '.github/actions/apt-install/**'
   workflow_dispatch:
 
 permissions:
@@ -76,9 +78,12 @@ jobs:
           cache: npm
       - name: Install Linux runtime libraries
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0 libfuse2t64 xvfb
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          packages:
+            libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0
+            libfuse2t64 xvfb
       # Electron and electron-builder fetch Electron zips and AppImage/Windows SDK
       # tools from GitHub releases; a cache hit skips the 504-prone download.
       - name: Cache Electron downloads

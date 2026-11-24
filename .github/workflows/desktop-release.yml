@@ -115,9 +115,12 @@ jobs:
           cache: npm
       - name: Install Linux runtime libraries
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0 libfuse2t64 xvfb
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          packages:
+            libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0
+            libfuse2t64 xvfb
       # Installs before the version bump rewrites package-lock.json, so the
       # node_modules cache key (Windows on Arm) matches across releases. The
       # bump touches only the packages/desktop version, which node_modules
