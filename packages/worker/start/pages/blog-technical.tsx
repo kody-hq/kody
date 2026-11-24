@@ -2,7 +2,7 @@
 import type { CSSObject } from '@emotion/react'
 import type { ComponentProps } from 'react'
 import { routes } from '#universal/routes.ts'
-import { colors, typography } from '#universal/styles/tokens.ts'
+import { colors, mq, radius, typography } from '#universal/styles/tokens.ts'
 import { SiteLink } from '../components/site-link.tsx'
 
 /**
@@ -19,6 +19,9 @@ export function isTechnicalBlogCategory(slug: string) {
 
 const gridLine = (percent: number) =>
 	`color-mix(in srgb, ${colors.primary} ${percent}%, transparent)`
+
+const readingPanel = (percent: number) =>
+	`color-mix(in srgb, ${colors.background} ${percent}%, transparent)`
 
 export const blogTechnicalThemeCss = {
 	position: 'relative' as const,
@@ -44,13 +47,27 @@ export const blogTechnicalThemeCss = {
 		maskImage:
 			'linear-gradient(to bottom, transparent, #000 6rem, #000 calc(100% - 10rem), transparent)',
 	},
+	// Reading panel: the theme background at 88% (82% dark, where the lines
+	// are dimmer) keeps the grid a faint texture behind the words.
+	'&::before': {
+		content: '""',
+		position: 'absolute' as const,
+		zIndex: -1,
+		inset: 'clamp(1rem, 3vw, 2rem) 0 clamp(2rem, 5vw, 3.5rem)',
+		pointerEvents: 'none' as const,
+		background: `light-dark(${readingPanel(88)}, ${readingPanel(82)})`,
+		borderRadius: radius.card,
+		'@supports (corner-shape: squircle)': {
+			borderRadius: '1.75rem',
+			cornerShape: 'squircle',
+		},
+		[mq.mobile]: {
+			insetInline: '0.5rem',
+		},
+	},
 	'& h1, & h2, & h3': {
 		fontFamily: typography.fontFamilyMono,
 		letterSpacing: '-0.01em',
-	},
-	// Keep the grid out from behind table text.
-	'& td': {
-		backgroundColor: colors.background,
 	},
 	'& header h1': {
 		fontSize: 'clamp(1.75rem, 4.4vw, 2.5rem)',
