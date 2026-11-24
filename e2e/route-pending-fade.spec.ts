@@ -36,9 +36,9 @@ test('a slow page load keeps the current page on screen, dimmed', async ({
 	await expect(main).toHaveCSS('opacity', '1')
 	await expect(page.locator('html')).toHaveAttribute('data-route-pending', '')
 	await expect(main).toHaveCSS('opacity', '0.6')
-	await expect(page.locator('[data-route-pending-status]')).toHaveText(
-		'Loading',
-	)
+	await expect(
+		page.getByRole('status').filter({ hasText: /^Loading$/ }),
+	).toHaveCount(1)
 	// Longer than the router's stock one-second wait before a pending screen.
 	await page.waitForTimeout(1_600)
 	await expect(overview).toBeVisible()

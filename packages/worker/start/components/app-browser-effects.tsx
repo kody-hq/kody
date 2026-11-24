@@ -29,7 +29,7 @@ function PendingPageFade() {
 	}, [faded])
 	// The dimming is visual only; this announces the same wait.
 	return (
-		<span role="status" css={visuallyHiddenCss} data-route-pending-status>
+		<span role="status" css={visuallyHiddenCss}>
 			{faded ? 'Loading' : ''}
 		</span>
 	)
