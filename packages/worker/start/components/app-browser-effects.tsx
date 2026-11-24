@@ -5,7 +5,55 @@ import { colors, transitions } from '#universal/styles/tokens.ts'
 import { useResourceLifetime } from '../lib/primitives.ts'
 
 export function AppBrowserEffects() {
-	return <NavigationProgress />
+	return (
+		<>
+			<NavigationProgress />
+			<PendingPageFade />
+		</>
+	)
+}
+
+/**
+ * Dims the page on screen once a navigation has been pending for a while, so
+ * the wait is visible without the page being taken away. Held for a minimum
+ * time once shown, so it never flickers.
+ */
+function PendingPageFade() {
+	const pending = useRouterState({ select: (state) => state.isLoading })
+	const faded = useSpinDelay(pending, { delay: 500, minDuration: 300 })
+	useResourceLifetime(() => {
+		if (!faded) return () => {}
+		document.documentElement.setAttribute('data-route-pending', '')
+		return () => document.documentElement.removeAttribute('data-route-pending')
+	}, [faded])
+	return null
+}
+
+/**
+ * True once `loading` has lasted `delay`, and then for at least `minDuration`.
+ * Same contract as npm's spin-delay, which ships only a UMD build that the
+ * Workers server render cannot load.
+ */
+function useSpinDelay(
+	loading: boolean,
+	{ delay, minDuration }: { delay: number; minDuration: number },
+) {
+	const [shown, setShown] = useState(false)
+	const shownAt = useRef(0)
+	useResourceLifetime(() => {
+		if (loading === shown) return () => {}
+		const timeout = setTimeout(
+			() => {
+				if (loading) shownAt.current = Date.now()
+				setShown(loading)
+			},
+			loading
+				? delay
+				: Math.max(0, minDuration - (Date.now() - shownAt.current)),
+		)
+		return () => clearTimeout(timeout)
+	}, [loading, shown, delay, minDuration])
+	return shown
 }
 
 function NavigationProgress() {
