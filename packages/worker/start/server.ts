@@ -13,6 +13,7 @@ import {
 	recordServerTiming,
 } from '../src/request-context.ts'
 import { d1RoundTripServerTiming } from '../src/d1-round-trip-timing.ts'
+import { logDocumentErrors } from '../src/app/document-error-log.ts'
 import { applyServerTimingHeader } from '../src/server-timing.ts'
 
 const startHandler = createStartHandler(async (context) => {
@@ -27,6 +28,7 @@ const startHandler = createStartHandler(async (context) => {
 			.map((match) => match.error),
 	)
 	const status = denied ? 403 : getResponseStatus()
+	if (!denied) logDocumentErrors(context.router.state.matches)
 	const result = await defaultStreamHandler(context)
 	const response = result instanceof Response ? result : result.response
 	if (status === 200 || (response.status !== 200 && !denied)) return result

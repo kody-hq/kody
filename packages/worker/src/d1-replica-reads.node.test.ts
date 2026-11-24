@@ -452,3 +452,43 @@ test('env objects that share one database share one installation', async () => {
 	expect(sessions).toEqual(['first-unconstrained'])
 	expect(served).toEqual(['replica:SELECT role'])
 })
+
+// 'caught' is Router's case: it answers a failed loader with an error page.
+test.each(['first', 'batch', 'caught'] as const)(
+	'a failed replica %s runs the whole request again on the primary',
+	async (call) => {
+		const { env, served, failReplicaReads } = await setup(on)
+		failReplicaReads()
+		consoleWarn.mockImplementation(() => {})
+		const request = new Request('https://kody.codes/@jane')
+		let runs = 0
+		const response = await runWithRequestContext(request, async () => {
+			beginD1ReplicaReads(request, env)
+			allowReplicaReads(request)
+			return renderWithReplicaReads(request, async () => {
+				runs++
+				const statement = env.APP_DB.prepare('SELECT role')
+				if (call === 'first') await statement.first()
+				else if (call === 'batch') await env.APP_DB.batch([statement])
+				else {
+					try {
+						await statement.first()
+					} catch {
+						return new Response('error page', { status: 500 })
+					}
+				}
+				return new Response('ok')
+			})
+		})
+		expect(await response.text()).toBe('ok')
+		expect(runs).toBe(2)
+		expect(served).toEqual(['replica:SELECT role', 'primary:SELECT role'])
+		expect(consoleWarn).toHaveBeenCalledWith(
+			'D1 replica read retried on the primary: GET /@jane a read failed (Error: replica is down)',
+		)
+		expect(getRequestContext(request)?.serverTiming).toContainEqual({
+			name: 'd1-primary-retry',
+			durationMs: 0,
+		})
+	},
+)

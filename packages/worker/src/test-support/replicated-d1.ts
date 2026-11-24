@@ -23,12 +23,14 @@ export function fakeReplicatedD1(flag: ReplicaReadFlag) {
 	const sessions: Array<string> = []
 	let flagRow = flag
 	let flagReadFails = false
+	let replicaFails = false
 	let flagGate: Promise<void> | undefined
 	let releaseFlagReads = () => {}
 
 	function statement(sql: string, read: () => Copy, by: string) {
 		const run = async () => {
 			served.push(`${by}:${sql}`)
+			if (replicaFails && by === 'replica') throw new Error('replica is down')
 			if (sql.includes('feature_flags')) {
 				const row = flagRow
 				await flagGate
@@ -92,6 +94,7 @@ export function fakeReplicatedD1(flag: ReplicaReadFlag) {
 		sessions,
 		setFlag: (next: ReplicaReadFlag) => (flagRow = next),
 		failFlagReads: () => (flagReadFails = true),
+		failReplicaReads: () => (replicaFails = true),
 		/**
 		 * Flag reads from now on do not settle, like a read Workers dropped
 		 * with its request, until the returned function lets them through
