@@ -50,11 +50,9 @@ export type D1ReplicaReadState = {
 	/** The request wrote to the primary, so its response carries a bookmark. */
 	wrote?: boolean
 	session?: D1DatabaseSession
-	/** A write was refused; the request must run again on the primary. */
+	/** Why the request must run again on the primary: a refused write or a failed read. */
 	retry?: string
 	responded?: boolean
-	/** A replica read failed; later reads go to the primary. */
-	replicaFailed?: boolean
 }
 
 type Rollout = { enabled: boolean; percent: number | null }
@@ -235,7 +233,6 @@ function requestSession(real: D1Database, sqls: Array<string | undefined>) {
 		return undefined
 	}
 	if (reads) {
-		if (state.replicaFailed) return undefined
 		// One session per request, whichever copy of the binding asks first.
 		state.session ??= real.withSession(state.start)
 		return state.session
@@ -246,7 +243,7 @@ function requestSession(real: D1Database, sqls: Array<string | undefined>) {
 	if (!state.session) return undefined
 	const statement = (write ?? 'exec').trim().slice(0, 80)
 	if (!state.responded) {
-		state.retry = statement
+		state.retry = `wrote (${statement})`
 		throw new D1ReplicaReadWriteError()
 	}
 	console.warn('D1 write after a replica read was not retried:', statement)
@@ -254,12 +251,12 @@ function requestSession(real: D1Database, sqls: Array<string | undefined>) {
 }
 
 /**
- * Run a call on the request's replica session, or on the primary. A read the
- * replica fails is run once more on the primary, and the rest of the request
- * stays there: an unavailable replica must not fail a page the primary can
- * serve.
+ * Run a call on the request's replica session, or on the primary. When a
+ * session read fails before the response is returned, the whole request runs
+ * again on the primary, so its permission checks and its data come from the
+ * same copy and an unavailable replica does not fail the page.
  */
-async function readWithPrimaryFallback<Result>(
+async function readWithPrimaryRetry<Result>(
 	real: D1Database,
 	sqls: Array<string | undefined>,
 	run: (session: D1DatabaseSession | undefined) => Promise<Result>,
@@ -270,12 +267,11 @@ async function readWithPrimaryFallback<Result>(
 		return await run(session)
 	} catch (error) {
 		const state = getRequestContext()?.d1ReplicaReads
-		if (state) state.replicaFailed = true
-		console.warn(
-			'D1 replica read failed; reading the primary instead:',
-			String(error),
-		)
-		return run(undefined)
+		if (state && !state.responded) {
+			state.allowed = false
+			state.retry = `a read failed (${String(error).slice(0, 200)})`
+		}
+		throw error
 	}
 }
 
@@ -294,7 +290,7 @@ function routeStatement(real: D1Database, routed: RoutedStatement) {
 	const call =
 		(method: StatementMethod) =>
 		(...args: Array<unknown>) =>
-			readWithPrimaryFallback(real, [routed.sql], (session) =>
+			readWithPrimaryRetry(real, [routed.sql], (session) =>
 				(
 					statementFor(session, statement)[method] as (
 						...methodArgs: Array<unknown>
@@ -330,7 +326,7 @@ export function routeD1ReplicaReads(real: D1Database): D1Database {
 				values: undefined,
 			}),
 		batch: (statements: Array<D1PreparedStatement>) =>
-			readWithPrimaryFallback(
+			readWithPrimaryRetry(
 				real,
 				statements.map((statement) => routedStatements.get(statement)?.sql),
 				(session) =>
@@ -424,7 +420,7 @@ function takePrimaryRetry(request: Request) {
 	const state = context?.d1ReplicaReads
 	if (!context || !state?.retry) return false
 	console.warn(
-		`D1 replica read retried on the primary: ${request.method} ${new URL(request.url).pathname} wrote (${state.retry})`,
+		`D1 replica read retried on the primary: ${request.method} ${new URL(request.url).pathname} ${state.retry}`,
 	)
 	state.retry = undefined
 	state.start = null

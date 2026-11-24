@@ -119,8 +119,8 @@ reads the primary: every mutation, routes with their own server handler, MCP,
 API tokens, webhooks, Durable Objects, and jobs. `d1-sql` in `Server-Timing`
 names the replica that served the page.
 
-A read the replica fails runs once more on the primary, the request's later
-reads stay there, and the Worker logs `D1 replica read failed`.
+When a replica read fails, the whole request runs again on the primary;
+`Server-Timing` carries `d1-primary-retry` and the Worker logs the error.
 
 What this asks of code that runs on a GET:
 

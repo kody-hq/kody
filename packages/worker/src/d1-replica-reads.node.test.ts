@@ -453,20 +453,34 @@ test('env objects that share one database share one installation', async () => {
 	expect(served).toEqual(['replica:SELECT role'])
 })
 
-test('a read the replica fails is served by the primary for the rest of the request', async () => {
-	const { env, served, failReplicaReads } = await setup(on)
-	failReplicaReads()
-	consoleWarn.mockImplementation(() => {})
-	const result = await visit(env, 'SELECT role')
-	expect(result.member).toBe(true)
-	expect(result.batchedMember).toBe(true)
-	expect(served).toEqual([
-		'replica:SELECT role',
-		'primary:SELECT role',
-		'primary:SELECT role',
-	])
-	expect(consoleWarn).toHaveBeenCalledWith(
-		'D1 replica read failed; reading the primary instead:',
-		'Error: replica is down',
-	)
-})
+test.each(['first', 'batch'] as const)(
+	'a failed replica %s runs the whole request again on the primary',
+	async (call) => {
+		const { env, served, failReplicaReads } = await setup(on)
+		failReplicaReads()
+		consoleWarn.mockImplementation(() => {})
+		const request = new Request('https://kody.codes/@jane')
+		let runs = 0
+		const response = await runWithRequestContext(request, async () => {
+			beginD1ReplicaReads(request, env)
+			allowReplicaReads(request)
+			return renderWithReplicaReads(request, async () => {
+				runs++
+				const statement = env.APP_DB.prepare('SELECT role')
+				if (call === 'first') await statement.first()
+				else await env.APP_DB.batch([statement])
+				return new Response('ok')
+			})
+		})
+		expect(await response.text()).toBe('ok')
+		expect(runs).toBe(2)
+		expect(served).toEqual(['replica:SELECT role', 'primary:SELECT role'])
+		expect(consoleWarn).toHaveBeenCalledWith(
+			'D1 replica read retried on the primary: GET /@jane a read failed (Error: replica is down)',
+		)
+		expect(getRequestContext(request)?.serverTiming).toContainEqual({
+			name: 'd1-primary-retry',
+			durationMs: 0,
+		})
+	},
+)
