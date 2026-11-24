@@ -9,8 +9,10 @@ import { isOnlyPermissionDenied } from '#universal/permission-denied.ts'
 import { secureNativeResponse } from '../src/app/native-response-envelope.ts'
 import {
 	collectServerTiming,
+	getRequestContext,
 	recordServerTiming,
 } from '../src/request-context.ts'
+import { d1RoundTripServerTiming } from '../src/d1-round-trip-timing.ts'
 import { applyServerTimingHeader } from '../src/server-timing.ts'
 
 const startHandler = createStartHandler(async (context) => {
@@ -66,7 +68,13 @@ export async function renderNativeDocument(
 		nonce,
 		documentFailure,
 	)
-	applyServerTimingHeader(secured.headers, collectServerTiming(request))
+	applyServerTimingHeader(
+		secured.headers,
+		collectServerTiming(
+			request,
+			d1RoundTripServerTiming(getRequestContext(request)?.d1),
+		),
+	)
 	return secured
 }
 

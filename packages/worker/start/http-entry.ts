@@ -1,8 +1,10 @@
 import { isServerFunctionRequest } from './action-page-method.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { setAuthSessionSecret } from '../src/app/auth-session.ts'
+import { env as moduleEnv } from 'cloudflare:workers'
 import { getEnv } from '../src/app/env.ts'
 import { runWithRequestContext } from '../src/request-context.ts'
+import { installD1RoundTripTiming } from '../src/d1-round-trip-timing.ts'
 import { runWithDeferredWork } from '../src/deferred-work.ts'
 import { wasSentryReported } from '../src/app/sentry-reported-error.ts'
 import {
@@ -43,6 +45,9 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 			)
 		try {
 			const bindings = getEnv(env)
+			// Document code reads `env` from `cloudflare:workers`, a separate object.
+			installD1RoundTripTiming(bindings)
+			installD1RoundTripTiming(moduleEnv)
 			const probe = perfProbe ? await perfProbe : undefined
 			if (probe && new URL(request.url).pathname === probe.perfProbeDumpPath) {
 				return probe.dumpPerfProbe()
