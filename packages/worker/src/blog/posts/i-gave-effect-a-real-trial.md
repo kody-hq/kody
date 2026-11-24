@@ -2,19 +2,17 @@
 title: I gave Effect a real trial
 date: 2026-11-25
 description:
-  I went into this wanting to use Effect. After seven rounds of testing, Kody's
-  request handlers are staying on plain async/await with a few guardrails.
-  Here's how we tested it and what we found.
+  I went into this wanting to use Effect. After seven rounds of testing, we're
+  staying on plain async/await with a few guardrails. Here's how we tested it
+  and what we found.
 order: 1
 category: technical
 ---
 
 **TL;DR:** I went into this wanting to use Effect, so I gave it a real trial:
 seven rounds, blind builders, planted bugs, and an independent judge. Effect
-didn't win. Kody's request handlers are staying on plain async/await, with a few
-required helpers, some custom lint rules, and zod at every edge where input
-comes in. Effect could still be a good fit for Durable Objects and queues,
-where its resource cleanup matters more, but we're not using it there today.
+didn't win. Kody's staying on plain async/await, with a few required helpers,
+some custom lint rules, and zod at every edge where input comes in.
 
 ## Who ran the trial
 
@@ -117,9 +115,9 @@ here:
   Effect 5.63). Effect's static checks caught 0 of 9 planted bugs, and it added
   about 30 ms of startup and about 177 KB gzip.
 
-Round 6 was about background jobs. Request handlers have a different shape, so
-round 7 asked: does that result hold on a real request path? Same rubric, just
-Effect versus Promises plus helpers and lint.
+Round 6 was about background jobs. Round 7 asked: does that result hold on the
+code we actually ship? Same two arms, Effect versus Promises plus helpers and
+lint, on a real request path and on Durable Objects and queues.
 
 ## How round 7 worked
 
@@ -129,10 +127,11 @@ Agents ran every step.
 before any code was built. No builder, follow-up author, or bug hunter ever saw
 it.
 
-**Two blind builders, one real path.** Each builder rebuilt the same request
-path without knowing the other existed: Kody's publish offload. A publisher
+**Two blind builders, real paths.** Each builder rebuilt the same code without
+knowing the other existed. One path was Kody's publish offload. A publisher
 starts a build, uploads content-addressed chunks with a per-build ticket, seals
-the build, and then commits it.
+the build, and then commits it. The arms also covered Durable Objects and
+queues: webhook dispatch and the jobs-worker watchdog.
 
 - **Arm A** was Effect 4 all the way down inside that path, with Promise edges
   at the boundaries.
@@ -198,7 +197,10 @@ each one.
 5.0, and every catch on both arms was static. Both caught the same four
 specifically: an unawaited R2 write, a new failure with no HTTP status, a
 removed timeout, and a new webhook call with no deadline. The gap is incidental
-catches.
+catches. On the Durable Object and queue code, Effect caught one more planted
+bug: a queue send with no timeout. The lint rule missed it because it only knew
+the call sites on its allowlist. We're extending that rule so it covers
+`*_QUEUE.send` and `sendBatch` too.
 
 **Residual hunt bugs: both 0.0.** Both hunters found six real bugs each, four
 medium and two low, so the formula zeroes both. The judge cross-checked them and
@@ -212,11 +214,15 @@ really shined. More on that below.
 **Correctness under change: both 10.** All six follow-up PRs had zero issues.
 Every spec item had a test, every new failure was typed and mapped, and every
 new scanner call used the arm's deadline helper. The judge called this "the most
-encouraging result for either."
+encouraging result for either." On Durable Objects and queues, both arms took
+the hidden follow-up in about 180 lines, and neither left new bugs.
+"
 
 **Runtime cost: Effect 5.04, Promises 9.97.** Startup time was within noise for
 both. The bundle wasn't: Effect added about 168 KB gzip to each Worker that
-loads it at startup, compared with about 1.7 KB for the Promise arm.
+loads it at startup, compared with about 1.7 KB for the Promise arm. On the
+Durable Object and queue slice, Effect added 18% gzip on the origin worker and
+57% gzip on the jobs worker.
 
 **Readability: Effect 4, Promises 7.5.** The Promise arm reads as ordinary async
 code; its unusual parts are a deadline helper, union returns, and lint messages
@@ -306,12 +312,9 @@ Effect knowledge, while the Promise diffs were more verbose but needed none.
 
 **Long-term direction.** The worker is heading toward more request handlers,
 Durable Objects, and queues. The Promise approach builds on what's already here:
-our oxlint plugin and zod. Effect's resource safety (a `Scope` that releases
-things on every exit path) is the part that might matter more in long-lived
-code, and that's exactly the kind of code where the judge kept it as a candidate
-(Durable Objects and queues). The real weakness on the Promise side is that the
-rules only apply in the request-path directories they're turned on for, and
-code outside those directories is unguarded.
+our oxlint plugin and zod. The real weakness on the Promise side is that the
+rules only apply in the directories they're turned on for, and code outside
+those directories is unguarded.
 
 **Ecosystem familiarity.** Async/await is what nearly every TypeScript developer
 already writes. The judge named Effect 4 being a recent major version, plus the
@@ -334,13 +337,10 @@ that we can have without switching runtimes.
 
 ## The decision
 
-- **Request handlers use Promises with required helpers and lint rules.** The
-  rules are on by default for request-path directories, not opt-in.
+- **We're staying on Promises with required helpers and lint rules.** The
+  rules are on by default in the directories they're enabled for, not opt-in.
 - **zod decoding at every edge where input arrives.** That's the big thing
   Effect taught us.
-- **Effect is not adopted worker-wide.** It stays a candidate for long-lived
-  resource-lifecycle code (Durable Objects, queues), loaded lazily so it costs
-  nothing at startup.
 
 ## What would change the answer
 
@@ -348,9 +348,6 @@ The judge listed what would change the answer:
 
 - Effect loads lazily, so it adds nothing at startup.
 - `effect:check` runs in about 10 seconds or less.
-- A round on Durable Object or queue lifecycle code shows Effect's `Scope`
-  catching planted cleanup bugs that lint misses. (The skipped-cleanup seed
-  slipped past both arms here.)
 - A later design catches seeds 2, 4, 8, and 9 with Effect itself.
 
 ## What's next
@@ -364,13 +361,15 @@ and discarding an unstarted build on cloud fallback. It also added a contributor
 doc on writing request handlers. It cost about 2 KB of bundle and didn't change
 startup CPU or check time.
 
-Next up is the worker's webhooks code, which has 73 lint findings to work
-through. That hasn't started yet.
+We're turning those helpers and lint rules on for Durable Objects and queues
+too, and extending the outbound-deadline rule so it covers queue sends. That's
+the planted bug Effect caught that lint missed. The worker's webhooks code
+still has 73 lint findings to work through.
 
 ## Conclusion
 
 I gave Effect 4 (`effect` 4.1.5) a real trial, and I went in wanting it to win.
-Here's where it landed for Kody's request handlers.
+Here's where it landed for Kody.
 
 **The strongest case for Effect:**
 
@@ -380,30 +379,34 @@ Here's where it landed for Kody's request handlers.
   is in Effect, without relying on lint rules that only apply in the
   directories we enable them in.
 - Startup latency was a wash; the earlier 30 ms concern didn't reproduce.
-- The code itself is clean once you know the library, and Effect's `Scope`
-  resource safety still makes it a candidate for long-lived Durable Objects and
-  queues if loaded lazily.
+- The code itself is clean once you know the library. On Durable Objects and
+  queues, Effect also caught one planted bug the lint rule missed, and its
+  tracing was a bit nicer.
 
-**Why we decided not to use it here:**
+**Why we decided not to use it:**
 
-- On planted bugs, Effect and Promises plus lint caught the exact same four
-  issues specifically, and neither caught the business-logic or ordering bugs
-  that need tests anyway.
+- On planted bugs in the request path, Effect and Promises plus lint caught the
+  exact same four issues specifically, and neither caught the business-logic or
+  ordering bugs that need tests anyway. On Durable Objects and queues, Effect
+  caught one more: a queue send with no timeout, which we're covering in the
+  lint rule.
 - Fresh agents made all three follow-up changes with zero rule breaks on both
-  arms, so Effect didn't pull ahead on keeping code correct under change.
+  arms, so Effect didn't pull ahead on keeping code correct under change. On
+  Durable Objects and queues, both arms took the hidden follow-up in about 180
+  lines, with no new bugs.
 - It added about 168 KB gzip per Worker that loads it at startup (versus 1.7 KB
   for our Promise helpers) and a 52.4 s check (versus 4.7 s for oxlint across
-  the whole worker).
+  the whole worker). On Durable Objects and queues, that was 18% more gzip on
+  the origin worker and 57% more on the jobs worker.
 - Adoption is slower and harder to reverse: converting a route means converting
   the helpers below it too (estimated 6 to 10 weeks of agent time versus 2 to 4
   weeks), and backing out means rewriting files instead of removing a lint
   entry.
 
-So for Kody's request handlers, we're keeping the best lesson from Effect
-(schema decoding at every untrusted edge, using zod) on top of plain
-async/await, a few required helpers, and custom lint rules. On our priorities,
-that gave us the same core safety for a lot less cost. That tradeoff could look
-different if Effect loaded lazily and its check got fast.
+So for Kody, we're keeping the best lesson from Effect (schema decoding at
+every untrusted edge, using zod) on top of plain async/await, a few required
+helpers, and custom lint rules. On our priorities, that gave us the same core
+safety for a lot less cost.
 
 Thanks again to everyone who gave feedback on the early PRs. This trial got a
 lot better because of you.
