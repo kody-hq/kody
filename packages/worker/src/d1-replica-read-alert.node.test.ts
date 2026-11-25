@@ -193,6 +193,7 @@ function env(store: ReturnType<typeof kv>) {
 		CLOUDFLARE_ACCOUNT_ID: 'account',
 		CLOUDFLARE_API_TOKEN: 'token',
 		D1_REPLICA_READ_EVENTS: {} as AnalyticsEngineDataset,
+		FIRST_PARTY_ORG_IDS: 'f'.repeat(64),
 	}
 }
 
@@ -215,6 +216,10 @@ test('the lane fans one event per breach, then holds during the cooldown', async
 		retryRatePercent: 2,
 	})
 	expect(dispatch).toHaveBeenCalledTimes(1)
+	// The kody org's factory package files the card.
+	expect(dispatch.mock.calls[0]![0].additionalOwnerIds).toEqual([
+		'f'.repeat(64),
+	])
 	const params = await dispatch.mock.calls[0]![0].getParams()
 	expect(params).toMatchObject({
 		event: 'd1.replica_reads.alert',

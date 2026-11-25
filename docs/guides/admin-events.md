@@ -176,9 +176,9 @@ newsletter package reporting a choice it already recorded. It passes
 `occurred_at` so the site keeps the time the person made the choice.
 
 Besides site admins' own packages, this topic is delivered to packages owned by
-the orgs listed by id in `WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS` (the kody org
-in production). The payload carries subscriber addresses, so a package in any
-other org never receives it, whether or not it declares the topic.
+the orgs listed by id in `FIRST_PARTY_ORG_IDS` (the kody org in production). The
+payload carries subscriber addresses, so a package in any other org never
+receives it, whether or not it declares the topic.
 
 ```ts
 type WhatsNewConsentChangedEvent = {
@@ -912,8 +912,9 @@ Every request that reads a D1 replica session writes one point to the
 write or a failed replica read), whether the final response was a 5xx, whether a
 document route failed, and the Cloudflare colo. The `d1_replica_read_alert` lane
 runs every 5 minutes over the last 15 minutes and fans `d1.replica_reads.alert`
-to packages saved by users who hold the admin role at dispatch time when any
-threshold trips:
+to packages saved by users who hold the admin role at dispatch time, and to
+packages owned by the orgs in `FIRST_PARTY_ORG_IDS` (the kody org's
+`@kody/kody-factory` files the card), when any threshold trips:
 
 | Trigger         | Threshold                                                 | Why                                                                             |
 | --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- |

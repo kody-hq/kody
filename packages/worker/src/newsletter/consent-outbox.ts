@@ -1,4 +1,5 @@
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { firstPartyOrgIds } from '#worker/first-party-orgs.ts'
 import { dispatchAdminPackageSubscriptionEvent } from '#worker/package-invocations/admin-package-subscriptions.ts'
 
 export const whatsNewConsentChangedTopic = 'whats_new.consent.changed'
@@ -33,15 +34,6 @@ const whatsNewConsentSubscriptionActorTokenId =
  * Orgs whose packages hear consent changes besides site admins' own. The
  * payload carries subscriber emails, so this is a fixed list of org ids.
  */
-export function whatsNewConsentFirstPartyOrgIds(env: {
-	WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS?: string
-}) {
-	return (env.WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS ?? '')
-		.split(',')
-		.map((id) => id.trim())
-		.filter((id) => /^[0-9a-f]{64}$/.test(id))
-}
-
 export function isWhatsNewConsentOutboxQueueBody(body: unknown) {
 	return (
 		!!body &&
@@ -305,7 +297,7 @@ export async function deliverWhatsNewConsentOutboxRow(input: {
 		buildIdempotencyKey: (savedPackage) =>
 			`whats-new-consent:${input.outboxId}:${row.attempts}:${savedPackage.id}`,
 		actorTokenId: whatsNewConsentSubscriptionActorTokenId,
-		additionalOwnerIds: whatsNewConsentFirstPartyOrgIds(input.env as Env),
+		additionalOwnerIds: firstPartyOrgIds(input.env as Env),
 		retryDiscoveryFailures: true,
 		retryInvocationInfrastructureFailures: true,
 		waitUntil: input.waitUntil,

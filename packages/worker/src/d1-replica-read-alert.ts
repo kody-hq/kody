@@ -1,4 +1,5 @@
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { firstPartyOrgIds } from '#worker/first-party-orgs.ts'
 import { d1ReplicaReadsFlagKey } from '#worker/d1-replica-reads.ts'
 import {
 	buildD1ReplicaReadColoQuery,
@@ -218,6 +219,7 @@ type D1ReplicaReadAlertEnv = Pick<
 	CLOUDFLARE_API_BASE_URL?: string
 	SENTRY_ENVIRONMENT?: string
 	D1_REPLICA_READ_EVENTS?: AnalyticsEngineDataset
+	FIRST_PARTY_ORG_IDS?: string
 }
 
 export type D1ReplicaReadAlertResult =
@@ -345,6 +347,8 @@ export async function checkD1ReplicaReadsAndAlert(input: {
 			buildIdempotencyKey: (savedPackage) =>
 				`d1-replica-alert:${event.incident_key}:${event.observed_at}:${savedPackage.id}`,
 			actorTokenId: 'internal:d1-replica-read-alert-subscriptions',
+			// The kody org's @kody/kody-factory turns the event into a card.
+			additionalOwnerIds: firstPartyOrgIds(input.env),
 		})
 		delivered = responses.some(
 			(response) => response && response.status >= 200 && response.status < 400,
