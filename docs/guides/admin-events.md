@@ -14,8 +14,9 @@ adminOnly: true
 # Admin events
 
 These topics fan out only to packages saved by users who hold the admin role at
-dispatch time. A non-admin package may declare them; it never receives the
-event. Role revocation applies on the next dispatch.
+dispatch time, plus, for the few topics that say so, packages owned by the
+trusted first-party orgs in `FIRST_PARTY_ORG_IDS`. Any other package may declare
+them; it never receives the event. Role revocation applies on the next dispatch.
 
 Handlers run unattended as the package owner and carry that owner's admin role,
 so they can call admin capabilities (for example `adminUserList` or
