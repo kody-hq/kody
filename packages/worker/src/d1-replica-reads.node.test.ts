@@ -9,12 +9,16 @@ import {
 	renderWithReplicaReads,
 	runOnD1Primary,
 } from '#worker/d1-replica-reads.ts'
+import { logDocumentErrors } from '#worker/app/document-error-log.ts'
 import { d1RoundTripServerTiming } from '#worker/d1-round-trip-timing.ts'
 import {
 	getRequestContext,
 	runWithRequestContext,
 } from '#worker/request-context.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import {
+	consoleError,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import {
 	fakeD1Bookmark,
 	fakeReplicatedD1,
@@ -530,5 +534,38 @@ test('each request that read a replica writes one countable point', async () => 
 	expect(writeDataPoint.mock.calls).toEqual([
 		[{ blobs: ['none', 'ok', 'ok', 'DFW'], doubles: [1] }],
 		[{ blobs: ['write', '5xx', 'ok', 'DFW'], doubles: [1] }],
+	])
+})
+
+test('a document error counts only when the primary rerun still fails', async () => {
+	const { env, failReplicaReads } = await setup(on)
+	failReplicaReads()
+	const writeDataPoint = vi.fn()
+	env.D1_REPLICA_READ_EVENTS = { writeDataPoint } as AnalyticsEngineDataset
+	consoleWarn.mockImplementation(() => {})
+	consoleError.mockImplementation(() => {})
+	const render = async (primaryFails: boolean) => {
+		const request = new Request('https://kody.codes/@jane')
+		return runWithRequestContext(request, async () => {
+			beginD1ReplicaReads(request, env)
+			allowReplicaReads(request)
+			return renderWithReplicaReads(request, async () => {
+				try {
+					await env.APP_DB.prepare('SELECT role').first()
+					if (primaryFails) throw new Error('loader failed')
+					return new Response('ok')
+				} catch (error) {
+					logDocumentErrors([{ status: 'error', routeId: '/$handle', error }])
+					return new Response('error page', { status: 500 })
+				}
+			})
+		})
+	}
+
+	expect((await render(false)).status).toBe(200)
+	expect((await render(true)).status).toBe(500)
+	expect(writeDataPoint.mock.calls).toEqual([
+		[{ blobs: ['read_failed', 'ok', 'ok', ''], doubles: [1] }],
+		[{ blobs: ['read_failed', '5xx', 'error', ''], doubles: [1] }],
 	])
 })
