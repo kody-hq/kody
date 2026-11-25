@@ -5,6 +5,7 @@
 
 import {
 	createDeploySkewRecoveryError,
+	isDeploySkewReloadPending,
 	readClientBuildId,
 	reloadOnDeploySkew,
 } from '#client/reload-on-deploy-skew.ts'
@@ -15,7 +16,8 @@ import {
 
 /**
  * Compare `X-Kody-Build` to the boot build. On mismatch during a router load
- * (navigation, or a refresh after a save), reload that location. Otherwise
+ * (navigation, or a refresh after a save), reload that location and never
+ * settle. Otherwise
  * (tab return refresh, polling, background refetches) throw a named recovery error so the page keeps its current data and
  * input. Writes already ran on the server, so their responses pass through
  * instead of reporting a failure that invites a duplicate retry. No-ops when
@@ -30,7 +32,11 @@ export async function fetchWithDeploySkewCheck(
 	if (!serverBuild || !isDeploySkewMismatch(readClientBuildId(), serverBuild)) {
 		return response
 	}
-	if (reloadOnDeploySkew(serverBuild)) throw createDeploySkewRecoveryError()
+	if (reloadOnDeploySkew(serverBuild) || isDeploySkewReloadPending()) {
+		// Stay pending until the document unloads so the router keeps the
+		// current page instead of flashing its error UI.
+		return new Promise<Response>(() => {})
+	}
 	if ((init?.method ?? 'GET').toUpperCase() !== 'GET') return response
 	throw createDeploySkewRecoveryError()
 }

@@ -24,6 +24,13 @@ export const deploySkewReloadFlag = 'kody:deploy-skew-reload'
 
 const deploySkewRecoveryErrorName = 'DeploySkewRecovery'
 
+/** This document already called `location.reload()` for deploy skew. */
+const deploySkewReloadPending = isolateState(() => false)
+
+export function isDeploySkewReloadPending(): boolean {
+	return deploySkewReloadPending.current
+}
+
 /** Cached at first successful resolve so SPA head updates cannot hide skew. */
 const cachedClientBuildId = isolateState(
 	(): string | null | undefined => undefined,
@@ -107,6 +114,7 @@ export function reloadOnDeploySkew(serverBuild: string): boolean {
 		)
 		if (getSessionStorageItem(deploySkewReloadFlag) === attempt) return false
 		if (!setSessionStorageItem(deploySkewReloadFlag, attempt)) return false
+		deploySkewReloadPending.current = true
 		window.location.reload()
 		return true
 	} catch {

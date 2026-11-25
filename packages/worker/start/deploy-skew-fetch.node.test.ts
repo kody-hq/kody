@@ -132,7 +132,7 @@ test('a write in a stale tab returns its response instead of reporting failure',
 	expect(location.reload).not.toHaveBeenCalled()
 })
 
-test('the next router load after a deploy loads its location as a fresh document', async () => {
+function createTestRouter() {
 	const root = createRootRoute()
 	const index = createRoute({
 		getParentRoute: () => root,
@@ -150,30 +150,62 @@ test('the next router load after a deploy loads its location as a fresh document
 		isServer: false,
 		origin: 'https://kody.test',
 	})
-	await router.load()
 	const stopArming = armNavigationLoads(router)
 	// RouterProvider's Transitioner loads after each history push.
 	const stopHistory = router.history.subscribe(({ action }) => {
 		location.href = `https://kody.test${router.history.location.pathname}`
 		void router.load({ action })
 	})
-	try {
-		serverBuild = deployedSha
-		// A save then router.invalidate(): the write already landed, so reload
-		// shows its result instead of a load-failure error page.
-		await router.invalidate()
-		expect(location.reload).toHaveBeenCalledTimes(1)
-		expect(store.get(deploySkewReloadFlag)).toBe(
-			`${deployedSha}\nhttps://kody.test/`,
-		)
+	return {
+		router,
+		stop() {
+			stopHistory()
+			stopArming()
+		},
+	}
+}
 
-		await router.navigate({ href: '/docs' })
-		expect(location.reload).toHaveBeenCalledTimes(2)
+function hasErrorMatch(router: ReturnType<typeof createTestRouter>['router']) {
+	return router.state.matches.some((match) => match.status === 'error')
+}
+
+test('the next navigation after a deploy loads its destination as a fresh document without an error flash', async () => {
+	const { router, stop } = createTestRouter()
+	try {
+		await router.load()
+		serverBuild = deployedSha
+		void router.navigate({ href: '/docs' })
+		await vi.waitFor(() => expect(location.reload).toHaveBeenCalledTimes(1))
 		expect(store.get(deploySkewReloadFlag)).toBe(
 			`${deployedSha}\nhttps://kody.test/docs`,
 		)
+		// Sibling reads stay pending while the document unloads.
+		let settled = false
+		void readServer('sibling').then(
+			() => (settled = true),
+			() => (settled = true),
+		)
+		await new Promise((resolve) => setTimeout(resolve, 20))
+		expect(settled).toBe(false)
+		expect(hasErrorMatch(router)).toBe(false)
+		expect(location.reload).toHaveBeenCalledTimes(1)
 	} finally {
-		stopHistory()
-		stopArming()
+		stop()
+	}
+})
+
+test('a refresh after a save reloads the same page instead of showing a load error', async () => {
+	const { router, stop } = createTestRouter()
+	try {
+		await router.load()
+		serverBuild = deployedSha
+		void router.invalidate()
+		await vi.waitFor(() => expect(location.reload).toHaveBeenCalledTimes(1))
+		expect(store.get(deploySkewReloadFlag)).toBe(
+			`${deployedSha}\nhttps://kody.test/`,
+		)
+		expect(hasErrorMatch(router)).toBe(false)
+	} finally {
+		stop()
 	}
 })
