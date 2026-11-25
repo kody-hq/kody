@@ -1,3 +1,5 @@
+import { mediaType } from '@kody-internal/shared/media-type.ts'
+
 type Handlers = Record<string, unknown>
 type ServerRoute = {
 	path?: string
@@ -16,10 +18,9 @@ type ServerRoute = {
 function requestWantsJson(request?: Pick<Request, 'headers'>) {
 	if (!request) return false
 	const accept = request.headers.get('accept')?.toLowerCase() ?? ''
-	const contentType = request.headers.get('content-type')?.toLowerCase() ?? ''
+	const contentType = mediaType(request.headers.get('content-type'))
 	return (
-		accept.includes('application/json') ||
-		contentType.includes('application/json')
+		accept.includes('application/json') || contentType === 'application/json'
 	)
 }
 

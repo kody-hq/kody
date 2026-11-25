@@ -80,9 +80,7 @@ export const waitingSummaryCapability = defineDomainCapability(
 					why: item.why,
 					who: item.who,
 					do_label: item.doLabel,
-					href: item.href.startsWith('http')
-						? item.href
-						: `${origin}${item.href}`,
+					href: new URL(item.href, origin).href,
 					severity: item.severity,
 				})),
 			}

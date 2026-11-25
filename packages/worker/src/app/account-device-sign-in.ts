@@ -43,6 +43,7 @@ import {
 	normalizeRedirectTo,
 	resolvePostAuthLandingPath,
 } from '#universal/safe-redirect.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 /**
  * "Sign in on another device" for Kody's own full-account sign-in (ADR 0094).
@@ -279,10 +280,11 @@ export async function startAccountDeviceSignIn(input: {
 			headers: { 'Cache-Control': 'no-store' },
 		})
 	}
-	const contentType = request.headers.get('Content-Type') ?? ''
-	const form = contentType.includes('application/x-www-form-urlencoded')
-		? await request.formData().catch(() => null)
-		: null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	const form =
+		contentType === 'application/x-www-form-urlencoded'
+			? await request.formData().catch(() => null)
+			: null
 	if (!form) return seeOther(devicePagePath('invalid_request'))
 	if (form.get('intent') === 'remember') {
 		await saveAccountDeviceRememberMe({

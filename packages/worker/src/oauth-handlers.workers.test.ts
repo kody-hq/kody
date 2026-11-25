@@ -2327,6 +2327,51 @@ test('malformed max_age returns an OAuth error for silent authorization', async 
 	).toMatch(/max_age must be a non-negative integer/i)
 })
 
+test('authorize-info treats only parsed loopback hosts as port-flexible redirects', async () => {
+	async function allowsClientReset(registered: string, requested: string) {
+		const response = await handleAuthorizeInfo(
+			new Request(
+				exampleOAuthUrl('authorize-info', {
+					response_type: 'code',
+					client_id: 'client-123',
+					redirect_uri: requested,
+				}),
+			),
+			createEnv(
+				createHelpers({
+					parseAuthRequest: async () => {
+						throw new Error('Invalid redirect URI')
+					},
+					lookupClient: async () => ({
+						...baseClient,
+						redirectUris: [registered],
+					}),
+				}),
+			),
+		)
+		const body = (await response.json()) as { allowClientReset?: boolean }
+		return body.allowClientReset
+	}
+	expect(
+		await allowsClientReset(
+			'http://[::1]:33418/callback',
+			'http://[::1]:5555/callback',
+		),
+	).toBe(false)
+	expect(
+		await allowsClientReset(
+			'http://127.0.0.1:33418/callback',
+			'http://127.0.0.1:5555/callback',
+		),
+	).toBe(false)
+	expect(
+		await allowsClientReset(
+			'http://127.example.com:33418/callback',
+			'http://127.example.com:5555/callback',
+		),
+	).toBe(true)
+})
+
 test('authorize recovers when a pre-hydration submit clobbers the OAuth query', async () => {
 	const envWithHelpers = createEnv(
 		createHelpers({

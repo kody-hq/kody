@@ -179,16 +179,16 @@ const SLACK_AUTH_ERROR_CODES = new Set([
 
 function isSlackIntegration(integration: IntegrationConfig) {
 	if (integration.name.startsWith('slack')) return true
-	const apiBaseUrl = integration.apiBaseUrl ?? ''
-	if (hostLooksLikeSlack(apiBaseUrl)) return true
-	return (integration.requiredHosts ?? []).some((host) =>
-		hostLooksLikeSlack(host),
-	)
+	const apiHost = integration.apiBaseUrl
+		? URL.parse(integration.apiBaseUrl)?.hostname
+		: undefined
+	if (apiHost && isSlackHost(apiHost)) return true
+	return (integration.requiredHosts ?? []).some(isSlackHost)
 }
 
-function hostLooksLikeSlack(value: string) {
-	const lower = value.toLowerCase()
-	return lower.includes('slack.com') || lower.includes('files.slack.com')
+function isSlackHost(host: string) {
+	const lower = host.trim().toLowerCase()
+	return lower === 'slack.com' || lower.endsWith('.slack.com')
 }
 
 /**
@@ -370,10 +370,7 @@ function getRelativePathFromRequest(
 	integration: IntegrationConfig,
 ): string | null {
 	const requestUrl = new URL(input.url)
-	const normalizedBase = getNormalizedApiBaseUrl(integration)
-	if (normalizedBase && requestUrl.href.startsWith(normalizedBase)) {
-		return null
-	}
+	if (isUnderApiBaseUrl(requestUrl, integration)) return null
 	const runtimeOrigin = getRuntimeOrigin()
 	if (!runtimeOrigin || requestUrl.origin !== runtimeOrigin) {
 		return null
@@ -389,6 +386,18 @@ function getRuntimeOrigin() {
 	).location
 	const origin = runtimeLocation?.origin ?? null
 	return typeof origin === 'string' && origin.length > 0 ? origin : null
+}
+
+function isUnderApiBaseUrl(url: URL, integration: IntegrationConfig) {
+	if (!integration.apiBaseUrl) return false
+	const base = new URL(integration.apiBaseUrl)
+	if (url.origin !== base.origin) return false
+	const basePath = base.pathname.replace(/\/+$/, '')
+	return (
+		!basePath ||
+		url.pathname === basePath ||
+		url.pathname.startsWith(`${basePath}/`)
+	)
 }
 
 function getNormalizedApiBaseUrl(integration: IntegrationConfig) {
@@ -586,12 +595,20 @@ const __kodyResolveRelativeUrl = (pathname, integration) => {
   }
   return new URL(\`\${normalizedBase}\${pathname}\`);
 };
+const __kodyIsUnderApiBaseUrl = (url, integration) => {
+  if (!integration.apiBaseUrl) return false;
+  const base = new URL(integration.apiBaseUrl);
+  if (url.origin !== base.origin) return false;
+  const basePath = base.pathname.replace(/\\/+$/, '');
+  return (
+    !basePath ||
+    url.pathname === basePath ||
+    url.pathname.startsWith(\`\${basePath}/\`)
+  );
+};
 const __kodyGetRelativePathFromRequest = (input, integration) => {
   const requestUrl = new URL(input.url);
-  const normalizedBase = __kodyGetNormalizedApiBaseUrl(integration);
-  if (normalizedBase && requestUrl.href.startsWith(normalizedBase)) {
-    return null;
-  }
+  if (__kodyIsUnderApiBaseUrl(requestUrl, integration)) return null;
   const runtimeOrigin = __kodyGetRuntimeOrigin();
   if (!runtimeOrigin || requestUrl.origin !== runtimeOrigin) {
     return null;
@@ -666,15 +683,23 @@ const __kodySlackAuthErrorCodes = new Set([
   'invalid_auth',
   'not_authed',
 ]);
-const __kodyHostLooksLikeSlack = (value) => {
-  const lower = String(value ?? '').toLowerCase();
-  return lower.includes('slack.com') || lower.includes('files.slack.com');
+const __kodyIsSlackHost = (host) => {
+  const lower = String(host ?? '').trim().toLowerCase();
+  return lower === 'slack.com' || lower.endsWith('.slack.com');
+};
+const __kodyApiBaseHost = (apiBaseUrl) => {
+  if (!apiBaseUrl) return '';
+  try {
+    return new URL(apiBaseUrl).hostname;
+  } catch {
+    return '';
+  }
 };
 const __kodyIsSlackIntegration = (integration) => {
   if (String(integration?.name ?? '').startsWith('slack')) return true;
-  if (__kodyHostLooksLikeSlack(integration?.apiBaseUrl ?? '')) return true;
+  if (__kodyIsSlackHost(__kodyApiBaseHost(integration?.apiBaseUrl))) return true;
   return (integration?.requiredHosts ?? []).some((host) =>
-    __kodyHostLooksLikeSlack(host),
+    __kodyIsSlackHost(host),
   );
 };
 const __kodyIsSlackFilesHtmlLoginResponse = (response, contentType) => {

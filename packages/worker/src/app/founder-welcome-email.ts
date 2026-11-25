@@ -9,7 +9,7 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 /** Replies to the founder welcome go to Kent, on the same domain as the sender. */
 export function founderWelcomeReplyTo(fromEmail: string) {
-	return `kent@${fromEmail.slice(fromEmail.indexOf('@') + 1)}`
+	return `kent@${fromEmail.slice(fromEmail.lastIndexOf('@') + 1)}`
 }
 
 /**

@@ -125,12 +125,15 @@ export async function findTestedTreeStamp(input: {
 			status.state === 'success' &&
 			status.creator?.login === stampCreator,
 	)
-	const runPrefix = `${input.serverUrl}/${repository}/actions/runs/`
+	const serverOrigin = new URL(input.serverUrl).origin
+	const runPath = `/${repository}/actions/runs/`
 	for (const stamp of stamps) {
 		if (stamp.description !== input.description) continue
-		const runId = stamp.target_url?.startsWith(runPrefix)
-			? /^(\d+)/.exec(stamp.target_url.slice(runPrefix.length))?.[1]
-			: undefined
+		const target = stamp.target_url ? URL.parse(stamp.target_url) : null
+		const runId =
+			target?.origin === serverOrigin && target.pathname.startsWith(runPath)
+				? /^(\d+)/.exec(target.pathname.slice(runPath.length))?.[1]
+				: undefined
 		if (!runId) continue
 		const run = await api<WorkflowRun>(
 			`/repos/${repository}/actions/runs/${runId}`,
@@ -143,7 +146,11 @@ export async function findTestedTreeStamp(input: {
 			run.head_repository?.full_name === repository &&
 			(await gatePassed(api, `/repos/${repository}/actions/runs/${runId}`))
 		) {
-			return { skip: true, prUrl: pr.html_url, runUrl: `${runPrefix}${runId}` }
+			return {
+				skip: true,
+				prUrl: pr.html_url,
+				runUrl: `${serverOrigin}${runPath}${runId}`,
+			}
 		}
 	}
 	return {

@@ -1,5 +1,6 @@
 import { mintIdToken, type OidcGrantProps } from '#worker/oidc/id-token.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 type TokenEnrichmentHelpers = {
 	unwrapToken: <T = OidcGrantProps>(
@@ -25,8 +26,8 @@ function scopeIncludesOpenid(scope: unknown) {
 }
 
 async function readTokenGrantType(request: Request) {
-	const contentType = request.headers.get('Content-Type') ?? ''
-	if (!contentType.includes('application/x-www-form-urlencoded')) return null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	if (contentType !== 'application/x-www-form-urlencoded') return null
 	const formData = await request
 		.clone()
 		.formData()
@@ -42,8 +43,8 @@ export async function enrichOAuthTokenResponse(
 	options: { grantType?: string | null } = {},
 ) {
 	if (response.status < 200 || response.status >= 300) return response
-	const contentType = response.headers.get('Content-Type') ?? ''
-	if (!contentType.includes('application/json')) return response
+	const contentType = mediaType(response.headers.get('Content-Type'))
+	if (contentType !== 'application/json') return response
 
 	const body = (await response.clone().json()) as Record<string, unknown>
 	if (typeof body.access_token !== 'string' || !body.access_token) {

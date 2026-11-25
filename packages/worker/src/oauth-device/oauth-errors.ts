@@ -1,4 +1,5 @@
 import { jsonResponse } from '#worker/json-response.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 /** RFC 6749 section 5.2 style error body, never cached. */
 export function oauthErrorResponse(
@@ -22,7 +23,7 @@ export function readFormValue(form: FormData | null, key: string) {
 }
 
 export async function readOAuthForm(request: Request) {
-	const contentType = request.headers.get('Content-Type') ?? ''
-	if (!contentType.includes('application/x-www-form-urlencoded')) return null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	if (contentType !== 'application/x-www-form-urlencoded') return null
 	return await request.formData().catch(() => null)
 }

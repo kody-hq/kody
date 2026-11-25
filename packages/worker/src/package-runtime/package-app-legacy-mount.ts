@@ -1,3 +1,4 @@
+import { acceptQuality } from '@kody-internal/shared/accept-header.ts'
 import { buildPackageAppSubdomainPath } from '@kody-internal/shared/public-urls.ts'
 import {
 	isPackageAppHostNonLeafFirstSegment,
@@ -27,17 +28,7 @@ export function shouldRedirectLegacyPackageAppSubdomainMount(
 ): boolean {
 	if (request.method !== 'GET' && request.method !== 'HEAD') return false
 	const accept = request.headers.get('Accept') ?? ''
-	return accept.split(',').some((entry) => {
-		const [rawMediaType, ...parameters] = entry.split(';')
-		const mediaType = rawMediaType?.trim().toLowerCase()
-		if (mediaType !== 'text/html') return false
-		const quality = parameters
-			.map((parameter) => parameter.trim().split('='))
-			.find(([name]) => name?.toLowerCase() === 'q')?.[1]
-		if (quality === undefined) return true
-		const parsed = Number(quality)
-		return Number.isFinite(parsed) && parsed > 0
-	})
+	return acceptQuality(accept, 'text/html') > 0
 }
 
 export function buildLegacyPackageAppSubdomainMountLocation(input: {

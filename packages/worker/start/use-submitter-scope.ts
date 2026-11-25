@@ -1,3 +1,4 @@
+import { isSameDocumentHref } from './same-document-href.ts'
 import { useMatchedPageScope } from './use-matched-page-scope.ts'
 import { useRef } from 'react'
 import { useRouter } from '@tanstack/react-router'
@@ -32,7 +33,7 @@ export function useSubmitterScope() {
 		// even when the browser opened this document at an anchor. Capture the
 		// browser href now, then require that exact location until completion.
 		const submittedHref = router.latestLocation.href
-		const sameDocument = submittedHref.split('#')[0] === href.split('#')[0]
+		const sameDocument = isSameDocumentHref(submittedHref, href)
 		return () =>
 			sameDocument &&
 			submission !== null &&

@@ -59,7 +59,7 @@ async function hashIdentifier(value: string) {
 }
 
 export function redactEmailRecipient(email: string) {
-	const at = email.indexOf('@')
+	const at = email.lastIndexOf('@')
 	return at >= 0 ? `***@${email.slice(at + 1)}` : '***'
 }
 

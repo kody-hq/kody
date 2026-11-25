@@ -96,7 +96,7 @@ export function resolveVerifyEmailSuccessCta(redirectTo?: string | null) {
 				'Your email address has been verified. MCP access is now available. Continue onboarding to connect your AI agent.',
 		}
 	}
-	if (href.startsWith('/oauth/authorize')) {
+	if (new URL(href, 'https://kody.local').pathname === '/oauth/authorize') {
 		return {
 			href,
 			label: 'Continue authorization',

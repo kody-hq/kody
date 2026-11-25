@@ -7,6 +7,9 @@
  * @see https://developers.cloudflare.com/fundamentals/api/how-to/make-api-calls/
  */
 
+/** `.` / `..`, including percent-encoded forms that `URL` also resolves. */
+const dotSegmentPattern = /^(?:\.|%2e){1,2}$/i
+
 export function assertSafeCloudflareApiV4Path(path: string) {
 	const trimmed = path.trim()
 	if (!trimmed.startsWith('/')) {
@@ -19,7 +22,8 @@ export function assertSafeCloudflareApiV4Path(path: string) {
 			'path must start with `/client/v4/` — see https://developers.cloudflare.com/fundamentals/api/how-to/make-api-calls/',
 		)
 	}
-	if (trimmed.includes('..')) {
+	const [pathname = ''] = trimmed.split('?', 1)
+	if (pathname.split('/').some((segment) => dotSegmentPattern.test(segment))) {
 		throw new Error('path must not contain `..` segments.')
 	}
 	if (/[\s#]/.test(trimmed)) {

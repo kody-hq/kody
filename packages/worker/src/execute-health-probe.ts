@@ -5,6 +5,7 @@ import {
 	MaintenanceFailureError,
 } from './maintenance-handler.ts'
 import { handleMcpRequest, mcpResourcePath } from './mcp-auth.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 export const executeHealthMaintenancePath = '/__maintenance/mcp-execute-health'
 export const executeHealthProbeCode = 'export default async () => 1'
@@ -205,10 +206,10 @@ async function assertMcpOk(response: Response, step: string) {
 }
 
 async function readMcpJsonRpcBody(response: Response): Promise<unknown> {
-	const contentType = response.headers.get('content-type') ?? ''
+	const contentType = mediaType(response.headers.get('content-type'))
 	const text = await response.text()
 	if (!text.trim()) return null
-	if (contentType.includes('text/event-stream')) {
+	if (contentType === 'text/event-stream') {
 		const dataLines = text
 			.split('\n')
 			.map((line) => line.trim())

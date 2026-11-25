@@ -1325,9 +1325,7 @@ async function runPackageModuleOnce(input: {
 }): Promise<number> {
 	const packageContext = buildLocalPackageContext({
 		kodyId: input.manifest.kodyId,
-		hostedUrl: input.auth.apiUrl.startsWith('http')
-			? 'http://127.0.0.1:0'
-			: 'http://127.0.0.1:0',
+		hostedUrl: 'http://127.0.0.1:0',
 		appBasePath: '',
 	})
 	try {

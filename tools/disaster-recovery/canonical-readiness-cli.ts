@@ -101,11 +101,8 @@ function resolveLocalArtifactPath(
 ): string {
 	const evidenceDirectory = path.resolve(path.dirname(evidenceFilePath))
 	let resolved: string
-	if (uri.startsWith('file:')) {
-		const parsed = new URL(uri)
-		if (parsed.protocol !== 'file:') {
-			throw new Error(`Artifact URI is not local: ${uri}`)
-		}
+	const parsed = URL.parse(uri)
+	if (parsed?.protocol === 'file:') {
 		resolved = fileURLToPath(parsed)
 	} else {
 		if (uriSchemePattern.test(uri)) {

@@ -444,17 +444,12 @@ export function buildWaitingItems(
 }
 
 function relocateWaitingHref(item: WaitingItem, orgSlug: string): WaitingItem {
-	const hashIndex = item.href.indexOf('#')
-	const hash = hashIndex === -1 ? '' : item.href.slice(hashIndex)
-	const beforeHash =
-		hashIndex === -1 ? item.href : item.href.slice(0, hashIndex)
-	const queryIndex = beforeHash.indexOf('?')
-	const pathname =
-		queryIndex === -1 ? beforeHash : beforeHash.slice(0, queryIndex)
-	const search = queryIndex === -1 ? '' : beforeHash.slice(queryIndex)
-	const orgPath = orgResourcePathForAccountPath(pathname, orgSlug)
+	const base = 'https://kody.local'
+	const url = new URL(item.href, base)
+	if (url.origin !== base) return item
+	const orgPath = orgResourcePathForAccountPath(url.pathname, orgSlug)
 	if (!orgPath) return item
-	return { ...item, href: `${orgPath}${search}${hash}` }
+	return { ...item, href: `${orgPath}${url.search}${url.hash}` }
 }
 
 function firstUseItemRank(itemId: string) {

@@ -25,6 +25,7 @@ import {
 	replaceClaimAttempt,
 	type AgentClaimAttempt,
 } from './store.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 /** Registrations per IP. A person connecting one agent needs one or two. */
 export const agentIdentityIpRateLimit: RateLimitConfig = {
@@ -65,8 +66,8 @@ function methodNotAllowed() {
 }
 
 async function readJsonObject(request: Request) {
-	const contentType = request.headers.get('Content-Type') ?? ''
-	if (!contentType.includes('application/json')) return null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	if (contentType !== 'application/json') return null
 	const body = (await request.json().catch(() => null)) as unknown
 	return body && typeof body === 'object' && !Array.isArray(body)
 		? (body as Record<string, unknown>)

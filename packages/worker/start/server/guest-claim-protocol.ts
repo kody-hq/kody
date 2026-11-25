@@ -1,5 +1,6 @@
 import { getStartRequestEnv } from './request-env.ts'
 import { getRequestIp } from '#worker/audit-log.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 // Server route handlers for `/claim/<code>`. Kept apart from the loader so the
 // client build drops this module with `server.handlers`.
@@ -58,10 +59,11 @@ export async function handleGuestClaimPost({
 	}
 	const env = getStartRequestEnv()
 	setAuthSessionSecret(env.COOKIE_SECRET)
-	const contentType = request.headers.get('Content-Type') ?? ''
-	const form = contentType.includes('application/x-www-form-urlencoded')
-		? await request.formData().catch(() => null)
-		: null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	const form =
+		contentType === 'application/x-www-form-urlencoded'
+			? await request.formData().catch(() => null)
+			: null
 	if (!form) {
 		await discardUnreadRequestBody(request)
 		return new Response('Unsupported form submission', { status: 415 })

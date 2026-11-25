@@ -68,7 +68,7 @@ export function FileViewer({
 	const kind = fileViewerKind(name, mediaType)
 	const src = assetUrl ?? fileAssetUrl(orgSlug, fileId, revisionId),
 		download = assetUrl
-			? `${assetUrl}${assetUrl.includes('?') ? '&' : '?'}download=true`
+			? withDownloadParam(assetUrl)
 			: fileAssetUrl(orgSlug, fileId, revisionId, true)
 	const props = { src, name, download, inline, orgSlug }
 	return (
@@ -97,4 +97,13 @@ export function FileViewer({
 			</Suspense>
 		</PreviewBoundary>
 	)
+}
+
+function withDownloadParam(assetUrl: string) {
+	const base = 'https://kody.local'
+	const url = new URL(assetUrl, base)
+	url.searchParams.set('download', 'true')
+	return url.origin === base
+		? `${url.pathname}${url.search}${url.hash}`
+		: url.href
 }

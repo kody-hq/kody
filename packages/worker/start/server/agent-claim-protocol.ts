@@ -1,4 +1,5 @@
 import { getStartRequestEnv } from './request-env.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 // Server route handlers for `/agent/claim`. Kept apart from the
 // `loadAgentClaimPage` server function so the client build can drop this
@@ -41,10 +42,11 @@ export async function handleAgentClaimPost({ request }: { request: Request }) {
 	}
 	const env = getStartRequestEnv()
 	setAuthSessionSecret(env.COOKIE_SECRET)
-	const contentType = request.headers.get('Content-Type') ?? ''
-	const form = contentType.includes('application/x-www-form-urlencoded')
-		? await request.formData().catch(() => null)
-		: null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	const form =
+		contentType === 'application/x-www-form-urlencoded'
+			? await request.formData().catch(() => null)
+			: null
 	if (!form) {
 		await discardUnreadRequestBody(request)
 		return new Response('Unsupported form submission', { status: 415 })

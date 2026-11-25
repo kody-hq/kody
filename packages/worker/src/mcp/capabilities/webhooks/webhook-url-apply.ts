@@ -64,7 +64,7 @@ const httpDestinationSchema = z
 	})
 	.superRefine((destination, ctx) => {
 		const url = destination.url.trim()
-		if (!url.startsWith('https://')) {
+		if (URL.parse(url)?.protocol !== 'https:') {
 			ctx.addIssue({
 				code: 'custom',
 				path: ['url'],

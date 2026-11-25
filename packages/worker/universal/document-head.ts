@@ -680,20 +680,20 @@ export function resolveDocumentHead(
  */
 const OG_IMAGE_VERSION = '3'
 
+const relativeBase = 'https://kody.local'
+
 function withOgImageVersion(path: string): string {
-	if (path.startsWith('http://') || path.startsWith('https://')) return path
-	return `${path}${path.includes('?') ? '&' : '?'}v=${OG_IMAGE_VERSION}`
+	const url = new URL(path, relativeBase)
+	if (url.origin !== relativeBase) return path
+	url.searchParams.set('v', OG_IMAGE_VERSION)
+	return `${url.pathname}${url.search}${url.hash}`
 }
 
 export function absolutizeDocumentHead(
 	descriptor: DocumentHeadDescriptor,
 	origin: string,
 ): ResolvedDocumentHead {
-	const normalizedOrigin = origin.replace(/\/$/, '')
-	const toAbsolute = (path: string) =>
-		path.startsWith('http://') || path.startsWith('https://')
-			? path
-			: `${normalizedOrigin}${path.startsWith('/') ? path : `/${path}`}`
+	const toAbsolute = (path: string) => new URL(path, origin).href
 
 	return {
 		title: descriptor.title,

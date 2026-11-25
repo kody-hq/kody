@@ -52,6 +52,15 @@ const spotifyIntegration: TestIntegration = {
 	requiredHosts: ['api.spotify.test'],
 }
 
+const slackLookalikeIntegration: TestIntegration = {
+	name: 'chat',
+	tokenUrl: 'https://notslack.com/oauth/token',
+	apiBaseUrl: 'https://slack.com.chat.test/api',
+	flow: 'pkce',
+	clientId: 'chat-client-id',
+	requiredHosts: ['notslack.com', 'slack.com.chat.test'],
+}
+
 const githubPlatformIntegration: TestIntegration = {
 	name: 'github',
 	tokenUrl: 'https://github.test/login/oauth/access_token',
@@ -326,6 +335,17 @@ test('createAuthenticatedFetch refreshes Slack on auth failures and HTML login, 
 				{ status: 200, body: { ok: false, error: 'channel_not_found' } },
 			] satisfies Array<ApiResponseSpec>,
 			body: { ok: false, error: 'channel_not_found' },
+			refreshCalls: [],
+			requestCount: 1,
+		},
+		{
+			label: 'Slack lookalike host auth-shaped error',
+			integration: slackLookalikeIntegration,
+			path: '/auth.test',
+			apiResponses: [
+				{ status: 200, body: { ok: false, error: 'token_revoked' } },
+			] satisfies Array<ApiResponseSpec>,
+			body: { ok: false, error: 'token_revoked' },
 			refreshCalls: [],
 			requestCount: 1,
 		},

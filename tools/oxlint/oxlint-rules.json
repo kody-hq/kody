@@ -51,6 +51,7 @@
 		"kody-custom/no-raw-overlay": "error",
 		"kody-custom/no-raw-table": "error",
 		"kody-custom/no-raw-form-control": "error",
+		"kody-custom/no-string-url-parsing": "error",
 		"kody-custom/no-tautological-absence": "error",
 		"kody-custom/no-test-hooks-in-production": "error",
 		"kody-custom/require-exit-condition-comment": "error",
