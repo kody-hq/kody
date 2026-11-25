@@ -109,6 +109,7 @@ import { handleOidcLogoutRequest } from '#worker/oidc/logout.ts'
 import { enrichOAuthTokenResponse } from '#worker/oidc/token-enrichment.ts'
 import { handleMcpOAuthTokenRequest } from '#worker/oauth-refresh-family.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 // Immutable caching is only safe when asset URLs are versioned by a real
 // commit sha. In local dev the build id falls back to a constant ('dev'), so
@@ -572,8 +573,8 @@ const internalTokenGrantTypes = new Set([
  * RFC 8628 device grant or the auth.md claim grant (ADR 0091).
  */
 async function readInternalTokenGrantForm(request: Request) {
-	const contentType = request.headers.get('Content-Type') ?? ''
-	if (!contentType.includes('application/x-www-form-urlencoded')) return null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	if (contentType !== 'application/x-www-form-urlencoded') return null
 	const form = await request
 		.clone()
 		.formData()

@@ -92,7 +92,7 @@ function normalizeHookPath(filePath: string) {
 
 export function isDocsOnlyHookPath(filePath: string) {
 	const path = normalizeHookPath(filePath)
-	if (path.length === 0 || path.startsWith('../') || path.includes('/../')) {
+	if (path.length === 0 || path.split('/').includes('..')) {
 		return false
 	}
 	if (path.startsWith('docs/')) return true

@@ -6,6 +6,7 @@ import {
 	classifyCimdFetchError,
 } from '#worker/oauth-cimd-last-known-good.ts'
 import { normalizeCimdClientId } from '#worker/oauth-known-cimd-clients.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 /**
  * Mirrors `@cloudflare/workers-oauth-provider` `OAuthErrorInternal` without
@@ -138,8 +139,8 @@ async function safeClientIdFromRequest(request: Request | undefined) {
 	)
 	if (fromBasic) return fromBasic
 	try {
-		const contentType = request.headers.get('Content-Type') ?? ''
-		if (!contentType.includes('application/x-www-form-urlencoded')) {
+		const contentType = mediaType(request.headers.get('Content-Type'))
+		if (contentType !== 'application/x-www-form-urlencoded') {
 			return undefined
 		}
 		if (request.bodyUsed) return undefined

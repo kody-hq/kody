@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import {
+	assertSafeCloudflareApiV4Path,
 	createCloudflareRestClient,
 	CloudflareRestClient,
 } from './cloudflare-rest-client.ts'
@@ -135,4 +136,16 @@ test('Cloudflare REST clients read mock responses, enforce API paths, and send J
 	expect(patchRequest?.headers.get('authorization')).toBe('Bearer patch-token')
 	expect(patchRequest?.headers.get('content-type')).toBe('application/json')
 	expect(await patchRequest?.text()).toBe('{"value":"on"}')
+})
+
+test('Cloudflare API v4 path guard rejects dot segments, not dots in values', () => {
+	expect(() =>
+		assertSafeCloudflareApiV4Path('/client/v4/accounts/../user/tokens'),
+	).toThrow(/segments/)
+	expect(() =>
+		assertSafeCloudflareApiV4Path('/client/v4/accounts/%2e%2e/user/tokens'),
+	).toThrow(/segments/)
+	expect(() =>
+		assertSafeCloudflareApiV4Path('/client/v4/zones?name=a..b.example'),
+	).not.toThrow()
 })

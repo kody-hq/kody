@@ -10,6 +10,7 @@ import { getStartRequestEnv } from './request-env.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import.
 import type { AuthFormError } from '../../universal/auth-form-errors.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 export function isSameOriginFormPost(request: Request) {
 	const requestOrigin = new URL(request.url).origin
@@ -30,8 +31,8 @@ export function isSameOriginFormPost(request: Request) {
 const maxFormBytes = 16 * 1024
 
 export async function readUrlEncodedForm(request: Request) {
-	const contentType = request.headers.get('Content-Type') ?? ''
-	if (!contentType.includes('application/x-www-form-urlencoded')) return null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	if (contentType !== 'application/x-www-form-urlencoded') return null
 	const declared = Number(request.headers.get('Content-Length') ?? '0')
 	if (declared > maxFormBytes || !request.body) return null
 	const reader = request.body.getReader()

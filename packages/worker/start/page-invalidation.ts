@@ -1,3 +1,4 @@
+import { isSameDocumentHref } from './same-document-href.ts'
 import { useMatchedPageScope } from './use-matched-page-scope.ts'
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -28,7 +29,7 @@ export function usePageInvalidation(
 			const currentContext = router.state.matches[0]?.context
 			return (
 				refreshRoute &&
-				router.state.location.href.split('#')[0] === href.split('#')[0] &&
+				isSameDocumentHref(router.state.location.href, href) &&
 				currentContext != null &&
 				typeof currentContext === 'object' &&
 				'actorKey' in currentContext &&

@@ -6,12 +6,14 @@ import { orgResourcePathForAccountPath } from '#universal/org-pages.ts'
 /** Old account resource bookmarks now resolve to the authenticated person's signup org. */
 export const resolveOrgAlias = createServerFn({ method: 'GET' })
 	.validator(
-		z
-			.string()
-			.refine(
-				(href) => href.startsWith('/account/') && !href.includes('\\'),
-				'Invalid account resource URL',
-			),
+		z.string().refine((href) => {
+			if (!href.startsWith('/') || href.includes('\\')) return false
+			const url = new URL(href, 'https://kody.local')
+			return (
+				url.origin === 'https://kody.local' &&
+				url.pathname.startsWith('/account/')
+			)
+		}, 'Invalid account resource URL'),
 	)
 	.handler(async ({ data: href }) => {
 		const [

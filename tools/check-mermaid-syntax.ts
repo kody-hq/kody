@@ -51,7 +51,7 @@ function installDompurifyStubForNodeParse(): void {
 	}
 	registerHooks({
 		load(url, context, nextLoad) {
-			if (!url.includes('/node_modules/dompurify/')) {
+			if (!new URL(url).pathname.includes('/node_modules/dompurify/')) {
 				return nextLoad(url, context)
 			}
 			return {

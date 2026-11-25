@@ -127,7 +127,7 @@ ipcMain.handle('kody:authentication', async (event, mode) => {
 				!cookie.httpOnly ||
 				cookie.domain ||
 				cookie.path !== '/' ||
-				(appOrigin.startsWith('https:') && !cookie.secure)
+				(new URL(appOrigin).protocol === 'https:' && !cookie.secure)
 			)
 				throw new Error('Invalid sign-in session.')
 			data.signal.throwIfAborted()

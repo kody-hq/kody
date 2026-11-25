@@ -28,3 +28,21 @@ test('inline identity rejects missing identity', () => {
 	)
 	expect(resolvePackageAppOauthInlineIdentity(url)).toBeNull()
 })
+
+test('inline identity reads return_to as a same-origin URL', () => {
+	const withQuery = new URL(
+		`https://preview.example${packageAppOauthPaths.login}?return_to=${encodeURIComponent('/@acme/packages/demo/notes?tab=1#top')}`,
+	)
+	expect(resolvePackageAppOauthInlineIdentity(withQuery)).toEqual({
+		orgUsername: 'acme',
+		kodyId: 'demo',
+	})
+	const crossOrigin = new URL(
+		`https://preview.example${packageAppOauthPaths.login}?return_to=${encodeURIComponent('/\\other.example/@acme/packages/demo')}`,
+	)
+	expect(resolvePackageAppOauthInlineIdentity(crossOrigin)).toBeNull()
+	const malformed = new URL(
+		`https://preview.example${packageAppOauthPaths.login}?return_to=${encodeURIComponent('/\\[')}`,
+	)
+	expect(resolvePackageAppOauthInlineIdentity(malformed)).toBeNull()
+})

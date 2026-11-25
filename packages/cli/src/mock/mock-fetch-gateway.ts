@@ -11,6 +11,7 @@
  * hosts fail closed with `unmocked_request`.
  */
 
+import { BlockList, isIP } from 'node:net'
 import { StructuredCliError } from '../structured-error.js'
 import type { KodyTarget } from '../target.js'
 import { type EnsureMswInput, importMsw } from './ensure-msw.js'
@@ -281,18 +282,40 @@ function assertOutboundAllowed(url: URL, allowPrivateNetwork: boolean): void {
 	}
 }
 
+const privateAddresses = new BlockList()
+for (const [network, prefix] of [
+	['0.0.0.0', 8],
+	['10.0.0.0', 8],
+	['100.64.0.0', 10],
+	['127.0.0.0', 8],
+	['169.254.0.0', 16],
+	['172.16.0.0', 12],
+	['192.168.0.0', 16],
+] as const) {
+	privateAddresses.addSubnet(network, prefix, 'ipv4')
+}
+for (const [network, prefix] of [
+	['::', 128],
+	['::1', 128],
+	['fc00::', 7],
+	['fe80::', 10],
+] as const) {
+	privateAddresses.addSubnet(network, prefix, 'ipv6')
+}
+
+/** `hostname` is a parsed `URL.hostname`, so IPv6 literals arrive bracketed. */
 function isPrivateOrLocalHost(hostname: string): boolean {
-	const host = hostname.toLowerCase()
-	return (
+	const host = hostname.toLowerCase().replace(/^\[(.*)\]$/, '$1')
+	if (
 		host === 'localhost' ||
-		host === '127.0.0.1' ||
-		host === '::1' ||
-		host === '[::1]' ||
-		host.endsWith('.local') ||
-		host.startsWith('10.') ||
-		host.startsWith('192.168.') ||
-		/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
-	)
+		host.endsWith('.localhost') ||
+		host.endsWith('.local')
+	) {
+		return true
+	}
+	const family = isIP(host)
+	if (family === 0) return false
+	return privateAddresses.check(host, family === 4 ? 'ipv4' : 'ipv6')
 }
 
 async function realNetworkFetch(input: {

@@ -8,6 +8,7 @@ import { getEnv } from '#app/env.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { verifyOidcJwtSignature } from '#worker/oidc/keys.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 type LogoutOAuthHelpers = {
 	lookupClient: (clientId: string) => Promise<ClientInfo | null>
@@ -54,8 +55,8 @@ function readAudienceClientIds(payload: Record<string, unknown>) {
 
 async function readLogoutParams(request: Request): Promise<LogoutParams> {
 	if (request.method === 'POST') {
-		const contentType = request.headers.get('Content-Type') ?? ''
-		if (contentType.includes('application/x-www-form-urlencoded')) {
+		const contentType = mediaType(request.headers.get('Content-Type'))
+		if (contentType === 'application/x-www-form-urlencoded') {
 			const formData = await request.formData().catch(() => null)
 			return {
 				postLogoutRedirectUri:

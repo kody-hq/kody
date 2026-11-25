@@ -387,6 +387,49 @@ test('P3: private-network fetch gives a clear error', async () => {
 	)
 })
 
+test('P3: private-network guard parses IP literals, not host prefixes', async () => {
+	for (const url of [
+		'http://127.0.0.2:1/',
+		'http://0.0.0.0:1/',
+		'http://169.254.169.254/latest/meta-data/',
+		'http://100.64.0.1:1/',
+		'http://[::ffff:127.0.0.1]:1/',
+		'http://[fd00::1]:1/',
+		'http://[fe80::1]:1/',
+		'http://app.localhost:1/',
+	]) {
+		await assert.rejects(
+			() =>
+				dispatchMockGatewayFetch({
+					handlers: [],
+					passthroughHosts: [],
+					allowPrivateNetwork: false,
+					passthroughAll: true,
+					request: { url, method: 'GET' },
+				}),
+			(error: unknown) => {
+				assert.ok(error instanceof StructuredCliError, url)
+				assert.match(error.message, /private\/local/, url)
+				return true
+			},
+		)
+	}
+	const seen: Array<string> = []
+	const result = await dispatchMockGatewayFetch({
+		handlers: [],
+		passthroughHosts: [],
+		allowPrivateNetwork: false,
+		passthroughAll: true,
+		request: { url: 'https://10.example.com/ok', method: 'GET' },
+		fetchFn: async (input) => {
+			seen.push(String(input))
+			return new Response('ok')
+		},
+	})
+	assert.equal(result.status, 200)
+	assert.deepEqual(seen, ['https://10.example.com/ok'])
+})
+
 test('P3: mocks.ts bundle_failed includes line number', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'kody-mocks-syntax-'))
 	try {

@@ -77,7 +77,7 @@ async function smoke() {
 		const secondNavigation = await second.evaluate(() =>
 			window.kodyDesktop.navigation.getState(),
 		)
-		assert.ok(secondNavigation.url.startsWith(origin))
+		assert.equal(new URL(secondNavigation.url).origin, new URL(origin).origin)
 		assert.notEqual(secondNavigation.url, before.url)
 		assert.equal((await app.windows()).length, 2)
 		await second.screenshot({ path: 'artifacts/desktop-second-window.png' })

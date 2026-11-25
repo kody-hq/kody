@@ -396,7 +396,7 @@ export async function collectSitePerf(input: {
 		/<link[^>]+rel=["'](?:modulepreload|preload)["'][^>]+href=["']([^"']+)["']/gi,
 	)
 	const sameOriginJs = [...scriptHrefs, ...preloadHrefs]
-		.filter((href) => href.endsWith('.js'))
+		.filter((href) => URL.parse(href, input.url)?.pathname.endsWith('.js'))
 		.filter((href) => isSameOrigin(input.url, href))
 		.map((href) => resolveUrl(input.url, href))
 

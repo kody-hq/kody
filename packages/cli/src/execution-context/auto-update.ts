@@ -15,6 +15,7 @@ import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join, normalize, sep } from 'node:path'
 import { gunzipSync } from 'node:zlib'
+import semver from 'semver'
 import { killProcessTree } from '../process-tree.js'
 import { cliConfigDir } from '../store.js'
 
@@ -50,56 +51,16 @@ const healthyAfterMs = 60_000
 
 // --- versions -----------------------------------------------------------
 
-const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/
-
-function parseVersion(value: string) {
-	const match = versionPattern.exec(value.trim())
-	if (!match) return null
-	return {
-		parts: [Number(match[1]), Number(match[2]), Number(match[3])] as const,
-		prerelease: match[4] ?? null,
-	}
-}
-
 /** Negative when a < b, positive when a > b, 0 when equal or unparseable. */
 export function compareVersions(a: string, b: string) {
-	const left = parseVersion(a)
-	const right = parseVersion(b)
-	if (!left || !right) return 0
-	for (let index = 0; index < 3; index++) {
-		const diff = left.parts[index]! - right.parts[index]!
-		if (diff !== 0) return diff
-	}
-	if (left.prerelease === right.prerelease) return 0
-	if (left.prerelease === null) return 1
-	if (right.prerelease === null) return -1
-	return left.prerelease < right.prerelease ? -1 : 1
+	return semver.valid(a) && semver.valid(b) ? semver.compare(a, b) : 0
 }
 
 export const isNewer = (candidate: string, than: string) =>
 	compareVersions(candidate, than) > 0
 
-/** The npm ranges @kodycodes/cli uses for its dependencies: ^, ~, exact, >=, *. */
 export function satisfies(version: string, range: string) {
-	const parsed = parseVersion(version)
-	const trimmed = range.trim()
-	if (!parsed) return false
-	if (trimmed === '*' || trimmed === '') return true
-	const op = /^(\^|~|>=)?\s*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(
-		trimmed,
-	)
-	if (!op) return false
-	const base = op[2]!
-	const [major, minor] = parseVersion(base)!.parts
-	if (compareVersions(version, base) < 0) return false
-	if (parsed.prerelease && !base.includes('-')) return false
-	if (!op[1]) return compareVersions(version, base) === 0
-	if (op[1] === '>=') return true
-	if (op[1] === '~')
-		return parsed.parts[0] === major && parsed.parts[1] === minor
-	if (major !== 0) return parsed.parts[0] === major
-	if (minor !== 0) return parsed.parts[0] === 0 && parsed.parts[1] === minor
-	return compareVersions(version, base) === 0
+	return semver.valid(version) !== null && semver.satisfies(version, range)
 }
 
 // --- paths and state ----------------------------------------------------
@@ -170,7 +131,7 @@ export function readCurrent(store = cliStoreDir()): CurrentVersion | null {
 		!current ||
 		typeof current.version !== 'string' ||
 		typeof current.entry !== 'string' ||
-		!parseVersion(current.version) ||
+		!semver.valid(current.version) ||
 		!isAbsolute(current.entry) ||
 		!isWithinDir(current.entry, join(store, 'versions'))
 	) {
@@ -328,7 +289,7 @@ async function fetchLatestVersion(input: {
 		dist?: { tarball?: unknown; integrity?: unknown }
 	}
 	if (body.name !== packageName) throw new Error('npm returned another package')
-	if (typeof body.version !== 'string' || !parseVersion(body.version)) {
+	if (typeof body.version !== 'string' || !semver.valid(body.version)) {
 		throw new Error('npm returned no valid version')
 	}
 	const integrity = body.dist?.integrity
@@ -729,7 +690,7 @@ function pruneVersions(store: string, keep: Array<string>) {
 		return
 	}
 	const versions = names
-		.filter((name) => parseVersion(name))
+		.filter((name) => semver.valid(name))
 		.sort((a, b) => compareVersions(b, a))
 	for (const name of versions.slice(3)) {
 		if (keep.includes(name)) continue

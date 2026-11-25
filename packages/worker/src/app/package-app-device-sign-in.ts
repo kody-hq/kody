@@ -59,6 +59,7 @@ import {
 	parsePackageAppDeviceRequest,
 	type PackageAppDeviceRequest,
 } from '#app/package-app-device-request.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 /**
  * "Sign in on another device" for package-app visitors on limited browsers
@@ -234,10 +235,11 @@ export async function startPackageAppDeviceSignIn(input: {
 			headers: { 'Cache-Control': 'no-store' },
 		})
 	}
-	const contentType = request.headers.get('Content-Type') ?? ''
-	const form = contentType.includes('application/x-www-form-urlencoded')
-		? await request.formData().catch(() => null)
-		: null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	const form =
+		contentType === 'application/x-www-form-urlencoded'
+			? await request.formData().catch(() => null)
+			: null
 	const target = normalizeRedirectTo(
 		typeof form?.get('authorize') === 'string'
 			? String(form?.get('authorize'))

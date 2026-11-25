@@ -4,6 +4,7 @@ import {
 	noSwallowedErrorRule,
 	requireOutboundDeadlineRule,
 } from './request-path-safety.js'
+import { noStringUrlParsingRule } from './string-url-parsing.js'
 import {
 	findOversizedOfficialGuideSections,
 	isOfficialGuideCatalogFile,
@@ -1104,6 +1105,7 @@ const plugin = {
 		'no-raw-overlay': noRawOverlayRule,
 		'no-raw-table': noRawTableRule,
 		'no-raw-form-control': noRawFormControlRule,
+		'no-string-url-parsing': noStringUrlParsingRule,
 		'no-swallowed-error': noSwallowedErrorRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'no-test-hooks-in-production': noTestHooksInProductionRule,

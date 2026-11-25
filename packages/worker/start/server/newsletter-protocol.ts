@@ -1,4 +1,5 @@
 import { getStartRequestEnv } from './request-env.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 // Server route handlers for `/newsletter` and `/newsletter/confirm`. Kept
 // apart from the `loadNewsletterPage` server function so the client build can
@@ -31,8 +32,8 @@ function seeOther(
 }
 
 async function readForm(request: Request) {
-	const contentType = request.headers.get('Content-Type') ?? ''
-	if (!contentType.includes('application/x-www-form-urlencoded')) return null
+	const contentType = mediaType(request.headers.get('Content-Type'))
+	if (contentType !== 'application/x-www-form-urlencoded') return null
 	const form = await request.formData().catch(() => null)
 	if (!form) return null
 	const fields: Record<string, string> = {}

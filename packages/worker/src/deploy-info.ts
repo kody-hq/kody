@@ -1,3 +1,8 @@
+import {
+	negotiatedAcceptQuality,
+	parseAcceptHeader,
+} from '@kody-internal/shared/accept-header.ts'
+
 export const defaultGithubRepoUrl = 'https://github.com/kody-hq/kody'
 export const maxCommitMessageLength = 500
 
@@ -121,11 +126,14 @@ export function buildHealthReport(env: {
 }
 
 export function prefersHtml(accept: string | null) {
-	if (!accept) return false
-	const html = accept.indexOf('text/html')
-	if (html === -1) return false
-	const json = accept.indexOf('application/json')
-	return json === -1 || html < json
+	const htmlQuality = negotiatedAcceptQuality(accept, 'text/html')
+	const jsonQuality = negotiatedAcceptQuality(accept, 'application/json')
+	if (htmlQuality <= 0 || htmlQuality < jsonQuality) return false
+	if (htmlQuality > jsonQuality) return true
+	const ranges = parseAcceptHeader(accept).map((entry) => entry.range)
+	const html = ranges.indexOf('text/html')
+	const json = ranges.indexOf('application/json')
+	return html !== -1 && (json === -1 || html < json)
 }
 
 function trimTrailingSlash(value: string) {

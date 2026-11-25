@@ -44,9 +44,7 @@ export function formatSearchWaitingMarkdown(input: {
 	const origin = input.origin.replace(/\/+$/, '')
 	const lines = ['## Waiting', '']
 	for (const item of shown) {
-		const href = item.href.startsWith('http')
-			? item.href
-			: `${origin}${item.href}`
+		const href = new URL(item.href, origin).href
 		lines.push(
 			`- **${escapeMarkdownText(item.title)}** — ${escapeMarkdownText(item.why)} ${escapeMarkdownText(item.doLabel)} · ${formatMarkdownInlineCode(href)}`,
 		)
@@ -78,7 +76,7 @@ export function toSearchWaitingStructured(input: {
 			title: item.title,
 			why: item.why,
 			doLabel: item.doLabel,
-			href: item.href.startsWith('http') ? item.href : `${origin}${item.href}`,
+			href: new URL(item.href, origin).href,
 			severity: item.severity,
 		})),
 	}

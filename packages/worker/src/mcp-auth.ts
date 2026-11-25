@@ -1,3 +1,4 @@
+import { acceptQuality } from '@kody-internal/shared/accept-header.ts'
 import {
 	guestClaimCapabilityName,
 	guestClaimFinishCapabilityName,
@@ -208,14 +209,7 @@ export function createMcpMissingCredentialResponse(origin: string) {
 }
 
 function acceptsMediaType(accept: string, mediaType: string) {
-	return accept.split(',').some((range) => {
-		const [type, ...parameters] = range.trim().split(';')
-		if (type?.trim() !== mediaType) return false
-		const quality = parameters
-			.map((parameter) => parameter.trim())
-			.find((parameter) => parameter.startsWith('q='))
-		return quality ? Number(quality.slice(2)) > 0 : true
-	})
+	return acceptQuality(accept, mediaType) > 0
 }
 
 export function isBrowserMcpNavigation(request: Request) {

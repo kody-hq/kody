@@ -58,7 +58,7 @@ async function smoke() {
 				}
 			},
 		)
-		assert.ok(result.url.startsWith('https://kody.codes/'))
+		assert.equal(new URL(result.url).origin, 'https://kody.codes')
 		assert.equal(result.preferences.nodeIntegration, false)
 		assert.equal(result.preferences.contextIsolation, true)
 		assert.equal(result.preferences.sandbox, true)

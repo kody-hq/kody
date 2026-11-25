@@ -9,6 +9,7 @@
 
 import {
 	gitRemoteReadOnlyPushRejectedMessage,
+	isGitReceivePackUrl,
 	mapGitRemotePushAuthFailure,
 } from './git-remote-scope.ts'
 
@@ -75,9 +76,7 @@ export function createArtifactsGitHttp(input?: { timeoutMs?: number }) {
 				const requestUrl = request.url
 				const responseUrl = response.url || requestUrl
 				const pushAuthFailure = mapGitRemotePushAuthFailure({
-					url: responseUrl.includes('git-receive-pack')
-						? responseUrl
-						: requestUrl,
+					url: isGitReceivePackUrl(responseUrl) ? responseUrl : requestUrl,
 					statusCode: response.status,
 				})
 				if (pushAuthFailure) throw pushAuthFailure

@@ -2,6 +2,7 @@ import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { oauthPaths } from '#universal/oauth-paths.ts'
 import { agentClaimGrantType } from '#worker/agent-registration/grant-type.ts'
 import { deviceCodeGrantType } from './device-grant.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 /** RFC 8628 section 4 metadata for Kody's authorization server. */
 export function deviceGrantDiscoveryFields(appOrigin: string) {
@@ -45,8 +46,8 @@ export async function withDeviceGrantDiscovery(
 	response: Response,
 ) {
 	if (!response.ok) return response
-	const contentType = response.headers.get('Content-Type') ?? ''
-	if (!contentType.includes('application/json')) return response
+	const contentType = mediaType(response.headers.get('Content-Type'))
+	if (contentType !== 'application/json') return response
 	const metadata = (await response.json()) as Record<string, unknown>
 	const appOrigin = getAppBaseUrl({ env, requestUrl: request.url })
 	const grantTypes = addDeviceGrantType(metadata.grant_types_supported)

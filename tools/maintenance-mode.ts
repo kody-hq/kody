@@ -447,9 +447,8 @@ export async function runMaintenanceMode(
 	async function applyWrite(request: PlannedApiRequest) {
 		requests.push(request)
 		if (options.dryRun) return
-		const pathname = request.url.startsWith(cloudflareApiBaseUrl)
-			? request.url.slice(cloudflareApiBaseUrl.length)
-			: new URL(request.url).pathname
+		const url = new URL(request.url)
+		const pathname = `${url.pathname.slice(new URL(cloudflareApiBaseUrl).pathname.length)}${url.search}`
 		await cloudflareRequest({
 			apiToken,
 			method: request.method,

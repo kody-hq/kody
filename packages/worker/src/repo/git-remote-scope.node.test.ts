@@ -23,6 +23,16 @@ test('receive-pack URL detection covers info/refs and path forms', () => {
 			'https://example.test/repo.git/info/refs?service=git-upload-pack',
 		),
 	).toBe(false)
+	expect(
+		isGitReceivePackUrl(
+			'https://example.test/repo.git/git-upload-pack?next=git-receive-pack',
+		),
+	).toBe(false)
+	expect(
+		isGitReceivePackUrl(
+			'https://example.test/git-receive-pack.git/info/refs?service=git-upload-pack',
+		),
+	).toBe(false)
 })
 
 test('mapGitRemotePushAuthFailure rewrites receive-pack 401/403', () => {

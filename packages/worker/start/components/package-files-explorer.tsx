@@ -721,7 +721,8 @@ function FileContent({
 								<Button
 									href={data.rawHref}
 									download={
-										data.rawHref.startsWith('data:')
+										new URL(data.rawHref, 'https://kody.local').protocol ===
+										'data:'
 											? packageFileBaseName(heading)
 											: undefined
 									}

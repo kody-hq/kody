@@ -59,7 +59,11 @@ export function commandCatalog(
 			commands.push({
 				id: item.href,
 				title: item.label,
-				subtitle: item.href.startsWith('/@') ? `@${slug}` : 'Your account',
+				subtitle: new URL(item.href, 'https://kody.local').pathname.startsWith(
+					'/@',
+				)
+					? `@${slug}`
+					: 'Your account',
 				keywords: item.description,
 				href: item.href,
 				kind: 'page',

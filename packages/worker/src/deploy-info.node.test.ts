@@ -96,6 +96,11 @@ test('deploy info encodes for wrangler vars and rebuilds the /health report', ()
 		['text/html,application/xhtml+xml', true],
 		['text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', true],
 		['application/json, text/html', false],
+		['application/json;q=0.5, text/html', true],
+		['text/html;q=0, application/json', false],
+		['application/*;q=1, text/html;q=0.5', false],
+		['application/json;x="a,text/html"', false],
+		['text/html, */*', true],
 	]
 	expect(
 		prefersHtmlCases.filter(([accept, want]) => prefersHtml(accept) !== want),

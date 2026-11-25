@@ -316,7 +316,13 @@ export function getDataRefreshKey(href: string) {
 		.join(',')
 		.trim()
 	const newSecretQuery = getNewSecretQueryKey(href)
-	return `${url.pathname}?allowed-host=${requestedHost}&package_id=${requestedPackageId}&names=${requestedNames}&new-secret=${newSecretQuery}`
+	const key = new URLSearchParams({
+		'allowed-host': requestedHost,
+		package_id: requestedPackageId,
+		names: requestedNames,
+		'new-secret': newSecretQuery,
+	})
+	return `${url.pathname}?${key}`
 }
 
 export function readFilterState(

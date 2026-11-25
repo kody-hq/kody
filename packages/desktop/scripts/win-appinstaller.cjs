@@ -1,5 +1,5 @@
 const { writeFileSync } = require('node:fs')
-const { join, resolve } = require('node:path')
+const { join, posix, resolve } = require('node:path')
 const { windowsAppInstallerName } = require('./release-plan.cjs')
 
 // App Installer keeps Windows installs current: it re-reads the stable
@@ -74,7 +74,7 @@ function assertAppInstaller(name, text, version, assetNames) {
 		throw new Error(`${name} has no package identity`)
 	if (main.Uri !== packageUri(version, arch))
 		throw new Error(`${name} points at ${main.Uri}`)
-	const msix = main.Uri.slice(main.Uri.lastIndexOf('/') + 1)
+	const msix = posix.basename(new URL(main.Uri).pathname)
 	if (!assetNames.includes(msix))
 		throw new Error(`${name} points at missing asset ${msix}`)
 }

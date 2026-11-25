@@ -104,8 +104,8 @@ function withOwnTopicGlob(input: {
 	if (!originName || originName === targetName) return input.topicRenames
 	const ownPrefix = `${originName}.`
 	const usesOwnPrefix = Object.entries(input.topicRenames).some(
-		([origin, target]) =>
-			origin.startsWith(ownPrefix) && target.startsWith(`${targetName}.`),
+		([source, target]) =>
+			source.startsWith(ownPrefix) && target.startsWith(`${targetName}.`),
 	)
 	return usesOwnPrefix
 		? { ...input.topicRenames, [`${originName}.*`]: `${targetName}.*` }

@@ -71,6 +71,7 @@ function listInjectionSites(destination: {
 	body: string
 }) {
 	const sites: Array<string> = []
+	// oxlint-disable-next-line kody-custom/no-string-url-parsing -- a template: `new URL` would percent-encode the {{placeholders}} it looks for
 	const fragmentIndex = destination.url.indexOf('#')
 	const urlWithoutFragment =
 		fragmentIndex === -1

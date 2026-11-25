@@ -13,9 +13,13 @@ export const gitRemoteReadOnlyPushRejectedMessage =
 
 export type GitRemoteAccessScope = 'read' | 'write'
 
+/** Push endpoints: `POST …/git-receive-pack` and `GET …/info/refs?service=git-receive-pack`. */
 export function isGitReceivePackUrl(url: string): boolean {
+	const parsed = URL.parse(url)
+	if (!parsed) return false
 	return (
-		/git-receive-pack(?:\?|$)/i.test(url) || /\/git-receive-pack$/i.test(url)
+		/\/git-receive-pack$/i.test(parsed.pathname) ||
+		parsed.searchParams.get('service')?.toLowerCase() === 'git-receive-pack'
 	)
 }
 

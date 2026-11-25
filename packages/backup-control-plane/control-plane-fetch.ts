@@ -40,13 +40,14 @@ import {
 } from './seal-day-run.ts'
 import { handleDrOpsMaintenanceRequest } from './dr-ops-maintenance.ts'
 import { enqueueWorkflow } from './workflow-trigger.ts'
+import { mediaType } from '@kody-internal/shared/media-type.ts'
 
 async function readForm(request: Request): Promise<URLSearchParams> {
-	const contentType = request.headers.get('content-type') ?? ''
-	if (contentType.includes('application/x-www-form-urlencoded')) {
+	const contentType = mediaType(request.headers.get('content-type'))
+	if (contentType === 'application/x-www-form-urlencoded') {
 		return new URLSearchParams(await request.text())
 	}
-	if (contentType.includes('multipart/form-data')) {
+	if (contentType === 'multipart/form-data') {
 		const form = await request.formData()
 		const params = new URLSearchParams()
 		for (const [key, value] of form.entries()) {
