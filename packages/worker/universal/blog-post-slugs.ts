@@ -24,6 +24,7 @@ export const blogPostSlugs = [
 	'give-staff-and-their-bots-access-to-your-kody-org',
 	'how-to-roll-out-ai-agents-to-your-team',
 	'how-to-turn-agent-work-into-software-you-own',
+	'i-gave-effect-a-real-trial',
 	'internal-tools-built-with-ai-team-credentials',
 	'kody-weekly-2026-03-20',
 	'kody-weekly-2026-03-27',
