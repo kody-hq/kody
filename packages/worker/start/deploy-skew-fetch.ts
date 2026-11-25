@@ -10,18 +10,25 @@ import {
 	reloadOnDeploySkew,
 } from '#client/reload-on-deploy-skew.ts'
 import {
+	isNavigationLoadArmed,
+	isRouterRefreshLoad,
+} from '#client/navigation-load.ts'
+import {
 	deploySkewBuildHeader,
 	isDeploySkewMismatch,
 } from '#universal/deploy-skew.ts'
 
 /**
- * Compare `X-Kody-Build` to the boot build. On mismatch during a router load
- * (navigation, or a refresh after a save), reload that location and never
- * settle. Otherwise
- * (tab return refresh, polling, background refetches) throw a named recovery error so the page keeps its current data and
- * input. Writes already ran on the server, so their responses pass through
- * instead of reporting a failure that invites a duplicate retry. No-ops when
- * either build id is missing (local/dev) or they match.
+ * Compare `X-Kody-Build` to the boot build. On mismatch:
+ * - Writes already ran on the server, so they pass through instead of
+ *   reporting a failure that invites a duplicate retry.
+ * - A same-URL router refresh (after a save or upload) passes through so the
+ *   page shows the result and keeps any work in progress.
+ * - A navigation read reloads its destination once and never settles, so the
+ *   router keeps the current page until the new document commits.
+ * - Any other read (tab-return refresh, polling, background refetches) throws
+ *   a named recovery error so the page keeps its current data and input.
+ * No-ops when either build id is missing (local/dev) or they match.
  */
 export async function fetchWithDeploySkewCheck(
 	input: RequestInfo | URL,
@@ -32,11 +39,13 @@ export async function fetchWithDeploySkewCheck(
 	if (!serverBuild || !isDeploySkewMismatch(readClientBuildId(), serverBuild)) {
 		return response
 	}
-	if (reloadOnDeploySkew(serverBuild) || isDeploySkewReloadPending()) {
-		// Stay pending until the document unloads so the router keeps the
-		// current page instead of flashing its error UI.
+	const isRead = (init?.method ?? 'GET').toUpperCase() === 'GET'
+	if (!isRead || isRouterRefreshLoad()) return response
+	if (
+		isNavigationLoadArmed() &&
+		(reloadOnDeploySkew(serverBuild) || isDeploySkewReloadPending())
+	) {
 		return new Promise<Response>(() => {})
 	}
-	if ((init?.method ?? 'GET').toUpperCase() !== 'GET') return response
 	throw createDeploySkewRecoveryError()
 }

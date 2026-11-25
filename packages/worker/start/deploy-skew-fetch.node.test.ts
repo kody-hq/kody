@@ -187,6 +187,8 @@ test('the next navigation after a deploy loads its destination as a fresh docume
 		)
 		await new Promise((resolve) => setTimeout(resolve, 20))
 		expect(settled).toBe(false)
+		// Writes (an upload still saving) are never held.
+		await expect(readServer('upload', 'POST')).resolves.toBeInstanceOf(Response)
 		expect(hasErrorMatch(router)).toBe(false)
 		expect(location.reload).toHaveBeenCalledTimes(1)
 	} finally {
@@ -194,17 +196,15 @@ test('the next navigation after a deploy loads its destination as a fresh docume
 	}
 })
 
-test('a refresh after a save reloads the same page instead of showing a load error', async () => {
+test('a refresh after a save or upload keeps the page and shows the result', async () => {
 	const { router, stop } = createTestRouter()
 	try {
 		await router.load()
 		serverBuild = deployedSha
-		void router.invalidate()
-		await vi.waitFor(() => expect(location.reload).toHaveBeenCalledTimes(1))
-		expect(store.get(deploySkewReloadFlag)).toBe(
-			`${deployedSha}\nhttps://kody.test/`,
-		)
+		await router.invalidate()
+		expect(location.reload).not.toHaveBeenCalled()
 		expect(hasErrorMatch(router)).toBe(false)
+		expect(router.state.location.pathname).toBe('/')
 	} finally {
 		stop()
 	}
