@@ -1151,6 +1151,50 @@ export default async function main(p: { a?: string }) {
 	},
 )
 
+test(
+	'kody execute --local --file inside a package directory applies --credential',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const dir = mkdtempSync(join(tmpdir(), 'kody-file-credential-'))
+		const file = join(dir, 'x.ts')
+		writeFileSync(
+			file,
+			`import { credential } from 'kody:runtime'
+export default async function main() {
+	const opened = await credential('resend')
+	return { name: opened.name }
+}
+`,
+		)
+		let stdout = ''
+		let stderr = ''
+		// The test cwd (packages/cli) has a package.json, like a package checkout.
+		const code = await runCli(
+			[
+				'execute',
+				'--local',
+				'--token',
+				goodToken,
+				'--mcp-url',
+				`${apiUrl}/mcp`,
+				'--api-url',
+				apiUrl,
+				'--credential',
+				'resend=prod',
+				'--file',
+				file,
+			],
+			{
+				stdout: (text) => (stdout += text),
+				stderr: (text) => (stderr += text),
+			},
+		)
+		assert.equal(code, 0, stderr)
+		assert.deepEqual(JSON.parse(stdout), { name: 'prod' })
+	},
+)
+
 test('runLocalExecute stops before starting workerd when the token or flag is rejected', async () => {
 	reset()
 	const neverRuns = '/nonexistent/workerd'

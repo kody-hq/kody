@@ -25,6 +25,9 @@ export type CapabilityReindexOptions = {
 }
 
 const authRetryDelayMs = 5_000
+/** `fetch` throws a TypeError ("fetch failed") on resets and DNS blips. */
+const networkAttempts = 3
+const networkRetryDelayMs = 5_000
 
 const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]'])
 
@@ -82,7 +85,7 @@ export async function runCapabilityReindex(options: CapabilityReindexOptions) {
 			...(cursor === undefined ? {} : { cursor }),
 		}
 		log(`POST ${url} (sweep ${sweep}) ${JSON.stringify(body)}`)
-		const send = () =>
+		const request = () =>
 			fetcher(url, {
 				method: 'POST',
 				headers: {
@@ -93,6 +96,21 @@ export async function runCapabilityReindex(options: CapabilityReindexOptions) {
 				body: JSON.stringify(body),
 				signal: AbortSignal.timeout(120_000),
 			})
+		const send = async () => {
+			for (let attempt = 1; ; attempt += 1) {
+				try {
+					return await request()
+				} catch (error) {
+					if (!(error instanceof TypeError) || attempt >= networkAttempts) {
+						throw error
+					}
+					log(
+						`Request failed (${error.message}); retrying in ${networkRetryDelayMs / 1000}s (attempt ${attempt + 1} of ${networkAttempts}).`,
+					)
+					await sleep(networkRetryDelayMs)
+				}
+			}
+		}
 		let response = await send()
 		let text = await response.text()
 		log(text)

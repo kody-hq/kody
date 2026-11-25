@@ -23,7 +23,6 @@ export function createCountingD1(real: D1Database): CountingD1 {
 		realStatement: D1PreparedStatement,
 		sql: string,
 	): D1PreparedStatement {
-		const realBind = realStatement.bind.bind(realStatement)
 		const executed =
 			<Method extends 'first' | 'all' | 'run' | 'raw'>(method: Method) =>
 			(...args: Array<unknown>) => {
@@ -35,7 +34,7 @@ export function createCountingD1(real: D1Database): CountingD1 {
 			}
 		const wrapped = {
 			bind: (...values: Array<unknown>) =>
-				wrapStatement(realBind(...values), sql),
+				wrapStatement(realStatement.bind(...values), sql),
 			first: executed('first'),
 			all: executed('all'),
 			run: executed('run'),

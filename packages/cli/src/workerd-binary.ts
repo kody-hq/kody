@@ -33,6 +33,11 @@ export class WorkerdDownloadStalledError extends Error {}
 /** A reset, refused connection, HTTP/2 stream error, or 5xx: worth a retry. */
 export class WorkerdDownloadNetworkError extends Error {}
 
+/** GitHub release downloads return transient 403/429s when CI runners are throttled. */
+function isRetryableWorkerdDownloadStatus(status: number) {
+	return status >= 500 || status === 403 || status === 429
+}
+
 /** GitHub's release CDN can 504 for a minute; back off 1s, 2s, 4s, 8s (#5036). */
 const workerdDownloadAttempts = 5
 const workerdDownloadRetryDelayMs = 1_000
@@ -252,8 +257,9 @@ async function fetchAndWrite(input: {
 		)
 	}
 	if (!response.ok || !response.body) {
-		const ErrorClass =
-			response.status >= 500 ? WorkerdDownloadNetworkError : Error
+		const ErrorClass = isRetryableWorkerdDownloadStatus(response.status)
+			? WorkerdDownloadNetworkError
+			: Error
 		throw new ErrorClass(
 			`Could not download workerd from ${input.url} (HTTP ${response.status}).`,
 		)

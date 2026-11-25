@@ -158,6 +158,39 @@ test('runCapabilityReindex retries a first-sweep 401/503 only inside the auth re
 	expect(noWindow.calls).toHaveLength(1)
 })
 
+test('runCapabilityReindex retries a transient fetch failure, then gives up', async () => {
+	const sleeps: Array<number> = []
+	const base = {
+		baseUrl: 'https://kody-branch-x.example.workers.dev',
+		secret: 's',
+		log: () => {},
+		sleep: async (ms: number) => {
+			sleeps.push(ms)
+		},
+	}
+	let calls = 0
+	const flaky: typeof fetch = async () => {
+		calls += 1
+		if (calls === 1) throw new TypeError('fetch failed')
+		return Response.json({ complete: true })
+	}
+	await expect(
+		runCapabilityReindex({ ...base, fetcher: flaky }),
+	).resolves.toEqual({ sweeps: 1 })
+	expect(calls).toBe(2)
+	expect(sleeps).toEqual([5_000])
+
+	calls = 0
+	const down: typeof fetch = async () => {
+		calls += 1
+		throw new TypeError('fetch failed')
+	}
+	await expect(
+		runCapabilityReindex({ ...base, fetcher: down }),
+	).rejects.toThrow('fetch failed')
+	expect(calls).toBe(3)
+})
+
 test('runCapabilityReindex retries a first-sweep workers.dev 1042 until the script appears', async () => {
 	let clock = 0
 	const timing = {
