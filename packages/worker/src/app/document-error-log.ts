@@ -7,11 +7,12 @@ import { getRequestContext } from '../request-context.ts'
 export function logDocumentErrors(
 	matches: Array<{ status: string; routeId: string; error?: unknown }>,
 ) {
-	const d1 = getRequestContext()?.d1ReplicaReads?.session
-		? 'a D1 replica session'
-		: 'the D1 primary'
+	const state = getRequestContext()?.d1ReplicaReads
+	const d1 = state?.session ? 'a D1 replica session' : 'the D1 primary'
 	for (const match of matches) {
 		if (match.status !== 'error') continue
+		// Counted with the request's replica read, see `d1-replica-read-events.ts`.
+		if (state) state.documentFailed = true
 		const error = match.error
 		console.error(
 			`Document route ${match.routeId} failed while reading ${d1}:`,

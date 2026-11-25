@@ -657,6 +657,10 @@
 					"dataset": "kody_mcp_search_events",
 				},
 				{
+					"binding": "D1_REPLICA_READ_EVENTS",
+					"dataset": "kody_d1_replica_read_events",
+				},
+				{
 					"binding": "ONBOARDING_FUNNEL_EVENTS",
 					"dataset": "kody_onboarding_funnel_events",
 				},
@@ -724,8 +728,9 @@
 				"FATHOM_SITE_ID": "WKKSDJGN",
 				// Public playlist whose latest Atom-feed videos may open in
 				// the site-wide `/?youtubeId=` overlay. Tests leave this unset.
-				// The kody org: its @kody/newsletter package keeps the consent ledger.
-				"WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS": "aa90d35a58288ab2f2335d601c7c171737ce161cc7ecb1676bd010e3b5a3c499",
+				// The kody org: its packages (newsletter consent ledger, factory
+				// cards for platform alerts) receive first-party admin events.
+				"FIRST_PARTY_ORG_IDS": "aa90d35a58288ab2f2335d601c7c171737ce161cc7ecb1676bd010e3b5a3c499",
 				"YOUTUBE_ALLOWED_PLAYLIST_IDS": "PLV5CVI1eNcJhP4nrJt85L7PxHjebFpDfY",
 				// Public (non-secret) Stripe Price ids for production
 				// subscriptions. Coupled to the live Stripe account: if a
@@ -1179,6 +1184,10 @@
 				{
 					"binding": "MCP_SEARCH_EVENTS",
 					"dataset": "kody_mcp_search_events_preview",
+				},
+				{
+					"binding": "D1_REPLICA_READ_EVENTS",
+					"dataset": "kody_d1_replica_read_events_preview",
 				},
 				{
 					"binding": "ONBOARDING_FUNNEL_EVENTS",

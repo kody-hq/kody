@@ -2,6 +2,10 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { fnv1a32 } from '@kody-internal/shared/fnv1a.ts'
 import { deferWork } from '#worker/deferred-work.ts'
 import { timeD1RoundTrips } from '#worker/d1-round-trip-timing.ts'
+import {
+	buildD1ReplicaReadDataPoint,
+	type D1ReplicaRetryReason,
+} from '#worker/d1-replica-read-events.ts'
 import { getRequestContext } from '#worker/request-context.ts'
 
 /**
@@ -51,8 +55,14 @@ export type D1ReplicaReadState = {
 	wrote?: boolean
 	session?: D1DatabaseSession
 	/** Why the request must run again on the primary: a refused write or a failed read. */
-	retry?: string
+	retry?: { reason: D1ReplicaRetryReason; detail: string }
 	responded?: boolean
+	/** Telemetry, kept across a primary retry. */
+	replicaRead?: boolean
+	retried?: D1ReplicaRetryReason
+	documentFailed?: boolean
+	events?: AnalyticsEngineDataset
+	colo?: string
 }
 
 type Rollout = { enabled: boolean; percent: number | null }
@@ -171,6 +181,14 @@ export function beginD1ReplicaReads(request: Request, env: Env) {
 			? startFromCookie(readCookie(request, d1FreshReadCookieName))
 			: null,
 		allowed: false,
+		...(selected && env.WRANGLER_IS_LOCAL_DEV !== 'true'
+			? {
+					events: env.D1_REPLICA_READ_EVENTS,
+					colo: (request as { cf?: { colo?: unknown } }).cf?.colo as
+						| string
+						| undefined,
+				}
+			: {}),
 	}
 }
 
@@ -235,6 +253,7 @@ function requestSession(real: D1Database, sqls: Array<string | undefined>) {
 	if (reads) {
 		// One session per request, whichever copy of the binding asks first.
 		state.session ??= real.withSession(state.start)
+		state.replicaRead = true
 		return state.session
 	}
 	// From the first write on, the request reads and writes the primary.
@@ -243,7 +262,7 @@ function requestSession(real: D1Database, sqls: Array<string | undefined>) {
 	if (!state.session) return undefined
 	const statement = (write ?? 'exec').trim().slice(0, 80)
 	if (!state.responded) {
-		state.retry = `wrote (${statement})`
+		state.retry = { reason: 'write', detail: `wrote (${statement})` }
 		throw new D1ReplicaReadWriteError()
 	}
 	console.warn('D1 write after a replica read was not retried:', statement)
@@ -269,7 +288,10 @@ async function readWithPrimaryRetry<Result>(
 		const state = getRequestContext()?.d1ReplicaReads
 		if (state && !state.responded) {
 			state.allowed = false
-			state.retry = `a read failed (${String(error).slice(0, 200)})`
+			state.retry = {
+				reason: 'read_failed',
+				detail: `a read failed (${String(error).slice(0, 200)})`,
+			}
 		}
 		throw error
 	}
@@ -420,9 +442,12 @@ function takePrimaryRetry(request: Request) {
 	const state = context?.d1ReplicaReads
 	if (!context || !state?.retry) return false
 	console.warn(
-		`D1 replica read retried on the primary: ${request.method} ${new URL(request.url).pathname} ${state.retry}`,
+		`D1 replica read retried on the primary: ${request.method} ${new URL(request.url).pathname} ${state.retry.detail}`,
 	)
+	state.retried = state.retry.reason
 	state.retry = undefined
+	// A document error from the discarded replica render never reached the user.
+	state.documentFailed = false
 	state.start = null
 	state.session = undefined
 	// Everything memoized so far may have come from the replica.
@@ -437,6 +462,38 @@ function takePrimaryRetry(request: Request) {
  * so the second run has no body to replay.
  */
 export async function renderWithReplicaReads(
+	request: Request,
+	render: () => Promise<Response>,
+): Promise<Response> {
+	let status = 500
+	try {
+		const response = await renderWithPrimaryRetry(request, render)
+		status = response.status
+		return response
+	} finally {
+		recordD1ReplicaRead(request, status)
+	}
+}
+
+/** One countable point per request that read a replica, see `d1-replica-read-events.ts`. */
+function recordD1ReplicaRead(request: Request, status: number) {
+	const state = getRequestContext(request)?.d1ReplicaReads
+	if (!state?.replicaRead || !state.events) return
+	try {
+		state.events.writeDataPoint(
+			buildD1ReplicaReadDataPoint({
+				retry: state.retried,
+				status,
+				documentFailed: state.documentFailed === true,
+				colo: state.colo,
+			}),
+		)
+	} catch (error) {
+		console.warn('d1-replica-read-analytics-failed', error)
+	}
+}
+
+async function renderWithPrimaryRetry(
 	request: Request,
 	render: () => Promise<Response>,
 ): Promise<Response> {

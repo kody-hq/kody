@@ -14,8 +14,9 @@ adminOnly: true
 # Admin events
 
 These topics fan out only to packages saved by users who hold the admin role at
-dispatch time. A non-admin package may declare them; it never receives the
-event. Role revocation applies on the next dispatch.
+dispatch time, plus, for the few topics that say so, packages owned by the
+trusted first-party orgs in `FIRST_PARTY_ORG_IDS`. Any other package may declare
+them; it never receives the event. Role revocation applies on the next dispatch.
 
 Handlers run unattended as the package owner and carry that owner's admin role,
 so they can call admin capabilities (for example `adminUserList` or
@@ -176,9 +177,9 @@ newsletter package reporting a choice it already recorded. It passes
 `occurred_at` so the site keeps the time the person made the choice.
 
 Besides site admins' own packages, this topic is delivered to packages owned by
-the orgs listed by id in `WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS` (the kody org
-in production). The payload carries subscriber addresses, so a package in any
-other org never receives it, whether or not it declares the topic.
+the orgs listed by id in `FIRST_PARTY_ORG_IDS` (the kody org in production). The
+payload carries subscriber addresses, so a package in any other org never
+receives it, whether or not it declares the topic.
 
 ```ts
 type WhatsNewConsentChangedEvent = {
@@ -903,6 +904,70 @@ id.
 Use this topic for notifier packages that page an operator when permission
 probing or a compromised account is likely. Do not treat this topic as
 permission to suspend an account.
+
+## `d1.replica_reads.alert` (admins)
+
+Every request that reads a D1 replica session writes one point to the
+`D1_REPLICA_READ_EVENTS` Analytics Engine dataset
+(`kody_d1_replica_read_events`): whether it ran again on the primary (after a
+write or a failed replica read), whether the final response was a 5xx, whether a
+document route failed, and the Cloudflare colo. The `d1_replica_read_alert` lane
+runs every 5 minutes over the last 15 minutes and fans `d1.replica_reads.alert`
+to packages saved by users who hold the admin role at dispatch time, and to
+packages owned by the orgs in `FIRST_PARTY_ORG_IDS` (the kody org's
+`@kody/kody-factory` files the card), when any threshold trips:
+
+| Trigger         | Threshold                                                 | Why                                                                             |
+| --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `retry_rate`    | retries over 1% of replica reads, with at least 200 reads | a retry adds a second render; over 1% the replica is costing more than it saves |
+| `retry_burst`   | 50 retries                                                | a burst pages even when total traffic hides it in the rate                      |
+| `document_500s` | 3 document route 500s on requests that read a replica     | a page that failed after a replica read is user visible; 3 skips a single flake |
+
+A sustained spike keeps one `incident_key` (`d1-replica-alert-<UTC date>-<hour>`
+of the first breach) until 30 quiet minutes pass, and re-sends at most once per
+60-minute KV cooldown. A failed dispatch does not start the cooldown.
+
+```ts
+type D1ReplicaReadAlertEvent = {
+	event: 'd1.replica_reads.alert'
+	incident_key: string
+	window_minutes: number
+	window_start: string
+	window_end: string
+	replica_reads: number
+	retries: number
+	write_retries: number
+	read_failures: number
+	retry_rate_percent: number
+	failed_responses: number
+	document_500s: number
+	colos: Array<{ colo: string; retries: number; failed_responses: number }>
+	triggers: Array<'retry_rate' | 'retry_burst' | 'document_500s'>
+	thresholds: {
+		retry_rate_percent: number
+		min_replica_reads: number
+		retry_burst: number
+		document_500s: number
+	}
+	kill_switch: string
+	card: {
+		projectId: 'kody'
+		repoRef: 'kody-hq/kody'
+		title: string
+		body: string
+		labels: Array<string>
+		priority: 1
+		idempotencyKey: string
+	}
+	observed_at: string
+}
+```
+
+`card` is ready for `@kody/kody-factory/create`: its `body` starts with
+`D1 replica alert:` and ends with the kill switch (set feature flag
+`d1-replica-reads` to `enabled:false`). `idempotencyKey` is the incident key, so
+a re-send during one incident returns the same card instead of a new one. The
+event carries counts and colos only: no paths, SQL, user, org, or package data.
 
 ## `email.delivery.burst` (admins)
 

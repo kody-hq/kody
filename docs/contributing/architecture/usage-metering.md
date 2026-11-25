@@ -1010,6 +1010,13 @@ GROUP BY username, package, disposition
   stays `alerted` until two consecutive healthy hours (rate under 5% or errors
   under 5) or 24h of inactivity. See
   [Admin events](../../guides/admin-events.md#fleetpackageownererrorspike-admins).
+- **D1 replica reads** (every 5 minutes, `d1_replica_read_alert`): counts
+  replica reads, primary retries, 5xx answers, and document route 500s from
+  `D1_REPLICA_READ_EVENTS` over the last 15 minutes. Fans
+  `d1.replica_reads.alert` (with a ready factory card) when retries exceed 1% of
+  at least 200 reads, reach 50, or 3 document routes fail; one incident key per
+  sustained spike and a 60-minute cooldown in `ops-alert:d1-replica-reads:v1`.
+  See [Admin events](../../guides/admin-events.md#d1replica_readsalert-admins).
 - **Fleet users affected** (every 15 minutes, `fleet_users_affected_alert`):
   distinct actors with ≥1 errored package-runtime event vs active actors in the
   window, compared to a trailing 7-day median of 15-minute samples. Elevates

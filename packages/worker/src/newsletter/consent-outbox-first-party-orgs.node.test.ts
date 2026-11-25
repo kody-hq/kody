@@ -54,11 +54,9 @@ vi.mock(
 	}),
 )
 
-const {
-	deliverWhatsNewConsentOutboxRow,
-	recordWhatsNewConsentChange,
-	whatsNewConsentFirstPartyOrgIds,
-} = await import('./consent-outbox.ts')
+const { deliverWhatsNewConsentOutboxRow, recordWhatsNewConsentChange } =
+	await import('./consent-outbox.ts')
+const { firstPartyOrgIds } = await import('#worker/first-party-orgs.ts')
 
 function setup(packageOwners: Array<string>) {
 	const sqlite = new DatabaseSync(':memory:')
@@ -67,7 +65,7 @@ function setup(packageOwners: Array<string>) {
 		APP_DB: createD1FromSqlite(sqlite),
 		APP_BASE_URL: 'https://kody.example.com',
 		PACKAGE_EVENTS_DISPATCH_QUEUE: { send: vi.fn(async () => {}) },
-		WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS: kodyOrgId,
+		FIRST_PARTY_ORG_IDS: kodyOrgId,
 	} as unknown as Env
 	sqlite
 		.prepare(
@@ -114,11 +112,11 @@ beforeEach(() => {
 
 test('only well-formed org ids are read from the allowlist', () => {
 	expect(
-		whatsNewConsentFirstPartyOrgIds({
-			WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS: ` ${kodyOrgId}, kody ,`,
+		firstPartyOrgIds({
+			FIRST_PARTY_ORG_IDS: ` ${kodyOrgId}, kody ,`,
 		}),
 	).toEqual([kodyOrgId])
-	expect(whatsNewConsentFirstPartyOrgIds({})).toEqual([])
+	expect(firstPartyOrgIds({})).toEqual([])
 })
 
 test('a package owned by the allowlisted kody org receives the consent change', async () => {
