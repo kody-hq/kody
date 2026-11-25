@@ -299,6 +299,8 @@ export function promoClaimMetadata(input: {
  * stale-age cleanup) still counts; a claim that already exists is kept as is.
  * A session without a claim key was started before claim scopes and is a
  * lifetime claim.
+ * Remove when: 3 days after migration 0298 deploys, once Stripe Checkout
+ * expiry and webhook retries for pre-0298 sessions have passed.
  */
 export async function recordPromoClaimFromCheckoutSession(input: {
 	db: D1Database
