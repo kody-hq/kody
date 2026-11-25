@@ -904,6 +904,69 @@ Use this topic for notifier packages that page an operator when permission
 probing or a compromised account is likely. Do not treat this topic as
 permission to suspend an account.
 
+## `d1.replica_reads.alert` (admins)
+
+Every request that reads a D1 replica session writes one point to the
+`D1_REPLICA_READ_EVENTS` Analytics Engine dataset
+(`kody_d1_replica_read_events`): whether it ran again on the primary (after a
+write or a failed replica read), whether the final response was a 5xx, whether a
+document route failed, and the Cloudflare colo. The `d1_replica_read_alert` lane
+runs every 5 minutes over the last 15 minutes and fans `d1.replica_reads.alert`
+to packages saved by users who hold the admin role at dispatch time when any
+threshold trips:
+
+| Trigger         | Threshold                                                 | Why                                                                             |
+| --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `retry_rate`    | retries over 1% of replica reads, with at least 200 reads | a retry adds a second render; over 1% the replica is costing more than it saves |
+| `retry_burst`   | 50 retries                                                | a burst pages even when total traffic hides it in the rate                      |
+| `document_500s` | 3 document route 500s on requests that read a replica     | a page that failed after a replica read is user visible; 3 skips a single flake |
+
+A sustained spike keeps one `incident_key` (`d1-replica-alert-<UTC date>-<hour>`
+of the first breach) until 30 quiet minutes pass, and re-sends at most once per
+60-minute KV cooldown. A failed dispatch does not start the cooldown.
+
+```ts
+type D1ReplicaReadAlertEvent = {
+	event: 'd1.replica_reads.alert'
+	incident_key: string
+	window_minutes: number
+	window_start: string
+	window_end: string
+	replica_reads: number
+	retries: number
+	write_retries: number
+	read_failures: number
+	retry_rate_percent: number
+	failed_responses: number
+	document_500s: number
+	colos: Array<{ colo: string; retries: number; failed_responses: number }>
+	triggers: Array<'retry_rate' | 'retry_burst' | 'document_500s'>
+	thresholds: {
+		retry_rate_percent: number
+		min_replica_reads: number
+		retry_burst: number
+		document_500s: number
+	}
+	kill_switch: string
+	card: {
+		project: 'kody'
+		repo: 'kody-hq/kody'
+		title: string
+		body: string
+		labels: Array<string>
+		priority: 1
+		idempotency_key: string
+	}
+	observed_at: string
+}
+```
+
+`card` is ready for `@kody/kody-factory/create`: its `body` starts with
+`D1 replica alert:` and ends with the kill switch (set feature flag
+`d1-replica-reads` to `enabled:false`). `idempotency_key` is the incident key,
+so a re-send during one incident updates one card. The event carries counts and
+colos only: no paths, SQL, user, org, or package data.
+
 ## `email.delivery.burst` (admins)
 
 The hourly `email_delivery_alert` lane counts platform-wide Cloudflare Email

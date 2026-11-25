@@ -154,6 +154,10 @@ script owns no Durable Object classes.
   point per MCP `search` call with wall clock, exclusive-tile remainder, and
   intent/trim signals; see
   [Usage metering](../usage-metering.md#mcp-search-duration))
+- `D1_REPLICA_READ_EVENTS` (Analytics Engine dataset, production/preview only;
+  one point per request that read a D1 replica: retry reason, 5xx, document
+  route failure, colo; the `d1_replica_read_alert` lane reads it, see
+  [Admin events](../../../guides/admin-events.md#d1replica_readsalert-admins))
 - `ONBOARDING_FUNNEL_EVENTS` (Analytics Engine dataset, production/preview only;
   one best-effort point per onboarding stage, indexed by stable user id, no
   prompts or secrets; admin insights reads unique users for 7 and 28 days. See

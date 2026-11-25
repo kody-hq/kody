@@ -1,4 +1,5 @@
 import { pruneExpiredGuestAccounts } from '#worker/guest/guest-account-purge.ts'
+import { checkD1ReplicaReadsAndAlert } from '#worker/d1-replica-read-alert.ts'
 import { runPackageAppHostMigrationReminder } from '#worker/package-codemods/host-migration-reminder.ts'
 import { reconcileSecondAgentStandardGifts } from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -389,6 +390,11 @@ export async function runScheduledLane(input: {
 			})
 		case 'fleet_users_affected_alert':
 			return refreshFleetUsersAffectedAndMaybeAlert({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+		case 'd1_replica_read_alert':
+			return checkD1ReplicaReadsAndAlert({
 				env: input.env,
 				now: input.scheduledAt,
 			})

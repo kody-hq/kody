@@ -310,6 +310,7 @@ export const EnvSchema = object({
 	MCP_PROTOCOL_EVENTS: optionalAnalyticsEngineDatasetSchema,
 	EXECUTE_INTERPRETABLE_EVENTS: optionalAnalyticsEngineDatasetSchema,
 	MCP_SEARCH_EVENTS: optionalAnalyticsEngineDatasetSchema,
+	D1_REPLICA_READ_EVENTS: optionalAnalyticsEngineDatasetSchema,
 	ONBOARDING_FUNNEL_EVENTS: optionalAnalyticsEngineDatasetSchema,
 	PACKAGE_APP_LEGACY_EVENTS: optionalAnalyticsEngineDatasetSchema,
 	JWT_SIGN_ANY_HOST_EVENTS: optionalAnalyticsEngineDatasetSchema,

@@ -34,6 +34,7 @@ export const scheduledLaneNames = [
 	'dr_d1_paced_restore_drill',
 	'job_schedule_watchdog',
 	'fleet_users_affected_alert',
+	'd1_replica_read_alert',
 	'org_audit_outbox',
 	'package_app_custom_hostnames_reconcile',
 	'follow_maintenance',
@@ -306,6 +307,11 @@ export function shouldRunFleetUsersAffectedAlertCron(now: Date) {
 	return now.getUTCMinutes() % jobScheduleWatchdogIntervalMinutes === 0
 }
 
+/** Every 5 minutes over a 15-minute window, see `d1-replica-read-alert.ts`. */
+export function shouldRunD1ReplicaReadAlertCron(now: Date) {
+	return now.getUTCMinutes() % 5 === 0
+}
+
 /**
  * One-time reminder for the package app host migration: the lane only runs
  * from 2026-12-03 00:00 UTC (fresh fleet scan, then the mail) for one week.
@@ -399,6 +405,9 @@ export function getScheduledLaneCadence(
 	}
 	if (shouldRunFleetUsersAffectedAlertCron(scheduledAt)) {
 		lanes.push('fleet_users_affected_alert')
+	}
+	if (shouldRunD1ReplicaReadAlertCron(scheduledAt)) {
+		lanes.push('d1_replica_read_alert')
 	}
 	return lanes
 }

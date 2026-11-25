@@ -492,3 +492,43 @@ test.each(['first', 'batch', 'caught'] as const)(
 		})
 	},
 )
+
+test('each request that read a replica writes one countable point', async () => {
+	const { env } = await setup(on)
+	const writeDataPoint = vi.fn()
+	env.D1_REPLICA_READ_EVENTS = { writeDataPoint } as AnalyticsEngineDataset
+	consoleWarn.mockImplementation(() => {})
+	const render = async (url: string, work: () => Promise<Response>) => {
+		const request = new Request(url)
+		Object.defineProperty(request, 'cf', { value: { colo: 'DFW' } })
+		return runWithRequestContext(request, async () => {
+			beginD1ReplicaReads(request, env)
+			allowReplicaReads(request)
+			return renderWithReplicaReads(request, work)
+		})
+	}
+
+	await render('https://kody.codes/@jane', async () => {
+		await env.APP_DB.prepare('SELECT role').first()
+		return new Response('ok')
+	})
+	let wrote = false
+	await render('https://kody.codes/verify-email?token=t', async () => {
+		await env.APP_DB.prepare('SELECT role').first()
+		if (!wrote) {
+			wrote = true
+			await env.APP_DB.prepare('UPDATE revoke').run()
+		}
+		return new Response('failed', { status: 503 })
+	})
+	// Writes before reading: never read a replica, so it is not counted.
+	await render('https://kody.codes/@jane', async () => {
+		await env.APP_DB.prepare('UPDATE revoke').run()
+		return new Response('ok')
+	})
+
+	expect(writeDataPoint.mock.calls).toEqual([
+		[{ blobs: ['none', 'ok', 'ok', 'DFW'], doubles: [1] }],
+		[{ blobs: ['write', '5xx', 'ok', 'DFW'], doubles: [1] }],
+	])
+})
