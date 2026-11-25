@@ -150,11 +150,11 @@ test('the event carries numbers, the card, and the kill switch only', () => {
 		kill_switch:
 			'Set feature flag d1-replica-reads to enabled:false (Cole flips flags).',
 		card: {
-			project: 'kody',
-			repo: 'kody-hq/kody',
+			projectId: 'kody',
+			repoRef: 'kody-hq/kody',
 			labels: ['area:platform', 'observability', 'agent-ready', 'P1'],
 			priority: 1,
-			idempotency_key: 'd1-replica-alert-2026-11-25-00',
+			idempotencyKey: 'd1-replica-alert-2026-11-25-00',
 		},
 	})
 	expect(event.card.body).toMatch(/^D1 replica alert: 20 of 1000 replica reads/)

@@ -949,13 +949,13 @@ type D1ReplicaReadAlertEvent = {
 	}
 	kill_switch: string
 	card: {
-		project: 'kody'
-		repo: 'kody-hq/kody'
+		projectId: 'kody'
+		repoRef: 'kody-hq/kody'
 		title: string
 		body: string
 		labels: Array<string>
 		priority: 1
-		idempotency_key: string
+		idempotencyKey: string
 	}
 	observed_at: string
 }
@@ -963,9 +963,9 @@ type D1ReplicaReadAlertEvent = {
 
 `card` is ready for `@kody/kody-factory/create`: its `body` starts with
 `D1 replica alert:` and ends with the kill switch (set feature flag
-`d1-replica-reads` to `enabled:false`). `idempotency_key` is the incident key,
-so a re-send during one incident updates one card. The event carries counts and
-colos only: no paths, SQL, user, org, or package data.
+`d1-replica-reads` to `enabled:false`). `idempotencyKey` is the incident key, so
+a re-send during one incident returns the same card instead of a new one. The
+event carries counts and colos only: no paths, SQL, user, org, or package data.
 
 ## `email.delivery.burst` (admins)
 

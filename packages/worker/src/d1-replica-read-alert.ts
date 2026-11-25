@@ -133,13 +133,13 @@ export type D1ReplicaReadAlertEvent = {
 	}
 	kill_switch: string
 	card: {
-		project: 'kody'
-		repo: 'kody-hq/kody'
+		projectId: 'kody'
+		repoRef: 'kody-hq/kody'
 		title: string
 		body: string
 		labels: Array<string>
 		priority: 1
-		idempotency_key: string
+		idempotencyKey: string
 	}
 	observed_at: string
 }
@@ -197,13 +197,13 @@ export function buildD1ReplicaReadAlertEvent(input: {
 		},
 		kill_switch: d1ReplicaReadAlertKillSwitch,
 		card: {
-			project: 'kody',
-			repo: 'kody-hq/kody',
+			projectId: 'kody',
+			repoRef: 'kody-hq/kody',
 			title: `D1 replica alert: ${input.retryRatePercent}% of replica reads retried (${counts.retries}/${counts.replicaReads})`,
 			body,
 			labels: ['area:platform', 'observability', 'agent-ready', 'P1'],
 			priority: 1,
-			idempotency_key: input.incidentKey,
+			idempotencyKey: input.incidentKey,
 		},
 		observed_at: input.windowEnd.toISOString(),
 	}
