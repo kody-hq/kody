@@ -19,7 +19,7 @@ import {
 	approvalItemKey,
 	groupApprovalItems,
 	parseApprovalItemKey,
-	type ApprovalBundleLoaderData,
+	type ApprovalLinkView,
 	type ApprovalItemRef,
 	type ApprovalItemType,
 	type ApprovalItemView,
@@ -267,20 +267,25 @@ export function approvalBundleExpiresAt(bundle: ApprovalBundleRecord) {
 }
 
 /** The bundle as the viewer sees it now; only the person it was made for can open it. */
+/**
+ * Open an approval link id for the viewer. Agents share both bundle ids and
+ * credential proposal ids under `/-/approvals/`, so an id that is no bundle
+ * may still be a live proposal the viewer can decide.
+ */
 export async function loadApprovalBundleView(input: {
 	viewer: ApprovalViewer
 	bundleId: string
 	now?: Date
-}): Promise<ApprovalBundleLoaderData> {
+}): Promise<ApprovalLinkView> {
 	const { viewer } = input
 	const personId = viewer.request.actor?.userId
-	if (!personId) return { ok: false, reason: 'not-found' }
+	if (!personId) return { ok: false, reason: 'unavailable' }
 	const bundle = await getApprovalBundleForPerson(viewer.env.APP_DB, {
 		id: input.bundleId,
 		orgId: viewer.request.org.id,
 		personUserId: personId,
 	})
-	if (!bundle) return { ok: false, reason: 'not-found' }
+	if (!bundle) return await loadProposalLink(viewer, input.bundleId)
 	const expiresAt = approvalBundleExpiresAt(bundle)
 	if (expiresAt.getTime() <= (input.now ?? new Date()).getTime()) {
 		return { ok: false, reason: 'expired' }
@@ -305,4 +310,17 @@ export async function loadApprovalBundleView(input: {
 			groups: groupApprovalItems(items),
 		},
 	}
+}
+
+async function loadProposalLink(
+	viewer: ApprovalViewer,
+	proposalId: string,
+): Promise<ApprovalLinkView> {
+	const item = await loadApprovalItemView(viewer, {
+		type: 'credential-picks',
+		proposalId,
+	})
+	return item.status === 'pending' && item.reviewHref
+		? { ok: false, reason: 'proposal', href: item.reviewHref }
+		: { ok: false, reason: 'unavailable' }
 }

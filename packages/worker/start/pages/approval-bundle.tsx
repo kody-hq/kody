@@ -22,7 +22,6 @@ import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { permissionsMutationOptions } from '../permissions-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { NotFoundPage } from '../components/not-found-page.tsx'
 import {
 	approvalItemsAwaitingDecision,
 	approvalItemsReadyToApprove,
@@ -601,7 +600,22 @@ export function ApprovalBundleRoute({
 	}
 
 	if (!payload.ok) {
-		if (payload.reason === 'not-found') return <NotFoundPage />
+		if (payload.reason === 'unavailable') {
+			return (
+				<section css={stackedPageCss} data-testid="approval-bundle">
+					<header css={pageHeaderCss}>
+						<span css={pageEyebrowCss}>Review approvals</span>
+						<h1 css={pageTitleCss}>Nothing here for you to approve</h1>
+						<p css={pageDescriptionCss}>
+							This approval link is not waiting on you in @{orgSlug}. It may be
+							meant for someone else, already approved or denied, or withdrawn
+							by the agent. Ask your agent for a new link to review whatever
+							still waits.
+						</p>
+					</header>
+				</section>
+			)
+		}
 
 		return (
 			<section css={stackedPageCss} data-testid="approval-bundle">

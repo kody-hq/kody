@@ -12,7 +12,13 @@ import {
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { normalizeUsername } from '#worker/identity/username.ts'
+import {
+	checkPermission,
+	computeEffectivePermissions,
+	packageResource,
+} from '#worker/authorization/authorize.ts'
+import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { operationResult } from '../operation-result.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import {
@@ -36,6 +42,12 @@ type AuthenticatedUser = WebhooksUser &
 		'email' | 'request'
 	>
 
+/**
+ * The package's webhooks as the signed-in person sees them, bound to the
+ * `:username` org. Not found when they cannot read the package there;
+ * forbidden when they can read it but lack Owner or Manage access, since the
+ * URLs are credentials.
+ */
 async function authorizePackageWebhooks(
 	request: Request,
 	params: { username: string; kodyId: string },
@@ -45,21 +57,44 @@ async function authorizePackageWebhooks(
 	if (!user) {
 		return { status: 401 as const, error: 'Unauthorized.' }
 	}
-	if (normalizeUsername(params.username) !== normalizeUsername(user.username)) {
-		return { status: 404 as const, error: 'Package not found.' }
-	}
+	const notFound = { status: 404 as const, error: 'Package not found.' }
+	const binding = await loadOrgBindingForSlug(
+		env.APP_DB,
+		user.mcpUser.userId,
+		params.username,
+	)
+	if (!binding) return notFound
 	const savedPackage = await resolveSavedPackage({
 		db: env.APP_DB,
-		userId: ownerIdFromCaller({
-			request: user.request,
-			user: user.mcpUser,
-		}),
+		userId: binding.org.id,
 		packageIdOrKodyId: params.kodyId.trim(),
 	})
-	if (!savedPackage) {
-		return { status: 404 as const, error: 'Package not found.' }
+	if (!savedPackage) return notFound
+	const boundRequest = deriveRequestContext({
+		user: user.mcpUser,
+		source: { kind: 'session' },
+		orgBinding: binding,
+	})
+	const access = await computeEffectivePermissions({
+		env,
+		request: boundRequest,
+	})
+	const resource = packageResource(savedPackage)
+	if (!checkPermission(access, 'package:read', resource).allowed) {
+		return notFound
 	}
-	return { status: 200 as const, user, packageKodyId: savedPackage.kodyId }
+	if (!checkPermission(access, 'package:manage_access', resource).allowed) {
+		return {
+			status: 403 as const,
+			error:
+				'Only org Owners and people with Manage access on this package can see its webhooks.',
+		}
+	}
+	return {
+		status: 200 as const,
+		user: { ...user, request: boundRequest },
+		packageKodyId: savedPackage.kodyId,
+	}
 }
 
 export async function readPackageWebhooksData(

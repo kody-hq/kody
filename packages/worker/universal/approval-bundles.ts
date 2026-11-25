@@ -175,9 +175,21 @@ export type ApprovalBundleView = {
 	groups: Array<ApprovalBundlePackageGroup>
 }
 
+/**
+ * `unavailable`: the id is no bundle or live proposal this viewer can act on
+ * in the org (someone else's, already decided, or never existed).
+ */
 export type ApprovalBundleLoaderData =
 	| { ok: true; view: ApprovalBundleView }
-	| { ok: false; reason: 'not-found' | 'expired' }
+	| { ok: false; reason: 'unavailable' | 'expired' }
+
+/**
+ * What an approval link id opens: a bundle, or a live credential proposal the
+ * viewer may decide, reviewed on its package's approve-credentials page.
+ */
+export type ApprovalLinkView =
+	| ApprovalBundleLoaderData
+	| { ok: false; reason: 'proposal'; href: string }
 
 export type ApprovalBundleDecisionRequest = {
 	action: 'approve' | 'deny'

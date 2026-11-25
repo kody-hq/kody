@@ -38,10 +38,10 @@ export const loadApprovalBundle = createServerFn({ method: 'GET' })
 					viewer,
 					bundleId: data.bundleId,
 				})
+				if ('href' in result) throw redirect({ href: result.href })
 				setResponseHeader('X-Robots-Tag', 'noindex, nofollow')
 				if (!result.ok) {
-					if (result.reason === 'not-found') throw notFound()
-					setResponseStatus(410)
+					setResponseStatus(result.reason === 'expired' ? 410 : 404)
 				}
 				return result
 			})
