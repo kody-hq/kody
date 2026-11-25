@@ -1,6 +1,6 @@
 ---
 title: I gave Effect a real trial
-date: 2026-11-25
+date: 2026-11-24
 description:
   I went into this wanting to use Effect. After seven rounds of testing, we're
   staying on plain async/await with a few guardrails. Here's how we tested it
@@ -57,9 +57,9 @@ bet had nothing to do with this. And honestly, if my agents had picked Effect,
 I'd have happily called it a win for Sebastian, even though technically I still
 wouldn't be the one writing it. 😄
 
-What's different now is that I'm not the one writing the code. If my
-agents can write Effect well, then "it feels like a different language to me"
-just isn't a very good reason to skip it.
+What's different now is that I'm not the one writing the code. If my agents can
+write Effect well, then "it feels like a different language to me" just isn't a
+very good reason to skip it.
 
 I think of libraries and frameworks as tools for my agents now. I want the ones
 they do their best work with. That's the same reason we
@@ -216,7 +216,6 @@ Every spec item had a test, every new failure was typed and mapped, and every
 new scanner call used the arm's deadline helper. The judge called this "the most
 encouraging result for either." On Durable Objects and queues, both arms took
 the hidden follow-up in about 180 lines, and neither left new bugs.
-"
 
 **Runtime cost: Effect 5.04, Promises 9.97.** Startup time was within noise for
 both. The bundle wasn't: Effect added about 168 KB gzip to each Worker that
@@ -251,8 +250,8 @@ input with a schema:
 - An uploaded JSON module that wasn't valid JSON threw instead of rejecting the
   build, leaving it sealed.
 
-The judge verified both against main. That's exactly the pit of success I
-want: the schema forced the code to handle bad input.
+The judge verified both against main. That's exactly the pit of success I want:
+the schema forced the code to handle bad input.
 
 But the Promise builder found those same bugs (and three more) by plain reading,
 so they don't count as machinery there. And schema decoding at trust boundaries
@@ -260,11 +259,10 @@ isn't Effect-specific. zod is already in the repo. So we're keeping that lesson.
 We're just keeping it with zod.
 
 **Effect's static checks did a lot better than last time, which surprised me.**
-In round 6, Effect's static checks caught 0 of 9 seeds. Here they
-caught 4 of 9 specifically. The judge's explanation is that request handlers
-"have the shapes those checks understand (an Effect value, an error channel, a
-Promise API)." But the very next sentence was: "The Promise lint caught exactly
-the same shapes."
+In round 6, Effect's static checks caught 0 of 9 seeds. Here they caught 4 of 9
+specifically. The judge's explanation is that request handlers "have the shapes
+those checks understand (an Effect value, an error channel, a Promise API)." But
+the very next sentence was: "The Promise lint caught exactly the same shapes."
 
 And to be clear, the Effect code was good. If you know Effect, it reads fine.
 You just have to know Effect.
@@ -331,14 +329,14 @@ decoding finding bugs on main, and that's portable. On planted bugs, both caught
 the same four, and both missed the same important ones.
 
 So yes, I still think catching bugs counts for a great deal. I just didn't
-expect most of the catching to come from patterns (exhaustive failure
-mapping, required deadlines, no floating promises, schema decoding at the edge)
-that we can have without switching runtimes.
+expect most of the catching to come from patterns (exhaustive failure mapping,
+required deadlines, no floating promises, schema decoding at the edge) that we
+can have without switching runtimes.
 
 ## The decision
 
-- **We're staying on Promises with required helpers and lint rules.** The
-  rules are on by default in the directories they're enabled for, not opt-in.
+- **We're staying on Promises with required helpers and lint rules.** The rules
+  are on by default in the directories they're enabled for, not opt-in.
 - **zod decoding at every edge where input arrives.** That's the big thing
   Effect taught us.
 
@@ -363,8 +361,8 @@ startup CPU or check time.
 
 We're turning those helpers and lint rules on for Durable Objects and queues
 too, and extending the outbound-deadline rule so it covers queue sends. That's
-the planted bug Effect caught that lint missed. The worker's webhooks code
-still has 73 lint findings to work through.
+the planted bug Effect caught that lint missed. The worker's webhooks code still
+has 73 lint findings to work through.
 
 ## Conclusion
 
@@ -375,9 +373,9 @@ Here's where it landed for Kody.
 
 - It won the bug-prevention column (5.17 to 3.33), mostly because schema
   decoding at the edge caught two real bugs on `main` automatically.
-- Typed errors, service boundaries, and trace spans come built in once a path
-  is in Effect, without relying on lint rules that only apply in the
-  directories we enable them in.
+- Typed errors, service boundaries, and trace spans come built in once a path is
+  in Effect, without relying on lint rules that only apply in the directories we
+  enable them in.
 - Startup latency was a wash; the earlier 30 ms concern didn't reproduce.
 - The code itself is clean once you know the library. On Durable Objects and
   queues, Effect also caught one planted bug the lint rule missed, and its
@@ -403,10 +401,10 @@ Here's where it landed for Kody.
   weeks), and backing out means rewriting files instead of removing a lint
   entry.
 
-So for Kody, we're keeping the best lesson from Effect (schema decoding at
-every untrusted edge, using zod) on top of plain async/await, a few required
-helpers, and custom lint rules. On our priorities, that gave us the same core
-safety for a lot less cost.
+So for Kody, we're keeping the best lesson from Effect (schema decoding at every
+untrusted edge, using zod) on top of plain async/await, a few required helpers,
+and custom lint rules. On our priorities, that gave us the same core safety for
+a lot less cost.
 
 Thanks again to everyone who gave feedback on the early PRs. This trial got a
 lot better because of you.

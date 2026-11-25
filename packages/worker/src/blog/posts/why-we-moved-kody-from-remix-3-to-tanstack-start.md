@@ -327,3 +327,7 @@ of months and turned it into a careful, reversible change to a live product.
 What I notice most now isn't any number in that table. It's that I don't think
 about the router anymore. Back works. Scroll works. Titles update. Data is right
 after you change it. Thanks, Tanner.
+
+Next up in Technical:
+[I gave Effect a real trial](/blog/i-gave-effect-a-real-trial), where my agents
+tested Effect against plain Promises.
