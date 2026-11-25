@@ -34,7 +34,7 @@ async function localD1Check(persistRoot: string) {
 test('doctor fails local-d1 when the persisted D1 has no users table', async () => {
 	const check = await localD1Check(persistWithD1(['d1_migrations']))
 	expect(check?.ok).toBe(false)
-	expect(check?.detail).toContain('no users table')
+	expect(check?.detail).toContain('no readable users table')
 })
 
 test('doctor passes local-d1 when a persisted D1 has the users table', async () => {
