@@ -41,4 +41,8 @@ test('inline identity reads return_to as a same-origin URL', () => {
 		`https://preview.example${packageAppOauthPaths.login}?return_to=${encodeURIComponent('/\\other.example/@acme/packages/demo')}`,
 	)
 	expect(resolvePackageAppOauthInlineIdentity(crossOrigin)).toBeNull()
+	const malformed = new URL(
+		`https://preview.example${packageAppOauthPaths.login}?return_to=${encodeURIComponent('/\\[')}`,
+	)
+	expect(resolvePackageAppOauthInlineIdentity(malformed)).toBeNull()
 })

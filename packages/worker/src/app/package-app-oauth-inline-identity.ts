@@ -29,8 +29,8 @@ export function resolvePackageAppOauthInlineIdentity(url: URL): {
 	}
 	const returnTo = url.searchParams.get('return_to')
 	if (!returnTo?.startsWith('/') || returnTo.startsWith('//')) return null
-	const target = new URL(returnTo, url.origin)
-	if (target.origin !== url.origin) return null
+	const target = URL.parse(returnTo, url.origin)
+	if (target?.origin !== url.origin) return null
 	const parsed = parsePackageAppPath(target.pathname)
 	if (!parsed) return null
 	return {
