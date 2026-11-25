@@ -204,7 +204,7 @@ beforeEach(() => {
 test('the lane fans one event per breach, then holds during the cooldown', async () => {
 	vi.stubGlobal('fetch', analytics({ replica_reads: 900, retries: 18 }))
 	const store = kv()
-	dispatch.mockResolvedValue([])
+	dispatch.mockResolvedValue([new Response(null, { status: 200 })])
 
 	expect(
 		await checkD1ReplicaReadsAndAlert({ env: env(store), now }),
@@ -242,6 +242,19 @@ test('a failed dispatch does not start the cooldown', async () => {
 		status: 'skipped',
 		reason: 'notify_failed',
 	})
+	expect(store.put).not.toHaveBeenCalled()
+	vi.unstubAllGlobals()
+})
+
+test('a handler error or no subscriber does not start the cooldown', async () => {
+	vi.stubGlobal('fetch', analytics({ replica_reads: 100, retries: 50 }))
+	const store = kv()
+	for (const responses of [[new Response(null, { status: 500 }), null], []]) {
+		dispatch.mockResolvedValueOnce(responses)
+		expect(await checkD1ReplicaReadsAndAlert({ env: env(store), now })).toEqual(
+			{ status: 'skipped', reason: 'notify_failed' },
+		)
+	}
 	expect(store.put).not.toHaveBeenCalled()
 	vi.unstubAllGlobals()
 })

@@ -240,6 +240,9 @@ function parseState(raw: string | null): D1ReplicaReadAlertState | null {
 			? (value as D1ReplicaReadAlertState)
 			: null
 	} catch {
+		console.warn(
+			'd1-replica-read-alert-state-unreadable: incident key and cooldown start over',
+		)
 		return null
 	}
 }
@@ -317,7 +320,10 @@ export async function checkD1ReplicaReadsAndAlert(input: {
 			}),
 		)
 	} catch (error) {
-		console.warn('d1-replica-read-alert-colo-query-failed', error)
+		console.warn(
+			'd1-replica-read-alert-colo-query-failed: the card omits the colo breakdown',
+			error,
+		)
 	}
 	const event = buildD1ReplicaReadAlertEvent({
 		counts,
@@ -328,8 +334,9 @@ export async function checkD1ReplicaReadsAndAlert(input: {
 		windowStart,
 		windowEnd,
 	})
+	let delivered = false
 	try {
-		await dispatchAdminPackageSubscriptionEvent({
+		const responses = await dispatchAdminPackageSubscriptionEvent({
 			env: input.env,
 			baseUrl: getAppBaseUrl({ env: input.env }),
 			topic: d1ReplicaReadAlertTopic,
@@ -339,8 +346,17 @@ export async function checkD1ReplicaReadsAndAlert(input: {
 				`d1-replica-alert:${event.incident_key}:${event.observed_at}:${savedPackage.id}`,
 			actorTokenId: 'internal:d1-replica-read-alert-subscriptions',
 		})
+		delivered = responses.some(
+			(response) => response && response.status >= 200 && response.status < 400,
+		)
 	} catch (error) {
 		console.warn('d1-replica-read-alert-notification-failed', error)
+		return { status: 'skipped', reason: 'notify_failed' }
+	}
+	if (!delivered) {
+		console.warn(
+			'd1-replica-read-alert-notification-failed: no subscribed handler accepted the event, cooldown not started',
+		)
 		return { status: 'skipped', reason: 'notify_failed' }
 	}
 	await saveState()
