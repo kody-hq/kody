@@ -9,27 +9,12 @@ import {
 import { getRequestContext } from '#worker/request-context.ts'
 
 /**
- * Lets a browser page load read `APP_DB` from the nearest D1 read replica.
+ * Feature flag that lets browser GET/HEAD page loads and GET server functions
+ * read `APP_DB` from the nearest D1 read replica.
  *
- * A request reads from a replica only when it is a GET or HEAD, the
- * `d1-replica-reads` flag selected it, and {@link allowReplicaReads} opted it
- * in. Every other request, including every mutation, reads the primary
- * exactly as before. No call site changes: the binding is replaced by a
- * router that sends each call to the request's D1 session or to the primary.
- *
- * Read-your-writes: while the flag is on, a non-GET response sets the
- * `kody_d1` cookie to the primary's D1 bookmark, taken after the request's
- * writes, and so does a GET that wrote. A replica read carrying it starts its session at that bookmark, so
- * it reads a replica only once that replica has the browser's writes. When
- * no bookmark could be taken the cookie says so, and reads start on the
- * primary. Reads never set the cookie, so a slow read cannot replace the
- * mark a newer write left.
- *
- * A GET that writes (a token link, a consent page) must not decide that
- * write from a replica. The first write of a replica request is refused and
- * {@link renderWithReplicaReads} runs the request again on the primary, so
- * no write follows a replica read. Once the response has been returned a
- * retry is impossible: such a write runs on the primary and is logged.
+ * See `docs/contributing/app-performance.md` ("Replica reads") for opt-in
+ * rules, `kody_d1` read-your-writes bookmarks, and primary retries, and
+ * `d1-replica-read-events.ts` for Analytics Engine telemetry.
  */
 export const d1ReplicaReadsFlagKey = 'd1-replica-reads'
 export const d1FreshReadCookieName = 'kody_d1'
@@ -457,9 +442,10 @@ function takePrimaryRetry(request: Request) {
 }
 
 /**
- * Render a request, and render it again on the primary when it tried to
- * write after reading a replica. Only GET and HEAD requests read replicas,
- * so the second run has no body to replay.
+ * Render a request, rerunning it on the primary if it tried to write after
+ * reading a replica or if a replica read failed, then record replica-read
+ * telemetry. Only GET and HEAD requests read replicas, so a rerun has no body
+ * to replay.
  */
 export async function renderWithReplicaReads(
 	request: Request,

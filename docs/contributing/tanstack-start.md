@@ -37,16 +37,16 @@ protects cached data without forcing cold reads to wait for a separate round
 trip. That same verification request checks access to the destination
 organization, so an authorized warm navigation can reuse its cached payload
 without a second permission request. Permission-sensitive queries use
-`freshAuthorization` to require a foreground server check. A read sent to the
-server within the last five seconds (`freshAuthorizationWindowMs`) counts as
-that check, so the read a hover started is the read the click uses. An older
-read is canceled and repeated, and an intent preload repeats it as well, so
-hovering a link to a page visited earlier still leaves the click nothing to wait
-for. A permission revoked inside that window can therefore still show the page
-once. This is a deliberate security cost, so a warm private navigation is not a
-promise of zero server requests. Server functions independently enforce access.
-Presentation-only Credentials, Jobs, and Values filters reuse the committed page
-authorization. Known static public pages skip that verification request.
+`freshAuthorization` to require a foreground server check. A read sent within
+the last five seconds (`freshAuthorizationWindowMs`) counts as that check so a
+hover preload satisfies the click; see
+[`page-query.ts`](../../packages/worker/start/page-query.ts) for preload and
+cancellation behavior. A permission revoked inside that window can therefore
+still show the page once. This is a deliberate security cost, so a warm private
+navigation is not a promise of zero server requests. Server functions
+independently enforce access. Presentation-only Credentials, Jobs, and Values
+filters reuse the committed page authorization. Known static public pages skip
+that verification request.
 
 The app disables Query's default focus and reconnect refetches. Its
 [`activation handler`](../../packages/worker/start/refresh-on-activation.ts)

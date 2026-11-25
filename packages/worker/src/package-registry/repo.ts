@@ -823,7 +823,6 @@ export async function listSavedPackageCommunityProvenanceByIds(
 
 export type SavedPackageSearchSort = 'updated' | 'created' | 'name'
 
-/** Escape LIKE wildcards so user queries match literally. */
 function savedPackageSearchOrderBy(sort: SavedPackageSearchSort) {
 	switch (sort) {
 		case 'updated':

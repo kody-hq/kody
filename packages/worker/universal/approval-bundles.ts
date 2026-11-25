@@ -2,9 +2,11 @@
  * Approval bundles (`/@:orgSlug/-/approvals/:bundleId`): one page an agent
  * prefills with pending approvals across packages. The person reviews each
  * item and approves all of them at once, or approves or denies each one.
- * Agents only create bundles (`approvalBundleCreate`); nothing here approves.
- * Shapes are shared by the page, its JSON API, and the MCP capabilities.
- * Nothing here carries a credential value.
+ * A live credential proposal id at the same path redirects to its package's
+ * approve-credentials page. Agents only create bundles
+ * (`approvalBundleCreate`); nothing here approves. Shapes are shared by the
+ * page, its Start server functions, and the MCP capabilities. Nothing here
+ * carries a credential value.
  */
 
 export const approvalItemTypes = [
@@ -201,7 +203,7 @@ export type ApprovalBundleDecisionResponse =
 	| { ok: true; item: ApprovalItemView }
 	| { ok: false; error: string; item: ApprovalItemView | null }
 
-/** Approve all runs at most this many packages at once. */
+/** Approve all runs at most this many independent package groups at once. */
 export const approvalBundleApproveConcurrency = 4
 
 /** What one Approve all request reports as each item starts and finishes. */
