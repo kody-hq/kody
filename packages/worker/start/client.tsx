@@ -5,10 +5,10 @@ import { hydrateStart } from '@tanstack/react-start/client'
 import { RouterProvider, type AnyRouter } from '@tanstack/react-router'
 import { documentHydrationDiagnostics } from './document-hydration-diagnostics.ts'
 import { documentMetaDiagnostics } from './document-meta-diagnostics.ts'
+import { armNavigationLoads } from '#client/navigation-load.ts'
 import {
 	clearStaleRouteChunkReloadFlag,
 	onVitePreloadError,
-	setStaleRouteChunkReloadArmed,
 } from '#client/reload-on-stale-route-chunk.ts'
 import { clearDeploySkewReloadFlag } from '#client/reload-on-deploy-skew.ts'
 import {
@@ -103,14 +103,7 @@ hydrateStart()
 		clearReloadFlagsAfterSuccessfulHydration(router)
 		startBrowserLocationEffects(router)
 		syncSidebarViewportWithRouter(router)
-		// Arm only while a route load is in flight. Chunk import rejection and
-		// the route error boundary both run before `onResolved`.
-		router.subscribe('onBeforeLoad', () => {
-			setStaleRouteChunkReloadArmed(true)
-		})
-		router.subscribe('onResolved', () => {
-			setStaleRouteChunkReloadArmed(false)
-		})
+		armNavigationLoads(router)
 		const reportDocumentError = (
 			error: unknown,
 			context?: ClientErrorContext,

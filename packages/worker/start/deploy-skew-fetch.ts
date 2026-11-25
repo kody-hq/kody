@@ -1,6 +1,6 @@
 /**
- * Start `serverFns.fetch` wrapper that recovers from deploy version skew
- * before a stale client can deserialize a newer loader/server-fn payload.
+ * Start `serverFns.fetch` wrapper that keeps a newer deploy's server-fn
+ * payloads away from an older client's components (KODY-DP).
  */
 
 import {
@@ -12,25 +12,14 @@ import {
 	deploySkewBuildHeader,
 	isDeploySkewMismatch,
 } from '#universal/deploy-skew.ts'
-import { getRouterInstance } from '@tanstack/react-start'
-
-async function navigationHref(): Promise<string> {
-	try {
-		const router: { latestLocation: { href: string } } =
-			await getRouterInstance()
-		return router.latestLocation.href
-	} catch {
-		if (typeof window === 'undefined') return '/'
-		return `${window.location.pathname}${window.location.search}${window.location.hash}`
-	}
-}
 
 /**
- * Client `serverFns.fetch` wrapper: compare `X-Kody-Build` to the boot meta,
- * hard-navigate on mismatch, then always throw a named recovery error so the
- * newer payload never reaches route components (including sibling in-flight
- * fetches after the one-shot navigate flag is set). No-ops when either build
- * id is missing (local/dev) or they match.
+ * Compare `X-Kody-Build` to the boot build. On mismatch during a navigation,
+ * reload the destination. Otherwise (tab return refresh, polling, in-place
+ * reads) throw a named recovery error so the page keeps its current data and
+ * input. Writes already ran on the server, so their responses pass through
+ * instead of reporting a failure that invites a duplicate retry. No-ops when
+ * either build id is missing (local/dev) or they match.
  */
 export async function fetchWithDeploySkewCheck(
 	input: RequestInfo | URL,
@@ -41,7 +30,7 @@ export async function fetchWithDeploySkewCheck(
 	if (!serverBuild || !isDeploySkewMismatch(readClientBuildId(), serverBuild)) {
 		return response
 	}
-	const href = await navigationHref()
-	reloadOnDeploySkew({ serverBuild, href })
+	if (reloadOnDeploySkew(serverBuild)) throw createDeploySkewRecoveryError()
+	if ((init?.method ?? 'GET').toUpperCase() !== 'GET') return response
 	throw createDeploySkewRecoveryError()
 }

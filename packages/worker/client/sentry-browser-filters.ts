@@ -1339,8 +1339,8 @@ function filterThirdPartyProxyBlockPageSentryEvent<
 }
 
 /**
- * Expected abort after deploy-skew hard navigation (KODY-DP). The client throws
- * this only after `location.assign` so stale loader JSON never reaches routes.
+ * Expected deploy-skew recovery (KODY-DP): the client throws this so a newer
+ * build's server-fn payload never reaches older route components.
  */
 function filterDeploySkewRecoverySentryEvent<T extends SentryErrorEventLike>(
 	event: T,

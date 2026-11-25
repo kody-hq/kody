@@ -60,7 +60,7 @@ export const startInstance = createStart(() => ({
 	functionMiddleware: [documentIdentity],
 	serializationAdapters: [permissionDeniedSerializationAdapter],
 	// Client-only: compare X-Kody-Build on server-fn responses to the boot
-	// meta and hard-navigate on deploy skew (KODY-DP). SSR calls handlers
-	// directly and never uses this fetch.
+	// build on deploy skew (KODY-DP). SSR calls handlers directly and never
+	// uses this fetch.
 	serverFns: { fetch: fetchWithDeploySkewCheck },
 }))

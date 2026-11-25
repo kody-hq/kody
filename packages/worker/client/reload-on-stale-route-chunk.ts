@@ -16,6 +16,7 @@
  * is pending — real undefined-property TypeErrors stay reportable.
  */
 
+import { isNavigationLoadArmed } from '#client/navigation-load.ts'
 import { isSyntaxHighlightCoreDynamicImportFailureError } from '#client/sentry-browser-filters.ts'
 import {
 	getSessionStorageItem,
@@ -25,36 +26,11 @@ import {
 export const staleRouteChunkReloadFlag = 'kody:stale-route-chunk-reload'
 
 /**
- * Longest a single route load may keep the reload armed. `onResolved` only
- * fires for the transaction that wins, so a superseded or abandoned load
- * must not leave the reload armed for later idle imports.
- */
-export const staleRouteChunkReloadArmMs = 30_000
-
-/**
- * Armed only between a route load's `onBeforeLoad` and `onResolved`, and for
- * at most `staleRouteChunkReloadArmMs`. Idle deferred imports (`sentry-init`,
- * syntax-highlight) must not reload: a successful route boot clears the
- * session flag, so those misses would otherwise reload the tab forever.
- */
-let staleRouteChunkReloadArmedUntil = 0
-
-/**
  * True after this page called `location.reload()` for a stale chunk. Cleared
  * on the next document (reload) or via the test reset helper. Gates follow-on
  * suppression so a spent session flag alone cannot hide real TypeErrors.
  */
 let staleRouteChunkReloadTriggered = false
-
-export function setStaleRouteChunkReloadArmed(armed: boolean) {
-	staleRouteChunkReloadArmedUntil = armed
-		? Date.now() + staleRouteChunkReloadArmMs
-		: 0
-}
-
-function isStaleRouteChunkReloadArmed() {
-	return Date.now() <= staleRouteChunkReloadArmedUntil
-}
 
 /** Whether this page already triggered the one-shot stale-chunk reload. */
 export function wasStaleRouteChunkReloadTriggered(): boolean {
@@ -156,10 +132,10 @@ export function shouldSuppressStaleRouteChunkFollowOnError(
 }
 
 /**
- * If `error` is a post-deploy dynamic-import miss during a route load, attempt
- * one hard reload for this tab session. Returns whether a reload was
- * triggered. No-ops while disarmed so an idle import cannot reload again
- * after boot clears the flag. Never throws when sessionStorage is
+ * If `error` is a post-deploy dynamic-import miss while the router loads a
+ * new location, attempt one reload of that destination for this tab session.
+ * Returns whether a reload was triggered. No-ops outside a navigation load so
+ * an idle import or `router.invalidate()` never reloads the page in place. Never throws when sessionStorage is
  * unavailable (and does not reload in that case, to avoid a loop with no
  * flag). Leave the flag set across a failed recovery; call
  * `clearStaleRouteChunkReloadFlag` after a successful boot.
@@ -168,7 +144,7 @@ export function shouldSuppressStaleRouteChunkFollowOnError(
  * result because the flag is already set must still be reported.
  */
 export function reloadOnStaleRouteChunk(error: unknown): boolean {
-	if (!isStaleRouteChunkReloadArmed()) return false
+	if (!isNavigationLoadArmed()) return false
 	if (!isStaleRouteChunkLoadError(error)) return false
 	// Optional Shiki chunk has a plaintext fallback; never reload for it.
 	if (isSyntaxHighlightCoreDynamicImportFailureError(error)) return false

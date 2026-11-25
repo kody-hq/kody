@@ -1,9 +1,10 @@
 /**
- * One-shot hard navigation when a stale tab's server-fn response advertises a
- * newer `APP_COMMIT_SHA` than the document boot build (KODY-DP / issue
- * 7828247968). Set a session flag before navigating, clear after a successful
- * boot so a later deploy can recover again. Only one attempt per server-build
- * + target URL.
+ * Deploy skew (KODY-DP / issue 7828247968): a server-fn response advertises a
+ * newer `APP_COMMIT_SHA` than the document boot build. Returning to a tab never
+ * reloads it; the next navigation that reaches the server loads its
+ * destination as a fresh document instead. Set a session flag before
+ * reloading, clear after a successful boot so a later deploy can recover
+ * again. Only one attempt per server build + destination.
  */
 
 import { isolateState } from '@kody-internal/shared/isolate-state.ts'
@@ -13,6 +14,7 @@ import {
 	isDeploySkewMismatch,
 	normalizeDeploySkewBuildId,
 } from '#universal/deploy-skew.ts'
+import { isNavigationLoadArmed } from '#client/navigation-load.ts'
 import {
 	getSessionStorageItem,
 	setSessionStorageItem,
@@ -81,31 +83,31 @@ export function isDeploySkewRecoveryError(error: unknown): boolean {
 }
 
 export function createDeploySkewRecoveryError(): Error {
-	return Object.assign(new Error('Deploy skew recovery'), {
+	return Object.assign(new Error('Kody was updated. Reload to continue.'), {
 		name: deploySkewRecoveryErrorName,
 	})
 }
 
 /**
- * If the server build differs from the boot client build, hard-navigate to
- * `href` once for this build+URL pair. Returns whether navigation was
- * triggered. Never throws when sessionStorage is unavailable (and does not
- * navigate in that case, to avoid a loop with no flag).
+ * While the router loads a new location, reload that destination once for
+ * this server build so it boots the new client. History already points at
+ * the destination, and the current page is being left, so no in-page input is
+ * lost. Returns whether a reload was triggered. Never throws when
+ * sessionStorage is unavailable (and does not reload in that case, to avoid a
+ * loop with no flag).
  */
-export function reloadOnDeploySkew(input: {
-	serverBuild: string
-	href: string
-}): boolean {
-	const clientBuild = readClientBuildId()
-	if (!isDeploySkewMismatch(clientBuild, input.serverBuild)) return false
+export function reloadOnDeploySkew(serverBuild: string): boolean {
+	if (!isNavigationLoadArmed()) return false
+	if (!isDeploySkewMismatch(readClientBuildId(), serverBuild)) return false
 	if (typeof window === 'undefined') return false
-	const href = input.href.trim()
-	if (!href) return false
-	const attempt = deploySkewReloadAttemptKey(input.serverBuild, href)
 	try {
+		const attempt = deploySkewReloadAttemptKey(
+			serverBuild,
+			window.location.href,
+		)
 		if (getSessionStorageItem(deploySkewReloadFlag) === attempt) return false
 		if (!setSessionStorageItem(deploySkewReloadFlag, attempt)) return false
-		window.location.assign(href)
+		window.location.reload()
 		return true
 	} catch {
 		return false

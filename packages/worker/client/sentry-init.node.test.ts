@@ -54,10 +54,11 @@ test('beforeSend drops a stale route chunk only when the one-shot reload fires',
 		location: { reload },
 	} as unknown as Window & typeof globalThis
 	const { initBrowserSentry } = await import('./sentry-init.ts')
-	const { resetStaleRouteChunkReloadTriggered, setStaleRouteChunkReloadArmed } =
+	const { resetStaleRouteChunkReloadTriggered } =
 		await import('./reload-on-stale-route-chunk.ts')
+	const { setNavigationLoadArmed } = await import('./navigation-load.ts')
 	resetStaleRouteChunkReloadTriggered()
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 	initBrowserSentry({
 		dsn: 'https://key@o1.ingest.sentry.io/2',
 		environment: 'production',
@@ -103,10 +104,11 @@ test('beforeSend drops a stale route chunk only when the one-shot reload fires',
 
 test('beforeSend keeps the undefined-module TypeError when no reload fired', async () => {
 	const { initBrowserSentry } = await import('./sentry-init.ts')
-	const { resetStaleRouteChunkReloadTriggered, setStaleRouteChunkReloadArmed } =
+	const { resetStaleRouteChunkReloadTriggered } =
 		await import('./reload-on-stale-route-chunk.ts')
+	const { setNavigationLoadArmed } = await import('./navigation-load.ts')
 	resetStaleRouteChunkReloadTriggered()
-	setStaleRouteChunkReloadArmed(false)
+	setNavigationLoadArmed(false)
 	initBrowserSentry({
 		dsn: 'https://key@o1.ingest.sentry.io/2',
 		environment: 'production',

@@ -38,7 +38,7 @@ export function isDeploySkewMismatch(
 	return client !== server
 }
 
-/** Session-storage value: one hard navigation per server build + target URL. */
+/** Session-storage value: one reload per server build + destination URL. */
 export function deploySkewReloadAttemptKey(
 	serverBuild: string,
 	href: string,
