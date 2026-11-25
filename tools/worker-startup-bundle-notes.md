@@ -4,9 +4,9 @@ Append-only ledger of reviewed `maxEntryBytes` bumps. Live ceilings live in
 `tools/worker-startup-bundle-budget.json`. Append a new measurement here; do not
 re-flow older notes when you bump a number.
 
-Byte overages no longer fail CI: `tools/check-worker-startup-bundles.ts` warns
-in the 🧹 Static check annotations and job summary. Keep this ledger honest when
-you intentionally raise a ceiling.
+Byte overages are
+[warning-only](../docs/contributing/architecture/startup-budget.md#ci-tripwire).
+Record a measurement here when you intentionally raise a ceiling.
 
 ## origin
 

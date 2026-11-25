@@ -2,29 +2,54 @@
 id: admin_events
 title: Admin events
 summary:
-  Event topics that dispatch only to packages saved by users who hold the
-  admin role: system inbox mail, platform feedback, community activity and
-  listing publishes, status incidents, fleet health, package-owner error spikes,
-  users-affected platform incidents, entitlement crossings, auth and email
-  delivery bursts, and account lifecycle notifications.
+  Subscription topics for system mail, platform incidents, fleet health, and
+  account lifecycle.
 category: platform
 adminOnly: true
 ---
 
 # Admin events
 
-These topics fan out only to packages saved by users who hold the admin role at
-dispatch time, plus, for the few topics that say so, packages owned by the
-trusted first-party orgs in `FIRST_PARTY_ORG_IDS`. Any other package may declare
-them; it never receives the event. Role revocation applies on the next dispatch.
+Use these subscriptions to notify operators about platform incidents, account
+changes, and messages that need attention. For public topics and subscription
+setup, see [Subscriptions and events](./package-subscriptions.md).
 
-Handlers run unattended as the package owner and carry that owner's admin role,
-so they can call admin capabilities (for example `adminUserList` or
-`adminSystemEmailGet`) without a signed-in session. Only save packages you trust
-on an admin account: their code has the same admin reach you do.
+## Find a topic
 
-Public package subscription topics live in
-[Subscriptions and events](./package-subscriptions.md).
+- **System mail and feedback:**
+  [received](./admin-events.md#email.system-message.received-admins),
+  [sent](./admin-events.md#email.system-message.sent-admins),
+  [feedback](./admin-events.md#platform.feedback.submitted-admins).
+- **Newsletter and community:**
+  [consent](./admin-events.md#whats_new.consent.changed-admins),
+  [activity](./admin-events.md#community.activity.recorded-admins),
+  [listing publishes](./admin-events.md#community.listing.published-admins).
+- **Incidents and fleet health:**
+  [status](./admin-events.md#status.incident.opened-status.incident.resolved-admins),
+  [package-owner errors](./admin-events.md#fleet.package_owner_error_spike-admins),
+  [users affected](./admin-events.md#fleet.users_affected.elevated-fleet.users_affected.resolved-admins),
+  [entitlements](./admin-events.md#fleet.entitlement.crossed-admins),
+  [D1 replicas](./admin-events.md#d1.replica_reads.alert-admins).
+- **Accounts and delivery:**
+  [lifecycle](./admin-events.md#user-created-deleted-and-guest-claimed-admins),
+  [verification failures](./admin-events.md#user.email_verification.failed-admins),
+  [stalled verification](./admin-events.md#user.email_verification.stalled-admins),
+  [outbound pause](./admin-events.md#user.email_outbound.paused-admins),
+  [auth denials](./admin-events.md#auth.denial.burst-admins),
+  [email delivery](./admin-events.md#email.delivery.burst-admins).
+
+## Delivery and permissions
+
+The
+[dispatcher](../../packages/worker/src/package-invocations/admin-package-subscriptions.ts)
+looks up current site admins on each dispatch and selects subscribed packages
+saved under those admin IDs. The consent and D1 replica topics also include
+packages saved under the configured `FIRST_PARTY_ORG_IDS`.
+
+Kody
+[runs the handler as the enabler](../../packages/worker/src/package-invocations/subscription-dispatch.ts)
+for each active subscription enablement in scope. Enable subscriptions on an
+admin account only for code you trust.
 
 ## `email.system-message.received` (admins)
 
@@ -159,8 +184,14 @@ subscribers.
 Every What's New in Kody consent or recipient change made on the site writes a
 `whats_new_consent_outbox` row and enqueues a durable
 `whats_new.consent.changed` attempt, so a newsletter package can keep its own
-consent ledger current without polling. The Queue consumer dispatches only to
-packages saved by users who hold the admin role when the message is processed.
+consent ledger current without polling.
+
+The payload carries subscriber addresses. The Queue consumer selects packages
+saved by current site admins or owned by orgs in `FIRST_PARTY_ORG_IDS`, as
+enforced by the
+[outbox dispatch](../../packages/worker/src/newsletter/consent-outbox.ts) and
+covered by the
+[first-party delivery tests](../../packages/worker/src/newsletter/consent-outbox-first-party-orgs.node.test.ts).
 
 Sources that emit it:
 
@@ -175,11 +206,6 @@ Sources that emit it:
 `adminWhatsNewOptInSet` with source `email_link` does not emit: that call is the
 newsletter package reporting a choice it already recorded. It passes
 `occurred_at` so the site keeps the time the person made the choice.
-
-Besides site admins' own packages, this topic is delivered to packages owned by
-the orgs listed by id in `FIRST_PARTY_ORG_IDS` (the kody org in production). The
-payload carries subscriber addresses, so a package in any other org never
-receives it, whether or not it declares the topic.
 
 ```ts
 type WhatsNewConsentChangedEvent = {
@@ -912,10 +938,10 @@ Every request that reads a D1 replica session writes one point to the
 (`kody_d1_replica_read_events`): whether it ran again on the primary (after a
 write or a failed replica read), whether the final response was a 5xx, whether a
 document route failed, and the Cloudflare colo. The `d1_replica_read_alert` lane
-runs every 5 minutes over the last 15 minutes and fans `d1.replica_reads.alert`
-to packages saved by users who hold the admin role at dispatch time, and to
-packages owned by the orgs in `FIRST_PARTY_ORG_IDS` (the kody org's
-`@kody/kody-factory` files the card), when any threshold trips:
+runs every 5 minutes over the last 15 minutes and emits `d1.replica_reads.alert`
+when any threshold trips. The
+[lane](../../packages/worker/src/d1-replica-read-alert.ts) uses the admin
+dispatcher with `FIRST_PARTY_ORG_IDS` as additional recipients.
 
 | Trigger         | Threshold                                                 | Why                                                                             |
 | --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -966,8 +992,10 @@ type D1ReplicaReadAlertEvent = {
 `card` is ready for `@kody/kody-factory/create`: its `body` starts with
 `D1 replica alert:` and ends with the kill switch (set feature flag
 `d1-replica-reads` to `enabled:false`). `idempotencyKey` is the incident key, so
-a re-send during one incident returns the same card instead of a new one. The
-event carries counts and colos only: no paths, SQL, user, org, or package data.
+a re-send during one incident can use the same key. The
+[event builder](../../packages/worker/src/d1-replica-read-alert.ts) includes
+aggregate counts by colo, alert metadata, and a card stub, not request paths,
+SQL, or user, org, or package records.
 
 ## `email.delivery.burst` (admins)
 
