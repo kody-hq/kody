@@ -1,8 +1,8 @@
 /**
  * Deploy skew (KODY-DP / issue 7828247968): a server-fn response advertises a
  * newer `APP_COMMIT_SHA` than the document boot build. Returning to a tab never
- * reloads it; the next navigation that reaches the server loads its
- * destination as a fresh document instead. Set a session flag before
+ * reloads it; the next router load (a navigation, or a refresh after a save)
+ * that reaches the server loads its location as a fresh document instead. Set a session flag before
  * reloading, clear after a successful boot so a later deploy can recover
  * again. Only one attempt per server build + destination.
  */
@@ -89,7 +89,7 @@ export function createDeploySkewRecoveryError(): Error {
 }
 
 /**
- * While the router loads a new location, reload that destination once for
+ * While the router loads, reload that location once for
  * this server build so it boots the new client. History already points at
  * the destination, and the current page is being left, so no in-page input is
  * lost. Returns whether a reload was triggered. Never throws when

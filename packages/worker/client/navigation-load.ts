@@ -1,11 +1,11 @@
 import type { AnyRouter } from '@tanstack/react-router'
 
 /**
- * Armed only while the router loads a new location (a link, a redirect, or
- * back/forward), and for at most `navigationLoadArmMs`. Activation refreshes,
- * `router.invalidate()` and idle imports keep the same href, so they never
- * arm it. Recovery that loads a fresh document runs only while armed: the user
- * is already leaving the current page, so no in-page input is lost.
+ * Armed only while the router loads (a link, a redirect, back/forward, or
+ * `router.invalidate()` after a save), and for at most `navigationLoadArmMs`.
+ * Router loads follow a user action. Tab-return activation refreshes, polling
+ * and background query refetches go through Query, not the router, so they
+ * never arm it. Recovery that loads a fresh document runs only while armed.
  */
 export const navigationLoadArmMs = 30_000
 
@@ -21,8 +21,8 @@ export function isNavigationLoadArmed() {
 
 /** Chunk imports and route RPCs both run before `onResolved`. */
 export function armNavigationLoads(router: Pick<AnyRouter, 'subscribe'>) {
-	const stopBefore = router.subscribe('onBeforeLoad', ({ hrefChanged }) => {
-		setNavigationLoadArmed(hrefChanged)
+	const stopBefore = router.subscribe('onBeforeLoad', () => {
+		setNavigationLoadArmed(true)
 	})
 	const stopResolved = router.subscribe('onResolved', () => {
 		setNavigationLoadArmed(false)

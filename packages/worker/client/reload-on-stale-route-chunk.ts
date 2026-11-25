@@ -133,7 +133,7 @@ export function shouldSuppressStaleRouteChunkFollowOnError(
 
 /**
  * If `error` is a post-deploy dynamic-import miss while the router loads a
- * new location, attempt one reload of that destination for this tab session.
+ * route (navigation or refresh), attempt one reload of that location for this tab session.
  * Returns whether a reload was triggered. No-ops outside a navigation load so
  * an idle import or `router.invalidate()` never reloads the page in place. Never throws when sessionStorage is
  * unavailable (and does not reload in that case, to avoid a loop with no

@@ -14,9 +14,9 @@ import {
 } from '#universal/deploy-skew.ts'
 
 /**
- * Compare `X-Kody-Build` to the boot build. On mismatch during a navigation,
- * reload the destination. Otherwise (tab return refresh, polling, in-place
- * reads) throw a named recovery error so the page keeps its current data and
+ * Compare `X-Kody-Build` to the boot build. On mismatch during a router load
+ * (navigation, or a refresh after a save), reload that location. Otherwise
+ * (tab return refresh, polling, background refetches) throw a named recovery error so the page keeps its current data and
  * input. Writes already ran on the server, so their responses pass through
  * instead of reporting a failure that invites a duplicate retry. No-ops when
  * either build id is missing (local/dev) or they match.

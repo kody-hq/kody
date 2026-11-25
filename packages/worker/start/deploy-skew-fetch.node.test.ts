@@ -132,7 +132,7 @@ test('a write in a stale tab returns its response instead of reporting failure',
 	expect(location.reload).not.toHaveBeenCalled()
 })
 
-test('the next navigation after a deploy loads its destination as a fresh document', async () => {
+test('the next router load after a deploy loads its location as a fresh document', async () => {
 	const root = createRootRoute()
 	const index = createRoute({
 		getParentRoute: () => root,
@@ -159,12 +159,16 @@ test('the next navigation after a deploy loads its destination as a fresh docume
 	})
 	try {
 		serverBuild = deployedSha
-		// Same-href reloads (mutations calling router.invalidate) stay in place.
+		// A save then router.invalidate(): the write already landed, so reload
+		// shows its result instead of a load-failure error page.
 		await router.invalidate()
-		expect(location.reload).not.toHaveBeenCalled()
+		expect(location.reload).toHaveBeenCalledTimes(1)
+		expect(store.get(deploySkewReloadFlag)).toBe(
+			`${deployedSha}\nhttps://kody.test/`,
+		)
 
 		await router.navigate({ href: '/docs' })
-		expect(location.reload).toHaveBeenCalledTimes(1)
+		expect(location.reload).toHaveBeenCalledTimes(2)
 		expect(store.get(deploySkewReloadFlag)).toBe(
 			`${deployedSha}\nhttps://kody.test/docs`,
 		)
