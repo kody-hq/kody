@@ -445,25 +445,33 @@ test('install is refused unless the session flag is on for the app owner', async
 	assert.equal(store.list().length, 0)
 })
 
-test('a launcher that fails to write leaves no install record', async () => {
+test('a launcher that fails to write leaves no install record or files', async () => {
 	const path = join(
 		mkdtempSync(join(tmpdir(), 'kody-apps-')),
 		'package-apps.json',
 	)
 	const store = new PackageAppStore({ path, fs })
+	const written = new Map()
 	const windows = createPackageAppWindows({
 		store,
 		kodyOrigin,
 		installAllowed: async () => true,
+		fetchIcon: async () => Buffer.from('png'),
 		platform: 'linux',
 		launcherContext: { home: '/home/k', iconDirectory: '/i', io: {} },
 		fs: {
-			rm: async () => {},
-			mkdir: async () => {
-				throw new Error('disk full')
+			mkdir: async () => {},
+			rm: async (file) => void written.delete(file),
+			writeFile: async (file, content) => {
+				if (file.startsWith('/i/')) throw new Error('disk full')
+				written.set(file, content)
 			},
 		},
 	})
-	await assert.rejects(windows.install(app), /disk full/)
+	await assert.rejects(
+		windows.install({ ...app, iconUrl: 'https://kody.codes/icon.png' }),
+		/disk full/,
+	)
 	assert.equal(store.list().length, 0)
+	assert.equal(written.size, 0)
 })

@@ -60,15 +60,21 @@ function createPackageAppWindows(deps) {
 					return null
 				})
 			: null
-		await writeLauncher(planFor(app), {
-			...launcherContext.io,
-			fs,
-			icon,
-			tempPath: join(
-				launcherContext.iconDirectory,
-				`${app.owner}.${app.packageName}.png`,
-			),
-		})
+		const plan = planFor(app)
+		try {
+			await writeLauncher(plan, {
+				...launcherContext.io,
+				fs,
+				icon,
+				tempPath: join(
+					launcherContext.iconDirectory,
+					`${app.owner}.${app.packageName}.png`,
+				),
+			})
+		} catch (error) {
+			await removeLauncher(plan, { fs }).catch(() => {})
+			throw error
+		}
 		const saved = store.put(app)
 		open(saved, '/')
 		return {
@@ -154,8 +160,8 @@ function createPackageAppWindows(deps) {
 			if (kind === 'browser') void openBrowser(url)
 			if (kind === 'unavailable') void unavailable('gone')
 		}
-		contents.on('did-start-navigation', (event, url, _inPlace, isMainFrame) => {
-			if (event.isMainFrame ?? isMainFrame) lastHop = event.url ?? url
+		contents.on('did-start-navigation', (event) => {
+			if (event.isMainFrame) lastHop = event.url
 		})
 		contents.on('will-navigate', guard)
 		contents.on('will-redirect', (event, url) => {
@@ -169,8 +175,8 @@ function createPackageAppWindows(deps) {
 		})
 		contents.on('will-attach-webview', (event) => event.preventDefault())
 		contents.setWindowOpenHandler(({ url }) => {
-			if (installedNavigation(app, url, kodyOrigin, origins) === 'browser')
-				void openBrowser(url)
+			const kind = installedNavigation(app, url, kodyOrigin, origins)
+			if (kind === 'stay' || kind === 'browser') void openBrowser(url)
 			return { action: 'deny' }
 		})
 		contents.on('page-title-updated', (event, title) => {

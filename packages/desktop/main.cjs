@@ -30,7 +30,7 @@ const {
 	renameSync,
 } = require('node:fs')
 const { hostname } = require('node:os')
-const { join } = require('node:path')
+const { isAbsolute, join } = require('node:path')
 const { Runner } = require('./runner.cjs')
 const { DesktopExecution } = require('./execution.cjs')
 const {
@@ -140,7 +140,10 @@ function installedApps() {
 		launcherContext: {
 			home: app.getPath('home'),
 			appData: app.getPath('appData'),
-			dataHome: process.env.XDG_DATA_HOME || undefined,
+			// XDG treats a relative data directory as unset.
+			dataHome: isAbsolute(process.env.XDG_DATA_HOME ?? '')
+				? process.env.XDG_DATA_HOME
+				: undefined,
 			systemRoot: process.env.SystemRoot ?? 'C:\\Windows',
 			iconDirectory: join(userData, 'package-app-icons'),
 			executable: process.env.APPIMAGE ?? process.execPath,
