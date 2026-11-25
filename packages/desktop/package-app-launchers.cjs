@@ -221,7 +221,6 @@ async function removeLauncher(plan, { fs }) {
 }
 
 module.exports = {
-	launcherFolder,
 	launcherIdentity,
 	launcherName,
 	launcherPlan,

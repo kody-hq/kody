@@ -24,7 +24,7 @@ export type DesktopExecutionState = {
 	cliReady: boolean
 	error: string | null
 }
-export type DesktopPackageAppInstall = {
+type DesktopPackageAppInstall = {
 	owner: string
 	packageName: string
 	name: string
@@ -33,7 +33,7 @@ export type DesktopPackageAppInstall = {
 	appOrigin: string
 	iconUrl: string | null
 }
-export type DesktopInstalledPackageApp = {
+type DesktopInstalledPackageApp = {
 	owner: string
 	packageName: string
 	name: string

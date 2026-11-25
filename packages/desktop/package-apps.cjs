@@ -172,5 +172,4 @@ module.exports = {
 	packageAppStorePath,
 	packageAppUrl,
 	parseInstallRequest,
-	validBounds,
 }
