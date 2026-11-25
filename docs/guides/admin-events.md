@@ -62,10 +62,10 @@ dispatched. Non-admin subscribers never receive system mail.
 The payload matches `email.message.received` (with
 `event: 'email.system-message.received'`) plus an `admin_url` string linking to
 the stored message in the admin interface (`/admin/system-email?messageId=...`).
-Handlers run as the admin package owner, so the user-scoped email capabilities
-and the `email` runtime helper cannot read the system message — use the metadata
-and `admin_url` for notifications, and the admin `adminSystemEmailGet`
-capability for full contents.
+Handlers
+[run as the subscription enabler](../../packages/worker/src/package-invocations/subscription-dispatch.ts),
+not as the system inbox owner. Use the metadata and `admin_url` for
+notifications, and the `adminSystemEmailGet` capability for full contents.
 
 ## `email.system-message.sent` (admins)
 
