@@ -38,8 +38,9 @@ that opt-in to GET and HEAD. The
 verify that non-opted-in GETs and POST, PUT, PATCH, and DELETE use the primary
 even while a page can still see stale membership.
 
-- **Use POST for writes.** Before sending a response, a failed replica read or a
-  write attempted after a replica read causes a rerender on the primary. The
+- **Use POST for writes.** Until the render returns its response, a failed
+  replica read or a write attempted after a replica read causes a rerender on
+  the primary; later work, such as header preparation, is not retried. The
   [retry tests](../../../packages/worker/src/d1-replica-reads.node.test.ts)
   verify that the Worker logs the reason, adds `d1-primary-retry` to
   `Server-Timing`, and does not execute the attempted write on the first run.
