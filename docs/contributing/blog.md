@@ -102,16 +102,22 @@ not change those.
 
 Ask what the reader came to do:
 
-| Category  | Pick it when the post...                                              |
-| --------- | --------------------------------------------------------------------- |
-| `essays`  | argues a position or explains why Kody works the way it does.         |
-| `how-to`  | walks a reader through doing something: steps, checklists, playbooks. |
-| `updates` | announces what shipped (weekly release notes, launches).              |
-| `stories` | is about a person or team using Kody, in their words.                 |
+| Category    | Pick it when the post...                                              |
+| ----------- | --------------------------------------------------------------------- |
+| `essays`    | argues a position or explains why Kody works the way it does.         |
+| `how-to`    | walks a reader through doing something: steps, checklists, playbooks. |
+| `updates`   | announces what shipped (weekly release notes, launches).              |
+| `stories`   | is about a person or team using Kody, in their words.                 |
+| `technical` | explains how Kody is built: architecture, migrations, benchmarks.     |
+
+Technical posts (the archive and each post) get their own look: monospace
+headings, a faint green graph-paper grid, and a `~/blog/technical` breadcrumb
+(`start/pages/blog-technical.tsx`). Site chrome and other categories are
+unchanged.
 
 If a post fits two, pick the one the title promises: "How to..." is `how-to`,
 "Why..." is `essays`. Do not add a category for a single post; a new category
-needs several posts that fit none of the four, and a taxonomy change in the same
+needs several posts that fit none of the five, and a taxonomy change in the same
 PR.
 
 ## Series

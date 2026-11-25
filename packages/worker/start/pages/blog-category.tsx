@@ -16,14 +16,24 @@ import {
 	blogListingHeadCss,
 	blogSectionTitleCss,
 } from './blog-parts.tsx'
+import {
+	BlogTechnicalBreadcrumb,
+	blogTechnicalThemeCss,
+	isTechnicalBlogCategory,
+} from './blog-technical.tsx'
 
 /** A category's full archive, newest first, grouped by year. */
 export function BlogCategoryRoute({ data }: { data: BlogCategoryLoaderData }) {
+	const technical = isTechnicalBlogCategory(data.slug)
 	return (
-		<section css={pageCss}>
-			<SiteLink href={routes.blog.href()} css={blogBackLinkCss}>
-				← Blog
-			</SiteLink>
+		<section css={technical ? [pageCss, blogTechnicalThemeCss] : pageCss}>
+			{technical ? (
+				<BlogTechnicalBreadcrumb current="archive" />
+			) : (
+				<SiteLink href={routes.blog.href()} css={blogBackLinkCss}>
+					← Blog
+				</SiteLink>
+			)}
 			<header css={blogListingHeadCss}>
 				<h1 data-rise style={{ '--rise': '0' } as CSSProperties}>
 					{data.label}

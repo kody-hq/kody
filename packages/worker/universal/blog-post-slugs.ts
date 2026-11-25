@@ -79,6 +79,7 @@ export const blogPostSlugs = [
 	'whose-credentials-does-this-app-use',
 	'why-ai-agent-costs-keep-growing',
 	'why-aws-lambda-breaks-down-for-ai-agent-teams',
+	'why-we-moved-kody-from-remix-3-to-tanstack-start',
 	'your-assistants-home',
 	'zero-inference-calls',
 ] as const

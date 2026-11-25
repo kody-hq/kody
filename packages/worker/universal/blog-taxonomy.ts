@@ -28,6 +28,12 @@ export const blogCategories = [
 		label: 'Customer stories',
 		description: 'People using Kody, in their own words.',
 	},
+	{
+		slug: 'technical',
+		label: 'Technical',
+		description:
+			'How Kody is built: architecture, migrations, and engineering decisions, with the numbers.',
+	},
 ] as const
 
 export type BlogCategory = (typeof blogCategories)[number]
