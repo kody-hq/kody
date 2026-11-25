@@ -72,7 +72,11 @@ function createPackageAppWindows(deps) {
 				),
 			})
 		} catch (error) {
-			await removeLauncher(plan, { fs }).catch(() => {})
+			await removeLauncher(plan, { fs }).catch((cleanupError) => {
+				console.warn(
+					`Kody could not remove a partial launcher: ${cleanupError.message}`,
+				)
+			})
 			throw error
 		}
 		const saved = store.put(app)
