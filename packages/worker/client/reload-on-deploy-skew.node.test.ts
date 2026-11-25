@@ -1,5 +1,6 @@
 import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { afterEach, expect, test, vi } from 'vitest'
+import { setNavigationLoadArmed } from './navigation-load.ts'
 import {
 	clearDeploySkewReloadFlag,
 	createDeploySkewRecoveryError,
@@ -37,6 +38,7 @@ function restoreGlobals() {
 }
 
 afterEach(() => {
+	setNavigationLoadArmed(false)
 	restoreGlobals()
 	vi.restoreAllMocks()
 })
@@ -58,10 +60,10 @@ function installSessionStorage(store: Map<string, string>) {
 	})
 }
 
-function installWindow(assign: (href: string) => void) {
-	globalThis.window = {
-		location: { assign },
-	} as unknown as Window & typeof globalThis
+function installWindow(reload: () => void, href = 'https://kody.test/blog') {
+	const location = { href, reload }
+	globalThis.window = { location } as unknown as Window & typeof globalThis
+	return location
 }
 
 function installBuildMeta(buildId: string | null) {
@@ -81,55 +83,69 @@ function installBuildMeta(buildId: string | null) {
 	})
 }
 
-test('reloadOnDeploySkew hard-navigates once per server build and href', () => {
+test('reloadOnDeploySkew reloads a navigation destination once per server build', () => {
 	const store = new Map<string, string>()
-	const assign = vi.fn()
+	const reload = vi.fn()
 	installSessionStorage(store)
-	installWindow(assign)
+	const location = installWindow(reload)
+	installBuildMeta(oldSha)
+	setNavigationLoadArmed(true)
+
+	expect(reloadOnDeploySkew(newSha)).toBe(true)
+	expect(reload).toHaveBeenCalledTimes(1)
+	expect(store.get(deploySkewReloadFlag)).toBe(
+		`${newSha}\nhttps://kody.test/blog`,
+	)
+
+	expect(reloadOnDeploySkew(newSha)).toBe(false)
+	expect(reload).toHaveBeenCalledTimes(1)
+
+	location.href = 'https://kody.test/docs'
+	expect(reloadOnDeploySkew(newSha)).toBe(true)
+	expect(reload).toHaveBeenCalledTimes(2)
+})
+
+test('reloadOnDeploySkew never reloads outside a navigation load', () => {
+	const store = new Map<string, string>()
+	const reload = vi.fn()
+	installSessionStorage(store)
+	installWindow(reload)
 	installBuildMeta(oldSha)
 
-	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(true)
-	expect(assign).toHaveBeenCalledTimes(1)
-	expect(assign).toHaveBeenCalledWith('/blog')
-	expect(store.get(deploySkewReloadFlag)).toBe(`${newSha}\n/blog`)
-
-	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(false)
-	expect(assign).toHaveBeenCalledTimes(1)
-
-	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/docs' })).toBe(true)
-	expect(assign).toHaveBeenCalledTimes(2)
-	expect(assign).toHaveBeenLastCalledWith('/docs')
+	expect(reloadOnDeploySkew(newSha)).toBe(false)
+	expect(reload).not.toHaveBeenCalled()
+	expect(store.has(deploySkewReloadFlag)).toBe(false)
 })
 
 test('reloadOnDeploySkew ignores same-release and missing builds', () => {
 	const store = new Map<string, string>()
-	const assign = vi.fn()
+	const reload = vi.fn()
 	installSessionStorage(store)
-	installWindow(assign)
+	installWindow(reload)
 	installBuildMeta(sameSha)
+	setNavigationLoadArmed(true)
 
-	expect(reloadOnDeploySkew({ serverBuild: sameSha, href: '/blog' })).toBe(
-		false,
-	)
+	expect(reloadOnDeploySkew(sameSha)).toBe(false)
 	resetIsolateState()
 	installBuildMeta(null)
-	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(false)
-	expect(assign).not.toHaveBeenCalled()
+	expect(reloadOnDeploySkew(newSha)).toBe(false)
+	expect(reload).not.toHaveBeenCalled()
 	expect(store.has(deploySkewReloadFlag)).toBe(false)
 })
 
 test('clearDeploySkewReloadFlag allows a later deploy to recover again', () => {
 	const store = new Map<string, string>()
-	const assign = vi.fn()
+	const reload = vi.fn()
 	installSessionStorage(store)
-	installWindow(assign)
+	installWindow(reload)
 	installBuildMeta(oldSha)
+	setNavigationLoadArmed(true)
 
-	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(true)
+	expect(reloadOnDeploySkew(newSha)).toBe(true)
 	clearDeploySkewReloadFlag()
 	expect(store.has(deploySkewReloadFlag)).toBe(false)
-	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(true)
-	expect(assign).toHaveBeenCalledTimes(2)
+	expect(reloadOnDeploySkew(newSha)).toBe(true)
+	expect(reload).toHaveBeenCalledTimes(2)
 })
 
 test('readClientBuildId caches a resolved meta so SPA head updates cannot hide skew', () => {
@@ -166,10 +182,11 @@ test('readClientBuildId ignores a short baked SHA that cannot match X-Kody-Build
 	expect(readClientBuildId()).toBeNull()
 })
 
-test('reloadOnDeploySkew does not throw or navigate when sessionStorage is unavailable', () => {
-	const assign = vi.fn()
-	installWindow(assign)
+test('reloadOnDeploySkew does not throw or reload when sessionStorage is unavailable', () => {
+	const reload = vi.fn()
+	installWindow(reload)
 	installBuildMeta(oldSha)
+	setNavigationLoadArmed(true)
 	Object.defineProperty(globalThis, 'sessionStorage', {
 		configurable: true,
 		get() {
@@ -177,10 +194,8 @@ test('reloadOnDeploySkew does not throw or navigate when sessionStorage is unava
 		},
 	})
 
-	expect(() =>
-		reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' }),
-	).not.toThrow()
-	expect(assign).not.toHaveBeenCalled()
+	expect(() => reloadOnDeploySkew(newSha)).not.toThrow()
+	expect(reload).not.toHaveBeenCalled()
 })
 
 test('clearDeploySkewReloadFlag does not throw when sessionStorage is unavailable', () => {

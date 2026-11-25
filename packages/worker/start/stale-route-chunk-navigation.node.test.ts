@@ -6,8 +6,11 @@ import {
 	createRouter,
 } from '@tanstack/react-router'
 import {
+	armNavigationLoads,
+	setNavigationLoadArmed,
+} from '#client/navigation-load.ts'
+import {
 	reloadOnStaleRouteChunk,
-	setStaleRouteChunkReloadArmed,
 	staleRouteChunkReloadFlag,
 } from '#client/reload-on-stale-route-chunk.ts'
 
@@ -93,15 +96,10 @@ test('a route load arms stale-chunk reload and settling disarms it', async () =>
 		},
 	})
 	vi.stubGlobal('window', { location: { reload: vi.fn() } })
-	setStaleRouteChunkReloadArmed(false)
+	setNavigationLoadArmed(false)
 	expect(reloadOnStaleRouteChunk(chunkMiss)).toBe(false)
 
-	router.subscribe('onBeforeLoad', () => {
-		setStaleRouteChunkReloadArmed(true)
-	})
-	router.subscribe('onResolved', () => {
-		setStaleRouteChunkReloadArmed(false)
-	})
+	armNavigationLoads(router)
 	await router.load()
 	const stopHistory = router.history.subscribe(({ action }) => {
 		void router.load({ action })
@@ -114,7 +112,7 @@ test('a route load arms stale-chunk reload and settling disarms it', async () =>
 		expect(reloadOnStaleRouteChunk(chunkMiss)).toBe(false)
 	} finally {
 		stopHistory()
-		setStaleRouteChunkReloadArmed(false)
+		setNavigationLoadArmed(false)
 		vi.unstubAllGlobals()
 	}
 })

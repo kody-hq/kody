@@ -1,14 +1,16 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import {
+	navigationLoadArmMs,
+	setNavigationLoadArmed,
+} from '#client/navigation-load.ts'
+import {
 	clearStaleRouteChunkReloadFlag,
 	isStaleRouteChunkLoadError,
 	isStaleRouteChunkUndefinedModuleError,
 	onVitePreloadError,
 	reloadOnStaleRouteChunk,
 	resetStaleRouteChunkReloadTriggered,
-	setStaleRouteChunkReloadArmed,
 	shouldSuppressStaleRouteChunkFollowOnError,
-	staleRouteChunkReloadArmMs,
 	staleRouteChunkReloadFlag,
 	wasStaleRouteChunkReloadTriggered,
 } from './reload-on-stale-route-chunk.ts'
@@ -29,7 +31,7 @@ function restoreGlobals() {
 }
 
 afterEach(() => {
-	setStaleRouteChunkReloadArmed(false)
+	setNavigationLoadArmed(false)
 	resetStaleRouteChunkReloadTriggered()
 	restoreGlobals()
 	vi.restoreAllMocks()
@@ -148,7 +150,7 @@ test('reloadOnStaleRouteChunk ignores chunk misses outside a route load', () => 
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
-	setStaleRouteChunkReloadArmed(false)
+	setNavigationLoadArmed(false)
 
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
 	expect(reload).not.toHaveBeenCalled()
@@ -162,8 +164,8 @@ test('reloadOnStaleRouteChunk disarms itself after the route-load window', () =>
 	installWindow(reload)
 	vi.useFakeTimers()
 	try {
-		setStaleRouteChunkReloadArmed(true)
-		vi.advanceTimersByTime(staleRouteChunkReloadArmMs + 1)
+		setNavigationLoadArmed(true)
+		vi.advanceTimersByTime(navigationLoadArmMs + 1)
 
 		expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
 		expect(reload).not.toHaveBeenCalled()
@@ -178,7 +180,7 @@ test('reloadOnStaleRouteChunk never reloads for the optional syntax-highlight ch
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 
 	const error = new TypeError(
 		'Failed to fetch dynamically imported module: https://kody.codes/assets/syntax-highlight-core-AbC123.js',
@@ -194,7 +196,7 @@ test('reloadOnStaleRouteChunk reloads once for a stale route chunk', () => {
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(true)
 	expect(reload).toHaveBeenCalledTimes(1)
@@ -210,7 +212,7 @@ test('clearStaleRouteChunkReloadFlag allows a later deploy to recover again', ()
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(true)
 	clearStaleRouteChunkReloadFlag()
@@ -235,7 +237,7 @@ test('clearStaleRouteChunkReloadFlag does not throw when sessionStorage is unava
 test('reloadOnStaleRouteChunk does not throw or reload when sessionStorage is unavailable', () => {
 	const reload = vi.fn()
 	installWindow(reload)
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 	Object.defineProperty(globalThis, 'sessionStorage', {
 		configurable: true,
 		get() {
@@ -252,7 +254,7 @@ test('onVitePreloadError prevents the default only when a reload is triggered', 
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 
 	const first = new Event('vite:preloadError', { cancelable: true })
 	Object.assign(first, { payload: new TypeError(chromium) })
@@ -340,7 +342,7 @@ test('shouldSuppressStaleRouteChunkFollowOnError only after a reload was trigger
 	const reload = vi.fn()
 	installSessionStorage(store)
 	installWindow(reload)
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(true)
 	expect(wasStaleRouteChunkReloadTriggered()).toBe(true)
 
@@ -387,7 +389,7 @@ test('follow-on undefined-module TypeError is not suppressed when reload did not
 	installSessionStorage(store)
 	installWindow(reload)
 	// Armed but session flag already spent → no reload, no suppress.
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 	store.set(staleRouteChunkReloadFlag, '1')
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
 	expect(wasStaleRouteChunkReloadTriggered()).toBe(false)
@@ -416,7 +418,7 @@ test('reloadOnStaleRouteChunk clears suppress state when location.reload throws'
 	installWindow(() => {
 		throw new DOMException('The operation is insecure.', 'SecurityError')
 	})
-	setStaleRouteChunkReloadArmed(true)
+	setNavigationLoadArmed(true)
 
 	expect(reloadOnStaleRouteChunk(new TypeError(chromium))).toBe(false)
 	expect(wasStaleRouteChunkReloadTriggered()).toBe(false)

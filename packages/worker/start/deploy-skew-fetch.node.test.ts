@@ -1,99 +1,211 @@
-import { afterEach, expect, test, vi } from 'vitest'
-import type * as ReloadOnDeploySkew from '#client/reload-on-deploy-skew.ts'
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
+import { QueryClient, QueryObserver } from '@tanstack/react-query'
+import {
+	createMemoryHistory,
+	createRootRoute,
+	createRoute,
+	createRouter,
+} from '@tanstack/react-router'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import {
+	armNavigationLoads,
+	setNavigationLoadArmed,
+} from '#client/navigation-load.ts'
+import {
+	deploySkewReloadFlag,
+	isDeploySkewRecoveryError,
+} from '#client/reload-on-deploy-skew.ts'
+import { fetchWithDeploySkewCheck } from './deploy-skew-fetch.ts'
+import { refreshActiveQueries } from './refresh-active-queries.ts'
+import { refreshOnActivation } from './refresh-on-activation.ts'
 
-const getRouterInstance = vi.fn()
-const reloadOnDeploySkew = vi.fn()
-const readClientBuildId = vi.fn()
+const bootSha = 'a'.repeat(40)
+const deployedSha = 'b'.repeat(40)
 
-const sameSha = 'c'.repeat(40)
-const oldSha = 'a'.repeat(40)
-const newSha = 'b'.repeat(40)
+let serverBuild = bootSha
+let store = new Map<string, string>()
+let location = { href: 'https://kody.test/', reload: vi.fn() }
 
-vi.mock('@tanstack/react-start', () => ({
-	getRouterInstance: (...args: Array<unknown>) => getRouterInstance(...args),
-}))
-
-vi.mock('#client/reload-on-deploy-skew.ts', async () => {
-	const actual = await vi.importActual<typeof ReloadOnDeploySkew>(
-		'#client/reload-on-deploy-skew.ts',
+beforeEach(() => {
+	serverBuild = bootSha
+	store = new Map()
+	location = { href: 'https://kody.test/', reload: vi.fn() }
+	vi.stubGlobal('__KODY_APP_COMMIT_SHA__', bootSha)
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(
+			async () =>
+				new Response('payload', { headers: { 'X-Kody-Build': serverBuild } }),
+		),
 	)
-	return {
-		...actual,
-		readClientBuildId: (...args: Array<unknown>) => readClientBuildId(...args),
-		reloadOnDeploySkew: (...args: Array<unknown>) =>
-			reloadOnDeploySkew(...args),
-	}
+	vi.stubGlobal('sessionStorage', {
+		getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+		setItem: (key: string, value: string) => {
+			store.set(key, value)
+		},
+		removeItem: (key: string) => {
+			store.delete(key)
+		},
+	})
+	vi.stubGlobal('window', Object.assign(new EventTarget(), { location }))
+	resetIsolateState()
 })
 
 afterEach(() => {
+	setNavigationLoadArmed(false)
 	vi.unstubAllGlobals()
-	vi.restoreAllMocks()
-	getRouterInstance.mockReset()
-	reloadOnDeploySkew.mockReset()
-	readClientBuildId.mockReset()
+	resetIsolateState()
 })
 
-test('fetchWithDeploySkewCheck returns the response when builds match', async () => {
-	readClientBuildId.mockReturnValue(sameSha)
-	reloadOnDeploySkew.mockReturnValue(false)
-	const response = new Response('ok', {
-		headers: { 'X-Kody-Build': sameSha },
-	})
-	vi.stubGlobal(
-		'fetch',
-		vi.fn(async () => response),
-	)
-	const { fetchWithDeploySkewCheck } = await import('./deploy-skew-fetch.ts')
-	await expect(fetchWithDeploySkewCheck('/_serverFn/x')).resolves.toBe(response)
-	expect(reloadOnDeploySkew).not.toHaveBeenCalled()
+function readServer(name: string, method = 'GET') {
+	return fetchWithDeploySkewCheck(`/_serverFn/${name}`, { method })
+}
+
+function settle() {
+	return new Promise((resolve) => setTimeout(resolve, 100))
+}
+
+test('same-build responses pass through', async () => {
+	await expect(readServer('page')).resolves.toBeInstanceOf(Response)
+	expect(location.reload).not.toHaveBeenCalled()
 })
 
-test('fetchWithDeploySkewCheck hard-navigates and throws on mismatch', async () => {
-	readClientBuildId.mockReturnValue(oldSha)
-	reloadOnDeploySkew.mockReturnValue(true)
-	getRouterInstance.mockResolvedValue({
-		latestLocation: { href: '/blog' },
+test('returning to a tab after a deploy keeps the page, its data, and its input', async () => {
+	const client = new QueryClient()
+	const observer = new QueryObserver(client, {
+		queryKey: ['page'],
+		queryFn: async () => {
+			await readServer('page')
+			return serverBuild
+		},
+		staleTime: 0,
+		meta: { actorKey: 'user:1' },
 	})
-	vi.stubGlobal(
-		'fetch',
-		vi.fn(
-			async () =>
-				new Response('payload', {
-					headers: { 'X-Kody-Build': newSha },
-				}),
-		),
-	)
-	const { fetchWithDeploySkewCheck } = await import('./deploy-skew-fetch.ts')
-	await expect(fetchWithDeploySkewCheck('/_serverFn/x')).rejects.toMatchObject({
-		name: 'DeploySkewRecovery',
+	const stopObserving = observer.subscribe(() => {})
+	const document = Object.assign(new EventTarget(), {
+		visibilityState: 'visible',
 	})
-	expect(reloadOnDeploySkew).toHaveBeenCalledWith({
-		serverBuild: newSha,
-		href: '/blog',
+	const draft = { value: 'unsaved draft' }
+	const onError = vi.fn()
+	const verifySession = vi.fn(() => readServer('verify'))
+	const stop = refreshOnActivation({
+		window,
+		document,
+		refresh: () => refreshActiveQueries(client, 'user:1', verifySession),
+		onError,
 	})
+	try {
+		await vi.waitFor(() =>
+			expect(observer.getCurrentResult().data).toBe(bootSha),
+		)
+		serverBuild = deployedSha
+		document.dispatchEvent(new Event('visibilitychange'))
+		window.dispatchEvent(new Event('focus'))
+		await settle()
+		expect(verifySession).toHaveBeenCalledTimes(1)
+		expect(isDeploySkewRecoveryError(onError.mock.lastCall?.[0])).toBe(true)
+		expect(location.reload).not.toHaveBeenCalled()
+		expect(store.has(deploySkewReloadFlag)).toBe(false)
+		expect(observer.getCurrentResult().data).toBe(bootSha)
+		expect(draft.value).toBe('unsaved draft')
+
+		// A stale page query refetch also keeps the rendered data.
+		verifySession.mockImplementation(async () => new Response())
+		window.dispatchEvent(new Event('focus'))
+		await settle()
+		expect(location.reload).not.toHaveBeenCalled()
+		expect(observer.getCurrentResult().data).toBe(bootSha)
+		expect(isDeploySkewRecoveryError(observer.getCurrentResult().error)).toBe(
+			true,
+		)
+	} finally {
+		stop()
+		stopObserving()
+		client.clear()
+	}
 })
 
-test('fetchWithDeploySkewCheck still throws when reload is spent so sibling fetches cannot leak payloads', async () => {
-	readClientBuildId.mockReturnValue(oldSha)
-	reloadOnDeploySkew.mockReturnValue(false)
-	getRouterInstance.mockResolvedValue({
-		latestLocation: { href: '/blog' },
+test('a write in a stale tab returns its response instead of reporting failure', async () => {
+	serverBuild = deployedSha
+	await expect(readServer('save', 'POST')).resolves.toBeInstanceOf(Response)
+	await expect(readServer('page')).rejects.toSatisfy(isDeploySkewRecoveryError)
+	expect(location.reload).not.toHaveBeenCalled()
+})
+
+function createTestRouter() {
+	const root = createRootRoute()
+	const index = createRoute({
+		getParentRoute: () => root,
+		path: '/',
+		loader: () => readServer('index'),
 	})
-	vi.stubGlobal(
-		'fetch',
-		vi.fn(
-			async () =>
-				new Response('payload', {
-					headers: { 'X-Kody-Build': newSha },
-				}),
-		),
-	)
-	const { fetchWithDeploySkewCheck } = await import('./deploy-skew-fetch.ts')
-	await expect(fetchWithDeploySkewCheck('/_serverFn/x')).rejects.toMatchObject({
-		name: 'DeploySkewRecovery',
+	const docs = createRoute({
+		getParentRoute: () => root,
+		path: '/docs',
+		loader: () => readServer('docs'),
 	})
-	expect(reloadOnDeploySkew).toHaveBeenCalledWith({
-		serverBuild: newSha,
-		href: '/blog',
+	const router = createRouter({
+		routeTree: root.addChildren([index, docs]),
+		history: createMemoryHistory({ initialEntries: ['/'] }),
+		isServer: false,
+		origin: 'https://kody.test',
 	})
+	const stopArming = armNavigationLoads(router)
+	// RouterProvider's Transitioner loads after each history push.
+	const stopHistory = router.history.subscribe(({ action }) => {
+		location.href = `https://kody.test${router.history.location.pathname}`
+		void router.load({ action })
+	})
+	return {
+		router,
+		stop() {
+			stopHistory()
+			stopArming()
+		},
+	}
+}
+
+function hasErrorMatch(router: ReturnType<typeof createTestRouter>['router']) {
+	return router.state.matches.some((match) => match.status === 'error')
+}
+
+test('the next navigation after a deploy loads its destination as a fresh document without an error flash', async () => {
+	const { router, stop } = createTestRouter()
+	try {
+		await router.load()
+		serverBuild = deployedSha
+		void router.navigate({ href: '/docs' })
+		await vi.waitFor(() => expect(location.reload).toHaveBeenCalledTimes(1))
+		expect(store.get(deploySkewReloadFlag)).toBe(
+			`${deployedSha}\nhttps://kody.test/docs`,
+		)
+		// Sibling reads stay pending while the document unloads.
+		let settled = false
+		void readServer('sibling').then(
+			() => (settled = true),
+			() => (settled = true),
+		)
+		await new Promise((resolve) => setTimeout(resolve, 20))
+		expect(settled).toBe(false)
+		// Writes (an upload still saving) are never held.
+		await expect(readServer('upload', 'POST')).resolves.toBeInstanceOf(Response)
+		expect(hasErrorMatch(router)).toBe(false)
+		expect(location.reload).toHaveBeenCalledTimes(1)
+	} finally {
+		stop()
+	}
+})
+
+test('a refresh after a save or upload keeps the page and shows the result', async () => {
+	const { router, stop } = createTestRouter()
+	try {
+		await router.load()
+		serverBuild = deployedSha
+		await router.invalidate()
+		expect(location.reload).not.toHaveBeenCalled()
+		expect(hasErrorMatch(router)).toBe(false)
+		expect(router.state.location.pathname).toBe('/')
+	} finally {
+		stop()
+	}
 })
