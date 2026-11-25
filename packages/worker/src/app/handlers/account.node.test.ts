@@ -280,6 +280,7 @@ test('native account and session reads batch user/role, flag, and organization r
 		'publish-offload': false,
 		'credential-need-enforcement': false,
 		'credential-allowed-packages-safety-window': true,
+		'desktop-install-package-apps': false,
 	})
 	expect(Object.keys(response.payloads).sort()).toEqual([
 		'accountConnections',
