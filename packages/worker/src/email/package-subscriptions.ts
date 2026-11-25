@@ -398,9 +398,10 @@ export async function dispatchEmailDeliverySubscriptionEvents(input: {
  * saved by users who hold the admin role at dispatch time. The payload is the
  * same metadata-first envelope as `email.message.received` on a dedicated
  * `email.system-message.received` topic, plus an `admin_url` link to the
- * message in the admin interface — handlers run as the admin package owner,
- * not the system owner, so they read full contents through the admin UI/API
- * rather than the user-scoped email helpers.
+ * message in the admin interface. Admin roles only select which saved
+ * packages receive the event; each handler runs as the user who enabled that
+ * subscription, not the system owner, so it reads full contents through the
+ * admin UI/API rather than the user-scoped email helpers.
  */
 export async function dispatchSystemInboundEmailSubscriptionEvents(input: {
 	env: Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'>

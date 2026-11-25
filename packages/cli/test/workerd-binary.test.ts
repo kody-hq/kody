@@ -373,6 +373,29 @@ test('ensureWorkerdBinary retries a body that breaks off mid-download', async ()
 	assert.equal(calls, 2)
 })
 
+test('ensureWorkerdBinary retries a throttled 403 or 429 release download', async () => {
+	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+	const statuses = [403, 429]
+	let calls = 0
+	const fetchFn = (async () => {
+		calls += 1
+		const status = statuses[calls - 1]
+		if (status) return new Response('throttled', { status })
+		return new Response(new Uint8Array(gzipSync(Buffer.from('tampered'))))
+	}) as typeof fetch
+	await assert.rejects(
+		ensureWorkerdBinary({
+			env: {},
+			cacheDir,
+			target: 'linux-64',
+			fetchFn,
+			retryDelayMs: 0,
+		}),
+		/failed verification/,
+	)
+	assert.equal(calls, 3)
+})
+
 test('ensureWorkerdBinary does not retry a 404', async () => {
 	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
 	let calls = 0

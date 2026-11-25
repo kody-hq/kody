@@ -15,7 +15,7 @@
   "description": "Your agents' cloud: the memory, keys, code, and automations your AI agent keeps, portable across every MCP host",
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}": [
-      "oxlint --fix",
+      "oxlint --fix --no-error-on-unmatched-pattern",
       "oxfmt --no-error-on-unmatched-pattern"
     ],
     "*.{json,jsonc,md,css,yml,yaml}": [

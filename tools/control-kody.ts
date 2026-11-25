@@ -7,8 +7,13 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { chmod, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { checkInstalledLockfile } from './check-installed-lockfile.ts'
+import {
+	localPersistEnv,
+	resolveLocalD1PersistPath,
+} from './local-d1-persist.ts'
 import {
 	createDefaultEnsureDevDeps,
 	ensureDev,
@@ -736,6 +741,8 @@ export type DoctorDeps = {
 	origin: string | null
 	persistRoot: string
 	probeLocalLogin?: (origin: string) => Promise<LocalLoginProbe>
+	/** Whether a local D1 SQLite file under `persistRoot` has the `users` table. */
+	hasLocalUsersTable?: (persistRoot: string) => boolean
 }
 
 export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
@@ -855,6 +862,13 @@ async function runLocalAppDbCheck(
 	}
 
 	const persistOk = existsSync(deps.persistRoot)
+	if (persistOk && deps.hasLocalUsersTable?.(deps.persistRoot) === false) {
+		return {
+			name: 'local-d1',
+			ok: false,
+			detail: `local persist at ${deps.persistRoot} has no readable users table (migrations not applied?)\n${formatLocalAppDbRemediation()}`,
+		}
+	}
 	if (persistOk) {
 		return {
 			name: 'local-d1',
@@ -1497,6 +1511,35 @@ export function runMapCheck(input: {
 	})
 }
 
+export function localD1HasUsersTable(persistRoot: string) {
+	const d1Dir = path.join(persistRoot, 'v3', 'd1', 'miniflare-D1DatabaseObject')
+	let names: Array<string>
+	try {
+		names = readdirSync(d1Dir)
+	} catch {
+		return false
+	}
+	return names
+		.filter((name) => name.endsWith('.sqlite'))
+		.some((name) => {
+			let db: DatabaseSync | undefined
+			try {
+				db = new DatabaseSync(path.join(d1Dir, name), { readOnly: true })
+				return Boolean(
+					db
+						.prepare(
+							"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'",
+						)
+						.get(),
+				)
+			} catch {
+				return false
+			} finally {
+				db?.close()
+			}
+		})
+}
+
 export function defaultDoctorDeps(origin: string | null = null): DoctorDeps {
 	return {
 		nodeVersion: process.version,
@@ -1511,7 +1554,11 @@ export function defaultDoctorDeps(origin: string | null = null): DoctorDeps {
 		probeHealth: (value) => isWorkerHealthOk(value),
 		ports: workerPortRange(),
 		origin,
-		persistRoot: path.join(process.cwd(), '.wrangler', 'state'),
+		persistRoot: path.resolve(
+			process.cwd(),
+			resolveLocalD1PersistPath({ env: localPersistEnv() }),
+		),
+		hasLocalUsersTable: localD1HasUsersTable,
 		probeLocalLogin: async (value) => {
 			const session = await loginToOrigin({
 				origin: value,

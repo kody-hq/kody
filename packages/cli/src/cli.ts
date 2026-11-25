@@ -1337,7 +1337,15 @@ async function dispatch(
 				kodyId: string
 				packageRoot: string
 			} | null = localPackageInvoke
-			if (!localPackageRun && local && modulePath !== undefined) {
+			// The package runtime has no --credential support yet; run a plain
+			// module so the picks still apply.
+			// Remove when: runLocalPackageModule accepts and forwards credentials.
+			if (
+				!localPackageRun &&
+				local &&
+				modulePath !== undefined &&
+				credentials === undefined
+			) {
 				try {
 					const { loadPackageManifest } = await import('./package-manifest.js')
 					const manifest = await loadPackageManifest(process.cwd())
