@@ -531,16 +531,9 @@ async function inspectStartupBundle(
 }
 
 /**
- * Builds the three production entry modules and enforces deterministic
- * startup proxies: reviewed main-module size budgets and import-graph
- * boundaries for code that must stay deferred. Cloudflare's measured startup
- * CPU varies by validation host, so this gate stays deterministic (bytes and
- * import graph); `check-worker-startup-time.ts` adds the sampled-CPU
- * tripwire on top of it.
- *
- * Byte overages warn as check annotations and a job summary section; they
- * never fail this check or block Deploy. Deferred-source / additional-module
- * regressions still fail hard.
+ * Builds the three production entries, reports reviewed byte-budget overages,
+ * and enforces deferred-source and additional-module boundaries.
+ * `check-worker-startup-time.ts` separately checks sampled startup CPU.
  */
 export async function checkWorkerStartupBundles(
 	options: StartupBundleCheckArgs = {

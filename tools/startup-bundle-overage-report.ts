@@ -44,8 +44,9 @@ function formatStartupBundleOverageSummary(
 }
 
 /**
- * Warns about startup byte overages as GitHub Actions check annotations and a
- * job summary section. Never fails the check.
+ * Logs startup byte overages as plain warnings or GitHub Actions annotations.
+ * Appends a table when GITHUB_STEP_SUMMARY is set; logs summary write failures
+ * instead of throwing.
  */
 export function reportStartupBundleOverages(
 	overages: ReadonlyArray<StartupBundleOverage>,

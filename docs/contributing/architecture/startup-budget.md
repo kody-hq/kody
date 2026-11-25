@@ -173,12 +173,13 @@ runner before any sampled CPU is measured. The budget still compares active CPU,
 so the longer boot allowance does not loosen it. Refresh the patch when bumping
 Wrangler.
 
-Byte overages against the reviewed ceiling **warn** in the 🧹 Static check
-output (`Startup budget overage: <worker>` annotations) and job summary. They do
-**not** fail 🧹 Static / ✅ Validate or block 🚀 Deploy. Deferred-source and
-additional-module regressions still fail hard. Shrink the graph when you can;
-raise the committed budget (with a notes ledger entry) when the growth is
-intentional.
+[`reportStartupBundleOverages`](../../../tools/startup-bundle-overage-report.ts)
+logs byte overages as warnings locally and as `Startup budget overage: <worker>`
+annotations in GitHub Actions. It appends a table when `GITHUB_STEP_SUMMARY` is
+set and does not file issues. Byte overages do **not** fail 🧹 Static / ✅
+Validate or block 🚀 Deploy. Deferred-source and additional-module regressions
+still fail hard. Shrink the graph when you can; raise the committed budget (with
+a notes ledger entry) when the growth is intentional.
 
 When a change buys headroom, lower the budget in the same PR.
 

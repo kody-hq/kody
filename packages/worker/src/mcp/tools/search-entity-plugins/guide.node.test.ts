@@ -246,6 +246,26 @@ test('guide entity detail returns full bodies, a TOC for oversized guides, and f
 	}
 })
 
+test('admin events search offers a topic map with working section links', () => {
+	const detail = guideDetail('admin_events')
+	expect(detail.structured).toMatchObject({ bodyMode: 'toc' })
+	expect(detail.markdown).toContain('guide:admin_events#find-a-topic')
+
+	const map = guideDetail('admin_events', 'find-a-topic')
+	expect(map.structured).toMatchObject({ bodyMode: 'section' })
+	const topicLinks = [
+		...map.markdown.matchAll(/\/docs\/admin-events#([\w.-]+)\)/g),
+	]
+	expect(topicLinks.map(([, slug]) => slug)).toContain(
+		'd1.replica_reads.alert-admins',
+	)
+	for (const [, slug] of topicLinks) {
+		expect(guideDetail('admin_events', slug).structured).toMatchObject({
+			bodyMode: 'section',
+		})
+	}
+})
+
 test('guide entity detail focuses line anchors and rejects lines past the end', () => {
 	const body = Array.from(
 		{ length: 200 },
