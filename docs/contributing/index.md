@@ -66,8 +66,8 @@ style, tests, MCP capabilities, and runtime architecture.
   failures)
 - [Import boundaries](./import-boundaries.md) (enforced app / MCP / worker /
   universal layering)
-- [Oxlint JS plugins](./oxlint-js-plugins.md) (custom lint rules, file-size
-  ratchet, knip)
+- [Oxlint JS plugins](./oxlint-js-plugins.md) (custom lint rules, scoped
+  overrides, file-size ratchet)
 - [Dependency overrides](./dependency-overrides.md) (why each root `overrides`
   entry exists)
 - [Explicit state machines](./state-machines.md) (lifecycle graphs and SQL
@@ -88,7 +88,7 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Test runners](./test-runners.md) (flavor matrix, running one file, harness)
 - [End-to-end testing](./end-to-end-testing.md)
 - [Web app performance](./app-performance.md) (measure a change: round trips,
-  navigation, bundles)
+  navigation, bundles; links to production timing and replica reads)
 - [Weekly site performance](./weekly-site-perf.md),
   [MCP latency bench](./latency-bench.md), dated
   [performance snapshots](./performance/)
