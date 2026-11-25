@@ -1025,6 +1025,36 @@ test('a campaign-scoped promo code is blocked only by a claim of the same campai
 	}
 })
 
+test('an untagged promo code is blocked by an earlier campaign claim', async () => {
+	signInAs('ada')
+	const env = createEnv()
+	await db
+		.prepare(
+			`INSERT INTO billing_promo_claims
+			 (user_id, claim_key, promotion_code_id, org_id, status, checkout_session_id, reserved_at, claimed_at)
+			 VALUES (?, 'campaign:fall', 'promo_fall', 'some-other-org', 'claimed', 'cs_fall', ?, ?)`,
+		)
+		.bind(
+			people.ada.personId,
+			new Date().toISOString(),
+			new Date().toISOString(),
+		)
+		.run()
+	mocks.findActivePromotionCode.mockResolvedValue(activePromo('promo_untagged'))
+
+	const response = await postCheckout(env, 'acme', {
+		plan: 'pro',
+		interval: 'month',
+		promoCode: 'AGENCY-1',
+	})
+	expect(response.status).toBe(409)
+	expect(response.data).toEqual({
+		ok: false,
+		error: promoAlreadyClaimedRejection,
+	})
+	expect(mocks.createCheckoutSession).not.toHaveBeenCalled()
+})
+
 async function readPromoClaim(userId: string) {
 	return db
 		.prepare(
