@@ -102,7 +102,7 @@ function launcherPlan(input) {
 			),
 			iconPath: join(
 				input.iconDirectory,
-				`${app.owner}--${app.packageName}.ico`,
+				`${app.owner}.${app.packageName}.ico`,
 			),
 			shortcut: {
 				target: join(input.systemRoot, 'explorer.exe'),
@@ -116,11 +116,11 @@ function launcherPlan(input) {
 	const file = join(
 		input.dataHome ?? join(home, '.local', 'share'),
 		'applications',
-		`kody-app-${app.owner}-${app.packageName}.desktop`,
+		`kody-app-${app.owner}.${app.packageName}.desktop`,
 	)
 	const iconPath = join(
 		input.iconDirectory,
-		`${app.owner}--${app.packageName}.png`,
+		`${app.owner}.${app.packageName}.png`,
 	)
 	return {
 		kind: 'linux-desktop-entry',
@@ -192,7 +192,10 @@ async function writeLauncher(plan, { fs, icon, shell, run, tempPath }) {
 				tempPath,
 				'--out',
 				plan.iconPath,
-			]).catch(() => {})
+			]).catch((error) => {
+				// The bundle still opens the app, with the default icon.
+				console.warn(`Kody could not convert the app icon: ${error.message}`)
+			})
 			await fs.rm(tempPath, { force: true })
 		} else if (plan.kind === 'windows-shortcut') {
 			await fs.writeFile(plan.iconPath, pngToIco(icon))

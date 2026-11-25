@@ -7,6 +7,7 @@ const {
 	writeLauncher,
 } = require('./package-app-launchers.cjs')
 const {
+	handoffDestination,
 	installedNavigation,
 	packageAppUrl,
 	parseInstallRequest,
@@ -52,19 +53,23 @@ function createPackageAppWindows(deps) {
 		const app = parseInstallRequest(request, { kodyOrigin, allowLoopback })
 		if (!(await installAllowed(app.owner)))
 			throw new Error('Installing apps is not available for this account yet.')
-		const saved = store.put(app)
 		const icon = app.iconUrl
-			? await fetchIcon(app.iconUrl).catch(() => null)
+			? await fetchIcon(app.iconUrl).catch((error) => {
+					// The launcher still opens the app, with the default icon.
+					console.warn(`Kody could not download the app icon: ${error.message}`)
+					return null
+				})
 			: null
-		await writeLauncher(planFor(saved), {
+		await writeLauncher(planFor(app), {
 			...launcherContext.io,
 			fs,
 			icon,
 			tempPath: join(
 				launcherContext.iconDirectory,
-				`${app.owner}--${app.packageName}.png`,
+				`${app.owner}.${app.packageName}.png`,
 			),
 		})
+		const saved = store.put(app)
 		open(saved, '/')
 		return {
 			owner: saved.owner,
@@ -137,17 +142,34 @@ function createPackageAppWindows(deps) {
 				appId: launcherIdentity(app.owner, app.packageName),
 			})
 		const contents = window.webContents
+		const origins = [app.appOrigin]
+		let lastHop = null
 		function guard(event, url) {
-			const kind = installedNavigation(app, url, kodyOrigin)
-			if (kind === 'stay') return
+			const kind = installedNavigation(app, url, kodyOrigin, origins)
+			if (kind === 'stay') {
+				lastHop = url
+				return
+			}
 			event.preventDefault()
 			if (kind === 'browser') void openBrowser(url)
+			if (kind === 'unavailable') void unavailable('gone')
 		}
+		contents.on('did-start-navigation', (event, url, _inPlace, isMainFrame) => {
+			if (event.isMainFrame ?? isMainFrame) lastHop = event.url ?? url
+		})
 		contents.on('will-navigate', guard)
-		contents.on('will-redirect', guard)
+		contents.on('will-redirect', (event, url) => {
+			const destination = handoffDestination(app, lastHop, url, {
+				kodyOrigin,
+				allowLoopback,
+			})
+			if (destination && !origins.includes(destination))
+				origins.push(destination)
+			guard(event, url)
+		})
 		contents.on('will-attach-webview', (event) => event.preventDefault())
 		contents.setWindowOpenHandler(({ url }) => {
-			if (installedNavigation(app, url, kodyOrigin) !== 'block')
+			if (installedNavigation(app, url, kodyOrigin, origins) === 'browser')
 				void openBrowser(url)
 			return { action: 'deny' }
 		})
@@ -177,7 +199,7 @@ function createPackageAppWindows(deps) {
 		contents.on('did-navigate', (_event, url, status) => {
 			if (!unavailableStatuses.has(status)) return
 			const origin = new URL(url).origin
-			if (origin === app.appOrigin || origin === kodyOrigin)
+			if (origins.includes(origin) || origin === kodyOrigin)
 				void unavailable(status === 401 ? 'signIn' : 'gone')
 		})
 		contents.on(

@@ -20,6 +20,7 @@ const {
 const { createPackageAppWindows } = require('../package-app-windows.cjs')
 const {
 	PackageAppStore,
+	handoffDestination,
 	installedNavigation,
 	packageAppUrl,
 	parseInstallRequest,
@@ -145,6 +146,25 @@ test('installed windows stay on the app origin and send other pages to the brows
 		'stay',
 	)
 	assert.equal(
+		installedNavigation(
+			app,
+			'https://kody.codes/oauth/package-app/run-as-me?returnTo=x',
+			kodyOrigin,
+		),
+		'stay',
+	)
+	assert.equal(
+		installedNavigation(app, 'https://kody.codes/@kent/weather', kodyOrigin),
+		'unavailable',
+	)
+	assert.equal(
+		installedNavigation(app, 'https://apps.team.example/x', kodyOrigin, [
+			app.appOrigin,
+			'https://apps.team.example',
+		]),
+		'stay',
+	)
+	assert.equal(
 		installedNavigation(app, 'https://kody.codes/account', kodyOrigin),
 		'browser',
 	)
@@ -170,6 +190,46 @@ test('installed windows stay on the app origin and send other pages to the brows
 	)
 })
 
+test('a window follows the host the Kody handoff for this app redirects to', () => {
+	const options = { kodyOrigin, allowLoopback: false }
+	assert.equal(
+		handoffDestination(
+			app,
+			'https://kody.codes/@kent/packages/weather/open',
+			'https://apps.team.example/?h=1',
+			options,
+		),
+		'https://apps.team.example',
+	)
+	assert.equal(
+		handoffDestination(
+			app,
+			'https://kody.codes/@kent/packages/other/open',
+			'https://apps.team.example/',
+			options,
+		),
+		null,
+	)
+	assert.equal(
+		handoffDestination(
+			app,
+			'https://weather--kent.kody.run/',
+			'https://evil.example/',
+			options,
+		),
+		null,
+	)
+	assert.equal(
+		handoffDestination(
+			app,
+			'https://kody.codes/@kent/packages/weather/open',
+			'http://apps.team.example/',
+			options,
+		),
+		null,
+	)
+})
+
 test('app URLs open through the handoff when installed signed in, else the app origin', () => {
 	assert.equal(
 		packageAppUrl(app),
@@ -184,6 +244,16 @@ test('app URLs open through the handoff when installed signed in, else the app o
 	assert.equal(
 		packageAppUrl(publicApp, '/days'),
 		'https://weather--kent.kody.run/days',
+	)
+	const mounted = {
+		...app,
+		appOrigin: 'https://apps.example',
+		openUrl: 'https://apps.example/weather/',
+	}
+	assert.equal(packageAppUrl(mounted), 'https://apps.example/weather/')
+	assert.equal(
+		packageAppUrl(mounted, '/days'),
+		'https://apps.example/weather/days',
 	)
 })
 
@@ -266,7 +336,7 @@ test('Linux launcher is a .desktop entry that runs Kody with the kody:// link', 
 	})
 	assert.equal(
 		plan.path,
-		'/home/k/.local/share/applications/kody-app-kent-weather.desktop',
+		'/home/k/.local/share/applications/kody-app-kent.weather.desktop',
 	)
 	const [entry] = plan.files
 	assert.match(
@@ -275,9 +345,20 @@ test('Linux launcher is a .desktop entry that runs Kody with the kody:// link', 
 	)
 	assert.match(entry.content, /^Name=Weather Exec=evil$/m)
 	assert.equal(entry.content.match(/^Exec=/gm).length, 1)
+	const linux = { platform: 'linux', home: '/home/k', iconDirectory: '/i' }
+	assert.notEqual(
+		launcherPlan({
+			...linux,
+			app: { ...app, owner: 'north', packageName: 'star-notes' },
+		}).path,
+		launcherPlan({
+			...linux,
+			app: { ...app, owner: 'north-star', packageName: 'notes' },
+		}).path,
+	)
 	assert.match(
 		entry.content,
-		/^Icon=\/home\/k\/.config\/Kody\/package-app-icons\/kent--weather\.png$/m,
+		/^Icon=\/home\/k\/.config\/Kody\/package-app-icons\/kent\.weather\.png$/m,
 	)
 })
 
@@ -316,20 +397,24 @@ test('writing and removing a Linux launcher touches only its own files', async (
 })
 
 test('writing a Windows launcher creates the shortcut with the app icon', async () => {
-	const root = mkdtempSync(join(tmpdir(), 'kody-win-'))
 	const plan = launcherPlan({
 		platform: 'win32',
-		home: root,
-		appData: root,
+		home: 'C:\\Users\\k',
+		appData: 'C:\\Users\\k\\AppData\\Roaming',
 		systemRoot: 'C:\\Windows',
-		iconDirectory: join(root, 'icons'),
+		iconDirectory: 'C:\\Users\\k\\AppData\\Roaming\\Kody\\icons',
 		app,
 	})
+	const written = new Map()
+	const memoryFs = {
+		mkdir: async () => {},
+		rm: async (path) => void written.delete(path),
+		writeFile: async (path, content) => void written.set(path, content),
+	}
 	const calls = []
-	const png = Buffer.alloc(30)
 	await writeLauncher(plan, {
-		fs: fs.promises,
-		icon: png,
+		fs: memoryFs,
+		icon: Buffer.alloc(30),
 		shell: { writeShortcutLink: (...args) => (calls.push(args), true) },
 	})
 	assert.equal(calls.length, 1)
@@ -339,7 +424,7 @@ test('writing a Windows launcher creates the shortcut with the app icon', async 
 		calls[0][2].appUserModelId,
 		'codes.kody.desktop.app.kent.weather',
 	)
-	assert.equal(readFileSync(plan.iconPath).readUInt16LE(2), 1)
+	assert.equal(written.get(plan.iconPath).readUInt16LE(2), 1)
 })
 
 test('install is refused unless the session flag is on for the app owner', async () => {
@@ -357,5 +442,28 @@ test('install is refused unless the session flag is on for the app owner', async
 	})
 	await assert.rejects(windows.install(app), /not available/)
 	assert.deepEqual(owners, ['kent'])
+	assert.equal(store.list().length, 0)
+})
+
+test('a launcher that fails to write leaves no install record', async () => {
+	const path = join(
+		mkdtempSync(join(tmpdir(), 'kody-apps-')),
+		'package-apps.json',
+	)
+	const store = new PackageAppStore({ path, fs })
+	const windows = createPackageAppWindows({
+		store,
+		kodyOrigin,
+		installAllowed: async () => true,
+		platform: 'linux',
+		launcherContext: { home: '/home/k', iconDirectory: '/i', io: {} },
+		fs: {
+			rm: async () => {},
+			mkdir: async () => {
+				throw new Error('disk full')
+			},
+		},
+	})
+	await assert.rejects(windows.install(app), /disk full/)
 	assert.equal(store.list().length, 0)
 })

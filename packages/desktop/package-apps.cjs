@@ -5,8 +5,14 @@ const handlePattern = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/
 const packagePattern = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/
 const loopbackHosts = ['localhost', '127.0.0.1', '[::1]']
 // Kody pages an installed window may pass through on its way to the app:
-// the Open app handoff and sign-in. Anything else on Kody opens the browser.
-const kodyPassThroughPaths = ['/login', '/signup', '/oauth/authorize']
+// the Open app handoff, sign-in, and Run as me approval. Anything else on
+// Kody opens the browser.
+const kodyPassThroughPaths = [
+	'/login',
+	'/signup',
+	'/oauth/authorize',
+	'/oauth/package-app/run-as-me',
+]
 
 function webOrigin(value, { allowLoopback }) {
 	let url
@@ -63,37 +69,74 @@ function parseInstallRequest(value, { kodyOrigin, allowLoopback = false }) {
 	return { owner, packageName, name, appOrigin, openUrl: openUrl.href, iconUrl }
 }
 
+function isHandoffUrl(app, value, kodyOrigin) {
+	let url
+	try {
+		url = new URL(value)
+	} catch {
+		return false
+	}
+	const handoff = `/@${app.owner}/packages/${app.packageName}/open`
+	return (
+		url.origin === kodyOrigin &&
+		(url.pathname === handoff || url.pathname.startsWith(`${handoff}/`))
+	)
+}
+
 /**
  * Where a top-level navigation in an installed window may go: stay (app
- * origin, or the Kody handoff and sign-in pages), or leave for the browser.
+ * origins, or the Kody handoff and sign-in pages), `unavailable` (the
+ * handoff sent the person back to the package page, so access ended), or
+ * leave for the browser.
  */
-function installedNavigation(app, value, kodyOrigin) {
+function installedNavigation(
+	app,
+	value,
+	kodyOrigin,
+	origins = [app.appOrigin],
+) {
 	let url
 	try {
 		url = new URL(value)
 	} catch {
 		return 'block'
 	}
-	if (url.origin === app.appOrigin) return 'stay'
+	if (origins.includes(url.origin)) return 'stay'
 	if (url.origin === kodyOrigin) {
-		const handoff = `/@${app.owner}/packages/${app.packageName}/open`
 		if (
-			url.pathname === handoff ||
-			url.pathname.startsWith(`${handoff}/`) ||
+			isHandoffUrl(app, url.href, kodyOrigin) ||
 			kodyPassThroughPaths.includes(url.pathname)
 		)
 			return 'stay'
+		if (url.pathname === `/@${app.owner}/${app.packageName}`)
+			return 'unavailable'
 	}
 	return ['http:', 'https:', 'mailto:'].includes(url.protocol)
 		? 'browser'
 		: 'block'
 }
 
+/**
+ * The origin a Kody handoff redirect lands on, when the redirect leaves the
+ * handoff for this app. Kody picks the host (a team custom domain, for
+ * example), so the window may follow it.
+ */
+function handoffDestination(app, from, to, { kodyOrigin, allowLoopback }) {
+	if (!isHandoffUrl(app, from, kodyOrigin)) return null
+	const origin = webOrigin(to, { allowLoopback })
+	return origin && origin !== kodyOrigin ? origin : null
+}
+
 /** URL to open for a path inside the app, through the handoff when signed in. */
 function packageAppUrl(app, path = '/') {
 	const suffix = path === '/' ? '' : path
 	const open = new URL(app.openUrl)
-	if (open.origin === app.appOrigin) return `${app.appOrigin}${suffix || '/'}`
+	if (open.origin === app.appOrigin) {
+		const mount = open.pathname.replace(/\/+$/, '')
+		return suffix
+			? `${app.appOrigin}${mount}${suffix}`
+			: `${app.appOrigin}${mount}/`
+	}
 	open.pathname = `/@${app.owner}/packages/${app.packageName}/open${suffix.split(/[?#]/)[0]}`
 	const tail = suffix.match(/[?#].*$/)?.[0] ?? ''
 	return `${open.origin}${open.pathname}${tail}`
@@ -113,13 +156,20 @@ class PackageAppStore {
 		this.path = path
 		this.fs = fs
 		this.apps = new Map()
+		let saved
 		try {
-			const saved = JSON.parse(fs.readFileSync(path, 'utf8'))
-			for (const app of saved.apps ?? []) {
-				if (app?.owner && app?.packageName)
-					this.apps.set(packageAppKey(app.owner, app.packageName), app)
-			}
-		} catch {}
+			saved = JSON.parse(fs.readFileSync(path, 'utf8'))
+		} catch (error) {
+			// No file yet means nothing is installed. Anything else loses the
+			// records; their launchers then open nothing until reinstalled.
+			if (error?.code !== 'ENOENT')
+				console.warn(`Kody could not read installed apps: ${error.message}`)
+			return
+		}
+		for (const app of saved?.apps ?? []) {
+			if (app?.owner && app?.packageName)
+				this.apps.set(packageAppKey(app.owner, app.packageName), app)
+		}
 	}
 	get(owner, packageName) {
 		return this.apps.get(packageAppKey(owner, packageName)) ?? null
@@ -168,6 +218,7 @@ function packageAppStorePath(userData) {
 
 module.exports = {
 	PackageAppStore,
+	handoffDestination,
 	installedNavigation,
 	packageAppStorePath,
 	packageAppUrl,

@@ -140,6 +140,7 @@ function installedApps() {
 		launcherContext: {
 			home: app.getPath('home'),
 			appData: app.getPath('appData'),
+			dataHome: process.env.XDG_DATA_HOME || undefined,
 			systemRoot: process.env.SystemRoot ?? 'C:\\Windows',
 			iconDirectory: join(userData, 'package-app-icons'),
 			executable: process.env.APPIMAGE ?? process.execPath,
