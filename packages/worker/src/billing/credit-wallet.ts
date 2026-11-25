@@ -344,6 +344,7 @@ export async function buildAdminCreditGrantStatements(input: {
 	grantedByUserId: string
 	amountCents: number
 	note: string | null
+	idempotencyKey?: string | null
 	now: Date
 }): Promise<{
 	entryId: string
@@ -371,8 +372,8 @@ export async function buildAdminCreditGrantStatements(input: {
 			input.db
 				.prepare(
 					`INSERT INTO credit_ledger_entries
-						(id, user_id, kind, amount_micro_usd, month, granted_by_user_id, note, created_at)
-					 VALUES (?, ?, 'admin_grant', ?, ?, ?, ?, ?)`,
+						(id, user_id, kind, amount_micro_usd, month, granted_by_user_id, note, created_at, idempotency_key)
+					 VALUES (?, ?, 'admin_grant', ?, ?, ?, ?, ?, ?)`,
 				)
 				.bind(
 					entryId,
@@ -382,6 +383,7 @@ export async function buildAdminCreditGrantStatements(input: {
 					input.grantedByUserId,
 					input.note?.trim() || null,
 					createdAt,
+					input.idempotencyKey ?? null,
 				),
 			input.db
 				.prepare(

@@ -9,11 +9,18 @@ import {
  * but not to a price, and monthly and annual Pro are prices of one product.
  * A "100% off once" code typed on Stripe's page would make a whole year free.
  * So Checkout never shows Stripe's code box. The customer types the code on
- * the Kody billing page, and Kody applies it only to monthly checkouts.
+ * the Kody billing page, and Kody applies it only to the billing interval
+ * named by the promotion code's `kody_interval` metadata (`month` or
+ * `year`). An untagged code is monthly.
  */
 
-export const annualPromoRejection =
-	'Promo codes apply to monthly billing only. Choose monthly to use this code.'
+export const promoIntervalMetadataKey = 'kody_interval'
+
+export const monthlyPromoOnAnnualRejection =
+	'That promo code is for monthly billing. Choose monthly to use it.'
+
+export const annualPromoOnMonthlyRejection =
+	'That promo code is for annual billing. Choose annual to use it.'
 
 export const existingSubscriptionPromoRejection =
 	'Promo codes apply to new subscriptions only. This organization already has one.'
@@ -47,28 +54,42 @@ export function parsePromoCodeInput(
 	return { ok: true, code }
 }
 
-/** Codes are monthly-only. Checked before any Stripe call. */
-export function promoIntervalRejection(interval: BillingInterval) {
-	switch (interval) {
+/** The interval a promotion code is for; null when its tag is unrecognized. */
+function promotionCodeInterval(
+	metadata: Record<string, string> | null | undefined,
+): BillingInterval | null {
+	const tag = metadata?.[promoIntervalMetadataKey]?.trim().toLowerCase()
+	if (!tag) return 'month'
+	if (tag === 'month' || tag === 'year') return tag
+	return null
+}
+
+function promoIntervalMismatch(
+	codeInterval: BillingInterval,
+	checkoutInterval: BillingInterval,
+): string | null {
+	if (codeInterval === checkoutInterval) return null
+	switch (codeInterval) {
 		case 'month':
-			return null
+			return monthlyPromoOnAnnualRejection
 		case 'year':
-			return annualPromoRejection
+			return annualPromoOnMonthlyRejection
 		default: {
-			const exhaustive: never = interval
+			const exhaustive: never = codeInterval
 			return exhaustive
 		}
 	}
 }
 
 /**
- * The Stripe promotion code id for `code`. Stripe enforces the product
- * restriction, expiry, and redemption limit again when the Checkout Session
- * is created; checking here gives the customer a specific message.
+ * The Stripe promotion code id for `code` on a checkout billed every
+ * `interval`. Stripe enforces the product restriction, expiry, and
+ * redemption limit again when the Checkout Session is created; checking here
+ * gives the customer a specific message.
  */
 export async function resolveCheckoutPromotionCode(
 	env: StripeEnv,
-	input: { code: string; now: Date },
+	input: { code: string; interval: BillingInterval; now: Date },
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
 	const promotion = await findActivePromotionCode(env, input.code)
 	if (!promotion || !promotion.active) {
@@ -86,6 +107,15 @@ export async function resolveCheckoutPromotionCode(
 	) {
 		return { ok: false, error: redeemedPromoRejection }
 	}
+	const codeInterval = promotionCodeInterval(promotion.metadata)
+	if (!codeInterval) {
+		console.error('billing_checkout_promo_interval_unrecognized', {
+			promotionCodeId: promotion.id,
+		})
+		return { ok: false, error: unknownPromoRejection }
+	}
+	const mismatch = promoIntervalMismatch(codeInterval, input.interval)
+	if (mismatch) return { ok: false, error: mismatch }
 	return { ok: true, id: promotion.id }
 }
 

@@ -541,6 +541,7 @@ const promotionCodeSchema = object({
 	expires_at: optional(nullable(number())),
 	max_redemptions: optional(nullable(number())),
 	times_redeemed: optional(number()),
+	metadata: optional(nullable(record(string(), string()))),
 })
 
 const promotionCodeListSchema = object({

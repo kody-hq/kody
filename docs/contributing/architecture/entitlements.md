@@ -432,8 +432,14 @@ auto-refilled, hit the monthly cap (once per month), and balance at or below $5
 the calling admin's, without a Stripe charge. Each grant requires a nonempty
 reason, stored as the ledger note, and writes a ledger row with
 `granted_by_user_id`, amount, recipient, time, and that note, plus an admin
-audit event. `adminOrgGet` reads the wallet and recent ledger. Leftover
-`adminCreditGrant` and `adminCreditWalletGet` still forward to the personal org.
+audit event. `adminOrgCreditGrant` takes an optional `idempotencyKey` (1 to 200
+characters, stored in `credit_ledger_entries.idempotency_key` with a unique
+index): a retry with the same key returns the original grant with
+`replayed: true` and writes no second ledger row, balance change, or org audit
+event. Keys are global, so reusing one for a different organization or amount
+fails with 409. Calls without a key always grant. `adminOrgGet` reads the wallet
+and recent ledger. Leftover `adminCreditGrant` and `adminCreditWalletGet` still
+forward to the personal org.
 
 **Signup welcome credits.** Every newly created person account (password signup,
 OAuth signup, admin-created) receives a one-shot house grant of
@@ -1074,7 +1080,8 @@ binds on the next counted check everywhere, with no TTL that can hide it.
   required reason; a downgrade to free is blocked when it exceeds an owner's
   two-free-organization cap.
 - `adminOrgCreditGrant` — add positive house-funded credit to one organization
-  wallet with a required reason; clawbacks are not supported.
+  wallet with a required reason and an optional `idempotencyKey` that makes
+  retries return the original grant; clawbacks are not supported.
 - `adminOrgCreditEligibilitySet` — change one organization's admin credit
   eligibility with a required reason.
 - `adminOrgCompedSeatsSet`: cap how many seats a manual plan grant covers
@@ -1498,18 +1505,23 @@ Sessions never set `allow_promotion_codes`. Stripe can restrict a coupon to a
 product but not a price, and monthly and annual Pro are one product, so a
 one-month code typed on Stripe's page would zero out a year. Customers type the
 code on the Kody billing page instead
-(`packages/worker/src/billing/checkout-promo.ts`): annual requests with a code
-get 400 before any Stripe call, monthly codes are looked up
+(`packages/worker/src/billing/checkout-promo.ts`). The code is looked up
 (`GET /v1/promotion_codes?code=…&active=true`), checked for expiry and
-redemptions, and attached as `discounts[0][promotion_code]`. Codes are for new
-subscriptions only; a customer with a plan-retaining subscription gets 409.
-There is no public Payment Link path — checkout requires a signed-in session so
-unauthenticated card-testing is not possible. `GET /@<slug>/-/billing/success`
-verifies `client_reference_id` before linking `orgs.stripe_customer_id`, then
-refreshes `orgs.stripe_plan` and renders a thank-you page (Discord invite;
-connect-your-agent when `needsOnboarding`). A successful `stripe_plan` write
-also best-effort re-syncs official Kody Discord Standard/Pro roles when the user
-has a Discord social-login connection (see
+redemptions, checked against its billing interval, and attached as
+`discounts[0][promotion_code]`. The promotion code's `kody_interval` metadata
+names the interval: `year` codes work only on annual checkout, `month` codes
+only on monthly checkout, and an untagged code is monthly. A mismatch gets 400
+naming the code's interval ("That promo code is for annual billing. Choose
+annual to use it."); an unrecognized tag is treated as an invalid code. Codes
+are for new subscriptions only; a customer with a plan-retaining subscription
+gets 409. Each person can claim one promo code across all of their organizations
+(`billing_promo_claims`). There is no public Payment Link path: checkout
+requires a signed-in session so unauthenticated card-testing is not possible.
+`GET /@<slug>/-/billing/success` verifies `client_reference_id` before linking
+`orgs.stripe_customer_id`, then refreshes `orgs.stripe_plan` and renders a
+thank-you page (Discord invite; connect-your-agent when `needsOnboarding`). A
+successful `stripe_plan` write also best-effort re-syncs official Kody Discord
+Standard/Pro roles when the user has a Discord social-login connection (see
 [`social-login.md`](../social-login.md)). `GET /@<slug>/-/billing/portal` opens
 the Stripe customer portal for linked customers, pinned to
 `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` when set.

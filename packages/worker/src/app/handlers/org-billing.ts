@@ -43,7 +43,6 @@ import {
 	parsePromoCodeInput,
 	promoAlreadyClaimedRejection,
 	promoClaimMetadata,
-	promoIntervalRejection,
 	promoRejectedByStripe,
 	releasePromoReservation,
 	reservePromoClaim,
@@ -427,10 +426,6 @@ export async function startWebsiteCheckout(input: {
 		return operationResult({ ok: false, error: promo.error }, 400)
 	}
 	if (promo.code) {
-		const intervalRejection = promoIntervalRejection(interval)
-		if (intervalRejection) {
-			return operationResult({ ok: false, error: intervalRejection }, 400)
-		}
 		if (await hasPersonClaimedPromo(env.APP_DB, user.mcpUser.userId)) {
 			return operationResult(
 				{ ok: false, error: promoAlreadyClaimedRejection },
@@ -551,6 +546,7 @@ export async function startWebsiteCheckout(input: {
 		if (promo.code) {
 			const resolved = await resolveCheckoutPromotionCode(env, {
 				code: promo.code,
+				interval,
 				now: new Date(),
 			})
 			if (!resolved.ok) {

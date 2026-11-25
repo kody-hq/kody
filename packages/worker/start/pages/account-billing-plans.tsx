@@ -348,7 +348,8 @@ export function renderAccountBillingPlans(input: {
 												}
 											/>
 											<span css={descriptionCss}>
-												A Stripe discount on your monthly price. Referral links
+												A Stripe discount on your Pro price. Each code works
+												with monthly or annual billing, not both. Referral links
 												and usernames are not promo codes; a referral goes under
 												Referred by.
 											</span>

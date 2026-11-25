@@ -23502,7 +23502,7 @@ export const capabilityManifest = {
 				{
 					"name": "adminOrgCreditGrant",
 					"domain": "admin",
-					"description": "Add a positive house-funded prepaid credit grant to one live organization wallet. No clawback or Stripe charge. Requires a reason and writes platform and organization audit events.",
+					"description": "Add a positive house-funded prepaid credit grant to one live organization wallet. No clawback or Stripe charge. Requires a reason and writes platform and organization audit events. Pass idempotencyKey so retries never grant twice.",
 					"keywords": [
 						"admin",
 						"org",
@@ -23543,6 +23543,12 @@ export const capabilityManifest = {
 								"type": "string",
 								"minLength": 1,
 								"maxLength": 500
+							},
+							"idempotencyKey": {
+								"description": "Optional caller-chosen key, unique per grant. A retry with the same key returns the original grant (replayed: true) instead of granting again; reusing it for a different org or amount fails.",
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200
 							}
 						},
 						"required": [
@@ -23565,17 +23571,22 @@ export const capabilityManifest = {
 								"type": "integer",
 								"minimum": -9007199254740991,
 								"maximum": 9007199254740991
+							},
+							"replayed": {
+								"type": "boolean",
+								"description": "True when an earlier call with this idempotencyKey made the grant."
 							}
 						},
 						"required": [
 							"orgId",
 							"entryId",
-							"amountCents"
+							"amountCents",
+							"replayed"
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type AdminOrgCreditGrantInput = {\n\t/** Org id (orgs.id). A personal org uses users.personal_org_id when set, otherwise users.stable_user_id — they are not always equal. */\n\torgId?: string\n\t/** Org slug / handle, with or without \"@\" (for example \"@kody\"). */\n\torg?: string\n\t/** House-funded prepaid credit grant, in whole US cents. */\n\tamountCents: number\n\treason: string\n}",
-					"outputTypeDefinition": "type AdminOrgCreditGrantOutput = {\n\torgId: string\n\tentryId: string\n\tamountCents: number\n}"
+					"inputTypeDefinition": "type AdminOrgCreditGrantInput = {\n\t/** Org id (orgs.id). A personal org uses users.personal_org_id when set, otherwise users.stable_user_id — they are not always equal. */\n\torgId?: string\n\t/** Org slug / handle, with or without \"@\" (for example \"@kody\"). */\n\torg?: string\n\t/** House-funded prepaid credit grant, in whole US cents. */\n\tamountCents: number\n\treason: string\n\t/** Optional caller-chosen key, unique per grant. A retry with the same key returns the original grant (replayed: true) instead of granting again; reusing it for a different org or amount fails. */\n\tidempotencyKey?: string\n}",
+					"outputTypeDefinition": "type AdminOrgCreditGrantOutput = {\n\torgId: string\n\tentryId: string\n\tamountCents: number\n\t/** True when an earlier call with this idempotencyKey made the grant. */\n\treplayed: boolean\n}"
 				},
 				{
 					"name": "adminOrgCreditEligibilitySet",

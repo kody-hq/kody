@@ -1,6 +1,8 @@
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
 import {
+	creditAdminGrantIdempotencyKeyMaxLength,
 	creditAdminGrantNoteMaxLength,
+	microUsdPerCent,
 	validateCreditAdminGrantCents,
 } from '#universal/credits.ts'
 import {
@@ -353,6 +355,46 @@ export async function setAdminOrgPlan(input: {
 	return { orgId: org.id, previous, next: input.plan, changed: true }
 }
 
+function normalizeCreditGrantIdempotencyKey(value: unknown): string | null {
+	if (value === undefined || value === null) return null
+	const key = typeof value === 'string' ? value.trim() : ''
+	if (!key || key.length > creditAdminGrantIdempotencyKeyMaxLength) {
+		throw new AdminOrgBillingMutationError(
+			400,
+			`Idempotency key must be 1 to ${creditAdminGrantIdempotencyKeyMaxLength} characters.`,
+		)
+	}
+	return key
+}
+
+/**
+ * The grant an earlier call with `idempotencyKey` made, or null. A key reused
+ * for a different organization or amount is refused instead of replayed.
+ */
+async function findIdempotentAdminCreditGrant(
+	db: D1Database,
+	input: { idempotencyKey: string; orgId: string; amountCents: number },
+): Promise<{ orgId: string; entryId: string; amountCents: number } | null> {
+	const row = await db
+		.prepare(
+			`SELECT id, user_id, amount_micro_usd FROM credit_ledger_entries
+			 WHERE idempotency_key = ?`,
+		)
+		.bind(input.idempotencyKey)
+		.first<{ id: string; user_id: string; amount_micro_usd: number }>()
+	if (!row) return null
+	if (
+		row.user_id !== input.orgId ||
+		row.amount_micro_usd !== input.amountCents * microUsdPerCent
+	) {
+		throw new AdminOrgBillingMutationError(
+			409,
+			'That idempotency key was already used for a different credit grant.',
+		)
+	}
+	return { orgId: row.user_id, entryId: row.id, amountCents: input.amountCents }
+}
+
 export async function grantAdminCreditsToOrg(input: {
 	env: Env
 	audit: OrgAuditWriter
@@ -360,9 +402,16 @@ export async function grantAdminCreditsToOrg(input: {
 	grantedBy: { stableUserId: string; email: string }
 	amountCents: unknown
 	reason: unknown
+	/** Retries with the same key return the original grant (`replayed`). */
+	idempotencyKey?: unknown
 	platformAudit?: AdminOrgPlatformAudit
 	now?: Date
-}): Promise<{ orgId: string; entryId: string; amountCents: number }> {
+}): Promise<{
+	orgId: string
+	entryId: string
+	amountCents: number
+	replayed: boolean
+}> {
 	const normalized = validateCreditAdminGrantCents(input.amountCents)
 	if (!normalized.ok) {
 		throw new AdminOrgBillingMutationError(400, normalized.error)
@@ -371,8 +420,18 @@ export async function grantAdminCreditsToOrg(input: {
 		input.reason,
 		creditAdminGrantNoteMaxLength,
 	)
+	const idempotencyKey = normalizeCreditGrantIdempotencyKey(
+		input.idempotencyKey,
+	)
 	const db = input.env.APP_DB
 	const org = await resolveAdminOrgTarget(db, input.target)
+	const replay = idempotencyKey
+		? { idempotencyKey, orgId: org.id, amountCents: normalized.cents }
+		: null
+	if (replay) {
+		const original = await findIdempotentAdminCreditGrant(db, replay)
+		if (original) return { ...original, replayed: true }
+	}
 	const now = input.now ?? new Date()
 	const entitlement = await getUserEntitlement(db, {
 		userId: org.id,
@@ -385,24 +444,36 @@ export async function grantAdminCreditsToOrg(input: {
 		grantedByUserId: input.grantedBy.stableUserId,
 		amountCents: normalized.cents,
 		note: reason,
+		idempotencyKey,
 		now,
 	})
-	await runAppDbBatchWithOrgAudit({
-		appDb: db,
-		audit: input.audit,
-		statements: grant.statements,
-		event: {
-			orgId: org.id,
-			action: orgBillingAuditActions.creditsGranted,
-			resourceType: 'credit_wallet',
-			resourceId: grant.entryId,
-			details: {
-				amountCents: normalized.cents,
-				entryId: grant.entryId,
-				reason,
+	try {
+		await runAppDbBatchWithOrgAudit({
+			appDb: db,
+			audit: input.audit,
+			statements: grant.statements,
+			event: {
+				orgId: org.id,
+				action: orgBillingAuditActions.creditsGranted,
+				resourceType: 'credit_wallet',
+				resourceId: grant.entryId,
+				details: {
+					amountCents: normalized.cents,
+					entryId: grant.entryId,
+					reason,
+				},
 			},
-		},
-	})
+		})
+	} catch (error) {
+		// A concurrent call with the same key won the unique index.
+		const original = replay
+			? await findIdempotentAdminCreditGrant(db, replay)
+			: null
+		if (original && original.entryId !== grant.entryId) {
+			return { ...original, replayed: true }
+		}
+		throw error
+	}
 	invalidateCachedUserEntitlement(db, org.id)
 	await writePlatformAudit({
 		env: input.env,
@@ -414,6 +485,7 @@ export async function grantAdminCreditsToOrg(input: {
 		orgId: org.id,
 		entryId: grant.entryId,
 		amountCents: normalized.cents,
+		replayed: false,
 	}
 }
 
