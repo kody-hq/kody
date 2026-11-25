@@ -11,6 +11,10 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { checkInstalledLockfile } from './check-installed-lockfile.ts'
 import {
+	localPersistEnv,
+	resolveLocalD1PersistPath,
+} from './local-d1-persist.ts'
+import {
 	createDefaultEnsureDevDeps,
 	ensureDev,
 	formatAppRunning,
@@ -1545,7 +1549,10 @@ export function defaultDoctorDeps(origin: string | null = null): DoctorDeps {
 		probeHealth: (value) => isWorkerHealthOk(value),
 		ports: workerPortRange(),
 		origin,
-		persistRoot: path.join(process.cwd(), '.wrangler', 'state'),
+		persistRoot: path.resolve(
+			process.cwd(),
+			resolveLocalD1PersistPath({ env: localPersistEnv() }),
+		),
 		hasLocalUsersTable: localD1HasUsersTable,
 		probeLocalLogin: async (value) => {
 			const session = await loginToOrigin({

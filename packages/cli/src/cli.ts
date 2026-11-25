@@ -1339,6 +1339,7 @@ async function dispatch(
 			} | null = localPackageInvoke
 			// The package runtime has no --credential support yet; run a plain
 			// module so the picks still apply.
+			// Remove when: runLocalPackageModule accepts and forwards credentials.
 			if (
 				!localPackageRun &&
 				local &&
