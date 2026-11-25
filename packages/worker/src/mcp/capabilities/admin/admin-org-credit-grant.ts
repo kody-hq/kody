@@ -11,6 +11,7 @@ import {
 	orgLimitOverrideReasonMaxLength,
 } from '#worker/admin/org-limit-overrides.ts'
 import {
+	creditAdminGrantIdempotencyKeyMaxLength,
 	creditAdminGrantMaxCents,
 	creditAdminGrantNoteMaxLength,
 } from '#universal/credits.ts'
@@ -43,6 +44,15 @@ const inputSchema = z.intersection(
 					creditAdminGrantNoteMaxLength,
 				),
 			),
+		idempotencyKey: z
+			.string()
+			.trim()
+			.min(1)
+			.max(creditAdminGrantIdempotencyKeyMaxLength)
+			.optional()
+			.describe(
+				'Optional caller-chosen key, unique per grant. A retry with the same key returns the original grant (replayed: true) instead of granting again; reusing it for a different org or amount fails.',
+			),
 	}),
 )
 
@@ -50,6 +60,11 @@ const outputSchema = z.object({
 	orgId: z.string(),
 	entryId: z.string(),
 	amountCents: z.number().int(),
+	replayed: z
+		.boolean()
+		.describe(
+			'True when an earlier call with this idempotencyKey made the grant.',
+		),
 })
 
 export const adminOrgCreditGrantCapability = defineDomainCapability(
@@ -59,7 +74,7 @@ export const adminOrgCreditGrantCapability = defineDomainCapability(
 		name: 'adminOrgCreditGrant',
 		contextRuns: 'deny',
 		description:
-			'Add a positive house-funded prepaid credit grant to one live organization wallet. No clawback or Stripe charge. Requires a reason and writes platform and organization audit events.',
+			'Add a positive house-funded prepaid credit grant to one live organization wallet. No clawback or Stripe charge. Requires a reason and writes platform and organization audit events. Pass idempotencyKey so retries never grant twice.',
 		keywords: ['admin', 'org', 'organization', 'credits', 'wallet', 'grant'],
 		inputSchema,
 		outputSchema,
@@ -89,6 +104,7 @@ export const adminOrgCreditGrantCapability = defineDomainCapability(
 							},
 							amountCents: args.amountCents,
 							reason: args.reason,
+							idempotencyKey: args.idempotencyKey,
 							platformAudit: false,
 						})
 					} catch (error) {
@@ -103,7 +119,7 @@ export const adminOrgCreditGrantCapability = defineDomainCapability(
 				},
 				{
 					successReason: (result) =>
-						`org_id=${result.orgId};amount_cents=${result.amountCents};entry_id=${result.entryId};reason=${args.reason}`,
+						`org_id=${result.orgId};amount_cents=${result.amountCents};entry_id=${result.entryId};replayed=${result.replayed};reason=${args.reason}`,
 				},
 			)
 		},

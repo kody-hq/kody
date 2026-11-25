@@ -148,14 +148,18 @@ test('org billing capabilities deny non-admins, audit successful mutations, and 
 		{ orgId: target, plan: 'pro', reason: 'MCP plan request.' },
 		ctx,
 	)
-	const grant = await adminOrgCreditGrantCapability.handler(
-		{
-			orgId: target,
-			amountCents: 100,
-			reason: 'MCP credit request.',
-		},
+	const grantArgs = {
+		orgId: target,
+		amountCents: 100,
+		reason: 'MCP credit request.',
+		idempotencyKey: 'mcp-grant-1',
+	}
+	const grant = await adminOrgCreditGrantCapability.handler(grantArgs, ctx)
+	const retriedGrant = await adminOrgCreditGrantCapability.handler(
+		grantArgs,
 		ctx,
 	)
+	expect(retriedGrant).toEqual({ ...grant, replayed: true })
 	const eligibility = await adminOrgCreditEligibilitySetCapability.handler(
 		{
 			orgId: target,
@@ -164,7 +168,11 @@ test('org billing capabilities deny non-admins, audit successful mutations, and 
 		},
 		ctx,
 	)
-	expect(grant).toMatchObject({ orgId: target, amountCents: 100 })
+	expect(grant).toMatchObject({
+		orgId: target,
+		amountCents: 100,
+		replayed: false,
+	})
 	expect(eligibility).toMatchObject({
 		orgId: target,
 		previous: false,
@@ -209,7 +217,7 @@ test('org billing capabilities deny non-admins, audit successful mutations, and 
 			.prepare(
 				`SELECT action, result, reason FROM audit_events WHERE action IN (
 					'adminOrgPlanSet', 'adminOrgCreditGrant', 'adminOrgCreditEligibilitySet'
-				) ORDER BY rowid DESC LIMIT 3`,
+				) ORDER BY rowid DESC LIMIT 4`,
 			)
 			.all(),
 	).toEqual(

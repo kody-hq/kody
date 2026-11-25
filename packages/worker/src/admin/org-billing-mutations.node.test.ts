@@ -423,7 +423,7 @@ test('org credit grants are positive, reasoned, and written to both audit logs',
 		reason: 'Approved one-time team credit.',
 	}
 	const result = await grantAdminCreditsToOrg(args)
-	expect(result).toMatchObject({ orgId, amountCents: 500 })
+	expect(result).toMatchObject({ orgId, amountCents: 500, replayed: false })
 	expect(
 		sqlite
 			.prepare(
@@ -462,6 +462,86 @@ test('org credit grants are positive, reasoned, and written to both audit logs',
 	await expect(
 		grantAdminCreditsToOrg({ ...args, reason: '  ' }),
 	).rejects.toThrow('A reason is required.')
+})
+
+test('org credit grants with an idempotency key never grant twice', async () => {
+	const { sqlite, auditSqlite, env, audit } = createDb()
+	const orgId = testStableUserIdFromEmail('idempotent-credit-team@example.com')
+	const otherOrgId = testStableUserIdFromEmail('other-credit-team@example.com')
+	insertOrg(sqlite, { id: orgId, slug: 'idempotent-credit-team', plan: 'pro' })
+	insertOrg(sqlite, { id: otherOrgId, slug: 'other-credit-team', plan: 'pro' })
+	const args = {
+		...auditInput(env, audit),
+		target: { orgId },
+		grantedBy: { stableUserId: adminId, email: 'admin@example.com' },
+		amountCents: 500,
+		reason: 'Approved one-time team credit.',
+		idempotencyKey: ' grant-key-1 ',
+	}
+	const ledger = (id: string) =>
+		sqlite
+			.prepare(
+				`SELECT id, amount_micro_usd, idempotency_key FROM credit_ledger_entries WHERE user_id = ?`,
+			)
+			.all(id)
+	const balance = (id: string) =>
+		sqlite
+			.prepare(`SELECT balance_micro_usd FROM credit_wallets WHERE user_id = ?`)
+			.get(id)
+
+	const [first, concurrent] = await Promise.all([
+		grantAdminCreditsToOrg(args),
+		grantAdminCreditsToOrg(args),
+	])
+	expect([first.replayed, concurrent.replayed].sort()).toEqual([false, true])
+	expect(concurrent.entryId).toBe(first.entryId)
+	const retry = await grantAdminCreditsToOrg({
+		...args,
+		target: { org: 'idempotent-credit-team' },
+		reason: 'Retried after a timeout.',
+	})
+	expect(retry).toEqual({
+		orgId,
+		entryId: first.entryId,
+		amountCents: 500,
+		replayed: true,
+	})
+	expect(ledger(orgId)).toEqual([
+		{
+			id: first.entryId,
+			amount_micro_usd: 5_000_000,
+			idempotency_key: 'grant-key-1',
+		},
+	])
+	expect(balance(orgId)).toEqual({ balance_micro_usd: 5_000_000 })
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM org_audit_events WHERE org_id = ? AND action = 'admin_credits_granted'`,
+			)
+			.get(orgId),
+	).toEqual({ count: 1 })
+
+	await expect(
+		grantAdminCreditsToOrg({ ...args, amountCents: 600 }),
+	).rejects.toThrow(
+		'That idempotency key was already used for a different credit grant.',
+	)
+	await expect(
+		grantAdminCreditsToOrg({ ...args, target: { orgId: otherOrgId } }),
+	).rejects.toThrow(
+		'That idempotency key was already used for a different credit grant.',
+	)
+	expect(ledger(otherOrgId)).toEqual([])
+	await expect(
+		grantAdminCreditsToOrg({ ...args, idempotencyKey: '  ' }),
+	).rejects.toThrow('Idempotency key must be 1 to 200 characters.')
+
+	const unkeyed = { ...args, idempotencyKey: undefined }
+	const second = await grantAdminCreditsToOrg(unkeyed)
+	const third = await grantAdminCreditsToOrg(unkeyed)
+	expect([second.replayed, third.replayed]).toEqual([false, false])
+	expect(balance(orgId)).toEqual({ balance_micro_usd: 15_000_000 })
 })
 
 test('org credit grant invalidates cached entitlement after funding the wallet', async () => {

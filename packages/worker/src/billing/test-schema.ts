@@ -2,7 +2,7 @@ import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 
 /**
- * Mirrors `0069-prepaid-credits.sql` (ledger, debit progress, and sweep cursor; wallets
+ * Mirrors `0069-prepaid-credits.sql` and `0297-credit-ledger-idempotency-key.sql` (ledger, debit progress, and sweep cursor; wallets
  * come with the shared `users` schema) plus `usage_rollups` for
  * `*.workers.test.ts` suites, which run against an empty local D1.
  */
@@ -21,11 +21,15 @@ export async function ensureCreditWalletTestSchema(db: D1Database) {
 	stripe_reference TEXT,
 	granted_by_user_id TEXT,
 	note TEXT,
-	created_at TEXT NOT NULL
+	created_at TEXT NOT NULL,
+	idempotency_key TEXT
 )`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_ledger_entries_stripe_reference
 	ON credit_ledger_entries (stripe_reference)
 	WHERE stripe_reference IS NOT NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_ledger_entries_idempotency_key
+	ON credit_ledger_entries (idempotency_key)
+	WHERE idempotency_key IS NOT NULL`,
 		`CREATE TABLE IF NOT EXISTS credit_debit_progress (
 	user_id TEXT NOT NULL,
 	month TEXT NOT NULL,

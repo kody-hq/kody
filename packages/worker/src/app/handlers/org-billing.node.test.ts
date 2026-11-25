@@ -10,11 +10,13 @@ import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import { createBillingLinkReference } from '#worker/billing/billing-config.ts'
 import {
-	annualPromoRejection,
+	annualPromoOnMonthlyRejection,
 	existingSubscriptionPromoRejection,
+	monthlyPromoOnAnnualRejection,
 	promoAlreadyClaimedRejection,
 	promoClaimMetadataKeys,
 	promoRejectedByStripe,
+	releasePromoReservation,
 } from '#worker/billing/checkout-promo.ts'
 import type * as StripeClient from '#worker/billing/stripe-client.ts'
 import { StripeApiError } from '#worker/billing/stripe-client.ts'
@@ -424,50 +426,93 @@ test('only owners and billing admins can subscribe an organization', async () =>
 	expect(mocks.listSubscriptions).not.toHaveBeenCalled()
 })
 
-test('promo codes apply to monthly checkouts only, as a Kody-validated discount', async () => {
+test('promo codes apply only to the billing interval their kody_interval metadata names', async () => {
 	signInAs('ada')
 	const env = createEnv()
-
-	const annual = await postCheckout(env, 'acme', {
-		plan: 'pro',
-		interval: 'year',
-		promoCode: 'AGENCY-1',
-	})
-	expect(annual.status).toBe(400)
-	expect(annual.data).toEqual({
-		ok: false,
-		error: annualPromoRejection,
-	})
-	expect(mocks.findActivePromotionCode).not.toHaveBeenCalled()
-	expect(mocks.createCheckoutSession).not.toHaveBeenCalled()
-
-	mocks.findActivePromotionCode.mockResolvedValueOnce({
-		id: 'promo_agency_1',
-		code: 'AGENCY-1',
+	const promo = (id: string, metadata?: Record<string, string>) => ({
+		id,
+		code: id.toUpperCase(),
 		active: true,
 		expires_at: Math.floor(Date.now() / 1000) + 86_400,
 		max_redemptions: 1,
 		times_redeemed: 0,
+		...(metadata ? { metadata } : {}),
 	})
-	const monthly = await postCheckout(env, 'acme', {
-		plan: 'pro',
-		interval: 'month',
-		promoCode: ' AGENCY-1 ',
-	})
-	expect(monthly.status).toBe(200)
-	expect(mocks.findActivePromotionCode).toHaveBeenCalledWith(env, 'AGENCY-1')
-	expect(mocks.createCheckoutSession).toHaveBeenLastCalledWith(
-		env,
-		expect.objectContaining({
-			priceId: 'price_pro',
-			promotionCodeId: 'promo_agency_1',
-			quantity: 2,
-			metadata: expect.objectContaining({
-				[promoClaimMetadataKeys.userId]: people.ada.personId,
-				[promoClaimMetadataKeys.promotionCodeId]: 'promo_agency_1',
-			}),
-		}),
-	)
+	const cases: Array<
+		[
+			string,
+			Record<string, string> | undefined,
+			'month' | 'year',
+			string | null,
+		]
+	> = [
+		['promo_untagged', undefined, 'month', null],
+		['promo_untagged', undefined, 'year', monthlyPromoOnAnnualRejection],
+		['promo_month', { kody_interval: 'month' }, 'month', null],
+		[
+			'promo_month',
+			{ kody_interval: 'month' },
+			'year',
+			monthlyPromoOnAnnualRejection,
+		],
+		['promo_year', { kody_interval: 'year' }, 'year', null],
+		['promo_year', { kody_interval: ' Year ' }, 'year', null],
+		[
+			'promo_year',
+			{ kody_interval: 'year' },
+			'month',
+			annualPromoOnMonthlyRejection,
+		],
+		[
+			'promo_bad_tag',
+			{ kody_interval: 'annual' },
+			'year',
+			"That promo code isn't valid.",
+		],
+	]
+	consoleError.mockImplementation(() => {})
+	try {
+		for (const [id, metadata, interval, error] of cases) {
+			mocks.createCheckoutSession.mockClear()
+			mocks.findActivePromotionCode.mockResolvedValueOnce(promo(id, metadata))
+			const response = await postCheckout(env, 'acme', {
+				plan: 'pro',
+				interval,
+				promoCode: ' CODE-1 ',
+			})
+			const label = { id, metadata, interval }
+			if (error) {
+				expect([label, response.status, response.data]).toEqual([
+					label,
+					400,
+					{ ok: false, error },
+				])
+				expect(mocks.createCheckoutSession).not.toHaveBeenCalled()
+				continue
+			}
+			expect([label, response.status]).toEqual([label, 200])
+			expect(mocks.createCheckoutSession).toHaveBeenLastCalledWith(
+				env,
+				expect.objectContaining({
+					priceId: interval === 'year' ? 'price_pro_yearly' : 'price_pro',
+					promotionCodeId: id,
+					quantity: 2,
+					metadata: expect.objectContaining({
+						[promoClaimMetadataKeys.userId]: people.ada.personId,
+						[promoClaimMetadataKeys.promotionCodeId]: id,
+					}),
+				}),
+			)
+			// Abandoned checkout: release the claim so the next case can reserve.
+			await releasePromoReservation({
+				db: env.APP_DB,
+				userId: people.ada.personId,
+			})
+		}
+	} finally {
+		consoleError.mockReset()
+	}
+	expect(mocks.findActivePromotionCode).toHaveBeenCalledWith(env, 'CODE-1')
 
 	// An empty field is no code at all.
 	await postCheckout(env, 'acme', {

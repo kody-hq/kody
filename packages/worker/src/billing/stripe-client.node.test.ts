@@ -145,8 +145,8 @@ test('stripe client request contracts for checkout, subscriptions, and portal', 
 			customer: null,
 			'automatic_tax[enabled]': 'true',
 			'tax_id_collection[enabled]': 'true',
-			// Kody validates promo codes itself (monthly only); Stripe's code
-			// box would let one-month codes apply to annual.
+			// Kody validates promo codes itself (per billing interval); Stripe's
+			// code box would let one-month codes apply to annual.
 			allow_promotion_codes: null,
 			'discounts[0][promotion_code]': null,
 			'customer_update[address]': null,

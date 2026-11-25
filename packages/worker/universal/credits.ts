@@ -75,6 +75,7 @@ const creditAutoRefillMaxMonthlyCapCents = 200_000
 const creditAdminGrantMinCents = 1
 export const creditAdminGrantMaxCents = 100_000
 export const creditAdminGrantNoteMaxLength = 500
+export const creditAdminGrantIdempotencyKeyMaxLength = 200
 
 /**
  * House-funded welcome credits granted once per new person account at
