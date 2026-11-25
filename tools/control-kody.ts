@@ -866,7 +866,7 @@ async function runLocalAppDbCheck(
 		return {
 			name: 'local-d1',
 			ok: false,
-			detail: `local persist at ${deps.persistRoot} has no users table (migrations not applied)\n${formatLocalAppDbRemediation()}`,
+			detail: `local persist at ${deps.persistRoot} has no readable users table (migrations not applied?)\n${formatLocalAppDbRemediation()}`,
 		}
 	}
 	if (persistOk) {
@@ -1513,8 +1513,13 @@ export function runMapCheck(input: {
 
 export function localD1HasUsersTable(persistRoot: string) {
 	const d1Dir = path.join(persistRoot, 'v3', 'd1', 'miniflare-D1DatabaseObject')
-	if (!existsSync(d1Dir)) return false
-	return readdirSync(d1Dir)
+	let names: Array<string>
+	try {
+		names = readdirSync(d1Dir)
+	} catch {
+		return false
+	}
+	return names
 		.filter((name) => name.endsWith('.sqlite'))
 		.some((name) => {
 			let db: DatabaseSync | undefined
