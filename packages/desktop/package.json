@@ -85,6 +85,14 @@
       "category": "Development"
     },
     "icon": "assets/icon.png",
+    "protocols": [
+      {
+        "name": "Kody",
+        "schemes": [
+          "kody"
+        ]
+      }
+    ],
     "artifactName": "Kody-${version}-${os}-${arch}.${ext}",
     "toolsets": {
       "winCodeSign": "1.1.0"

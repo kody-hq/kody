@@ -43,6 +43,12 @@ const {
 	createAppLinkRouter,
 	openInBrowser,
 } = require('./app-links.cjs')
+const {
+	packageAppLinkFromArgv,
+	parsePackageAppLink,
+} = require('./package-app-links.cjs')
+const { PackageAppStore, packageAppStorePath } = require('./package-apps.cjs')
+const { createPackageAppWindows } = require('./package-app-windows.cjs')
 
 app.setName('Kody')
 let appOrigin = productionOrigin
@@ -89,6 +95,91 @@ ipcMain.handle('kody:navigation', (event, command) => {
 		throw new Error('Navigation is only available to the main Kody document.')
 	return navigation.command(command)
 })
+let packageApps
+function installedApps() {
+	if (packageApps) return packageApps
+	const userData = app.getPath('userData')
+	const fs = require('node:fs')
+	const kodySession = session.fromPartition('persist:kody')
+	packageApps = createPackageAppWindows({
+		BrowserWindow,
+		dialog,
+		fs: fs.promises,
+		store: new PackageAppStore({ path: packageAppStorePath(userData), fs }),
+		kodyOrigin: appOrigin,
+		allowLoopback: appOrigin !== productionOrigin,
+		openBrowser: (url) =>
+			openInBrowser(url, { app, shell }).catch((error) =>
+				dialog.showErrorBox('Could not open link', error.message),
+			),
+		installAllowed: async (owner) => {
+			const response = await kodySession.fetch(
+				`${appOrigin}/session?org=${encodeURIComponent(owner)}`,
+				{
+					credentials: 'include',
+					redirect: 'error',
+					cache: 'no-store',
+					signal: AbortSignal.timeout(10_000),
+				},
+			)
+			if (!response.ok) return false
+			const result = await response.json()
+			return (
+				result.ok === true &&
+				result.session?.featureFlags?.['desktop-install-package-apps'] === true
+			)
+		},
+		fetchIcon: async (url) => {
+			const response = await kodySession.fetch(url, {
+				signal: AbortSignal.timeout(10_000),
+			})
+			if (!response.ok)
+				throw new Error(`Icon request failed: ${response.status}`)
+			return Buffer.from(await response.arrayBuffer())
+		},
+		launcherContext: {
+			home: app.getPath('home'),
+			appData: app.getPath('appData'),
+			systemRoot: process.env.SystemRoot ?? 'C:\\Windows',
+			iconDirectory: join(userData, 'package-app-icons'),
+			executable: process.env.APPIMAGE ?? process.execPath,
+			io: {
+				shell,
+				run: (file, args) =>
+					new Promise((resolve, reject) =>
+						require('node:child_process').execFile(file, args, (error) =>
+							error ? reject(error) : resolve(),
+						),
+					),
+			},
+		},
+	})
+	return packageApps
+}
+// Only the main Kody document installs apps; the page shows Install only
+// when the session's `desktop-install-package-apps` flag is on.
+ipcMain.handle('kody:package-apps', async (event, action, input) => {
+	if (!navigationFor(event))
+		throw new Error('Apps are only managed from the main Kody document.')
+	const apps = installedApps()
+	switch (action) {
+		case 'install':
+			await apps.install(input)
+			return
+		case 'list':
+			return apps.list()
+		case 'uninstall':
+			await apps.uninstall(input ?? {})
+			return
+		default:
+			throw new Error('Unknown apps action.')
+	}
+})
+/** Opens an installed app for a `kody://app/...` link; false when not installed. */
+function openPackageAppLink(value) {
+	const link = typeof value === 'string' ? parsePackageAppLink(value) : value
+	return Boolean(link && !quitting && installedApps().openLink(link))
+}
 let loginAttempt
 let loginWindow
 ipcMain.handle('kody:authentication', async (event, mode) => {
@@ -543,7 +634,8 @@ function quitWithoutWindows() {
 		process.platform !== 'darwin' &&
 		!presence.background &&
 		!windows.size &&
-		!pendingWindows
+		!pendingWindows &&
+		!packageApps?.size
 	)
 		app.quit()
 }
@@ -755,7 +847,22 @@ else {
 		if (type === browsingWebActivity && appLinks.receive(details?.webpageURL))
 			event.preventDefault()
 	})
-	app.on('second-instance', () => showApp())
+	let pendingPackageAppLinks = []
+	function receivePackageAppLink(value) {
+		const link = parsePackageAppLink(value)
+		if (!link) return false
+		if (pendingPackageAppLinks) pendingPackageAppLinks.push(link)
+		else if (!openPackageAppLink(link)) void showApp()
+		return true
+	}
+	app.on('open-url', (event, url) => {
+		if (receivePackageAppLink(url)) event.preventDefault()
+	})
+	app.on('second-instance', (_event, argv) => {
+		const link = packageAppLinkFromArgv(argv)
+		if (link && openPackageAppLink(link)) return
+		void showApp()
+	})
 	app.on('activate', () => showApp())
 	app.on('window-all-closed', quitWithoutWindows)
 	app.on('before-quit', (event) => {
@@ -785,8 +892,17 @@ else {
 			loadState()
 			presence.start()
 			updateMenu()
+			if (process.platform === 'linux') app.setAsDefaultProtocolClient('kody')
+			const argvLink = packageAppLinkFromArgv(process.argv)
+			const launchApps = [
+				...(argvLink ? [argvLink] : []),
+				...pendingPackageAppLinks,
+			]
+			pendingPackageAppLinks = null
+			// A launcher opens just its app window, not the dashboard.
+			const openedApps = launchApps.filter((link) => openPackageAppLink(link))
 			const [launchLink, ...moreLinks] = appLinks.start()
-			await showApp(launchLink)
+			if (!openedApps.length || launchLink) await showApp(launchLink)
 			for (const path of moreLinks) void newWindow(path)
 			await presence.onboard()
 			if (!quitting) void execution.request('state').catch(() => {})

@@ -105,7 +105,7 @@ async function smoke() {
 				),
 				false,
 			)
-			await app.evaluate(({ app }, event) => app.emit(event), event)
+			await app.evaluate(({ app }, event) => app.emit(event, {}, []), event)
 			await expect
 				.poll(() =>
 					app.evaluate(({ BrowserWindow }) =>
@@ -141,7 +141,7 @@ async function smoke() {
 			),
 			false,
 		)
-		await app.evaluate(({ app }) => app.emit('second-instance'))
+		await app.evaluate(({ app }) => app.emit('second-instance', {}, []))
 		await expect
 			.poll(() =>
 				app.evaluate(({ BrowserWindow }) =>

@@ -178,6 +178,56 @@ test.describe('Dialog', () => {
 	}
 })
 
+test.describe('Install package app dialog', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/dev/ui#install-app')
+		await waitForClientHydration(page)
+	})
+
+	for (const theme of themes) {
+		test(`confirms, installs, and passes axe (${theme})`, async ({ page }) => {
+			await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+			const trigger = page.getByRole('button', { name: 'Install Weather' })
+			await trigger.click()
+			const dialog = page.getByRole('dialog', { name: 'Install Weather?' })
+			await expect(dialog).toHaveAccessibleDescription(
+				'It opens in its own window with a launcher on this computer and always runs the latest published version.',
+			)
+			for (const step of ['confirm', 'installed'] as const) {
+				if (step === 'installed') {
+					await dialog.getByRole('button', { name: 'Install' }).click()
+					await expect(
+						page.getByRole('dialog', { name: 'Weather is installed' }),
+					).toBeVisible()
+				}
+				await waitForAnimationsToSettle(page)
+				const name = `gallery-install-app-${step}-${theme}.png`
+				await page.screenshot({
+					path: path.join(uiVerifyPaths.screenshots, name),
+					animations: 'disabled',
+					caret: 'hide',
+				})
+				if (pinnedBrowserEndpoint()) {
+					await expect
+						.soft(
+							page,
+							`visual: install dialog ${step} (${theme}) no longer matches its baseline. If the change is intended, run \`${uiVerifyUpdateCommand}\` and commit the files under ${uiVerifyPaths.baselines}/.`,
+						)
+						.toHaveScreenshot(name)
+				}
+				expect
+					.soft(
+						await findAxeViolations(page),
+						`axe: install dialog ${step} (${theme}) has blocking accessibility violations.`,
+					)
+					.toEqual([])
+			}
+			await page.getByRole('button', { name: 'Done' }).click()
+			await expect(trigger).toBeFocused()
+		})
+	}
+})
+
 test.describe('Menu', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.emulateMedia({ reducedMotion: 'reduce' })

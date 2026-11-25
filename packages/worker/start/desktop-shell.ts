@@ -24,6 +24,26 @@ export type DesktopExecutionState = {
 	cliReady: boolean
 	error: string | null
 }
+export type DesktopPackageAppInstall = {
+	owner: string
+	packageName: string
+	name: string
+	/** Absolute Open app URL: the Kody handoff path or the hosted app. */
+	openUrl: string
+	appOrigin: string
+	iconUrl: string | null
+}
+export type DesktopInstalledPackageApp = {
+	owner: string
+	packageName: string
+	name: string
+}
+/** Installed package apps. Older desktop apps omit this. */
+export type DesktopAppsBridge = {
+	install: (app: DesktopPackageAppInstall) => Promise<void>
+	list: () => Promise<Array<DesktopInstalledPackageApp>>
+	uninstall: (app: { owner: string; packageName: string }) => Promise<void>
+}
 export type DesktopExecutionBridge = {
 	/** Sign-in approves in an app window when it can. Older apps omit this. */
 	approvesInApp?: boolean
@@ -56,6 +76,7 @@ export type DesktopNavigationState = {
 export type DesktopShell = {
 	version: 1
 	execution?: DesktopExecutionBridge
+	apps?: DesktopAppsBridge
 	authentication?: {
 		signIn: (mode: 'login' | 'signup') => Promise<void>
 		cancel: () => Promise<void>

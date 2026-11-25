@@ -13,7 +13,11 @@ export function createSessionHandler(env: Env) {
 			return jsonResponse({ ok: false })
 		}
 
-		const loaded = await loadSessionInfo(request, env)
+		const loaded = await loadSessionInfo(
+			request,
+			env,
+			sessionOrgPathname(request),
+		)
 		if (!loaded.session) {
 			return jsonResponse(
 				{ ok: false },
@@ -41,4 +45,14 @@ export function createSessionHandler(env: Env) {
 				: undefined,
 		)
 	}
+}
+
+/**
+ * `?org=<slug>` evaluates feature flags with that org as the page org, the
+ * same as a page under `/@<slug>`. The desktop shell uses it to check a
+ * package owner's flags before installing that owner's app.
+ */
+function sessionOrgPathname(request: Request) {
+	const org = new URL(request.url).searchParams.get('org')
+	return org && /^[a-zA-Z0-9_-]+$/.test(org) ? `/@${org}` : undefined
 }

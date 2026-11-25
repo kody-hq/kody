@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import {
 	buildPackageRepoActions,
+	buildPackageRepoActionsForPage,
 	resolvePackageAppLinks,
 } from '#app/package-repo-actions.ts'
 import type { PublicCommunityListing } from '#universal/community-public-types.ts'
@@ -172,4 +173,37 @@ test('open app for public readers falls back to the kody.run hosted URL', async 
 		packageAppHref: 'https://pkg-owner.kody.run/demo-app',
 		packageAppOriginHref: null,
 	})
+})
+
+test('install target follows Open app onto the hosted app origin', async () => {
+	publicLocation.hostedUrl = 'https://demo-app--pkg-owner.kody.run/'
+	const env = {
+		PACKAGE_APP_BASE_URL: 'https://kody.run',
+		APP_BASE_URL: 'https://kody.test',
+	} as unknown as Env
+	const page = {
+		kind: 'page',
+		username: 'pkg-owner',
+		kodyId: 'demo-app',
+		listing: { listing, viewerInstall: null },
+		ownerPackage: null,
+		hasPackage: true,
+		viewerIsOwner: false,
+		viewerCanManage: false,
+		loggedIn: true,
+		viewerMayRun: true,
+		ownerUserId: 'org-owner',
+	} as unknown as Parameters<typeof buildPackageRepoActionsForPage>[0]
+	const actions = await buildPackageRepoActionsForPage(page, env)
+	expect(actions.packageAppHref).toBe('/@pkg-owner/packages/demo-app/open')
+	expect(actions.packageAppInstall).toEqual({
+		owner: 'pkg-owner',
+		packageName: 'demo-app',
+		name: '@pkg-owner/demo-app',
+		appOrigin: 'https://demo-app--pkg-owner.kody.run',
+		iconUrl: '/community/listing-1/icon/abc1234567890',
+	})
+	publicLocation.hostedUrl = null
+	const inline = await buildPackageRepoActionsForPage(page, env)
+	expect(inline.packageAppInstall).toBeNull()
 })

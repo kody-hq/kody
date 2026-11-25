@@ -166,6 +166,9 @@ function fixture(platform = 'darwin', background = false) {
 		'./site-capabilities.cjs': { supportsIntegratedTitlebar: () => capability },
 		'./window-navigation.cjs': require('../window-navigation.cjs'),
 		'./app-links.cjs': require('../app-links.cjs'),
+		'./package-app-links.cjs': require('../package-app-links.cjs'),
+		'./package-apps.cjs': require('../package-apps.cjs'),
+		'./package-app-windows.cjs': require('../package-app-windows.cjs'),
 		'./runner.cjs': {
 			Runner: class extends EventEmitter {
 				constructor() {
@@ -261,7 +264,7 @@ test('startup, Dock activation, and second launch share one initial page load', 
 	const f = fixture()
 	await f.start()
 	f.app.emit('activate')
-	f.app.emit('second-instance')
+	f.app.emit('second-instance', {}, [])
 	await f.finish()
 	assert.equal(f.windows.length, 1)
 	assert.deepEqual(f.windows[0].loads, ['https://kody.codes/account'])
@@ -279,7 +282,7 @@ test('macOS close hides the live window and activation restores it without navig
 		assert.equal(window.visible, false)
 		assert.equal(window.destroyed, false)
 		window.minimized = true
-		f.app.emit(event)
+		f.app.emit(event, {}, [])
 		assert.equal(window.visible, true)
 		assert.equal(window.minimized, false)
 	}
@@ -342,7 +345,7 @@ test('reopening retries the failed page once and preserves it after success', as
 	assert.equal(f.errors.length, 1)
 	f.failLoad()
 	f.app.emit('activate')
-	f.app.emit('second-instance')
+	f.app.emit('second-instance', {}, [])
 	assert.deepEqual(window.loads, [
 		'https://kody.codes/account',
 		'https://kody.codes/account',
@@ -594,7 +597,7 @@ test('Windows background mode preserves the last window until explicit Quit', as
 	assert.equal(window.visible, false)
 	f.app.emit('window-all-closed')
 	assert.equal(f.quitCount(), 0)
-	f.app.emit('second-instance')
+	f.app.emit('second-instance', {}, [])
 	assert.equal(window.visible, true)
 	f.app.emit('before-quit', { preventDefault() {} })
 	window.close()

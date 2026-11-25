@@ -41,7 +41,23 @@ export type PackageRepoActions = {
 	 * control.
 	 */
 	packageAppOriginHref?: string | null
+	/**
+	 * Install as a desktop app: set with Open app when the app has its own
+	 * hosted origin. Shown only inside the Kody desktop shell with the
+	 * `desktop-install-package-apps` flag on.
+	 */
+	packageAppInstall?: PackageAppInstallTarget | null
 	follow?: PackageRepoFollowAction | null
+}
+
+/** What the desktop shell needs to install one hosted package app. */
+export type PackageAppInstallTarget = {
+	owner: string
+	packageName: string
+	name: string
+	/** Hosted app origin the installed window is locked to. */
+	appOrigin: string
+	iconUrl: string | null
 }
 
 export type PackageRepoFollowAction = {
