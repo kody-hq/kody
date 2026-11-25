@@ -2,6 +2,7 @@ import * as webhookReads from '#app/package-webhooks-data.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
+import type * as OrgsRepoModule from '#worker/orgs/repo.ts'
 import {
 	mintPackageWebhook,
 	rotatePackageWebhook,
@@ -25,6 +26,20 @@ const mockModule = vi.hoisted(() => ({
 vi.mock('#app/authenticated-user.ts', () => ({
 	readAuthenticatedAppUser: (...args: Array<unknown>) =>
 		mockModule.readAuthenticatedAppUser(...args),
+}))
+
+// A personal org: the session person owns the `owner` slug and no other.
+vi.mock('#worker/orgs/repo.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof OrgsRepoModule>()),
+	loadOrgBindingForSlug: vi.fn(
+		async (_db: unknown, personId: string, slug: string) =>
+			slug.trim().toLowerCase() === 'owner'
+				? {
+						org: { id: ownerIdFromStored(personId), slug: 'owner' },
+						role: 'owner',
+					}
+				: null,
+	),
 }))
 
 const savedPackage = {
@@ -365,7 +380,7 @@ test('package webhooks API mints, reveals, and rotates a declared webhook withou
 	)
 })
 
-test('package webhooks API is owner-only: another username or an unknown package is a 404 that names neither', async () => {
+test('personal org package webhooks: a slug the person is not bound to or an unknown package is a 404 that names neither', async () => {
 	// Username matching is case-insensitive, like the `/@username` pages.
 	const { get, post } = await setup('Owner')
 	expect((await get()).status).toBe(200)

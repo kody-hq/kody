@@ -1,3 +1,4 @@
+import type { PackageWebhooksDenied } from '#universal/loader-data.ts'
 import { packageWebhookApprovalHref } from '../package-webhook-approval.ts'
 import { packageWebhookInput } from '#universal/package-access-mutations.ts'
 import { createServerFn } from '@tanstack/react-start'
@@ -36,11 +37,12 @@ export const loadPackageWebhooks = createServerFn({ method: 'GET' })
 
 		if (result.status === 401) throw redirect({ href: '/login' })
 		if (result.status === 404) throw notFound()
-		if (!result.data.ok) return result.data
+		if (result.status === 403)
+			return { ok: false, error: result.error } satisfies PackageWebhooksDenied
 		const payload = result.data
 		return {
-			...result.data,
-			webhooks: result.data.webhooks.map((webhook) => ({
+			...payload,
+			webhooks: payload.webhooks.map((webhook) => ({
 				...webhook,
 				approvalUrl: packageWebhookApprovalHref({
 					username: payload.username,

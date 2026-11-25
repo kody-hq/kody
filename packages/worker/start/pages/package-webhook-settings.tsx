@@ -7,7 +7,7 @@ import { packageWebhookMutationOptions } from '../package-webhook-mutation.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { useRef, useState } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import { useRouteContext } from '@tanstack/react-router'
+import { isNotFound, useRouteContext } from '@tanstack/react-router'
 import { packageWebhooksQuery } from '../package-webhooks-query.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import type { PackageWebhookListItem } from '#universal/loader-data.ts'
@@ -41,8 +41,16 @@ export function PackageWebhookSettings({
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const query = packageWebhooksQuery(actorKey, { username, kodyId })
 	const read = useQuery({ ...query, retry: false, retryOnMount: false })
-	const webhooks = read.data?.webhooks ?? []
-	const status = read.isError ? 'error' : read.data ? 'ready' : 'loading'
+	const loaded = read.data?.ok ? read.data : null
+	const webhooks = loaded?.webhooks ?? []
+	const loadError = read.isError
+		? isNotFound(read.error)
+			? 'Package not found.'
+			: read.error.message || 'Unable to load webhooks.'
+		: read.data && !read.data.ok
+			? read.data.error
+			: null
+	const status = loadError ? 'error' : loaded ? 'ready' : 'loading'
 	const [feedback, setFeedback] = useState<UiFeedback | null>(() =>
 		createUiFeedback(null, 'info'),
 	)
@@ -137,9 +145,9 @@ export function PackageWebhookSettings({
 			{status === 'loading' ? (
 				<LoadingIndicator label="Loading webhooks…" />
 			) : null}
-			{read.isError ? (
+			{loadError ? (
 				<AccountManagementMessage tone="error">
-					Unable to load webhooks.
+					{loadError}
 				</AccountManagementMessage>
 			) : null}
 

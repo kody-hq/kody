@@ -2080,6 +2080,9 @@ export type PackageWebhooksLoaderData = {
 	webhooks: Array<PackageWebhookListItem>
 }
 
+/** A webhooks read the viewer may not see, with the reason to show them. */
+export type PackageWebhooksDenied = { ok: false; error: string }
+
 /** Owner-only reveal result attached to mint / rotate / reveal responses. */
 export type PackageWebhookRevealedUrl = {
 	id: string

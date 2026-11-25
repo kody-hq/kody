@@ -104,6 +104,25 @@ test('expired bundles retain typed UI data and a 410 document status', async () 
 	})
 	expect(state.status).toHaveBeenCalledWith(410)
 })
+test('a live credential proposal id the viewer may decide redirects to its approve-credentials page', async () => {
+	const href = '/@team/digest/approve-credentials?proposal=p-1'
+	state.load.mockResolvedValue({ ok: false, reason: 'proposal', href })
+	await expect(
+		loadApprovalBundle({ data: { orgSlug: 'team', bundleId: 'p-1' } }),
+	).rejects.toEqual({ redirect: { href } })
+	expect(state.load).toHaveBeenCalledWith(
+		expect.objectContaining({ bundleId: 'p-1' }),
+	)
+})
+test('an id that opens nothing for the viewer is a specific unavailable page with a 404 status', async () => {
+	state.load.mockResolvedValue({ ok: false, reason: 'unavailable' })
+	await expect(loadApprovalBundle({ data: input })).resolves.toEqual({
+		ok: false,
+		reason: 'unavailable',
+	})
+	expect(state.status).toHaveBeenCalledWith(404)
+	expect(state.header).toHaveBeenCalledWith('X-Robots-Tag', 'noindex, nofollow')
+})
 test('outsiders cannot load another organization bundle', async () => {
 	state.viewer.mockResolvedValue(null)
 	await expect(loadApprovalBundle({ data: input })).rejects.toEqual({

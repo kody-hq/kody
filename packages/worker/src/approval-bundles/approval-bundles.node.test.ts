@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { readCredentialProposalId } from '#universal/credential-contracts.ts'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
@@ -845,7 +846,7 @@ test('only the person a bundle was made for can open or decide it', async () => 
 			viewer: t.viewerFor('ann'),
 			bundleId: created.bundle.id,
 		}),
-	).toEqual({ ok: false, reason: 'not-found' })
+	).toEqual({ ok: false, reason: 'unavailable' })
 	const [item] = created.items
 	expect(
 		await t.decide({
@@ -856,6 +857,72 @@ test('only the person a bundle was made for can open or decide it', async () => 
 			fingerprint: item!.fingerprint!,
 		}),
 	).toMatchObject({ ok: false, status: 404 })
+})
+
+test('an approval link with a live credential proposal id sends the person it waits on to the package approve-credentials page', async () => {
+	const t = await setup()
+	const proposed = await t.proposeDailyChat()
+	const approvalUrl = new URL(proposed.approvalUrl)
+	const proposalId = readCredentialProposalId(approvalUrl.searchParams)!
+	expect(proposalId).toBeTruthy()
+
+	expect(
+		await loadApprovalBundleView({
+			viewer: t.viewerFor('bea'),
+			bundleId: proposalId,
+		}),
+	).toEqual({
+		ok: false,
+		reason: 'proposal',
+		href: `${approvalUrl.pathname}${approvalUrl.search}`,
+	})
+	expect(approvalUrl.pathname).toBe('/@acme-clients/digest/approve-credentials')
+
+	// Someone else in the org, and an id that was never issued, get the
+	// same answer, so the page names nothing about the proposal.
+	for (const [person, id] of [
+		['ann', proposalId],
+		['bea', 'not-a-real-id'],
+	] as const) {
+		expect(
+			await loadApprovalBundleView({
+				viewer: t.viewerFor(person),
+				bundleId: id,
+			}),
+		).toEqual({ ok: false, reason: 'unavailable' })
+	}
+
+	// Bundle ids from approvalBundleCreate still open the bundle.
+	const created = await createApprovalBundle({ viewer: t.viewerFor('bea') })
+	const bundle = await loadApprovalBundleView({
+		viewer: t.viewerFor('bea'),
+		bundleId: created.bundle.id,
+	})
+	expect(bundle).toMatchObject({ ok: true })
+})
+
+test('a credential proposal id already approved is no longer a redirect', async () => {
+	const t = await setup()
+	const proposed = await t.proposeDailyChat()
+	const proposalId = readCredentialProposalId(
+		new URL(proposed.approvalUrl).searchParams,
+	)!
+	const created = await createApprovalBundle({ viewer: t.viewerFor('bea') })
+	const picks = created.items.find((item) => item.type === 'credential-picks')!
+	expect(
+		await t.decide({
+			bundleId: created.bundle.id,
+			action: 'approve',
+			item: picks.key,
+			fingerprint: picks.fingerprint!,
+		}),
+	).toMatchObject({ ok: true })
+	expect(
+		await loadApprovalBundleView({
+			viewer: t.viewerFor('bea'),
+			bundleId: proposalId,
+		}),
+	).toEqual({ ok: false, reason: 'unavailable' })
 })
 
 test('members without package:publish see no paused publishes to bundle', async () => {
@@ -906,7 +973,7 @@ test('bundles expire after 30 days and leave with the member', async () => {
 			viewer: t.viewerFor('bea'),
 			bundleId: created.bundle.id,
 		}),
-	).toEqual({ ok: false, reason: 'not-found' })
+	).toEqual({ ok: false, reason: 'unavailable' })
 })
 
 test('a capability that only moved to another dependency still shows a change', () => {
