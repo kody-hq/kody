@@ -40,7 +40,7 @@ test('every reviewBy is a real date that has not passed', () => {
 	expect(problems).toEqual([])
 })
 
-test('desktop-install-package-apps starts off for everyone, dogfooded by org overrides', () => {
+test('desktop-install-package-apps starts off and targets the everyone audience', () => {
 	const definition = getFeatureFlagDefinition('desktop-install-package-apps')
 	expect(definition.defaultEnabled).toBe(false)
 	expect(getFeatureFlagDefaultAudience('desktop-install-package-apps')).toBe(
