@@ -22,7 +22,7 @@ import {
 
 export const deploySkewReloadFlag = 'kody:deploy-skew-reload'
 
-export const deploySkewRecoveryErrorName = 'DeploySkewRecovery'
+const deploySkewRecoveryErrorName = 'DeploySkewRecovery'
 
 /** Cached at first successful resolve so SPA head updates cannot hide skew. */
 const cachedClientBuildId = isolateState(
@@ -34,7 +34,7 @@ const cachedClientBuildId = isolateState(
  * when the define is unset. Only full 40-char object ids count — short SHAs
  * would false-positive against a full `X-Kody-Build` header.
  */
-export function readBakedClientBuildId(): string | null {
+function readBakedClientBuildId(): string | null {
 	try {
 		const trimmed = __KODY_APP_COMMIT_SHA__.trim().toLowerCase()
 		return /^[a-f0-9]{40}$/.test(trimmed) ? trimmed : null
