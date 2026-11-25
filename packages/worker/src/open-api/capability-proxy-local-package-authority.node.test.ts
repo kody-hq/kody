@@ -168,6 +168,7 @@ function createContext(db: D1Database): ApiInvocationContext {
 			'publish-offload': false,
 			'credential-need-enforcement': false,
 			'credential-allowed-packages-safety-window': false,
+			'desktop-install-package-apps': false,
 		}),
 	}
 }

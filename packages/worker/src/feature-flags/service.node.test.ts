@@ -323,6 +323,7 @@ const registryKeys = [
 	'publish-offload',
 	'credential-need-enforcement',
 	'credential-allowed-packages-safety-window',
+	'desktop-install-package-apps',
 	'profiles',
 ] as const
 

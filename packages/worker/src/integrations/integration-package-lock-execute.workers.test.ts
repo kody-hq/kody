@@ -717,6 +717,7 @@ function localContext(person: Person): ApiInvocationContext {
 			'publish-offload': false,
 			'credential-need-enforcement': false,
 			'credential-allowed-packages-safety-window': false,
+			'desktop-install-package-apps': false,
 		}),
 	}
 }

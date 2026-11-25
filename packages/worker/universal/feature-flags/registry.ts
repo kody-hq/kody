@@ -233,6 +233,17 @@ export const featureFlagDefinitions = [
 		// Intentionally no successMetric: a credential authority boundary, not
 		// a product experiment; the readout is the safety_window_allow log lines and would-block markers.
 	},
+	{
+		key: 'desktop-install-package-apps',
+		removeWhen:
+			'Installing package apps as desktop apps is on for everyone, or we drop it; delete the flag and every gate site.',
+		reviewBy: '2027-02-25',
+		defaultEnabled: false,
+		description:
+			'Install package apps as desktop apps: the Install control on package pages and hosted apps, per-app windows and OS launchers in the Kody desktop shell, kody://app links, and the permissioned app desktop bridge. Off by default; dogfood with org overrides. Anonymous visitors always see it off. When off, Install is hidden, kody://app install links are ignored, and installed app windows get no desktop bridge.',
+		// Intentionally no successMetric yet: no usage event records installs.
+		// Add one when install is instrumented.
+	},
 ] as const satisfies ReadonlyArray<FeatureFlagDefinition>
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']

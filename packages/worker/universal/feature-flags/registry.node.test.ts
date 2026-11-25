@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
 import {
 	featureFlagDefinitions,
+	getFeatureFlagDefaultAudience,
+	getFeatureFlagDefinition,
 	type FeatureFlagDefinition,
 } from './registry.ts'
 
@@ -36,4 +38,14 @@ test('every reviewBy is a real date that has not passed', () => {
 		},
 	)
 	expect(problems).toEqual([])
+})
+
+test('desktop-install-package-apps starts off and targets the everyone audience', () => {
+	const definition = getFeatureFlagDefinition('desktop-install-package-apps')
+	expect(definition.defaultEnabled).toBe(false)
+	expect(getFeatureFlagDefaultAudience('desktop-install-package-apps')).toBe(
+		'everyone',
+	)
+	expect(definition.reviewBy).toBe('2027-02-25')
+	expect(definition.removeWhen).toMatch(/every gate site/)
 })
