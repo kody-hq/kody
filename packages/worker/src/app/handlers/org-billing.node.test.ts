@@ -11,7 +11,9 @@ import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import { createBillingLinkReference } from '#worker/billing/billing-config.ts'
 import {
 	annualPromoOnMonthlyRejection,
+	campaignPromoAlreadyClaimedRejection,
 	existingSubscriptionPromoRejection,
+	misconfiguredPromoRejection,
 	monthlyPromoOnAnnualRejection,
 	promoAlreadyClaimedRejection,
 	promoClaimMetadataKeys,
@@ -500,6 +502,7 @@ test('promo codes apply only to the billing interval their kody_interval metadat
 					metadata: expect.objectContaining({
 						[promoClaimMetadataKeys.userId]: people.ada.personId,
 						[promoClaimMetadataKeys.promotionCodeId]: id,
+						[promoClaimMetadataKeys.claimKey]: 'lifetime',
 					}),
 				}),
 			)
@@ -507,6 +510,7 @@ test('promo codes apply only to the billing interval their kody_interval metadat
 			await releasePromoReservation({
 				db: env.APP_DB,
 				userId: people.ada.personId,
+				claimKey: 'lifetime',
 			})
 		}
 	} finally {
@@ -896,6 +900,7 @@ test('a person who already claimed a promo code cannot claim one for another org
 			new Date().toISOString(),
 		)
 		.run()
+	mocks.findActivePromotionCode.mockResolvedValue(activePromo('promo_other'))
 
 	const response = await postCheckout(env, 'acme', {
 		plan: 'pro',
@@ -907,7 +912,6 @@ test('a person who already claimed a promo code cannot claim one for another org
 		ok: false,
 		error: promoAlreadyClaimedRejection,
 	})
-	expect(mocks.findActivePromotionCode).not.toHaveBeenCalled()
 	expect(mocks.createCheckoutSession).not.toHaveBeenCalled()
 
 	// Without a code, checkout for the org still works.
@@ -918,7 +922,7 @@ test('a person who already claimed a promo code cannot claim one for another org
 	expect(plain.status).toBe(200)
 })
 
-function activePromo(id: string) {
+function activePromo(id: string, metadata?: Record<string, string>) {
 	return {
 		id,
 		code: 'AGENCY-1',
@@ -926,8 +930,100 @@ function activePromo(id: string) {
 		expires_at: Math.floor(Date.now() / 1000) + 86_400,
 		max_redemptions: 1,
 		times_redeemed: 0,
+		...(metadata ? { metadata } : {}),
 	}
 }
+
+test('a campaign-scoped promo code is blocked only by a claim of the same campaign or code', async () => {
+	signInAs('ada')
+	const env = createEnv()
+	await db
+		.prepare(
+			`INSERT INTO billing_promo_claims
+			 (user_id, promotion_code_id, org_id, status, checkout_session_id, reserved_at, claimed_at)
+			 VALUES (?, 'promo_earlier', 'some-other-org', 'claimed', 'cs_earlier', ?, ?)`,
+		)
+		.bind(
+			people.ada.personId,
+			new Date().toISOString(),
+			new Date().toISOString(),
+		)
+		.run()
+	const campaign = (id: string, extra: Record<string, string> = {}) =>
+		activePromo(id, { kody_claim_scope: ' Campaign ', ...extra })
+	const cases: Array<
+		[ReturnType<typeof activePromo>, 'month' | 'year', number, unknown]
+	> = [
+		[
+			campaign('promo_fall_annual', {
+				kody_campaign: 'Fall',
+				kody_interval: 'year',
+			}),
+			'year',
+			200,
+			'campaign:fall',
+		],
+		[
+			campaign('promo_fall_monthly', { kody_campaign: 'fall' }),
+			'month',
+			409,
+			campaignPromoAlreadyClaimedRejection,
+		],
+		[campaign('promo_solo'), 'month', 200, 'campaign:promo_solo'],
+		[
+			campaign('promo_earlier'),
+			'month',
+			409,
+			campaignPromoAlreadyClaimedRejection,
+		],
+		[activePromo('promo_untagged'), 'month', 409, promoAlreadyClaimedRejection],
+		[
+			activePromo('promo_unknown_scope', { kody_claim_scope: 'forever' }),
+			'month',
+			400,
+			misconfiguredPromoRejection,
+		],
+		[
+			activePromo('promo_campaign_only', { kody_campaign: 'fall' }),
+			'month',
+			400,
+			misconfiguredPromoRejection,
+		],
+	]
+	consoleError.mockImplementation(() => {})
+	try {
+		for (const [promotion, interval, status, expected] of cases) {
+			mocks.createCheckoutSession.mockClear()
+			mocks.findActivePromotionCode.mockResolvedValueOnce(promotion)
+			const response = await postCheckout(env, 'acme', {
+				plan: 'pro',
+				interval,
+				promoCode: 'CODE-1',
+			})
+			const label = { id: promotion.id, interval }
+			expect([label, response.status]).toEqual([label, status])
+			if (status !== 200) {
+				expect([label, response.data]).toEqual([
+					label,
+					{ ok: false, error: expected },
+				])
+				expect(mocks.createCheckoutSession).not.toHaveBeenCalled()
+				continue
+			}
+			expect(mocks.createCheckoutSession).toHaveBeenLastCalledWith(
+				env,
+				expect.objectContaining({
+					promotionCodeId: promotion.id,
+					metadata: expect.objectContaining({
+						[promoClaimMetadataKeys.claimKey]: expected,
+					}),
+				}),
+			)
+		}
+	} finally {
+		consoleError.mockReset()
+	}
+})
 
 async function readPromoClaim(userId: string) {
 	return db

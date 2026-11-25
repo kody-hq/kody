@@ -39,10 +39,9 @@ import {
 import {
 	attachPromoReservationSession,
 	existingSubscriptionPromoRejection,
-	hasPersonClaimedPromo,
 	parsePromoCodeInput,
-	promoAlreadyClaimedRejection,
 	promoClaimMetadata,
+	promoClaimedRejection,
 	promoRejectedByStripe,
 	releasePromoReservation,
 	reservePromoClaim,
@@ -425,14 +424,6 @@ export async function startWebsiteCheckout(input: {
 	if (!promo.ok) {
 		return operationResult({ ok: false, error: promo.error }, 400)
 	}
-	if (promo.code) {
-		if (await hasPersonClaimedPromo(env.APP_DB, user.mcpUser.userId)) {
-			return operationResult(
-				{ ok: false, error: promoAlreadyClaimedRejection },
-				409,
-			)
-		}
-	}
 	const priceId = getPriceIdForPlan(env, plan, interval)
 	if (!isBillingConfigured(env) || !priceId) {
 		return operationResult(
@@ -542,7 +533,7 @@ export async function startWebsiteCheckout(input: {
 			}
 		}
 
-		let promotionCodeId: string | undefined
+		let promoClaim: { promotionCodeId: string; claimKey: string } | undefined
 		if (promo.code) {
 			const resolved = await resolveCheckoutPromotionCode(env, {
 				code: promo.code,
@@ -552,17 +543,17 @@ export async function startWebsiteCheckout(input: {
 			if (!resolved.ok) {
 				return operationResult({ ok: false, error: resolved.error }, 400)
 			}
-			promotionCodeId = resolved.id
+			promoClaim = { promotionCodeId: resolved.id, claimKey: resolved.claimKey }
 			const reserved = await reservePromoClaim({
 				db: env.APP_DB,
 				userId: user.mcpUser.userId,
-				promotionCodeId,
+				...promoClaim,
 				orgId: org.id,
 				now: new Date(),
 			})
 			if (!reserved) {
 				return operationResult(
-					{ ok: false, error: promoAlreadyClaimedRejection },
+					{ ok: false, error: promoClaimedRejection(promoClaim.claimKey) },
 					409,
 				)
 			}
@@ -580,31 +571,32 @@ export async function startWebsiteCheckout(input: {
 				cancelUrl: billingUrl,
 				quantity: seatQuantity,
 				...(customerId ? { customerId } : { customerEmail: user.email }),
-				...(promotionCodeId ? { promotionCodeId } : {}),
+				...(promoClaim ? { promotionCodeId: promoClaim.promotionCodeId } : {}),
 				// Org identity on Stripe objects (ADR 0065). HMAC client_reference_id
 				// is also org-backed and verified on link.
 				metadata: {
 					...buildOrgBillingMetadata(org.id),
 					kody_plan: plan,
-					...(promotionCodeId
+					...(promoClaim
 						? promoClaimMetadata({
 								userId: user.mcpUser.userId,
-								promotionCodeId,
+								...promoClaim,
 							})
 						: {}),
 				},
 			})
 		} catch (error) {
-			if (promotionCodeId) {
+			if (promoClaim) {
 				await releasePromoReservation({
 					db: env.APP_DB,
 					userId: user.mcpUser.userId,
+					claimKey: promoClaim.claimKey,
 				})
 			}
 			// The code passed Kody's checks, so a 400 here is Stripe's own
 			// coupon rule (product restriction, first-time-only).
 			if (
-				promotionCodeId &&
+				promoClaim &&
 				error instanceof StripeApiError &&
 				error.status === 400
 			) {
@@ -616,10 +608,11 @@ export async function startWebsiteCheckout(input: {
 			}
 			throw error
 		}
-		if (promotionCodeId) {
+		if (promoClaim) {
 			await attachPromoReservationSession({
 				db: env.APP_DB,
 				userId: user.mcpUser.userId,
+				claimKey: promoClaim.claimKey,
 				checkoutSessionId: session.id,
 			})
 		}

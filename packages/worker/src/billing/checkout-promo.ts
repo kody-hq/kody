@@ -12,9 +12,20 @@ import {
  * the Kody billing page, and Kody applies it only to the billing interval
  * named by the promotion code's `kody_interval` metadata (`month` or
  * `year`). An untagged code is monthly.
+ *
+ * Each person claims one promo code ever, across all of their organizations.
+ * A promotion code tagged `kody_claim_scope: campaign` narrows that: only an
+ * earlier claim of the same campaign (`kody_campaign`, defaulting to the
+ * promotion code itself) or of the same code blocks it. Claims of untagged
+ * codes still count against every later untagged code.
  */
 
 export const promoIntervalMetadataKey = 'kody_interval'
+export const promoClaimScopeMetadataKey = 'kody_claim_scope'
+export const promoCampaignMetadataKey = 'kody_campaign'
+
+/** Claim key of the one-claim-ever rule for untagged promotion codes. */
+const lifetimePromoClaimKey = 'lifetime'
 
 export const monthlyPromoOnAnnualRejection =
 	'That promo code is for monthly billing. Choose monthly to use it.'
@@ -28,10 +39,17 @@ export const existingSubscriptionPromoRejection =
 export const promoAlreadyClaimedRejection =
 	'You have already used a promo code. Promo codes can be claimed once per person, across all of your organizations.'
 
+export const campaignPromoAlreadyClaimedRejection =
+	'You have already claimed this promotion. It can be claimed once per person, across all of your organizations.'
+
+export const misconfiguredPromoRejection =
+	"That promo code isn't set up correctly. Please contact support."
+
 /** Checkout Session metadata that names the person claiming a promo code. */
 export const promoClaimMetadataKeys = {
 	userId: 'kody_promo_user_id',
 	promotionCodeId: 'kody_promo_code_id',
+	claimKey: 'kody_promo_claim_key',
 } as const
 
 const unknownPromoRejection = "That promo code isn't valid."
@@ -64,6 +82,33 @@ function promotionCodeInterval(
 	return null
 }
 
+/**
+ * The claim key a promotion code's claims are recorded under: `lifetime`
+ * when untagged, `campaign:<id>` for `kody_claim_scope: campaign`. Null when
+ * the tags are unrecognized or `kody_campaign` is set without the scope.
+ */
+function promotionCodeClaimKey(promotion: {
+	id: string
+	metadata?: Record<string, string> | null
+}): string | null {
+	const scope = promotion.metadata?.[promoClaimScopeMetadataKey]
+		?.trim()
+		.toLowerCase()
+	const campaign = promotion.metadata?.[promoCampaignMetadataKey]
+		?.trim()
+		.toLowerCase()
+	if (!scope) return campaign ? null : lifetimePromoClaimKey
+	if (scope !== 'campaign') return null
+	return `campaign:${campaign || promotion.id}`
+}
+
+/** The 409 message for a person whose earlier claim blocks `claimKey`. */
+export function promoClaimedRejection(claimKey: string): string {
+	return claimKey === lifetimePromoClaimKey
+		? promoAlreadyClaimedRejection
+		: campaignPromoAlreadyClaimedRejection
+}
+
 function promoIntervalMismatch(
 	codeInterval: BillingInterval,
 	checkoutInterval: BillingInterval,
@@ -90,7 +135,9 @@ function promoIntervalMismatch(
 export async function resolveCheckoutPromotionCode(
 	env: StripeEnv,
 	input: { code: string; interval: BillingInterval; now: Date },
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+): Promise<
+	{ ok: true; id: string; claimKey: string } | { ok: false; error: string }
+> {
 	const promotion = await findActivePromotionCode(env, input.code)
 	if (!promotion || !promotion.active) {
 		return { ok: false, error: unknownPromoRejection }
@@ -114,16 +161,24 @@ export async function resolveCheckoutPromotionCode(
 		})
 		return { ok: false, error: unknownPromoRejection }
 	}
+	const claimKey = promotionCodeClaimKey(promotion)
+	if (!claimKey) {
+		console.error('billing_checkout_promo_claim_scope_unrecognized', {
+			promotionCodeId: promotion.id,
+			claimScope: promotion.metadata?.[promoClaimScopeMetadataKey] ?? null,
+			campaign: promotion.metadata?.[promoCampaignMetadataKey] ?? null,
+		})
+		return { ok: false, error: misconfiguredPromoRejection }
+	}
 	const mismatch = promoIntervalMismatch(codeInterval, input.interval)
 	if (mismatch) return { ok: false, error: mismatch }
-	return { ok: true, id: promotion.id }
+	return { ok: true, id: promotion.id, claimKey }
 }
 
 /** Shown when Stripe still rejects a validated code at session creation. */
 export const promoRejectedByStripe =
 	"That promo code can't be applied to this plan."
 
-/** True once `userId` has completed a discounted checkout for any org. */
 /**
  * A reservation older than this is abandoned: Stripe expires a Checkout
  * Session after 24 hours at most, and `checkout.session.expired` releases the
@@ -131,27 +186,18 @@ export const promoRejectedByStripe =
  */
 const promoReservationMaxAgeMs = 25 * 60 * 60 * 1000
 
-export async function hasPersonClaimedPromo(
-	db: D1Database,
-	userId: string,
-): Promise<boolean> {
-	const row = await db
-		.prepare(`SELECT 1 AS ok FROM billing_promo_claims WHERE user_id = ?`)
-		.bind(userId)
-		.first<{ ok: number }>()
-	return row != null
-}
-
 /**
- * Reserve the person's one promo claim before the Checkout Session exists.
- * The primary key on user_id makes this atomic: of two concurrent checkouts
- * exactly one inserts, the other sees the row and is refused. Returns false
- * when the person already holds a claim or a live reservation.
+ * Reserve the person's claim under `claimKey` before the Checkout Session
+ * exists. A lifetime claim is blocked by any earlier claim or reservation; a
+ * campaign claim only by one with the same claim key or promotion code. The
+ * check and insert are one statement, so of two concurrent checkouts exactly
+ * one inserts and the other is refused. Returns false when refused.
  */
 export async function reservePromoClaim(input: {
 	db: D1Database
 	userId: string
 	promotionCodeId: string
+	claimKey: string
 	orgId: string
 	now: Date
 }): Promise<boolean> {
@@ -169,10 +215,22 @@ export async function reservePromoClaim(input: {
 	const inserted = await input.db
 		.prepare(
 			`INSERT OR IGNORE INTO billing_promo_claims
-			 (user_id, promotion_code_id, org_id, status, checkout_session_id, reserved_at, claimed_at)
-			 VALUES (?, ?, ?, 'reserved', NULL, ?, NULL)`,
+			 (user_id, claim_key, promotion_code_id, org_id, status, checkout_session_id, reserved_at, claimed_at)
+			 SELECT ?1, ?2, ?3, ?4, 'reserved', NULL, ?5, NULL
+			 WHERE NOT EXISTS (
+			   SELECT 1 FROM billing_promo_claims
+			   WHERE user_id = ?1
+			     AND (?2 = ?6 OR claim_key = ?2 OR promotion_code_id = ?3)
+			 )`,
 		)
-		.bind(input.userId, input.promotionCodeId, input.orgId, nowIso)
+		.bind(
+			input.userId,
+			input.claimKey,
+			input.promotionCodeId,
+			input.orgId,
+			nowIso,
+			lifetimePromoClaimKey,
+		)
 		.run()
 	return (inserted.meta.changes ?? 0) > 0
 }
@@ -181,15 +239,16 @@ export async function reservePromoClaim(input: {
 export async function attachPromoReservationSession(input: {
 	db: D1Database
 	userId: string
+	claimKey: string
 	checkoutSessionId: string
 }): Promise<void> {
 	await input.db
 		.prepare(
 			`UPDATE billing_promo_claims
 			 SET checkout_session_id = ?
-			 WHERE user_id = ? AND status = 'reserved'`,
+			 WHERE user_id = ? AND claim_key = ? AND status = 'reserved'`,
 		)
-		.bind(input.checkoutSessionId, input.userId)
+		.bind(input.checkoutSessionId, input.userId, input.claimKey)
 		.run()
 }
 
@@ -197,12 +256,14 @@ export async function attachPromoReservationSession(input: {
 export async function releasePromoReservation(input: {
 	db: D1Database
 	userId: string
+	claimKey: string
 }): Promise<void> {
 	await input.db
 		.prepare(
-			`DELETE FROM billing_promo_claims WHERE user_id = ? AND status = 'reserved'`,
+			`DELETE FROM billing_promo_claims
+			 WHERE user_id = ? AND claim_key = ? AND status = 'reserved'`,
 		)
-		.bind(input.userId)
+		.bind(input.userId, input.claimKey)
 		.run()
 }
 
@@ -223,10 +284,12 @@ export async function releasePromoReservationForCheckoutSession(input: {
 export function promoClaimMetadata(input: {
 	userId: string
 	promotionCodeId: string
+	claimKey: string
 }): Record<string, string> {
 	return {
 		[promoClaimMetadataKeys.userId]: input.userId,
 		[promoClaimMetadataKeys.promotionCodeId]: input.promotionCodeId,
+		[promoClaimMetadataKeys.claimKey]: input.claimKey,
 	}
 }
 
@@ -234,6 +297,8 @@ export function promoClaimMetadata(input: {
  * Finalize the claim for a completed discounted checkout. Upserts so a
  * completed session whose reservation was already released (webhook order,
  * stale-age cleanup) still counts; a claim that already exists is kept as is.
+ * A session without a claim key was started before claim scopes and is a
+ * lifetime claim.
  */
 export async function recordPromoClaimFromCheckoutSession(input: {
 	db: D1Database
@@ -245,13 +310,16 @@ export async function recordPromoClaimFromCheckoutSession(input: {
 	const promotionCodeId =
 		input.session.metadata?.[promoClaimMetadataKeys.promotionCodeId]?.trim()
 	if (!userId || !promotionCodeId) return
+	const claimKey =
+		input.session.metadata?.[promoClaimMetadataKeys.claimKey]?.trim() ||
+		lifetimePromoClaimKey
 	const nowIso = input.now.toISOString()
 	await input.db
 		.prepare(
 			`INSERT INTO billing_promo_claims
-			 (user_id, promotion_code_id, org_id, status, checkout_session_id, reserved_at, claimed_at)
-			 VALUES (?, ?, ?, 'claimed', ?, ?, ?)
-			 ON CONFLICT(user_id) DO UPDATE SET
+			 (user_id, claim_key, promotion_code_id, org_id, status, checkout_session_id, reserved_at, claimed_at)
+			 VALUES (?, ?, ?, ?, 'claimed', ?, ?, ?)
+			 ON CONFLICT(user_id, claim_key) DO UPDATE SET
 			   promotion_code_id = excluded.promotion_code_id,
 			   org_id = excluded.org_id,
 			   status = 'claimed',
@@ -261,6 +329,7 @@ export async function recordPromoClaimFromCheckoutSession(input: {
 		)
 		.bind(
 			userId,
+			claimKey,
 			promotionCodeId,
 			input.orgId,
 			input.session.id,

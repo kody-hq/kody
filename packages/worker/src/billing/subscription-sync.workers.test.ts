@@ -750,7 +750,7 @@ test('checkout link replay skips Stripe subscription refresh when already linked
 	expect(subscriptionListCalls).toBe(2)
 })
 
-test('a completed checkout with promo metadata records the claim for that person once', async () => {
+test('a completed checkout with promo metadata records the claim for that person once, under its claim key', async () => {
 	await ensureOrgsTestSchema(env.APP_DB)
 	const member = await seedUser('promo-member', { plan: 'free' })
 	const teamOrgId = testStableUserIdFromEmail(
@@ -768,6 +768,14 @@ test('a completed checkout with promo metadata records the claim for that person
 			now.toISOString(),
 		)
 		.run()
+	// An earlier lifetime claim does not block a campaign claim.
+	await env.APP_DB.prepare(
+		`INSERT INTO billing_promo_claims
+		 (user_id, promotion_code_id, org_id, status, checkout_session_id, reserved_at, claimed_at)
+		 VALUES (?, 'promo_earlier', 'org-earlier', 'claimed', 'cs_earlier', ?, ?)`,
+	)
+		.bind(member.stableUserId, now.toISOString(), now.toISOString())
+		.run()
 	const orgLinkReference = await createBillingLinkReference(env, teamOrgId)
 	// The org has no members, so the background plan-upgrade email finds no
 	// billing recipients and warns.
@@ -780,6 +788,7 @@ test('a completed checkout with promo metadata records the claim for that person
 			metadata: {
 				kody_promo_user_id: member.stableUserId,
 				kody_promo_code_id: 'promo_agency_1',
+				kody_promo_claim_key: 'campaign:fall',
 			},
 		},
 		subscriptions: subscriptionList('sub_promo_org', 'active'),
@@ -800,18 +809,28 @@ test('a completed checkout with promo metadata records the claim for that person
 	})
 
 	const claims = await env.APP_DB.prepare(
-		`SELECT user_id, promotion_code_id, org_id, status, checkout_session_id, claimed_at
-		 FROM billing_promo_claims WHERE user_id = ?`,
+		`SELECT user_id, claim_key, promotion_code_id, org_id, status, checkout_session_id, claimed_at
+		 FROM billing_promo_claims WHERE user_id = ? ORDER BY claim_key`,
 	)
 		.bind(member.stableUserId)
 		.all<Record<string, string>>()
 	expect(claims.results).toEqual([
 		{
 			user_id: member.stableUserId,
+			claim_key: 'campaign:fall',
 			promotion_code_id: 'promo_agency_1',
 			org_id: teamOrgId,
 			status: 'claimed',
 			checkout_session_id: 'cs_promo_org',
+			claimed_at: now.toISOString(),
+		},
+		{
+			user_id: member.stableUserId,
+			claim_key: 'lifetime',
+			promotion_code_id: 'promo_earlier',
+			org_id: 'org-earlier',
+			status: 'claimed',
+			checkout_session_id: 'cs_earlier',
 			claimed_at: now.toISOString(),
 		},
 	])
