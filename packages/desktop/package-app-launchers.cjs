@@ -1,4 +1,4 @@
-const { join } = require('node:path')
+const { posix, win32 } = require('node:path')
 const { buildPackageAppLink } = require('./package-app-links.cjs')
 
 const launcherFolder = 'Kody Apps'
@@ -51,6 +51,7 @@ function desktopExecArg(value) {
  */
 function launcherPlan(input) {
 	const { platform, home, app } = input
+	const { join } = platform === 'win32' ? win32 : posix
 	const name = launcherName(app.name)
 	const link = buildPackageAppLink(app.owner, app.packageName)
 	const id = launcherIdentity(app.owner, app.packageName)
