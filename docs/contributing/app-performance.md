@@ -1,7 +1,17 @@
 # Web app performance
 
-How to measure a change to the web app, and what to fix first. Measure before
-and after; put the numbers in the PR.
+Measure before and after a web app change and put the comparison in the PR. For
+server work, count sequential binding round trips rather than timing a local
+page load.
+
+- [Server](#server-round-trips-per-page): lower sequential depth first, then
+  repeated reads, then total reads.
+- [Navigation](#client-what-a-click-waits-for): compare requests on hover and
+  click when changing page data.
+- [Bundles](#bundles-what-every-page-downloads): check the shared download when
+  changing client imports.
+- [Production timing and replica reads](./performance/d1-timing-and-replica-reads.md):
+  interpret `Server-Timing` and keep writes off replica-backed GETs.
 
 ## What costs time
 
@@ -35,10 +45,11 @@ VITE_KODY_PERF_PROBE=1 npm run control-kody -- dev
 npm run control-kody -- login --email <you>
 ```
 
-The probe ([`perf-probe.ts`](../../packages/worker/start/perf-probe.ts)) records
-every D1, Durable Object, R2, KV, and queue call against the request that made
-it. It loads only in the dev server with that variable set; the production build
-fails if the file is in it.
+The [binding probe](../../packages/worker/start/perf-probe.ts) associates D1,
+Durable Object, R2, KV, and queue calls with the request that made them. The
+[HTTP entry point](../../packages/worker/start/http-entry.ts) loads it only in
+dev with this flag; the [build verifier](../../tools/ci/verify-redact-build.mjs)
+rejects it in production source maps.
 
 ### Server: round trips per page
 
@@ -88,49 +99,3 @@ Prints the gzip size of the chunks every page loads before it can run, largest
 first, and what each named route chunk adds on top. A library that only one
 route needs belongs behind that route, not in the first list.
 `--max-entry-kb <n>` exits non-zero when the every-page download is larger.
-
-### Production
-
-Never write to production data to measure. Read the `Server-Timing` header:
-
-```bash
-curl -s -o /dev/null -D - https://kody.codes/<path> | grep -i server-timing
-npm run site-perf -- --url https://kody.codes/ --json
-```
-
-`ssr` is the time the Worker spent rendering. `d1` is the summed wall time of
-the request's D1 round trips, with the count as its description. `d1-reported`
-is the same for the round trips D1 returned metadata for (`all`, `run`, `batch`;
-not `first`), and `d1-sql` is the SQL time D1 reported for those, described by
-the region, data center, and role that served them (`WNAM-SJC-primary`).
-`d1-reported` minus `d1-sql` is time outside SQL: travel to D1 and back,
-queueing at D1, and any attempts D1 retried (it reports SQL time for the last
-attempt only). Compare several samples; the first after a deploy is cold.
-[Weekly site performance](./weekly-site-perf.md) tracks the landing page
-budgets, and [`/health`](./control-kody.md) shows which commit is live.
-
-## Replica reads
-
-With the `d1-replica-reads` flag on, a browser GET or HEAD of a plain page or a
-GET server function reads `APP_DB` from the nearest D1 read replica
-([`d1-replica-reads.ts`](../../packages/worker/src/d1-replica-reads.ts)). No
-call site opts in; the binding routes each call by request. Everything else
-reads the primary: every mutation, routes with their own server handler, MCP,
-API tokens, webhooks, Durable Objects, and jobs. `d1-sql` in `Server-Timing`
-names the replica that served the page.
-
-When a replica read fails, the whole request runs again on the primary;
-`Server-Timing` carries `d1-primary-retry` and the Worker logs the error.
-
-What this asks of code that runs on a GET:
-
-- **Do not write.** A write after a replica read is refused and the whole
-  request runs again on the primary, so the page pays for both runs.
-  `Server-Timing` then carries `d1-primary-retry` and the Worker logs the
-  statement. Move the write to a POST.
-- **Telemetry is the exception.** Wrap a write that nothing in the response
-  depends on and no permission gates in `runOnD1Primary`.
-- **A page can be behind.** After a browser's own write, its reads for the next
-  60 seconds use a replica only once that replica has the write (the `kody_d1`
-  cookie holds the primary's D1 bookmark). Another person's change can take as
-  long as replication does to show up.
