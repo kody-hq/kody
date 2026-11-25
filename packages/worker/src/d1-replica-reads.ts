@@ -446,6 +446,8 @@ function takePrimaryRetry(request: Request) {
 	)
 	state.retried = state.retry.reason
 	state.retry = undefined
+	// A document error from the discarded replica render never reached the user.
+	state.documentFailed = false
 	state.start = null
 	state.session = undefined
 	// Everything memoized so far may have come from the replica.
