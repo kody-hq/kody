@@ -47,14 +47,14 @@ function applyDisposition(
 }
 
 /**
- * Decides and settles every message in a batch. Each message is acked or
- * retried exactly once: a thrown decision becomes `onDecideFailure`'s
- * disposition, and a retry after `failureRetryDelaySeconds` when that throws
- * too. `concurrency` caps how many messages are in flight (default 1, in
- * batch order; a non-finite value means 1), which is the consumer's
- * backpressure on its downstream. A retry delay is clamped to 0 through 12
- * hours, and a throwing ack() or retry() is reported without stopping the
- * batch.
+ * Decides and settles every message in a batch, acking or retrying each once.
+ *
+ * - Failure fallback: a thrown `decide` calls `onDecideFailure`; if that also
+ *   throws, the message retries after `failureRetryDelaySeconds`.
+ * - Concurrency: `concurrency` caps in-flight messages (default `1`, in batch
+ *   order; non-finite values fall back to `1`) for downstream backpressure.
+ * - Resilience: retry delays clamp to `0..12h`, and a throwing `ack()` or
+ *   `retry()` is reported without stopping the rest of the batch.
  */
 export async function settleQueueBatch<
 	Message extends SettleableQueueMessage,

@@ -266,11 +266,11 @@ export function approvalBundleExpiresAt(bundle: ApprovalBundleRecord) {
 	return new Date(Date.parse(bundle.createdAt) + approvalBundleTtlMs)
 }
 
-/** The bundle as the viewer sees it now; only the person it was made for can open it. */
 /**
- * Open an approval link id for the viewer. Agents share both bundle ids and
- * credential proposal ids under `/-/approvals/`, so an id that is no bundle
- * may still be a live proposal the viewer can decide.
+ * Open an approval link id for the viewer; only the person it was made for can
+ * open it. Agents share both bundle ids and credential proposal ids under
+ * `/-/approvals/`, so an id that is no bundle may still be a live proposal the
+ * viewer can decide.
  */
 export async function loadApprovalBundleView(input: {
 	viewer: ApprovalViewer
