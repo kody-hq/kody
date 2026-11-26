@@ -5,6 +5,10 @@ existing CLI execution context daemon. Website releases update the UI without a
 desktop release. Published desktop releases automatically update the shell and
 its bundled CLI.
 
+See [installed package apps](#installed-package-apps) for app-specific windows
+and launchers, or [packaging and checks](#packaging-and-checks) for development
+and distribution.
+
 ```sh
 npm install
 npm run desktop:dev
@@ -88,68 +92,10 @@ Node-API dependencies keep their normal Node build, not an Electron rebuild.
 
 ## Installed package apps
 
-Behind the `desktop-install-package-apps` flag, the package page shows
-**Install** inside this shell. Before installing, the shell asks `/session` with
-`?org=<owner>` and installs only when the flag is on for that package owner's
-org, so it trusts the same session flag as the page. Installing a package app:
-
-- Saves it to `package-apps.json` in the app's user data folder, with its
-  remembered window bounds. Nothing is uploaded to the Kody account.
-- Opens it in its own sandboxed window on the app's hosted origin, sharing the
-  Kody session so the Open app handoff signs it in. Top-level navigation stays
-  on the app origin (plus the Open app handoff and sign-in pages); other links
-  and `window.open` go to the default browser.
-- Creates a launcher that opens `kody://app/<owner>/<package>`: an `.app` in
-  `~/Applications/Kody Apps/` on macOS, a Start Menu shortcut in `Kody Apps`
-  with its own AppUserModelID on Windows, and a `.desktop` entry in
-  `~/.local/share/applications` on Linux. A launcher opens only that app's
-  window, not the dashboard.
-- When the app is gone or access ends, the window offers Retry or Uninstall.
-
-`kody://app/<owner>/<package>/<path>` opens that path in an installed app, for
-launchers, notification clicks, and links. The scheme is registered from
-Info.plist on macOS, from the MSIX manifest on Windows, and on first launch on
-Linux. When the app is not installed and the flag is on for the owner's org, the
-link opens the package page with `?install=desktop` in its own window, which
-opens the Install dialog; with the flag off the link only shows Kody. A
-signed-out shell shows sign-in and offers the install after it. In a browser,
-the package page's Install dialog offers **Open in Kody** (the same `kody://`
-link) or **Download Kody** through `/download`.
-
-Installed windows load `package-app-preload.cjs`, which exposes
-`window.kodyDesktopApp` only to the main frame on the app's own origin while the
-flag is on for the owner's org. The main process checks the sending frame, the
-origin, and the flag again on every call. The bridge offers:
-
-- `permissions.query(kind)` and `permissions.request(kind)`, resolving
-  `granted`, `denied`, `prompt`, or `unavailable` for kinds not supported yet.
-- Web `Notification`, after `notifications` is granted. A notification created
-  with `{ data: { path } }` focuses the app and opens that path when clicked.
-- `badge.set(count)` (needs `notifications`), `window.show()`, `hide()`,
-  `focus()`, `setFloating(on)` (needs `floating`), and `window.open(path)` for
-  up to eight extra windows on the same app.
-- `menuBar.set(path, { tooltip })` and `menuBar.remove()` (need `menuBar`). The
-  path becomes a menu-bar or tray icon whose click toggles a popover on that
-  page, sized by `<meta name="kody-menubar-size" content="360x480">`. An app
-  with a menu-bar item keeps running after its window closes, and the item comes
-  back on the next launch.
-- `shortcuts.register(accelerator)`, `unregister(accelerator)`, and
-  `onPress(callback)` (need `shortcuts`). Up to eight global shortcuts per app,
-  each with a modifier and one key. A press opens the app if needed and calls
-  `onPress`.
-- `startAtLogin.set(on)` (needs `startAtLogin`). At login Kody opens the granted
-  apps hidden, without the dashboard or a sign-in.
-
-An app can declare install settings in `kody.app.desktop` in its `package.json`:
-`icon`, a path the app serves for the launcher icon, and `menuBar`,
-`{ path, tooltip }` for a menu-bar page offered right after install. Kody asks
-for the menu bar permission once and adds the item only when granted.
-
-Permissions start off, are asked once in a native dialog, and are saved in
-`package-apps.json` per app and origin. They survive publishes, reinstalls, and
-Kody sign-in or sign-out. The **App** menu of an installed window changes them,
-resets them, or uninstalls the app. Nothing reaches files, commands, or
-credentials.
+Use **Install** on a package's page to open its app in a dedicated desktop
+window and add a launcher. See
+[installed package apps](installed-package-apps.md) for availability, deep
+links, and desktop features such as notifications and menu-bar items.
 
 ## Background mode
 

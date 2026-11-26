@@ -741,7 +741,6 @@ export type DoctorDeps = {
 	origin: string | null
 	persistRoot: string
 	probeLocalLogin?: (origin: string) => Promise<LocalLoginProbe>
-	/** Whether a local D1 SQLite file under `persistRoot` has the `users` table. */
 	hasLocalUsersTable?: (persistRoot: string) => boolean
 }
 
