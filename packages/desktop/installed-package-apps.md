@@ -21,8 +21,9 @@ Installing a package app:
   creating an Electron window ([window-open handler](package-app-windows.cjs)).
 - Creates a launcher that opens `kody://app/<owner>/<package>`: an `.app` in
   `~/Applications/Kody Apps/` on macOS, a Start Menu shortcut in `Kody Apps`
-  with its own AppUserModelID on Windows, and a `.desktop` entry in
-  `~/.local/share/applications` on Linux. The launcher opens the app window
+  with its own AppUserModelID on Windows, and a `.desktop` entry on Linux. Linux
+  uses `$XDG_DATA_HOME/applications` when `XDG_DATA_HOME` is an absolute path
+  and `~/.local/share/applications` otherwise. The launcher opens the app window
   rather than the dashboard.
 - When the app is gone or access ends, the window offers Retry or Uninstall.
 
