@@ -78,7 +78,9 @@ for the menu bar permission once and
 
 The [permission gate](package-app-permissions.cjs) prompts for each permission
 in a native dialog and remembers the answer per app and origin in
-`package-apps.json`. The answers survive reinstalls and reloads of the local
-store. Use the installed window's **App** menu to change or reset permissions or
-uninstall. The [bridge dispatcher](package-app-windows.cjs) accepts the
-installed-app actions above and rejects unknown actions.
+`package-apps.json`. Reinstalling over an existing installation or reloading the
+local store preserves those answers.
+[Uninstalling deletes them](package-app-windows.cjs). Use the installed window's
+**App** menu to change or reset permissions or uninstall. The
+[bridge dispatcher](package-app-windows.cjs) accepts the installed-app actions
+above and rejects unknown actions.
