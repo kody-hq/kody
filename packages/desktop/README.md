@@ -108,12 +108,13 @@ org, so it trusts the same session flag as the page. Installing a package app:
 
 `kody://app/<owner>/<package>/<path>` opens that path in an installed app, for
 launchers, notification clicks, and links. The scheme is registered from
-Info.plist on macOS, by the packaged app on Windows, and on first launch on
+Info.plist on macOS, from the MSIX manifest on Windows, and on first launch on
 Linux. When the app is not installed and the flag is on for the owner's org, the
-link opens the package page with `?install=desktop`, which opens the Install
-dialog; with the flag off the link only shows Kody. In a browser, the package
-page's Install dialog offers **Open in Kody** (the same `kody://` link) or
-**Download Kody** through `/download`.
+link opens the package page with `?install=desktop` in its own window, which
+opens the Install dialog; with the flag off the link only shows Kody. A
+signed-out shell shows sign-in and offers the install after it. In a browser,
+the package page's Install dialog offers **Open in Kody** (the same `kody://`
+link) or **Download Kody** through `/download`.
 
 Installed windows load `package-app-preload.cjs`, which exposes
 `window.kodyDesktopApp` only to the main frame on the app's own origin while the

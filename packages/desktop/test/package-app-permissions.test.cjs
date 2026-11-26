@@ -446,13 +446,22 @@ test('an install link offers the install page only for a missing app with the fl
 		}),
 		null,
 	)
-	assert.equal(
+	assert.deepEqual(
 		await apps.installPagePath({
 			owner: 'kent',
 			packageName: 'notes',
 			path: '/x',
 		}),
-		'/@kent/packages/notes?install=desktop',
+		{ path: '/@kent/notes?install=desktop' },
+	)
+	const signedOut = await setup({ flag: null })
+	assert.deepEqual(
+		await signedOut.apps.installPagePath({
+			owner: 'ann',
+			packageName: 'notes',
+			path: '/',
+		}),
+		{ signIn: true },
 	)
 	const off = await setup({ flag: false })
 	assert.equal(

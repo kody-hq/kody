@@ -117,6 +117,7 @@ function fixture(platform = 'darwin', background = false) {
 		}
 	}
 	let installFlag = false
+	let signedIn = true
 	const mocks = {
 		electron: {
 			app,
@@ -134,7 +135,7 @@ function fixture(platform = 'darwin', background = false) {
 					fetch: async () => ({
 						ok: true,
 						json: async () => ({
-							ok: true,
+							ok: signedIn,
 							session: {
 								featureFlags: {
 									'desktop-install-package-apps': installFlag,
@@ -238,6 +239,9 @@ function fixture(platform = 'darwin', background = false) {
 		errors,
 		setInstallFlag: (on) => {
 			installFlag = on
+		},
+		signOut: () => {
+			signedIn = false
 		},
 		start: async () => {
 			ready()
@@ -637,10 +641,23 @@ test('a kody://app link for an app that is not installed offers to install it', 
 	f.app.emit('second-instance', {}, ['kody', 'kody://app/kent/weather/today'])
 	await new Promise((resolve) => setTimeout(resolve, 0))
 	await new Promise(setImmediate)
-	assert.deepEqual(
-		f.windows[0].loads.at(-1),
-		'https://kody.codes/@kent/packages/weather?install=desktop',
-	)
+	assert.deepEqual(f.windows[0].loads, ['https://kody.codes/account'])
+	assert.deepEqual(f.windows[1].loads, [
+		'https://kody.codes/@kent/weather?install=desktop',
+	])
+})
+
+test('a signed-out shell keeps the dashboard for a kody://app install link', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	f.setInstallFlag(true)
+	f.signOut()
+	f.app.emit('second-instance', {}, ['kody', 'kody://app/kent/weather'])
+	await new Promise((resolve) => setTimeout(resolve, 0))
+	await new Promise(setImmediate)
+	assert.equal(f.windows.length, 1)
+	assert.deepEqual(f.windows[0].loads, ['https://kody.codes/account'])
 })
 
 test('with the flag off a kody://app install link only shows Kody', async () => {

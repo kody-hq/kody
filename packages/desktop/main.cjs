@@ -192,8 +192,9 @@ function installedApps() {
 			)
 			if (!response.ok) return false
 			const result = await response.json()
+			// null: signed out, so the owner's org flag cannot be evaluated yet.
+			if (result.ok !== true) return null
 			return (
-				result.ok === true &&
 				result.session?.featureFlags?.['desktop-install-package-apps'] === true
 			)
 		},
@@ -261,13 +262,20 @@ function openPackageAppLink(value) {
 	const link = typeof value === 'string' ? parsePackageAppLink(value) : value
 	return Boolean(link && !quitting && installedApps().openLink(link))
 }
+// A signed-out shell keeps the last install link and offers it after sign-in.
+let pendingInstallLink = null
 /** The dashboard path that offers to install a linked app, if any. */
 async function installPagePath(link) {
-	return (
-		(await installedApps()
-			.installPagePath(link)
-			.catch(() => null)) ?? undefined
-	)
+	const result = await installedApps()
+		.installPagePath(link)
+		.catch((error) => {
+			console.warn(
+				`Kody could not check whether ${link.owner}/${link.packageName} can be installed, so the link only opens Kody: ${error.message}`,
+			)
+			return null
+		})
+	pendingInstallLink = result?.signIn ? link : null
+	return result?.path
 }
 let loginAttempt
 let loginWindow
@@ -327,7 +335,9 @@ ipcMain.handle('kody:authentication', async (event, mode) => {
 	})
 	try {
 		await loginAttempt.result
-		if (!quitting && !window.isDestroyed()) await showApp('/account', window)
+		const resume = pendingInstallLink
+		const path = (resume && (await installPagePath(resume))) || '/account'
+		if (!quitting && !window.isDestroyed()) await showApp(path, window)
 		return {}
 	} catch (error) {
 		if (error.message === 'Browser sign-in canceled.') return {}
@@ -953,12 +963,18 @@ else {
 			event.preventDefault()
 	})
 	let pendingPackageAppLinks = []
+	// The install page gets its own window, like a universal link, so an open
+	// dashboard keeps unsaved input.
+	async function offerInstall(link) {
+		const path = await installPagePath(link)
+		if (path) openAppLink(path)
+		else void showApp()
+	}
 	function receivePackageAppLink(value) {
 		const link = parsePackageAppLink(value)
 		if (!link) return false
 		if (pendingPackageAppLinks) pendingPackageAppLinks.push(link)
-		else if (!openPackageAppLink(link))
-			void installPagePath(link).then((path) => showApp(path))
+		else if (!openPackageAppLink(link)) void offerInstall(link)
 		return true
 	}
 	app.on('open-url', (event, url) => {
@@ -967,7 +983,7 @@ else {
 	app.on('second-instance', (_event, argv) => {
 		const link = packageAppLinkFromArgv(argv)
 		if (link && openPackageAppLink(link)) return
-		if (link) void installPagePath(link).then((path) => showApp(path))
+		if (link) void offerInstall(link)
 		else void showApp()
 	})
 	app.on('activate', () => showApp())
@@ -1001,12 +1017,7 @@ else {
 			loadState()
 			presence.start()
 			updateMenu()
-			// macOS reads the scheme from Info.plist; Windows and Linux register it.
-			if (
-				process.platform === 'linux' ||
-				(process.platform === 'win32' && app.isPackaged)
-			)
-				app.setAsDefaultProtocolClient('kody')
+			if (process.platform === 'linux') app.setAsDefaultProtocolClient('kody')
 			const argvLink = packageAppLinkFromArgv(process.argv)
 			const launchApps = [
 				...(argvLink ? [argvLink] : []),
