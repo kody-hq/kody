@@ -157,6 +157,16 @@ function createPackageAppWindows(deps) {
 		return true
 	}
 
+	/**
+	 * The Kody page that offers to install a linked app that is not installed,
+	 * or null when the owner's flag is off and the link is ignored.
+	 */
+	async function installPagePath(link) {
+		if (store.get(link.owner, link.packageName)) return null
+		if (!(await currentFlag(link.owner))) return null
+		return `/@${link.owner}/packages/${link.packageName}?install=desktop`
+	}
+
 	const flagMaxAge = 60_000
 	/** The owner's session flag, rechecked once it is a minute old. */
 	async function refreshFlag(owner) {
@@ -757,6 +767,7 @@ function createPackageAppWindows(deps) {
 
 	return {
 		install,
+		installPagePath,
 		uninstall,
 		list,
 		openLink,

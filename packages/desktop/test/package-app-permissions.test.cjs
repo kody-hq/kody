@@ -435,3 +435,32 @@ test('a login start restores menu-bar items and opens start-at-login apps hidden
 	})
 	assert.equal(await apps.startBackground({ atLogin: true }), 0)
 })
+
+test('an install link offers the install page only for a missing app with the flag on', async () => {
+	const { apps } = await setup()
+	assert.equal(
+		await apps.installPagePath({
+			owner: 'kent',
+			packageName: 'weather',
+			path: '/',
+		}),
+		null,
+	)
+	assert.equal(
+		await apps.installPagePath({
+			owner: 'kent',
+			packageName: 'notes',
+			path: '/x',
+		}),
+		'/@kent/packages/notes?install=desktop',
+	)
+	const off = await setup({ flag: false })
+	assert.equal(
+		await off.apps.installPagePath({
+			owner: 'ann',
+			packageName: 'notes',
+			path: '/',
+		}),
+		null,
+	)
+})

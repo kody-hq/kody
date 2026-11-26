@@ -116,6 +116,7 @@ function fixture(platform = 'darwin', background = false) {
 			}
 		}
 	}
+	let installFlag = false
 	const mocks = {
 		electron: {
 			app,
@@ -130,6 +131,17 @@ function fixture(platform = 'darwin', background = false) {
 				fromPartition: () => ({
 					setPermissionRequestHandler() {},
 					setPermissionCheckHandler() {},
+					fetch: async () => ({
+						ok: true,
+						json: async () => ({
+							ok: true,
+							session: {
+								featureFlags: {
+									'desktop-install-package-apps': installFlag,
+								},
+							},
+						}),
+					}),
 				}),
 			},
 			clipboard: {
@@ -224,6 +236,9 @@ function fixture(platform = 'darwin', background = false) {
 		app,
 		windows,
 		errors,
+		setInstallFlag: (on) => {
+			installFlag = on
+		},
 		start: async () => {
 			ready()
 			await Promise.resolve()
@@ -612,4 +627,28 @@ test('Windows background mode preserves the last window until explicit Quit', as
 	f.app.emit('before-quit', { preventDefault() {} })
 	window.close()
 	assert.equal(window.destroyed, true)
+})
+
+test('a kody://app link for an app that is not installed offers to install it', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	f.setInstallFlag(true)
+	f.app.emit('second-instance', {}, ['kody', 'kody://app/kent/weather/today'])
+	await new Promise((resolve) => setTimeout(resolve, 0))
+	await new Promise(setImmediate)
+	assert.deepEqual(
+		f.windows[0].loads.at(-1),
+		'https://kody.codes/@kent/packages/weather?install=desktop',
+	)
+})
+
+test('with the flag off a kody://app install link only shows Kody', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	f.app.emit('second-instance', {}, ['kody', 'kody://app/kent/weather'])
+	await new Promise((resolve) => setTimeout(resolve, 0))
+	await new Promise(setImmediate)
+	assert.deepEqual(f.windows[0].loads, ['https://kody.codes/account'])
 })

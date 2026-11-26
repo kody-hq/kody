@@ -261,6 +261,14 @@ function openPackageAppLink(value) {
 	const link = typeof value === 'string' ? parsePackageAppLink(value) : value
 	return Boolean(link && !quitting && installedApps().openLink(link))
 }
+/** The dashboard path that offers to install a linked app, if any. */
+async function installPagePath(link) {
+	return (
+		(await installedApps()
+			.installPagePath(link)
+			.catch(() => null)) ?? undefined
+	)
+}
 let loginAttempt
 let loginWindow
 ipcMain.handle('kody:authentication', async (event, mode) => {
@@ -949,7 +957,8 @@ else {
 		const link = parsePackageAppLink(value)
 		if (!link) return false
 		if (pendingPackageAppLinks) pendingPackageAppLinks.push(link)
-		else if (!openPackageAppLink(link)) void showApp()
+		else if (!openPackageAppLink(link))
+			void installPagePath(link).then((path) => showApp(path))
 		return true
 	}
 	app.on('open-url', (event, url) => {
@@ -958,7 +967,8 @@ else {
 	app.on('second-instance', (_event, argv) => {
 		const link = packageAppLinkFromArgv(argv)
 		if (link && openPackageAppLink(link)) return
-		void showApp()
+		if (link) void installPagePath(link).then((path) => showApp(path))
+		else void showApp()
 	})
 	app.on('activate', () => showApp())
 	app.on('browser-window-focus', () => updateMenu())
@@ -991,7 +1001,12 @@ else {
 			loadState()
 			presence.start()
 			updateMenu()
-			if (process.platform === 'linux') app.setAsDefaultProtocolClient('kody')
+			// macOS reads the scheme from Info.plist; Windows and Linux register it.
+			if (
+				process.platform === 'linux' ||
+				(process.platform === 'win32' && app.isPackaged)
+			)
+				app.setAsDefaultProtocolClient('kody')
 			const argvLink = packageAppLinkFromArgv(process.argv)
 			const launchApps = [
 				...(argvLink ? [argvLink] : []),
@@ -1000,6 +1015,7 @@ else {
 			pendingPackageAppLinks = null
 			// A launcher opens just its app window, not the dashboard.
 			const openedApps = launchApps.filter((link) => openPackageAppLink(link))
+			const notInstalled = launchApps.find((link) => !openedApps.includes(link))
 			// A login start opens granted apps hidden, without the dashboard.
 			const atLogin =
 				process.argv.includes(startHiddenArgument) ||
@@ -1017,7 +1033,10 @@ else {
 				)
 			const [launchLink, ...moreLinks] = appLinks.start()
 			if ((!openedApps.length && !atLogin) || launchLink)
-				await showApp(launchLink)
+				await showApp(
+					launchLink ??
+						(notInstalled ? await installPagePath(notInstalled) : undefined),
+				)
 			for (const path of moreLinks) void newWindow(path)
 			await presence.onboard()
 			if (!quitting) void execution.request('state').catch(() => {})
