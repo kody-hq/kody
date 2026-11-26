@@ -1,3 +1,4 @@
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 
 /**
@@ -11,10 +12,9 @@ import { PromiseLruCache } from '#worker/package-registry/published-package-cach
  * registry dedupes repeated `import()` evaluation).
  */
 export function isolateMemo<T>(load: () => Promise<T>): () => Promise<T> {
-	const cache = new PromiseLruCache<T>({
-		ttlMs: Number.POSITIVE_INFINITY,
-		limit: 1,
-	})
+	const cache = isolateCollection(
+		new PromiseLruCache<T>({ ttlMs: Number.POSITIVE_INFINITY, limit: 1 }),
+	)
 	return () => cache.getOrCreate({ cacheKey: 'value', create: load })
 }
 
@@ -23,10 +23,12 @@ export function isolateMemoByKey<T>(
 	load: (key: string) => Promise<T>,
 	options?: { limit?: number },
 ) {
-	const cache = new PromiseLruCache<T>({
-		ttlMs: Number.POSITIVE_INFINITY,
-		limit: options?.limit ?? 64,
-	})
+	const cache = isolateCollection(
+		new PromiseLruCache<T>({
+			ttlMs: Number.POSITIVE_INFINITY,
+			limit: options?.limit ?? 64,
+		}),
+	)
 	return Object.assign(
 		(key: string) =>
 			cache.getOrCreate({ cacheKey: key, create: () => load(key) }),

@@ -181,29 +181,27 @@ type StoredAnonymousVisitTicket = {
 
 const liveNonces = isolateCollection(new Map<string, number>())
 const burnedNonces = isolateCollection(new Map<string, number>())
-const signingKeys = isolateCollection(
-	isolateMemoByKey(async (secret) => {
-		const base = await crypto.subtle.importKey(
-			'raw',
-			new TextEncoder().encode(secret),
-			'HKDF',
-			false,
-			['deriveKey'],
-		)
-		return await crypto.subtle.deriveKey(
-			{
-				name: 'HKDF',
-				hash: 'SHA-256',
-				salt: new Uint8Array(),
-				info: signingInfo,
-			},
-			base,
-			{ name: 'HMAC', hash: 'SHA-256', length: 256 },
-			false,
-			['sign', 'verify'],
-		)
-	}),
-)
+const signingKeys = isolateMemoByKey(async (secret) => {
+	const base = await crypto.subtle.importKey(
+		'raw',
+		new TextEncoder().encode(secret),
+		'HKDF',
+		false,
+		['deriveKey'],
+	)
+	return await crypto.subtle.deriveKey(
+		{
+			name: 'HKDF',
+			hash: 'SHA-256',
+			salt: new Uint8Array(),
+			info: signingInfo,
+		},
+		base,
+		{ name: 'HMAC', hash: 'SHA-256', length: 256 },
+		false,
+		['sign', 'verify'],
+	)
+})
 const localSigningSecret = isolateState((): string | null => null)
 
 export class PackageAppVisitTicketError extends Error {

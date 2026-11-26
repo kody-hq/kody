@@ -1,6 +1,7 @@
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { deleteKvKeysByPrefix } from '../kv-delete.ts'
 import { linkedPackageImportPrefix } from './module-graph-paths.ts'
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 
 /**
@@ -68,14 +69,20 @@ function linkedArtifactGroupPrefix(modulePath: string) {
 
 const writtenKeyTtlMs = 5 * 60_000
 const writtenKeyLimit = 5_000
+const writtenKeyInFlightWaitMs = 60_000
 /**
  * Groups this isolate stored recently. One publish writes about a hundred
  * targets that link the same dependencies, so each group is put once.
  */
-const recentWrites = new PromiseLruCache<void>({
-	ttlMs: writtenKeyTtlMs,
-	limit: writtenKeyLimit,
-})
+const recentWrites = isolateCollection(
+	new PromiseLruCache<void>({
+		ttlMs: writtenKeyTtlMs,
+		limit: writtenKeyLimit,
+		// A second put of the same key while the first runs hits KV's per-key
+		// write limit; a rejected (orphaned) write is still replaced at once.
+		inFlightWaitMs: writtenKeyInFlightWaitMs,
+	}),
+)
 
 async function putOnce(kv: KVNamespace, key: string, value: string) {
 	await recentWrites.getOrCreate({
