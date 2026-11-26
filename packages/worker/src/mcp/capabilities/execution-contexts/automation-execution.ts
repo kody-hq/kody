@@ -1,3 +1,4 @@
+import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -156,7 +157,7 @@ export const automationExecutionSetCapability = defineDomainCapability(domain, {
 	name: 'automationExecutionSet',
 	contextRuns: 'deny',
 	orgPermission: 'job:write',
-	description: `Choose where a job, package webhook, or subscription runs, overriding its manifest \`execution\`. Same rules as execute: \`context\` names one context (no fallback unless \`fallback: "chain"\`), or \`chain\` lists up to 3 contexts with "cloud" only last; \`requires\` skips entries without "fs"/"lan". Runs use the access of the person the automation runs as. \`whenOffline\`: "fail" (default) fails the run when nothing qualifies; "queue" waits for the context to reconnect for \`queueMinutes\` (default ${automationQueueDefaultMinutes}, max ${automationQueueMaxMinutes}). Pass execution null to clear the override.`,
+	description: `Choose where a job, package webhook, or subscription runs, overriding its manifest \`execution\`. Same rules as execute: \`context\` names one context (no fallback unless \`fallback: "chain"\`), or \`chain\` lists up to ${ecpMaxChainContexts} contexts with "cloud" only last; \`requires\` skips entries without "fs"/"lan". Runs use the access of the person the automation runs as. \`whenOffline\`: "fail" (default) fails the run when nothing qualifies; "queue" waits for the context to reconnect for \`queueMinutes\` (default ${automationQueueDefaultMinutes}, max ${automationQueueMaxMinutes}). Pass execution null to clear the override.`,
 	keywords: [
 		'execution context',
 		'automation',

@@ -1,3 +1,4 @@
+import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/frames.ts'
 /**
  * Website contract for execution contexts: the list, detail and chain shapes
  * the API returns (docs/design execution-contexts-ui-plan section 12), plus the
@@ -5,7 +6,7 @@
  * chain entry; contexts are ordered above it.
  */
 
-export const maxChainContexts = 3
+export const maxChainContexts = ecpMaxChainContexts
 const unutilizedNamedMax = 3
 const revokedVisibleDays = 30
 
@@ -374,6 +375,10 @@ export type ExecutionContextsPageData =
 			teams: Array<{ slug: string; name: string; orgSlug: string }>
 			attachableOrgs: Array<{ slug: string; name?: string }>
 			contexts: Array<ExecutionContextListItem>
+			/** The page's cursor; null on the first page. */
+			cursor: string | null
+			/** Cursor for the next page; null when this page is the last. */
+			nextCursor: string | null
 			chain: ExecutionChain
 			unutilized: ExecutionContextUnutilized | null
 			selected: ExecutionContextListItem | null

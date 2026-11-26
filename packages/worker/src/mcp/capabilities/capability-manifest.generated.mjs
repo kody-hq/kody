@@ -37631,7 +37631,7 @@ export const capabilityManifest = {
 				{
 					"name": "executionContextList",
 					"domain": "executionContexts",
-					"description": "List execution contexts (machines running `kody daemon`) visible in this org: yours, ones shared with you, and ones attached to this org. Each item says whether you can use it, why not (unusableReason), whether it is in your chain, and its grant summary. The response also lists usable contexts that are in none of your chain (unutilized).",
+					"description": "List execution contexts (machines running `kody daemon`) visible in this org: yours, ones shared with you, and ones attached to this org. Each item says whether you can use it, why not (unusableReason), whether it is in your chain, and its grant summary. The response also lists usable contexts that are in none of your chain (unutilized). Results are ordered by name and paged: pass nextCursor back as cursor until it is null.",
 					"keywords": [
 						"execution context",
 						"machine",
@@ -37650,10 +37650,23 @@ export const capabilityManifest = {
 					"inputSchema": {
 						"$schema": "https://json-schema.org/draft/2020-12/schema",
 						"type": "object",
-						"properties": {},
+						"properties": {
+							"cursor": {
+								"description": "nextCursor from a previous page. Omit for the first page.",
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 1024
+							},
+							"limit": {
+								"description": "Contexts per page, 20 by default and at most 100.",
+								"type": "integer",
+								"minimum": 1,
+								"maximum": 100
+							}
+						},
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type ExecutionContextListInput = Record<string, never>"
+					"inputTypeDefinition": "type ExecutionContextListInput = {\n\t/** nextCursor from a previous page. Omit for the first page. */\n\tcursor?: string\n\t/** Contexts per page, 20 by default and at most 100. */\n\tlimit?: number\n}"
 				},
 				{
 					"name": "executionContextGet",
@@ -38976,7 +38989,7 @@ export const capabilityManifest = {
 				{
 					"name": "executionChainGet",
 					"domain": "executionContexts",
-					"description": "Your execution chain in this org: the order Kody tries execution contexts for execute runs that do not name one, up to 3 contexts followed by Kody cloud (always last when present). Unusable entries stay listed with unusableReason and are skipped.",
+					"description": "Your execution chain in this org: the order Kody tries execution contexts for execute runs that do not name one, up to 8 contexts followed by Kody cloud (always last when present). Unusable entries stay listed with unusableReason and are skipped.",
 					"keywords": [
 						"execution chain",
 						"fallback",
@@ -39133,7 +39146,7 @@ export const capabilityManifest = {
 				{
 					"name": "automationExecutionSet",
 					"domain": "executionContexts",
-					"description": "Choose where a job, package webhook, or subscription runs, overriding its manifest `execution`. Same rules as execute: `context` names one context (no fallback unless `fallback: \"chain\"`), or `chain` lists up to 3 contexts with \"cloud\" only last; `requires` skips entries without \"fs\"/\"lan\". Runs use the access of the person the automation runs as. `whenOffline`: \"fail\" (default) fails the run when nothing qualifies; \"queue\" waits for the context to reconnect for `queueMinutes` (default 60, max 1440). Pass execution null to clear the override.",
+					"description": "Choose where a job, package webhook, or subscription runs, overriding its manifest `execution`. Same rules as execute: `context` names one context (no fallback unless `fallback: \"chain\"`), or `chain` lists up to 8 contexts with \"cloud\" only last; `requires` skips entries without \"fs\"/\"lan\". Runs use the access of the person the automation runs as. `whenOffline`: \"fail\" (default) fails the run when nothing qualifies; \"queue\" waits for the context to reconnect for `queueMinutes` (default 60, max 1440). Pass execution null to clear the override.",
 					"keywords": [
 						"execution context",
 						"automation",
@@ -39196,9 +39209,9 @@ export const capabilityManifest = {
 												]
 											},
 											"chain": {
-												"description": "This automation's own ordered chain, replacing the default chain: up to 3 context names or ids, with \"cloud\" allowed only last.",
+												"description": "This automation's own ordered chain, replacing the default chain: up to 8 context names or ids, with \"cloud\" allowed only last.",
 												"minItems": 1,
-												"maxItems": 4,
+												"maxItems": 9,
 												"type": "array",
 												"items": {
 													"type": "string",
@@ -39246,7 +39259,7 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type AutomationExecutionSetInput = {\n\t/** Which automation: a job, a package webhook, or a subscription. */\n\tkind: \"job\" | \"webhook\" | \"subscription\"\n\t/** Job id, for kind \"job\". */\n\tjobId?: string\n\t/** Package id or kody id, for kind \"webhook\" or \"subscription\". */\n\tpackageId?: string\n\t/** Webhook name or subscription topic. */\n\tname?: string\n\texecution: {\n\t/** Execution context to run on: its name or id (ec_...), or \"cloud\". Never falls back unless fallback is \"chain\". */\n\tcontext?: string\n\t/** \"chain\" lets a named context that cannot take the run fall back to the chain. */\n\tfallback?: \"chain\"\n\t/** This automation's own ordered chain, replacing the default chain: up to 3 context names or ids, with \"cloud\" allowed only last. */\n\tchain?: Array<string>\n\t/** Local access the run needs (\"fs\", \"lan\"). Skips Kody cloud. */\n\trequires?: Array<\"fs\" | \"lan\">\n\t/** \"fail\" (default) fails the run when no context can take it. \"queue\" waits for the first offline context to reconnect, up to queueMinutes. */\n\twhenOffline?: \"fail\" | \"queue\"\n\t/** How long a queued run waits for its context (default 60, max 1440). */\n\tqueueMinutes?: number\n} | null\n}"
+					"inputTypeDefinition": "type AutomationExecutionSetInput = {\n\t/** Which automation: a job, a package webhook, or a subscription. */\n\tkind: \"job\" | \"webhook\" | \"subscription\"\n\t/** Job id, for kind \"job\". */\n\tjobId?: string\n\t/** Package id or kody id, for kind \"webhook\" or \"subscription\". */\n\tpackageId?: string\n\t/** Webhook name or subscription topic. */\n\tname?: string\n\texecution: {\n\t/** Execution context to run on: its name or id (ec_...), or \"cloud\". Never falls back unless fallback is \"chain\". */\n\tcontext?: string\n\t/** \"chain\" lets a named context that cannot take the run fall back to the chain. */\n\tfallback?: \"chain\"\n\t/** This automation's own ordered chain, replacing the default chain: up to 8 context names or ids, with \"cloud\" allowed only last. */\n\tchain?: Array<string>\n\t/** Local access the run needs (\"fs\", \"lan\"). Skips Kody cloud. */\n\trequires?: Array<\"fs\" | \"lan\">\n\t/** \"fail\" (default) fails the run when no context can take it. \"queue\" waits for the first offline context to reconnect, up to queueMinutes. */\n\twhenOffline?: \"fail\" | \"queue\"\n\t/** How long a queued run waits for its context (default 60, max 1440). */\n\tqueueMinutes?: number\n} | null\n}"
 				}
 			]
 		},

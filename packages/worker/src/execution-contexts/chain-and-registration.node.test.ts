@@ -37,16 +37,16 @@ test('Kody cloud must be the last chain entry when present', () => {
 	).toBe(1)
 })
 
-test('a chain holds at most 3 contexts, and Kody cloud does not count toward the cap', () => {
+test('a chain holds at most 8 contexts, and Kody cloud does not count toward the cap', () => {
 	const contexts = (n: number) =>
 		Array.from({ length: n }, (_, i) => ({
 			kind: 'context' as const,
 			id: `ec_${i}`,
 		}))
-	expect(chainIsTooLong([...contexts(3), { kind: 'cloud' }])).toBe(false)
-	expect(chainIsTooLong(contexts(3))).toBe(false)
-	expect(chainIsTooLong([...contexts(4), { kind: 'cloud' }])).toBe(true)
-	expect(chainIsTooLong(contexts(4))).toBe(true)
+	expect(chainIsTooLong([...contexts(8), { kind: 'cloud' }])).toBe(false)
+	expect(chainIsTooLong(contexts(8))).toBe(false)
+	expect(chainIsTooLong([...contexts(9), { kind: 'cloud' }])).toBe(true)
+	expect(chainIsTooLong(contexts(9))).toBe(true)
 })
 
 test('registration with a login that predates execution context permissions names the exact login command', () => {

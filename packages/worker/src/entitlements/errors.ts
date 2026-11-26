@@ -11,7 +11,9 @@ import {
 	nextUtcDayStart,
 	nextUtcWeekStart,
 } from '@kody-internal/shared/date-keys.ts'
+import { orgBillingPath } from '#universal/org-pages.ts'
 import { preferLocalExecuteLimitGuidance } from '#universal/prefer-local-cli-execute.ts'
+import { routes } from '#universal/routes.ts'
 import {
 	entitlementResourceLabels,
 	entitlementResourceWindows,
@@ -341,6 +343,55 @@ export class EntitlementLimitError extends Error {
 		this.name = 'EntitlementLimitError'
 		this.details = fullDetails
 	}
+}
+
+export type ExecutionContextLimitScope = 'seat' | 'org'
+
+/**
+ * Live owned execution contexts allowed in an org: one person may hold the
+ * per-seat cap; paid orgs pool seats times it, and Free is one pool.
+ */
+export function executionContextOrgLimit(input: {
+	plan: PlanName
+	perSeat: number
+	seats: number
+}) {
+	return input.plan === 'free'
+		? input.perSeat
+		: input.perSeat * Math.max(1, input.seats)
+}
+
+/**
+ * {@link buildEntitlementLimitMessage} for the two execution-context
+ * registration caps. Both say which number blocked and how it was made.
+ */
+export function buildExecutionContextLimitMessage(input: {
+	scope: ExecutionContextLimitScope
+	plan: PlanName
+	perSeat: number
+	seats: number
+	current: number
+	orgSlug: string
+}) {
+	const seats = Math.max(1, input.seats)
+	const limit =
+		input.scope === 'seat'
+			? input.perSeat
+			: executionContextOrgLimit({ ...input, seats })
+	const label =
+		input.scope === 'seat'
+			? `${limit} live execution contexts per person in this organization`
+			: input.plan === 'free'
+				? `${limit} live execution contexts in this organization (one pool on Free)`
+				: `${limit} live execution contexts in this organization (${input.perSeat} per seat x ${seats} ${seats === 1 ? 'seat' : 'seats'})`
+	const holder =
+		input.scope === 'seat' ? 'you have registered' : 'the organization has'
+	const page = routes.orgExecutionContexts.href({ orgSlug: input.orgSlug })
+	const next =
+		input.plan === 'max'
+			? 'contact support at /support for a higher limit'
+			: `upgrade your plan at ${orgBillingPath(input.orgSlug)}`
+	return `Kody plan limit reached for @${input.orgSlug}: your "${input.plan}" plan allows at most ${label} and ${holder} ${input.current}. Revoke an unused context with \`kody context revoke <name>\` or on the execution contexts page at ${page}, or ${next}.`
 }
 
 export function isEntitlementLimitError(

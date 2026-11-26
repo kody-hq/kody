@@ -309,6 +309,12 @@ export type PlanLimits = {
 	/** Maximum concurrently active workflow runs. */
 	maxConcurrentWorkflows: number
 	/**
+	 * Live execution contexts one person may register in an org (revoked
+	 * rows and attachments do not count). Paid orgs pool seats times this;
+	 * a Free org is one pool of this many.
+	 */
+	maxExecutionContextsPerSeat: number
+	/**
 	 * Maximum unique sandbox workers MCP execute loads per UTC day: one per
 	 * distinct module graph per day (`dynamic_worker_day` on the execute
 	 * surface), which is what Cloudflare bills. Repeats of code already
@@ -554,6 +560,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
 		// Concurrent active runs (not lifetime or daily). One at a time on
 		// free; a second deferred workflow is the upgrade nudge.
 		maxConcurrentWorkflows: 1,
+		maxExecutionContextsPerSeat: 10,
 		// Unique execute workers are the Dynamic Worker bill. Daily headroom
 		// covers a bursty agent morning; the weekly total keeps a free account
 		// from spending a full week of that headroom every day.
@@ -582,6 +589,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
 		maxSecrets: 100,
 		maxStorageBytes: 1024 * 1024 * 1024,
 		maxConcurrentWorkflows: 10,
+		maxExecutionContextsPerSeat: 20,
 		// Public Standard execute is a try-paid rung with bursty daily
 		// headroom and a weekly total. Continuous pre-cut subscribers keep
 		// {@link legacyPlanLimits} (daily-only, no weekly window).
@@ -610,6 +618,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
 		maxSecrets: 200,
 		maxStorageBytes: 5 * 1024 * 1024 * 1024,
 		maxConcurrentWorkflows: 50,
+		maxExecutionContextsPerSeat: 20,
 		// Retired $49 Pro. Execute is a hard daily + weekly cap.
 		maxExecuteUniqueWorkersPerDay: 1_500,
 		maxExecuteUniqueWorkersPerWeek: 4_000,
@@ -644,6 +653,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
 		maxStorageBytes: 100 * 1024 * 1024 * 1024,
 		// 2× pro (100). Observed concurrent ~35.
 		maxConcurrentWorkflows: 200,
+		maxExecutionContextsPerSeat: 50,
 		// Operator runaway cap. kentcdodds August 2026 rollup avg ~3,800
 		// execute/day (116k/month); entitlement meter today ~1,810. Daily
 		// peak is not stored; 25,000 is at least 2× a ~12,500 peak (~3×
@@ -693,6 +703,7 @@ export const legacyPlanLimits: Record<'standard' | 'pro', PlanLimits> = {
 		maxSecrets: 100,
 		maxStorageBytes: 1024 * 1024 * 1024,
 		maxConcurrentWorkflows: 50,
+		maxExecutionContextsPerSeat: 20,
 		maxExecuteUniqueWorkersPerDay: 500,
 		maxExecuteUniqueWorkersPerWeek: null,
 		maxOutboundFetchesPerDay: 20_000,
@@ -717,6 +728,7 @@ export const legacyPlanLimits: Record<'standard' | 'pro', PlanLimits> = {
 		maxSecrets: 200,
 		maxStorageBytes: 5 * 1024 * 1024 * 1024,
 		maxConcurrentWorkflows: 100,
+		maxExecutionContextsPerSeat: 20,
 		maxExecuteUniqueWorkersPerDay: 800,
 		maxExecuteUniqueWorkersPerWeek: null,
 		maxOutboundFetchesPerDay: 40_000,

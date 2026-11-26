@@ -53,7 +53,7 @@ beforeEach(() => {
 	state.signedIn = true
 	state.username = 'jane'
 	state.page.mockResolvedValue({
-		...pageFixture({ personalOrg: true, contexts: [contextFixture()] }),
+		...pageFixture({ personalOrg: true, selected: contextFixture() }),
 		chain: {
 			entries: [{ kind: 'cloud' }],
 			strict: false,
@@ -66,6 +66,9 @@ beforeEach(() => {
 })
 test('private desktop chain setup authenticates, scopes the mutation, and uses the current chain version', async () => {
 	await putDesktopExecutionFirst({ data })
+	expect(state.page).toHaveBeenCalledWith(
+		expect.objectContaining({ contextId: 'ec_laptop', cursor: null }),
+	)
 	expect(state.mutation).toHaveBeenCalledWith({
 		scope: { orgSlug: 'jane', requireMembership: false },
 	})
@@ -93,7 +96,7 @@ test('signed-out, switched-account, foreign, and revoked registrations cannot up
 		contextFixture({ status: 'revoked' }),
 	]) {
 		state.page.mockResolvedValue(
-			pageFixture({ personalOrg: true, contexts: [context] }),
+			pageFixture({ personalOrg: true, selected: context }),
 		)
 		await expect(putDesktopExecutionFirst({ data })).rejects.toThrow(
 			'not registered',
@@ -124,9 +127,9 @@ test('desktop setup cannot change team chains or run with the experiment disable
 	}
 	state.page.mockResolvedValue(
 		pageFixture({
-			contexts: [
-				contextFixture({ ownerOrg: { id: 'org_other', slug: 'other' } }),
-			],
+			selected: contextFixture({
+				ownerOrg: { id: 'org_other', slug: 'other' },
+			}),
 		}),
 	)
 	await expect(putDesktopExecutionFirst({ data })).rejects.toThrow(
@@ -149,7 +152,7 @@ test('managing setup from a team org attaches the personal registration and puts
 					},
 				}
 			: {
-					...pageFixture({ personalOrg: true, contexts: [contextFixture()] }),
+					...pageFixture({ personalOrg: true, selected: contextFixture() }),
 					chain: {
 						entries: [{ kind: 'context', id: 'ec_laptop' }, { kind: 'cloud' }],
 						strict: false,
@@ -188,7 +191,7 @@ test('a team attach never runs for a foreign registration, and attach failures s
 	state.page.mockResolvedValue(
 		pageFixture({
 			personalOrg: true,
-			contexts: [contextFixture({ operator: { handle: 'sam' } })],
+			selected: contextFixture({ operator: { handle: 'sam' } }),
 		}),
 	)
 	await expect(
@@ -198,7 +201,7 @@ test('a team attach never runs for a foreign registration, and attach failures s
 	state.page.mockImplementation(async (input: { orgSlug: string }) =>
 		input.orgSlug === 'acme'
 			? pageFixture({ personalOrg: false })
-			: pageFixture({ personalOrg: true, contexts: [contextFixture()] }),
+			: pageFixture({ personalOrg: true, selected: contextFixture() }),
 	)
 	state.attach.mockResolvedValue({
 		ok: false,
@@ -215,7 +218,7 @@ test('a team attach never runs when the target org has execution contexts off', 
 	state.page.mockImplementation(async (input: { orgSlug: string }) =>
 		input.orgSlug === 'acme'
 			? { ...pageFixture({ personalOrg: false }), enabled: false }
-			: pageFixture({ personalOrg: true, contexts: [contextFixture()] }),
+			: pageFixture({ personalOrg: true, selected: contextFixture() }),
 	)
 	await expect(
 		putDesktopExecutionFirst({ data: { ...data, targetOrgSlug: 'acme' } }),

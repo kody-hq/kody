@@ -15,7 +15,7 @@ machine could not say so.
 
 - Automations carry an `execution` setting with the same shape as execute
   routing: `context` (no fallback unless `fallback: "chain"`), or their own
-  `chain` (up to 3 contexts, `"cloud"` only last, no cloud means strict), plus
+  `chain` (up to 8 contexts, `"cloud"` only last, no cloud means strict), plus
   `requires: ["fs" | "lan"]`. Ad hoc execute accepts the same `chain`.
 - Precedence: a per-run or per-automation `context` or `chain` overrides the
   person's default chain. For an automation, an override set through the API,

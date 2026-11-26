@@ -170,20 +170,24 @@ async function seedRunnableContext(ecid: string) {
 		snapshot(ecid)
 	const requester = lease(ecid, 'seed').requester.userId
 	const now = new Date().toISOString()
-	await insertExecutionContext(env.APP_DB, {
-		id: ecid,
-		org_id: orgId,
-		operator_user_id: operatorUserId,
-		name,
-		public_key_jwk: JSON.stringify(publicKeyJwk),
-		thumbprint: `thumb-${ecid}`,
-		created_at: now,
-		client_name: null,
-		client_version: null,
-		capabilities_json: null,
-		grant_json: JSON.stringify(grant),
-		grant_version: grantVersion,
-	})
+	await insertExecutionContext(
+		env.APP_DB,
+		{
+			id: ecid,
+			org_id: orgId,
+			operator_user_id: operatorUserId,
+			name,
+			public_key_jwk: JSON.stringify(publicKeyJwk),
+			thumbprint: `thumb-${ecid}`,
+			created_at: now,
+			client_name: null,
+			client_version: null,
+			capabilities_json: null,
+			grant_json: JSON.stringify(grant),
+			grant_version: grantVersion,
+		},
+		{ perOperator: 10, perOrg: 10 },
+	)
 	await env.APP_DB.batch([
 		env.APP_DB.prepare(
 			`UPDATE execution_contexts SET all_members = 1 WHERE id = ?`,

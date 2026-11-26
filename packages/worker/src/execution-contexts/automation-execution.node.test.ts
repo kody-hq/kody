@@ -25,7 +25,7 @@ test('execution setting mirrors execute routing rules', () => {
 		{ fallback: 'chain' },
 		{ chain: ['cloud', 'a'] },
 		{ chain: ['a', 'a'] },
-		{ chain: ['a', 'b', 'c', 'd'] },
+		{ chain: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] },
 		{ context: 'a', queueMinutes: 5 },
 		{
 			context: 'a',

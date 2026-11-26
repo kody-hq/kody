@@ -164,8 +164,13 @@ test('a run chain follows the default chain shape rules', () => {
 	expect(runChainShapeError(['laptop'])).toBeNull()
 	expect(runChainShapeError(['cloud', 'laptop'])?.code).toBe('invalid_request')
 	expect(runChainShapeError(['a', 'a'])?.code).toBe('invalid_request')
-	expect(runChainShapeError(['a', 'b', 'c', 'd'])?.code).toBe('chain_too_long')
-	expect(runChainShapeError(['a', 'b', 'c', 'cloud'])).toBeNull()
+	const names = (n: number) => Array.from({ length: n }, (_, i) => `ctx-${i}`)
+	expect(runChainShapeError(names(9))?.code).toBe('chain_too_long')
+	expect(runChainShapeError(names(9))?.message).toBe(
+		'A chain holds at most 8 contexts plus Kody cloud. Remove one with `kody chain remove <name>` or executionChainSet, then add the new one.',
+	)
+	expect(runChainShapeError(names(8))).toBeNull()
+	expect(runChainShapeError([...names(8), 'cloud'])).toBeNull()
 	expect(runChainShapeError([])?.code).toBe('invalid_request')
 })
 

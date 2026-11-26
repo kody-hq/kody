@@ -211,24 +211,32 @@ export function AutomationExecutionSettings(props: {
 			) : null}
 			{form.mode === 'chain' ? (
 				<div css={rowCss}>
-					{Array.from({ length: automationChainMaxContexts }, (_, index) => (
-						<label key={index} css={fieldCss}>
-							<span css={fieldLabelCss}>{index + 1}.</span>
-							<Select
-								css={selectCss}
-								value={form.chain[index] ?? ''}
-								aria-label={`Chain entry ${index + 1}`}
-								onChange={(event) => {
-									const chain = [...form.chain]
-									chain[index] = event.target.value
-									update({ chain: chain.filter(Boolean) })
-								}}
-							>
-								<option value="">None</option>
-								{contextOptions}
-							</Select>
-						</label>
-					))}
+					{Array.from(
+						{
+							length: Math.min(
+								automationChainMaxContexts,
+								form.chain.length + 1,
+							),
+						},
+						(_, index) => (
+							<label key={index} css={fieldCss}>
+								<span css={fieldLabelCss}>{index + 1}.</span>
+								<Select
+									css={selectCss}
+									value={form.chain[index] ?? ''}
+									aria-label={`Chain entry ${index + 1}`}
+									onChange={(event) => {
+										const chain = [...form.chain]
+										chain[index] = event.target.value
+										update({ chain: chain.filter(Boolean) })
+									}}
+								>
+									<option value="">None</option>
+									{contextOptions}
+								</Select>
+							</label>
+						),
+					)}
 					<label css={rowCss}>
 						<Checkbox
 							checked={form.cloudLast}

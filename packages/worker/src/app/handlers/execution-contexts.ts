@@ -399,6 +399,7 @@ export async function loadExecutionContextsPageData(input: {
 	user: AppUser
 	orgSlug: string
 	contextId: string | null
+	cursor: string | null
 }): Promise<ExecutionContextsPageData | { notFound: true }> {
 	const { env, user } = input
 	const pageOrg = await getOrgBySlug(env.APP_DB, input.orgSlug)
@@ -421,7 +422,11 @@ export async function loadExecutionContextsPageData(input: {
 			orgs,
 			machineAccess,
 		] = await Promise.all([
-			callCapability(scope, executionContextCapabilityNames.list, {}),
+			callCapability(
+				scope,
+				executionContextCapabilityNames.list,
+				input.cursor ? { cursor: input.cursor } : {},
+			),
 			callCapability(scope, executionContextCapabilityNames.chainGet, {}),
 			input.contextId
 				? callCapability(scope, executionContextCapabilityNames.get, {
@@ -471,6 +476,11 @@ export async function loadExecutionContextsPageData(input: {
 						context.id === selected.id ? { ...context, ...selected } : context,
 					)
 				: contexts,
+			cursor: input.cursor,
+			nextCursor:
+				typeof listResult.nextCursor === 'string'
+					? listResult.nextCursor
+					: null,
 			chain: parseChain(record(chainResult.chain) ?? chainResult),
 			unutilized:
 				parseUnutilized(listResult.unutilized) ??

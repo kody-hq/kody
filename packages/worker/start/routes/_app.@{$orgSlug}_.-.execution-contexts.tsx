@@ -17,11 +17,15 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/execution-contexts')(
 			orgScope: { section: 'execution-contexts' },
 			presentationSearchKeys: executionContextsPresentationSearchKeys,
 		},
+		loaderDeps: ({ search }) => ({ cursor: search.cursor }),
 		shouldReload: ({ context }) => !context.inPlaceNavigation,
-		loader: ({ context, preload, params }) =>
+		loader: ({ context, preload, params, deps }) =>
 			loadPageQuery(
 				context.queryClient,
-				pageQuery(context.actorKey, { orgSlug: params.orgSlug }),
+				pageQuery(context.actorKey, {
+					orgSlug: params.orgSlug,
+					cursor: deps.cursor,
+				}),
 				preload,
 			),
 		head: ({ loaderData }) => documentHead(loaderData?.head),
@@ -30,9 +34,10 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/execution-contexts')(
 )
 function Page() {
 	const params = Route.useParams()
+	const { cursor } = Route.useSearch()
 	const { actorKey, pageLocation } = Route.useRouteContext()
 	const { payload } = usePageQuery(
-		pageQuery(actorKey, { orgSlug: params.orgSlug }),
+		pageQuery(actorKey, { orgSlug: params.orgSlug, cursor }),
 	).data
 	return (
 		<ExecutionContextsRoute

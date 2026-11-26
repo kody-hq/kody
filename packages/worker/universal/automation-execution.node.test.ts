@@ -29,17 +29,17 @@ test('context form round-trips with fallback and queue', () => {
 	).toEqual(value)
 })
 
-test('chain form keeps order, caps at three contexts, and puts cloud last', () => {
+test('chain form keeps order, caps at eight contexts, and puts cloud last', () => {
 	const form = {
 		...emptyAutomationExecutionForm(),
 		mode: 'chain' as const,
-		chain: ['a', 'b', 'c', 'd'],
+		chain: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
 		cloudLast: true,
 		whenOffline: 'queue' as const,
 		queueMinutes: 99_999,
 	}
 	expect(automationExecutionFromForm(form)).toEqual({
-		chain: ['a', 'b', 'c', 'cloud'],
+		chain: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'cloud'],
 		whenOffline: 'queue',
 		queueMinutes: 1440,
 	})

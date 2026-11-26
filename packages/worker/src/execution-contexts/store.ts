@@ -185,6 +185,64 @@ export async function listOrgExecutionContexts(
 	return result.results
 }
 
+export type ExecutionContextListPosition = { name: string; id: string }
+
+/**
+ * One keyset page of {@link listOrgExecutionContexts}, ordered by name then
+ * id, starting after `after`.
+ */
+export async function listOrgExecutionContextsPage(
+	db: D1Database,
+	input: {
+		orgId: string
+		after: ExecutionContextListPosition | null
+		limit: number
+		now?: number
+	},
+) {
+	const cutoff = new Date(
+		(input.now ?? Date.now()) - revokedVisibleMs,
+	).toISOString()
+	const result = await db
+		.prepare(
+			`SELECT ${contextColumns} FROM execution_contexts c
+			 WHERE (c.org_id = ?1 OR EXISTS (
+				SELECT 1 FROM execution_context_org_attachments a
+				WHERE a.context_id = c.id AND a.org_id = ?1))
+			   AND (c.revoked_at IS NULL OR c.revoked_at > ?2)
+			   AND (?3 IS NULL OR c.name > ?3 OR (c.name = ?3 AND c.id > ?4))
+			 ORDER BY c.name, c.id
+			 LIMIT ?5`,
+		)
+		.bind(
+			input.orgId,
+			cutoff,
+			input.after?.name ?? null,
+			input.after?.id ?? null,
+			input.limit,
+		)
+		.all<ExecutionContextRow>()
+	return result.results
+}
+
+/** Live (not revoked) contexts owned by or attached to `orgId`. */
+export async function listLiveOrgExecutionContexts(
+	db: D1Database,
+	orgId: string,
+) {
+	const result = await db
+		.prepare(
+			`SELECT ${contextColumns} FROM execution_contexts c
+			 WHERE (c.org_id = ?1 OR EXISTS (
+				SELECT 1 FROM execution_context_org_attachments a
+				WHERE a.context_id = c.id AND a.org_id = ?1))
+			   AND c.revoked_at IS NULL`,
+		)
+		.bind(orgId)
+		.all<ExecutionContextRow>()
+	return result.results
+}
+
 /** Resolves an `ec_` id or a name visible in the org. */
 export async function resolveExecutionContextRef(
 	db: D1Database,
@@ -560,20 +618,47 @@ export async function consumeRegistrationChallenge(
 		.first<{ user_id: string; org_id: string }>()
 }
 
+/** Live contexts owned in `orgId`: by `operatorUserId`, and in total. */
+export async function countLiveOwnedContexts(
+	db: D1Database,
+	input: { orgId: string; operatorUserId: string },
+) {
+	const row = await db
+		.prepare(
+			`SELECT COUNT(*) AS org_count,
+				COALESCE(SUM(CASE WHEN operator_user_id = ?2 THEN 1 ELSE 0 END), 0) AS operator_count
+			 FROM execution_contexts
+			 WHERE org_id = ?1 AND revoked_at IS NULL`,
+		)
+		.bind(input.orgId, input.operatorUserId)
+		.first<{ org_count: number; operator_count: number }>()
+	return { org: row?.org_count ?? 0, operator: row?.operator_count ?? 0 }
+}
+
+/**
+ * Inserts the row only while the operator and the org stay under their live
+ * owned-context caps, checked in the same statement so concurrent
+ * registrations cannot both pass. Returns false when a cap blocked it.
+ */
 export async function insertExecutionContext(
 	db: D1Database,
 	row: Omit<
 		ExecutionContextRow,
 		'revoked_at' | 'revoked_reason' | 'last_seen_at' | 'all_members'
 	>,
+	caps: { perOperator: number; perOrg: number },
 ) {
-	await db
+	const result = await db
 		.prepare(
 			`INSERT INTO execution_contexts (id, org_id, operator_user_id, all_members, name,
 				public_key_jwk, thumbprint, created_at, client_name, client_version,
 				capabilities_json, grant_json, grant_version, login_kind, login_user_id,
 				login_profile_id, login_token_id, login_checked_at)
-			 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 SELECT ?1, ?2, ?3, 0, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17
+			 WHERE (SELECT COUNT(*) FROM execution_contexts
+					WHERE org_id = ?2 AND operator_user_id = ?3 AND revoked_at IS NULL) < ?18
+			   AND (SELECT COUNT(*) FROM execution_contexts
+					WHERE org_id = ?2 AND revoked_at IS NULL) < ?19`,
 		)
 		.bind(
 			row.id,
@@ -593,8 +678,11 @@ export async function insertExecutionContext(
 			row.login_profile_id ?? null,
 			row.login_token_id ?? null,
 			row.login_checked_at ?? null,
+			caps.perOperator,
+			caps.perOrg,
 		)
 		.run()
+	return (result.meta.changes ?? 0) > 0
 }
 
 export type ChainEntry = { kind: 'context'; id: string } | { kind: 'cloud' }

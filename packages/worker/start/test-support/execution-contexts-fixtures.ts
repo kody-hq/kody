@@ -103,6 +103,8 @@ export function pageFixture(
 		},
 		selected: null,
 		selectedMissing: false,
+		cursor: null,
+		nextCursor: null,
 		...overrides,
 	}
 }

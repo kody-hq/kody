@@ -1,4 +1,8 @@
 import {
+	base64UrlToBytes,
+	utf8ToBase64Url,
+} from '@kody-internal/shared/base64.ts'
+import {
 	listContextNotices,
 	type ElevationDetail,
 	type MisconfigDetail,
@@ -34,7 +38,11 @@ import {
 	getChain,
 	getExecutionContext,
 	getExecutionContexts,
+	listLiveOrgExecutionContexts,
 	listOrgExecutionContexts,
+	listOrgExecutionContextsPage,
+	type ExecutionContextListPosition,
+	type StoredChain,
 	loadContextAccess,
 	loadContextsAccess,
 	parseCapabilities,
@@ -214,7 +222,10 @@ async function liveStatus(env: Env, row: ExecutionContextRow) {
 export async function formatContexts(
 	caller: ExecutionContextCaller,
 	rows: ReadonlyArray<ExecutionContextRow>,
-	options: { includeSharing?: boolean } = {},
+	options: {
+		includeSharing?: boolean
+		accessById?: ReadonlyMap<string, ContextAccess>
+	} = {},
 ) {
 	const db = caller.env.APP_DB
 	const [handles, slugs, counts, chain, latestCli] = await Promise.all([
@@ -240,7 +251,8 @@ export async function formatContexts(
 			entry.kind === 'context' ? [entry.id] : [],
 		),
 	)
-	const accessById = await loadContextsAccess(db, rows, caller)
+	const accessById =
+		options.accessById ?? (await loadContextsAccess(db, rows, caller))
 	return await Promise.all(
 		rows.map(async (row) => {
 			const access = accessById.get(row.id)!
@@ -336,8 +348,55 @@ function isOrgOwner(caller: ExecutionContextCaller) {
 	return role === 'owner' || role === 'admin'
 }
 
-/** Protocol 7.1: usable contexts that are in none of the caller's chain. */
-export function unutilizedSummary(views: ReadonlyArray<ContextView>):
+export const executionContextListDefaultLimit = 20
+export const executionContextListMaxLimit = 100
+
+function encodeListCursor(row: Pick<ExecutionContextRow, 'name' | 'id'>) {
+	return utf8ToBase64Url(JSON.stringify([row.name, row.id]))
+}
+
+function decodeListCursor(cursor: string): ExecutionContextListPosition {
+	try {
+		const value: unknown = JSON.parse(
+			new TextDecoder().decode(base64UrlToBytes(cursor)),
+		)
+		if (
+			Array.isArray(value) &&
+			value.length === 2 &&
+			typeof value[0] === 'string' &&
+			typeof value[1] === 'string'
+		) {
+			return { name: value[0], id: value[1] }
+		}
+	} catch {
+		// Falls through to the refusal below.
+	}
+	throw new ExecutionContextError({
+		status: 400,
+		code: 'invalid_request',
+		message:
+			'cursor is not valid. Pass nextCursor from a previous executionContextList response.',
+	})
+}
+
+function canSeeContext(access: ContextAccess, caller: ExecutionContextCaller) {
+	return (
+		isOrgOwner(caller) ||
+		access.isOperator ||
+		access.granted ||
+		myPermissions(access).length > 0
+	)
+}
+
+/**
+ * Protocol 7.1: usable contexts that are in none of the caller's chain.
+ * Reads live rows and access only (no session status), and names at most
+ * {@link unutilizedNamedMax} of them.
+ */
+export async function unutilizedSummary(
+	caller: ExecutionContextCaller,
+	chain?: StoredChain,
+): Promise<
 	| {
 			count: number
 			contexts?: Array<{
@@ -348,13 +407,25 @@ export function unutilizedSummary(views: ReadonlyArray<ContextView>):
 			}>
 			note: string
 	  }
-	| undefined {
-	const unused = views.filter(
-		(view) =>
-			view.status !== 'revoked' &&
-			!view.chainUsage.inMyChain &&
-			(view.usable || view.canOptIn),
+	| undefined
+> {
+	const db = caller.env.APP_DB
+	const [rows, stored] = await Promise.all([
+		listLiveOrgExecutionContexts(db, caller.orgId),
+		chain ?? getChain(db, caller),
+	])
+	const inChain = new Set(
+		stored.entries.flatMap((entry) =>
+			entry.kind === 'context' ? [entry.id] : [],
+		),
 	)
+	const candidates = rows.filter((row) => !inChain.has(row.id))
+	const accessById = await loadContextsAccess(db, candidates, caller)
+	const unused = candidates.flatMap((row) => {
+		const access = accessById.get(row.id)!
+		const canOptIn = access.attached && access.granted && !access.optedIn
+		return access.usable || canOptIn ? [{ row, access }] : []
+	})
 	if (unused.length === 0) return undefined
 	if (unused.length > unutilizedNamedMax) {
 		return {
@@ -362,33 +433,70 @@ export function unutilizedSummary(views: ReadonlyArray<ContextView>):
 			note: `There are ${unused.length} unutilized execution context registrations.`,
 		}
 	}
+	const handles = await handlesFor(
+		db,
+		unused.map(({ row }) => row.operator_user_id),
+	)
 	return {
 		count: unused.length,
-		contexts: unused.map((view) => ({
-			id: view.id,
-			name: view.name,
-			operator: view.operator.handle,
-			needsOptIn: !view.optedIn,
+		contexts: unused.map(({ row, access }) => ({
+			id: row.id,
+			name: row.name,
+			operator: handles.get(row.operator_user_id) ?? null,
+			needsOptIn: !access.optedIn,
 		})),
 		note: `Not in your chain: ${unused
-			.map((view) => (view.optedIn ? view.name : `${view.name} (opt in first)`))
+			.map(({ row, access }) =>
+				access.optedIn ? row.name : `${row.name} (opt in first)`,
+			)
 			.join(
 				', ',
 			)}. Add one with executionChainSet or \`kody chain add <name>\`.`,
 	}
 }
 
-export async function listContexts(caller: ExecutionContextCaller) {
-	const rows = await listOrgExecutionContexts(caller.env.APP_DB, caller.orgId)
-	const views = await formatContexts(caller, rows)
-	const visible = views.filter(
-		(view) =>
-			view.isOperator ||
-			view.myPermissions.length > 0 ||
-			view.canOptIn ||
-			isOrgOwner(caller),
+/**
+ * One page of contexts visible to the caller, ordered by name. Pass
+ * `nextCursor` back as `cursor` for the next page; it is null on the last.
+ */
+export async function listContexts(
+	caller: ExecutionContextCaller,
+	input: { cursor?: string | null; limit?: number } = {},
+) {
+	const db = caller.env.APP_DB
+	const limit = Math.min(
+		executionContextListMaxLimit,
+		Math.max(1, Math.floor(input.limit ?? executionContextListDefaultLimit)),
 	)
-	return { contexts: visible, unutilized: unutilizedSummary(visible) }
+	let after = input.cursor ? decodeListCursor(input.cursor) : null
+	const visible: Array<ExecutionContextRow> = []
+	const accessById = new Map<string, ContextAccess>()
+	while (visible.length <= limit) {
+		const batch = await listOrgExecutionContextsPage(db, {
+			orgId: caller.orgId,
+			after,
+			limit: limit + 1,
+		})
+		const access = await loadContextsAccess(db, batch, caller)
+		for (const row of batch) {
+			const rowAccess = access.get(row.id)!
+			if (!canSeeContext(rowAccess, caller)) continue
+			visible.push(row)
+			accessById.set(row.id, rowAccess)
+		}
+		if (batch.length <= limit) break
+		after = batch.at(-1)!
+	}
+	const page = visible.slice(0, limit)
+	const [contexts, unutilized] = await Promise.all([
+		formatContexts(caller, page, { accessById }),
+		unutilizedSummary(caller),
+	])
+	return {
+		contexts,
+		unutilized,
+		nextCursor: visible.length > limit ? encodeListCursor(page.at(-1)!) : null,
+	}
 }
 
 export async function getContextDetail(
@@ -397,9 +505,11 @@ export async function getContextDetail(
 ) {
 	const { row, access } = await loadVisibleContext(caller, ref)
 	if (!access.isOperator && !access.granted && !isOrgOwner(caller)) notFound()
-	const [view] = await formatContexts(caller, [row], { includeSharing: true })
-	const all = await listContexts(caller)
-	return { context: view!, unutilized: all.unutilized }
+	const [[view], unutilized] = await Promise.all([
+		formatContexts(caller, [row], { includeSharing: true }),
+		unutilizedSummary(caller),
+	])
+	return { context: view!, unutilized }
 }
 
 export async function recordContextAudit(
@@ -485,12 +595,12 @@ export async function chainView(caller: ExecutionContextCaller) {
 }
 
 export async function chainResponse(caller: ExecutionContextCaller) {
-	const [chain, all] = await Promise.all([
+	const [chain, unutilized] = await Promise.all([
 		chainView(caller),
-		listContexts(caller),
+		unutilizedSummary(caller),
 	])
 	const { version: _version, ...rest } = chain
-	return { chain: rest, unutilized: all.unutilized }
+	return { chain: rest, unutilized }
 }
 
 export async function setChain(
@@ -525,7 +635,7 @@ export async function setChain(
 		throw new ExecutionContextError({
 			status: 422,
 			code: 'chain_too_long',
-			message: `A chain holds at most ${ecpMaxChainContexts} contexts plus Kody cloud.`,
+			message: `A chain holds at most ${ecpMaxChainContexts} contexts plus Kody cloud. Remove one with \`kody chain remove <name>\` or executionChainSet, then add the new one.`,
 			details: { max: ecpMaxChainContexts },
 		})
 	}
@@ -666,8 +776,10 @@ export async function optIn(caller: ExecutionContextCaller, ref: string) {
 	await refreshContextNotices(caller.env.APP_DB, row, caller.orgId, {
 		userIds: [caller.userId],
 	})
-	const handles = await handlesFor(caller.env.APP_DB, [row.operator_user_id])
-	const all = await listContexts(caller)
+	const [handles, unutilized] = await Promise.all([
+		handlesFor(caller.env.APP_DB, [row.operator_user_id]),
+		unutilizedSummary(caller),
+	])
 	return {
 		optedIn: true,
 		usable: true,
@@ -676,7 +788,7 @@ export async function optIn(caller: ExecutionContextCaller, ref: string) {
 			operatorHandle: handles.get(row.operator_user_id) ?? null,
 			localNetwork: parseGrant(row).egress.mode === 'public-and-lan',
 		}),
-		unutilized: all.unutilized,
+		unutilized,
 	}
 }
 

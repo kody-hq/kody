@@ -317,7 +317,7 @@ ${orgBlock}
              Skip targets that lack local files (fs) or the local network
              (lan); Kody cloud never satisfies either.
   --chain <a,b,cloud>
-             This run's own ordered chain (up to 3 contexts, \`cloud\` only
+             This run's own ordered chain (up to 8 contexts, \`cloud\` only
              last), replacing your default chain. Skipped entries are listed
              with a reason when nothing qualifies.
              Automations set theirs with
