@@ -7,9 +7,7 @@ type Git = IsomorphicGit['git']
  * Merge a fetched source commit into the session branch and update the
  * working tree. The branch ref moves only after checkout succeeds, so a merge
  * or checkout conflict leaves HEAD, index, and working tree untouched.
- * (`git.pull` moves the branch first, so a checkout conflict stranded the
- * session on the merge commit with the old tree.) Conflicts surface as caller
- * errors that name the files.
+ * Conflicts surface as caller errors that name the files.
  */
 export async function mergeSourceIntoSessionBranch(input: {
 	git: Pick<Git, 'merge' | 'checkout' | 'writeRef'>
