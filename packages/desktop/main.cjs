@@ -108,7 +108,7 @@ function installedApps() {
 		fs: fs.promises,
 		store: new PackageAppStore({ path: packageAppStorePath(userData), fs }),
 		preload: join(__dirname, 'package-app-preload.cjs'),
-		askPermission: async (installed, origin, kind) => {
+		async askPermission(installed, origin, kind) {
 			const { response } = await dialog.showMessageBox({
 				type: 'question',
 				buttons: ['Allow', 'Don’t Allow'],
@@ -120,6 +120,7 @@ function installedApps() {
 			return response === 0
 		},
 		setBadge: (count) => app.setBadgeCount(count),
+		menuChanged: () => updateMenu(),
 		kodyOrigin: appOrigin,
 		allowLoopback: appOrigin !== productionOrigin,
 		openBrowser: (url) =>
@@ -193,7 +194,8 @@ ipcMain.handle('kody:package-apps', async (event, action, input) => {
 			throw new Error('Unknown apps action.')
 	}
 })
-// The app preload asks synchronously whether its document gets the bridge.
+// Sync so the preload knows before page scripts run whether to expose the
+// bridge; an async answer would let the page see it appear late or not at all.
 ipcMain.on('kody:package-app-bridge', (event, origin) => {
 	event.returnValue =
 		packageApps?.bridgeAllowed(event.sender, event.senderFrame, origin) === true
