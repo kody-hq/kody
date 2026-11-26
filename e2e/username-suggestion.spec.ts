@@ -1,5 +1,12 @@
-import { expect, test, waitForClientHydration } from './playwright-utils.ts'
+import {
+	expect,
+	test,
+	waitForClientHydration,
+	type Page,
+	type Request,
+} from './playwright-utils.ts'
 import { seedUserInE2eDatabase } from './d1-utils.ts'
+import { requestHasMutationDataFields } from './server-function-requests.ts'
 
 function uniqueUsername() {
 	return `e2e-sug-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -73,4 +80,83 @@ test('a suggestion taken before the click shows the normal taken error', async (
 	await expect(
 		page.getByRole('status').filter({ hasText: 'taken' }),
 	).toBeVisible()
+})
+
+function isUsernameCheck(request: Request) {
+	return (
+		request.method() === 'POST' &&
+		new URL(request.url()).pathname.startsWith('/_serverFn/') &&
+		(request.postData() ?? '').includes('"username"')
+	)
+}
+
+async function recordUsernameChecks(page: Page) {
+	const checks: Array<Request> = []
+	page.on('request', (request) => {
+		if (isUsernameCheck(request)) checks.push(request)
+	})
+	return checks
+}
+
+async function recordAvailabilityStatuses(page: Page) {
+	await page.evaluate(() => {
+		const status = document.querySelector('[id$="-username-availability"]')
+		const seen: Array<string | null> = []
+		;(window as unknown as { seenStatuses: typeof seen }).seenStatuses = seen
+		new MutationObserver(() =>
+			seen.push(status?.getAttribute('data-status') ?? null),
+		).observe(status!, { attributes: true, attributeFilter: ['data-status'] })
+	})
+	return () =>
+		page.evaluate(
+			() =>
+				(window as unknown as { seenStatuses: Array<string | null> })
+					.seenStatuses,
+		)
+}
+
+test('editing the email never checks, fills, or replaces the username', async ({
+	page,
+}) => {
+	const base = uniqueUsername()
+	await page.goto('/signup')
+	await waitForClientHydration(page)
+	const username = page.getByLabel('Username', { exact: true })
+	const email = page.getByLabel('Email', { exact: true })
+	const checks = await recordUsernameChecks(page)
+
+	await email.pressSequentially(`${base}@example.com`)
+	await page.waitForTimeout(800)
+	await expect(username).toHaveValue('')
+	expect(checks).toHaveLength(0)
+
+	await username.fill(base)
+	await expect(page.getByText(`${base} is available.`)).toBeVisible()
+	checks.length = 0
+	const statuses = await recordAvailabilityStatuses(page)
+
+	await email.fill('')
+	await email.pressSequentially(`someone-else-${base}@example.com`)
+	await page.waitForTimeout(800)
+	await expect(username).toHaveValue(base)
+	await expect(page.getByText(`${base} is available.`)).toBeVisible()
+	expect(checks).toHaveLength(0)
+	expect(await statuses()).toEqual([])
+})
+
+test('editing the username runs one debounced availability check', async ({
+	page,
+}) => {
+	const base = uniqueUsername()
+	await page.goto('/signup')
+	await waitForClientHydration(page)
+	const username = page.getByLabel('Username', { exact: true })
+	const checks = await recordUsernameChecks(page)
+
+	await username.pressSequentially(base, { delay: 20 })
+	await expect(page.getByText(`${base} is available.`)).toBeVisible()
+	expect(checks).toHaveLength(1)
+	expect(
+		requestHasMutationDataFields(checks[0]!, { username: base }),
+	).toBeTruthy()
 })

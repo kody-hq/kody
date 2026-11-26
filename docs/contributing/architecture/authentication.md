@@ -109,9 +109,10 @@ choice, and email verification return to the same consent request. Every
 self-serve path requires choosing a permanent username before the account
 exists:
 
-- Password signup: the shared username field on `/signup` (prefilled from the
-  email local part as they type), with live availability, suggestions, and an
-  explicit permanence confirmation before create
+- Password signup: the shared username field on `/signup` (the person types it;
+  editing the email never fills, changes, or re-checks it), with live
+  availability, suggestions, and an explicit permanence confirmation before
+  create
 - Social signup: after the provider callback verifies the identity, the person
   lands on `/signup/choose-username` (same shared field). The verified provider
   identity is held in a short-lived signed `kody_oauth_pending` cookie (CSRF,
