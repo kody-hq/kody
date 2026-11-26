@@ -1107,6 +1107,17 @@ function containsPromiseType(node) {
 	)
 }
 
+function isPromiseValuedMapType(type) {
+	return (
+		type?.type === 'TSTypeReference' &&
+		type.typeName?.type === 'Identifier' &&
+		type.typeName.name === 'Map' &&
+		containsPromiseType(
+			(type.typeArguments ?? type.typeParameters)?.params?.[1],
+		)
+	)
+}
+
 function promiseValuedMap(init) {
 	if (init?.type === 'CallExpression') {
 		return init.arguments.some((argument) => promiseValuedMap(argument))
@@ -1143,7 +1154,11 @@ const noIsolatePromiseMemoRule = {
 				const memoType =
 					declaration.kind !== 'const' &&
 					containsPromiseType(declarator.id.typeAnnotation)
-				if (!memoType && !promiseValuedMap(declarator.init)) continue
+				const mapType =
+					isPromiseValuedMapType(
+						declarator.id.typeAnnotation?.typeAnnotation,
+					) || promiseValuedMap(declarator.init)
+				if (!memoType && !mapType) continue
 				context.report({
 					node: declarator,
 					messageId: 'isolatePromiseMemo',
