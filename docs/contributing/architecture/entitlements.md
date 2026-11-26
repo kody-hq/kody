@@ -1544,11 +1544,12 @@ by person across all their organizations:
 An unrecognized `kody_claim_scope`, or a nonempty `kody_campaign` without
 `kody_claim_scope: campaign`, produces "That promo code isn't set up correctly.
 Please contact support." and a `billing_checkout_promo_claim_scope_unrecognized`
-error log. A blocked campaign code gets 409 "You have already claimed this
-promotion. It can be claimed once per person, across all of your organizations."
-The conflict check and reservation use one SQL statement, so once one checkout
-reserves a claim, a competing checkout that conflicts with it is rejected before
-creating a Stripe Checkout Session
+error log. When a campaign code is blocked, checkout is refused and the billing
+page shows "You have already claimed this promotion. It can be claimed once per
+person, across all of your organizations." The conflict check and reservation
+use one SQL statement, so once one checkout reserves a claim, a competing
+checkout that conflicts with it is rejected before creating a Stripe Checkout
+Session
 ([checkout tests](../../../packages/worker/src/app/handlers/org-billing.node.test.ts)).
 
 `GET /@<slug>/-/billing/success`
