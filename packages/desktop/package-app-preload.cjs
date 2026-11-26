@@ -21,6 +21,21 @@ if (allowed) {
 			request: (kind) => call('permission-request', kind),
 		},
 		badge: { set: (count) => call('badge', count) },
+		menuBar: {
+			set: (path, options) => call('menu-bar-set', path, options?.tooltip),
+			remove: () => call('menu-bar-remove'),
+		},
+		shortcuts: {
+			register: (accelerator) => call('shortcut-register', accelerator),
+			unregister: (accelerator) => call('shortcut-unregister', accelerator),
+			onPress: (callback) => {
+				const listener = (_event, accelerator) => callback(accelerator)
+				ipcRenderer.on('kody:package-app-shortcut', listener)
+				return () =>
+					ipcRenderer.removeListener('kody:package-app-shortcut', listener)
+			},
+		},
+		startAtLogin: { set: (on) => call('start-at-login', on) },
 		window: {
 			show: () => call('window-show'),
 			hide: () => call('window-hide'),
@@ -28,6 +43,14 @@ if (allowed) {
 			setFloating: (floating) => call('window-floating', floating),
 			open: (path, options) => call('window-open', path, options),
 		},
+	})
+	// A menu-bar page sizes its popover with
+	// <meta name="kody-menubar-size" content="360x480">.
+	window.addEventListener('DOMContentLoaded', () => {
+		const size = document
+			.querySelector('meta[name="kody-menubar-size"]')
+			?.getAttribute('content')
+		if (size) void call('menu-bar-size', size)
 	})
 	// `new Notification(title, { data: { path } })` focuses the app and opens
 	// that path when clicked.

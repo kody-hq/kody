@@ -8,6 +8,11 @@ const {
 	clipboard,
 	session,
 	net,
+	Tray,
+	nativeImage,
+	nativeTheme,
+	globalShortcut,
+	screen,
 } = require('electron')
 // Electron's bundled undici reads `performance.markResourceTiming` when its
 // fetch first loads; on linux x64 the global is sometimes not set yet.
@@ -50,6 +55,11 @@ const {
 const { PackageAppStore, packageAppStorePath } = require('./package-apps.cjs')
 const { createPackageAppWindows } = require('./package-app-windows.cjs')
 const { permissionLabels } = require('./package-app-permissions.cjs')
+const {
+	linuxAutostartEntry,
+	startHiddenArgument,
+} = require('./package-app-background.cjs')
+const { createTrayIcon } = require('./tray-icon.cjs')
 
 app.setName('Kody')
 let appOrigin = productionOrigin
@@ -121,6 +131,48 @@ function installedApps() {
 		},
 		setBadge: (count) => app.setBadgeCount(count),
 		menuChanged: () => updateMenu(),
+		Tray,
+		nativeImage,
+		globalShortcut,
+		screen,
+		trayIcon(installed) {
+			const icon = nativeImage.createFromPath(
+				join(
+					userData,
+					'package-app-icons',
+					`${installed.owner}.${installed.packageName}.png`,
+				),
+			)
+			return icon.isEmpty()
+				? createTrayIcon(nativeImage, nativeTheme)
+				: icon.resize({ width: 18, height: 18 })
+		},
+		setStartAtLogin(open) {
+			if (process.platform !== 'linux') {
+				app.setLoginItemSettings({
+					openAtLogin: open,
+					openAsHidden: true,
+					args: [startHiddenArgument],
+				})
+				return
+			}
+			const configHome = isAbsolute(process.env.XDG_CONFIG_HOME ?? '')
+				? process.env.XDG_CONFIG_HOME
+				: join(app.getPath('home'), '.config')
+			const entry = join(configHome, 'autostart', 'kody-apps.desktop')
+			if (!open) return void fs.promises.rm(entry, { force: true })
+			void fs.promises
+				.mkdir(join(configHome, 'autostart'), { recursive: true })
+				.then(() =>
+					fs.promises.writeFile(
+						entry,
+						linuxAutostartEntry(process.env.APPIMAGE ?? process.execPath),
+					),
+				)
+				.catch((error) =>
+					console.warn(`Kody could not set start at login: ${error.message}`),
+				)
+		},
 		kodyOrigin: appOrigin,
 		allowLoopback: appOrigin !== productionOrigin,
 		openBrowser: (url) =>
@@ -947,8 +999,15 @@ else {
 			pendingPackageAppLinks = null
 			// A launcher opens just its app window, not the dashboard.
 			const openedApps = launchApps.filter((link) => openPackageAppLink(link))
+			// A login start opens granted apps hidden, without the dashboard.
+			const atLogin =
+				process.argv.includes(startHiddenArgument) ||
+				(process.platform === 'darwin' &&
+					app.getLoginItemSettings().wasOpenedAtLogin)
+			const hiddenApps = await installedApps().startBackground({ atLogin })
 			const [launchLink, ...moreLinks] = appLinks.start()
-			if (!openedApps.length || launchLink) await showApp(launchLink)
+			if ((!openedApps.length && !(atLogin && hiddenApps)) || launchLink)
+				await showApp(launchLink)
 			for (const path of moreLinks) void newWindow(path)
 			await presence.onboard()
 			if (!quitting) void execution.request('state').catch(() => {})

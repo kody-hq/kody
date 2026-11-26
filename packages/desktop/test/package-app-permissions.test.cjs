@@ -43,6 +43,9 @@ class FakeWindow {
 			on: () => {},
 			setWindowOpenHandler: () => {},
 			getURL: () => this.loads.at(-1) ?? '',
+			isLoading: () => false,
+			sent: [],
+			send: (...args) => this.webContents.sent.push(args),
 		}
 		FakeWindow.all.push(this)
 	}
@@ -73,12 +76,45 @@ class FakeWindow {
 		this.alwaysOnTop = value
 	}
 	setTitle() {}
+	setSize(width, height) {
+		this.size = [width, height]
+	}
+	getSize() {
+		return this.size ?? [this.options.width, this.options.height]
+	}
+	setBounds(bounds) {
+		this.bounds = bounds
+	}
+	isVisible() {
+		return this.visible === true
+	}
 }
 
-async function setup({ flag = true, answers = [] } = {}) {
-	const { store } = newStore()
+class FakeTray {
+	constructor() {
+		this.handlers = new Map()
+		FakeTray.last = this
+	}
+	on(name, handler) {
+		this.handlers.set(name, handler)
+	}
+	setToolTip(value) {
+		this.tooltip = value
+	}
+	getBounds() {
+		return { x: 900, y: 0, width: 20, height: 24 }
+	}
+	destroy() {
+		this.destroyed = true
+	}
+}
+
+async function setup({ flag = true, answers = [], store: given } = {}) {
+	const store = given ?? newStore().store
 	store.put(app)
 	const asked = []
+	const shortcuts = new Map()
+	const startAtLogin = []
 	const badges = []
 	const apps = createPackageAppWindows({
 		BrowserWindow: FakeWindow,
@@ -96,11 +132,26 @@ async function setup({ flag = true, answers = [] } = {}) {
 			return answers.shift() ?? false
 		},
 		setBadge: (count) => badges.push(count),
+		Tray: FakeTray,
+		nativeImage: { createEmpty: () => ({}) },
+		screen: {
+			getDisplayMatching: () => ({
+				workArea: { x: 0, y: 24, width: 1000, height: 700 },
+			}),
+		},
+		globalShortcut: {
+			register: (accelerator, handler) => {
+				shortcuts.set(accelerator, handler)
+				return true
+			},
+			unregister: (accelerator) => shortcuts.delete(accelerator),
+		},
+		setStartAtLogin: (on) => startAtLogin.push(on),
 	})
 	apps.openLink({ owner: 'kent', packageName: 'weather', path: '/' })
 	const window = FakeWindow.all.at(-1)
 	await new Promise((resolve) => setImmediate(resolve))
-	return { store, apps, window, asked, badges }
+	return { store, apps, window, asked, badges, shortcuts, startAtLogin }
 }
 
 test('permissions start off, ask once, and keep the answer per origin', async () => {
@@ -192,7 +243,7 @@ test('desktop calls check grants: notifications, badge, floating, windows', asyn
 	const contents = window.webContents
 	const frame = contents.mainFrame
 	const call = (action, ...args) => apps.call(contents, frame, action, args)
-	assert.equal(await call('permission-query', 'menuBar'), 'unavailable')
+	assert.equal(await call('permission-query', 'clipboardRead'), 'unavailable')
 	assert.equal(await call('permission-query', 'floating'), 'prompt')
 	await call('window-floating', true)
 	assert.equal(window.alwaysOnTop, false)
@@ -274,4 +325,89 @@ test('revoking from the App menu stops floating and clears the badge', async () 
 		window.loads.at(-1),
 		'https://kody.codes/@kent/packages/weather/open',
 	)
+})
+
+test('menu bar, shortcuts, and start at login need their grants and clean up on uninstall', async () => {
+	const { apps, window, shortcuts, startAtLogin, store } = await setup({
+		answers: [true, true, true],
+	})
+	const contents = window.webContents
+	const call = (action, ...args) =>
+		apps.call(contents, contents.mainFrame, action, args)
+	assert.equal(await call('shortcut-register', 'CmdOrCtrl+Shift+K'), false)
+	await call('menu-bar-set', '/menubar')
+	assert.equal(FakeTray.last, undefined)
+	await call('permission-request', 'menuBar')
+	await call('permission-request', 'shortcuts')
+	await call('permission-request', 'startAtLogin')
+	await assert.rejects(
+		call('menu-bar-set', 'https://evil.example/'),
+		/inside this app/,
+	)
+	await call('menu-bar-set', '/menubar', 'Weather now')
+	const tray = FakeTray.last
+	assert.equal(tray.tooltip, 'Weather now')
+	assert.equal(apps.size, 2)
+	tray.handlers.get('click')()
+	const popover = FakeWindow.all.at(-1)
+	assert.equal(popover.options.frame, false)
+	assert.equal(
+		popover.loads[0],
+		'https://kody.codes/@kent/packages/weather/open/menubar',
+	)
+	assert.deepEqual(popover.bounds, { x: 640, y: 24, width: 360, height: 480 })
+	await apps.call(
+		popover.webContents,
+		popover.webContents.mainFrame,
+		'menu-bar-size',
+		['300x200'],
+	)
+	assert.deepEqual(popover.size, [300, 200])
+	await call('menu-bar-size', '300x900')
+	assert.deepEqual(popover.size, [300, 200])
+	await assert.rejects(call('shortcut-register', 'K'), /modifier/)
+	assert.equal(await call('shortcut-register', 'CmdOrCtrl+Shift+K'), true)
+	shortcuts.get('CmdOrCtrl+Shift+K')()
+	assert.deepEqual(contents.sent.at(-1), [
+		'kody:package-app-shortcut',
+		'CmdOrCtrl+Shift+K',
+	])
+	await call('start-at-login', true)
+	assert.deepEqual(startAtLogin, [true])
+	assert.equal(store.get('kent', 'weather').menuBar.path, '/menubar')
+	await apps.uninstall(app)
+	assert.equal(tray.destroyed, true)
+	assert.equal(shortcuts.size, 0)
+	assert.deepEqual(startAtLogin, [true, false])
+	assert.equal(apps.size, 0)
+})
+
+test('a login start restores menu-bar items and opens start-at-login apps hidden', async () => {
+	const { store } = newStore()
+	store.put({
+		...app,
+		startAtLogin: true,
+		menuBar: { path: '/menubar', origin: appOrigin, tooltip: null },
+		permissions: {
+			[appOrigin]: { menuBar: 'granted', startAtLogin: 'granted' },
+		},
+	})
+	FakeTray.last = undefined
+	const before = FakeWindow.all.length
+	const { apps } = await setup({ store })
+	// setup() opens the app once; a fresh manager without a window is what launch sees.
+	await apps.uninstall(app)
+	store.put({
+		...app,
+		startAtLogin: true,
+		menuBar: { path: '/menubar', origin: appOrigin, tooltip: null },
+		permissions: {
+			[appOrigin]: { menuBar: 'granted', startAtLogin: 'granted' },
+		},
+	})
+	assert.equal(await apps.startBackground({ atLogin: true }), 1)
+	assert.ok(FakeTray.last && !FakeTray.last.destroyed)
+	const opened = FakeWindow.all.at(-1)
+	assert.ok(FakeWindow.all.length > before)
+	assert.equal(opened.options.show, false)
 })

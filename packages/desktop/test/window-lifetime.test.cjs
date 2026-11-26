@@ -33,6 +33,7 @@ function fixture(platform = 'darwin', background = false) {
 				ready = resolve
 			}),
 		getPath: () => '/unused',
+		getLoginItemSettings: () => ({ wasOpenedAtLogin: false }),
 		dock: { setIcon() {} },
 		quit: () => {
 			quitting++
@@ -176,6 +177,8 @@ function fixture(platform = 'darwin', background = false) {
 		'./package-apps.cjs': require('../package-apps.cjs'),
 		'./package-app-windows.cjs': require('../package-app-windows.cjs'),
 		'./package-app-permissions.cjs': require('../package-app-permissions.cjs'),
+		'./package-app-background.cjs': require('../package-app-background.cjs'),
+		'./tray-icon.cjs': { createTrayIcon: () => ({}) },
 		'./runner.cjs': {
 			Runner: class extends EventEmitter {
 				constructor() {
@@ -211,7 +214,7 @@ function fixture(platform = 'darwin', background = false) {
 	}
 	const context = {
 		require: (name) => (name in mocks ? mocks[name] : require(name)),
-		process: { platform, argv: [] },
+		process: { platform, argv: [], env: {}, execPath: '/kody' },
 		__dirname: require('node:path').join(__dirname, '..'),
 		URL,
 		AbortSignal,

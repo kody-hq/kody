@@ -118,6 +118,17 @@ origin, and the flag again on every call. The bridge offers:
 - `badge.set(count)` (needs `notifications`), `window.show()`, `hide()`,
   `focus()`, `setFloating(on)` (needs `floating`), and `window.open(path)` for
   up to eight extra windows on the same app.
+- `menuBar.set(path, { tooltip })` and `menuBar.remove()` (need `menuBar`). The
+  path becomes a menu-bar or tray icon whose click toggles a popover on that
+  page, sized by `<meta name="kody-menubar-size" content="360x480">`. An app
+  with a menu-bar item keeps running after its window closes, and the item comes
+  back on the next launch.
+- `shortcuts.register(accelerator)`, `unregister(accelerator)`, and
+  `onPress(callback)` (need `shortcuts`). Up to eight global shortcuts per app,
+  each with a modifier and one key. A press opens the app if needed and calls
+  `onPress`.
+- `startAtLogin.set(on)` (needs `startAtLogin`). At login Kody opens the granted
+  apps hidden, without the dashboard or a sign-in.
 
 Permissions start off, are asked once in a native dialog, and are saved in
 `package-apps.json` per app and origin. They survive publishes, reinstalls, and
