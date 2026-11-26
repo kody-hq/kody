@@ -25,7 +25,7 @@ const installSearchParam = 'install'
 type InstallState = 'idle' | 'installing' | 'installed' | 'error'
 
 /**
- * Show the package page's Install action when enabled for the package owner's org.
+ * Show the package page's Install action when the shell session enables it.
  *
  * Use {@link PackageAppInstallDialog} when the desktop bridge is available,
  * or {@link PackageAppHandoffDialog} to open or download Kody.

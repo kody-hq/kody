@@ -100,14 +100,13 @@ to the app.
 ### Install flow and links
 
 The [package page control](../worker/start/components/package-app-install.tsx)
-shows **Install** when the package owner's org has the
-`desktop-install-package-apps` flag. The main Kody window's
-[`window.kodyDesktop.apps` bridge](./preload.cjs) provides `install`, `list`,
-and `uninstall`. When the bridge is absent, the page uses the browser handoff.
-Before installing, the [shell checks the owner's session flag](./main.cjs)
-through `/session?org=<owner>` and the
-[install handler](./package-app-windows.cjs) rejects the request unless the flag
-is on.
+shows **Install** when the shell session has the `desktop-install-package-apps`
+flag. The main Kody window's [`window.kodyDesktop.apps` bridge](./preload.cjs)
+provides `install`, `list`, and `uninstall`. When the bridge is absent, the page
+uses the browser handoff. Before installing, the
+[shell checks the owner's session flag](./main.cjs) through
+`/session?org=<owner>` and the [install handler](./package-app-windows.cjs)
+rejects the request unless the flag is on.
 
 `kody://app/<owner>/<package>/<path>` opens that path in an installed app, for
 launchers, notification clicks, and links. The scheme is registered from
