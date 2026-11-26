@@ -21,7 +21,7 @@ import {
 } from 'node:fs'
 import { createServer } from 'node:net'
 import { createRequire } from 'node:module'
-import { tmpdir, userInfo } from 'node:os'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
@@ -182,7 +182,10 @@ function listenOnce(port: number, host: string): Promise<number> {
 	})
 }
 
-const portClaimDir = join(tmpdir(), `kody-dev-runtime-ports-${userInfo().uid}`)
+const portClaimDir = join(
+	tmpdir(),
+	`kody-dev-runtime-ports-${process.getuid?.() ?? 'shared'}`,
+)
 
 function isLiveProcess(pid: number) {
 	try {
@@ -535,6 +538,9 @@ export async function startDevRuntime(
 		}
 		writeLocalState(stateDir, state)
 	}
+	// Saved ports keep their numbers (the origin is persisted); claiming them
+	// stops another runtime's getFreePort from handing them out while we run.
+	for (const saved of Object.values(state.ports)) claimPort(saved)
 	const port = state.ports.origin
 	const mockPort = state.ports.mockCloudflare
 	const origin = `http://localhost:${port}`
