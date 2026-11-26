@@ -1,6 +1,7 @@
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { deleteKvKeysByPrefix } from '../kv-delete.ts'
 import { linkedPackageImportPrefix } from './module-graph-paths.ts'
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 
 /**
  * A build uploaded from outside Kody cloud carries each `kody:@` dependency's
@@ -71,24 +72,16 @@ const writtenKeyLimit = 5_000
  * Groups this isolate stored recently. One publish writes about a hundred
  * targets that link the same dependencies, so each group is put once.
  */
-const recentWrites = new Map<
-	string,
-	{ expiresAt: number; pending: Promise<void> }
->()
+const recentWrites = new PromiseLruCache<void>({
+	ttlMs: writtenKeyTtlMs,
+	limit: writtenKeyLimit,
+})
 
 async function putOnce(kv: KVNamespace, key: string, value: string) {
-	const now = Date.now()
-	const recent = recentWrites.get(key)
-	if (recent && recent.expiresAt > now) return await recent.pending
-	if (recentWrites.size >= writtenKeyLimit) recentWrites.clear()
-	const pending = kv.put(key, value)
-	recentWrites.set(key, { expiresAt: now + writtenKeyTtlMs, pending })
-	try {
-		await pending
-	} catch (error) {
-		if (recentWrites.get(key)?.pending === pending) recentWrites.delete(key)
-		throw error
-	}
+	await recentWrites.getOrCreate({
+		cacheKey: key,
+		create: () => kv.put(key, value),
+	})
 }
 
 /**

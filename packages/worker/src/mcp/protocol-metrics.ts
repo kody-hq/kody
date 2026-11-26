@@ -63,6 +63,7 @@
 
 import type * as McpServerModule from '@modelcontextprotocol/server'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 export type McpProtocolLane = 'legacy' | 'modern'
 
@@ -196,8 +197,6 @@ function firstJsonRpcMessage(body: unknown): Record<string, unknown> | null {
 	return isRecord(body) ? body : null
 }
 
-let mcpServerModuleMemo: Promise<typeof McpServerModule> | null = null
-
 /**
  * `@modelcontextprotocol/server` builds the wire schemas for every protocol
  * revision when it evaluates, which is a large share of Worker startup CPU.
@@ -205,15 +204,8 @@ let mcpServerModuleMemo: Promise<typeof McpServerModule> | null = null
  * first use and cached for the isolate. Keep static imports of that package
  * off the startup path (see `docs/contributing/architecture/startup-budget.md`).
  */
-export function loadMcpServerModule(): Promise<typeof McpServerModule> {
-	mcpServerModuleMemo ??= import('@modelcontextprotocol/server').catch(
-		(error: unknown) => {
-			mcpServerModuleMemo = null
-			throw error
-		},
-	)
-	return mcpServerModuleMemo
-}
+export const loadMcpServerModule: () => Promise<typeof McpServerModule> =
+	isolateMemo(() => import('@modelcontextprotocol/server'))
 
 /** Use the SDK lane predicate and extract metrics from a clone of the request. */
 export async function classifyMcpProtocolRequest(

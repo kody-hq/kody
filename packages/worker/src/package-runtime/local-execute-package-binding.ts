@@ -17,6 +17,7 @@ import {
 	bytesToBase64Url,
 } from '@kody-internal/shared/base64.ts'
 import { z } from 'zod'
+import { isolateMemoByKey } from '#worker/isolate-memo.ts'
 
 const bindingPrefix = 'kpb1.'
 // One graph serves one local run. `kody dev` keeps a graph for its whole
@@ -47,36 +48,28 @@ export type LocalExecutePackageBindingSubject = {
 	actor: string | null
 }
 
-const signingKeys = new Map<string, Promise<CryptoKey>>()
-
-function signingKey(secretStoreKey: string) {
-	let key = signingKeys.get(secretStoreKey)
-	if (!key) {
-		key = (async () => {
-			const base = await crypto.subtle.importKey(
-				'raw',
-				new TextEncoder().encode(secretStoreKey),
-				'HKDF',
-				false,
-				['deriveKey'],
-			)
-			return await crypto.subtle.deriveKey(
-				{
-					name: 'HKDF',
-					hash: 'SHA-256',
-					salt: new Uint8Array(),
-					info: signingInfo,
-				},
-				base,
-				{ name: 'HMAC', hash: 'SHA-256', length: 256 },
-				false,
-				['sign', 'verify'],
-			)
-		})()
-		signingKeys.set(secretStoreKey, key)
-	}
-	return key
-}
+const signingKey: (secretStoreKey: string) => Promise<CryptoKey> =
+	isolateMemoByKey(async (secretStoreKey) => {
+		const base = await crypto.subtle.importKey(
+			'raw',
+			new TextEncoder().encode(secretStoreKey),
+			'HKDF',
+			false,
+			['deriveKey'],
+		)
+		return await crypto.subtle.deriveKey(
+			{
+				name: 'HKDF',
+				hash: 'SHA-256',
+				salt: new Uint8Array(),
+				info: signingInfo,
+			},
+			base,
+			{ name: 'HMAC', hash: 'SHA-256', length: 256 },
+			false,
+			['sign', 'verify'],
+		)
+	})
 
 export function isLocalExecutePackageBindingToken(value: unknown) {
 	return typeof value === 'string' && value.startsWith(bindingPrefix)

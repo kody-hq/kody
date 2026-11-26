@@ -1,3 +1,4 @@
+import { isolateMemo } from '#worker/isolate-memo.ts'
 /**
  * Load local-execute rewrite + shim builders from the deferred additional
  * module. Specifier must stay `./node_modules/.kody-generated/…` relative to
@@ -24,11 +25,8 @@ export type LocalExecuteRuntimeSupport = {
 	createLocalExecutePackageRuntimeModuleSource: (packageId: string) => string
 }
 
-let localExecuteRuntimeSupportPromise: Promise<LocalExecuteRuntimeSupport> | null =
-	null
-
-export function loadLocalExecuteRuntimeSupport() {
-	localExecuteRuntimeSupportPromise ??=
-		import('./node_modules/.kody-generated/local-execute-runtime-support.mjs') as Promise<LocalExecuteRuntimeSupport>
-	return localExecuteRuntimeSupportPromise
-}
+export const loadLocalExecuteRuntimeSupport: () => Promise<LocalExecuteRuntimeSupport> =
+	isolateMemo(
+		() =>
+			import('./node_modules/.kody-generated/local-execute-runtime-support.mjs') as Promise<LocalExecuteRuntimeSupport>,
+	)

@@ -1,3 +1,4 @@
+import { isolateMemo } from '#worker/isolate-memo.ts'
 /**
  * Load isomorphic-git (and `@cloudflare/shell/git`'s `createGit`) from the
  * deferred additional module. Specifier must stay
@@ -20,8 +21,6 @@ export type IsomorphicGit = {
 	createGit: typeof import('@cloudflare/shell/git').createGit
 }
 
-let memo: Promise<IsomorphicGit> | null = null
-
 /**
  * isomorphic-git builds large lookup tables when its module evaluates. Every
  * git operation runs inside an async repo call, so the library loads on first
@@ -33,12 +32,7 @@ let memo: Promise<IsomorphicGit> | null = null
  * pre-bundled additional module instead. Import this helper; never import
  * those packages on the startup path.
  */
-export function loadIsomorphicGit(): Promise<IsomorphicGit> {
-	memo ??= (
-		import('./node_modules/.kody-generated/isomorphic-git.mjs') as Promise<IsomorphicGit>
-	).catch((error: unknown) => {
-		memo = null
-		throw error
-	})
-	return memo
-}
+export const loadIsomorphicGit: () => Promise<IsomorphicGit> = isolateMemo(
+	() =>
+		import('./node_modules/.kody-generated/isomorphic-git.mjs') as Promise<IsomorphicGit>,
+)

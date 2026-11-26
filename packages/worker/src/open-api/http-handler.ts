@@ -79,6 +79,7 @@ import {
 	readQueryParams,
 } from './request-params.ts'
 import { bootstrapRedeemInputSchema } from './token-operations.ts'
+import { isolateMemoByKey } from '#worker/isolate-memo.ts'
 
 export const openApiDocumentPath = '/openapi.json'
 
@@ -103,28 +104,12 @@ function operationNeedsAccountWriteLease(resolved: {
  * the SHA-256 of the body, so clients revalidate by content rather than by
  * age. Built once per isolate per origin, like the document itself.
  */
-const openApiResponseMemo = new Map<
-	string,
-	Promise<{ text: string; etag: string }>
->()
-
-function openApiResponseBody(serverUrl: string) {
-	let memo = openApiResponseMemo.get(serverUrl)
-	if (!memo) {
-		memo = buildOpenApiDocument({ serverUrl }).then(
-			async (document) => {
-				const text = JSON.stringify(document)
-				return { text, etag: `"${await sha256Hex(text)}"` }
-			},
-			(error: unknown) => {
-				openApiResponseMemo.delete(serverUrl)
-				throw error
-			},
-		)
-		openApiResponseMemo.set(serverUrl, memo)
-	}
-	return memo
-}
+const openApiResponseBody = isolateMemoByKey((serverUrl) =>
+	buildOpenApiDocument({ serverUrl }).then(async (document) => {
+		const text = JSON.stringify(document)
+		return { text, etag: `"${await sha256Hex(text)}"` }
+	}),
+)
 
 async function sha256Hex(text: string) {
 	const digest = await crypto.subtle.digest(

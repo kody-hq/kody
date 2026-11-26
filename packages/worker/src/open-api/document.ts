@@ -23,6 +23,7 @@ import {
 	type CapabilityApiOperation,
 } from './operations.ts'
 import { nativeApiOperationDefinitions } from './native-operations.ts'
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 export const openApiVersion = '3.1.0'
 export const kodyApiVersion = '1.0.0'
@@ -687,18 +688,14 @@ function buildDocumentBody(registry: BuiltCapabilityRegistry) {
 	} satisfies Omit<OpenApiDocument, 'servers'>
 }
 
-let documentBodyMemo: Promise<Omit<OpenApiDocument, 'servers'>> | null = null
+const loadDocumentBody = isolateMemo(() =>
+	getStaticRegistry().then((registry) => buildDocumentBody(registry)),
+)
 
 /** The OpenAPI document, built once per isolate. */
 export async function buildOpenApiDocument(input: {
 	serverUrl: string
 }): Promise<OpenApiDocument> {
-	documentBodyMemo ??= getStaticRegistry()
-		.then((registry) => buildDocumentBody(registry))
-		.catch((error: unknown) => {
-			documentBodyMemo = null
-			throw error
-		})
-	const body = await documentBodyMemo
+	const body = await loadDocumentBody()
 	return { ...body, servers: [{ url: input.serverUrl }] }
 }

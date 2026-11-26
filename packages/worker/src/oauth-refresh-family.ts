@@ -164,6 +164,9 @@ export function decideRefreshFamilyAction(input: {
 	return { kind: 'pass-through' }
 }
 
+// A lock chain, not a memo: a waiter whose holder's request ended gets a
+// rejection, which `withRefreshFamilyGrantLock` treats as released.
+// oxlint-disable-next-line kody-custom/no-isolate-promise-memo
 const refreshFamilyGrantLocks = new Map<string, Promise<void>>()
 
 type RefreshFamilyMemoryRecord = {

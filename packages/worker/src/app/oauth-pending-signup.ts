@@ -7,6 +7,7 @@ import {
 	isOauthProviderId,
 	type OauthProviderId,
 } from '#app/oauth-providers.ts'
+import { isolateMemoByKey } from '#worker/isolate-memo.ts'
 
 /**
  * Short-lived signed cookie that parks a verified social identity while the
@@ -60,7 +61,16 @@ let pendingSecret: string | null = null
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
-const derivedEncryptionKeyCache = new Map<string, Promise<CryptoKey>>()
+const derivedEncryptionKeys = isolateMemoByKey((cacheKey) =>
+	crypto.subtle
+		.digest('SHA-256', textEncoder.encode(cacheKey))
+		.then((digest) =>
+			crypto.subtle.importKey('raw', digest, 'AES-GCM', false, [
+				'encrypt',
+				'decrypt',
+			]),
+		),
+)
 
 export function setOauthPendingSignupSecret(secret: string) {
 	if (!secret) {
@@ -72,7 +82,7 @@ export function setOauthPendingSignupSecret(secret: string) {
 	}
 
 	pendingSecret = secret
-	derivedEncryptionKeyCache.clear()
+	derivedEncryptionKeys.clear()
 	pendingCookie = createCookie('kody_oauth_pending', {
 		httpOnly: true,
 		sameSite: 'Lax',
@@ -112,24 +122,7 @@ function buildAad(context: string) {
 }
 
 function deriveEncryptionKey(secret: string) {
-	const cacheKey = `${accessTokenPurpose}:${secret}`
-	const cached = derivedEncryptionKeyCache.get(cacheKey)
-	if (cached) return cached
-
-	const derivationPromise = crypto.subtle
-		.digest('SHA-256', textEncoder.encode(`${accessTokenPurpose}:${secret}`))
-		.then((digest) =>
-			crypto.subtle.importKey('raw', digest, 'AES-GCM', false, [
-				'encrypt',
-				'decrypt',
-			]),
-		)
-		.catch((error) => {
-			derivedEncryptionKeyCache.delete(cacheKey)
-			throw error
-		})
-	derivedEncryptionKeyCache.set(cacheKey, derivationPromise)
-	return derivationPromise
+	return derivedEncryptionKeys(`${accessTokenPurpose}:${secret}`)
 }
 
 async function encryptAccessToken(token: string, context: string) {

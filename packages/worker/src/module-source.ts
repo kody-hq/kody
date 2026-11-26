@@ -1,3 +1,4 @@
+import { isolateMemo } from '#worker/isolate-memo.ts'
 /**
  * `@babel/parser` loads from the deferred
  * `node_modules/.kody-generated/module-source-parser.mjs` additional module so
@@ -9,24 +10,17 @@
 type BabelParse = typeof import('@babel/parser').parse
 type ParserPlugin = import('@babel/parser').ParserPlugin
 
-let parserMemo: Promise<ModuleSourceParser> | null = null
-
 /**
  * The one async boundary for parsing: loads `@babel/parser` once and returns
  * sync parse functions. Code that parses many files in a sync walk awaits
  * this once and passes the parser down.
  */
-export function loadModuleSourceParser(): Promise<ModuleSourceParser> {
-	parserMemo ??=
+export const loadModuleSourceParser: () => Promise<ModuleSourceParser> =
+	isolateMemo(() =>
 		import('./node_modules/.kody-generated/module-source-parser.mjs').then(
 			(module) => createModuleSourceParser(module.parse),
-			(error: unknown) => {
-				parserMemo = null
-				throw error
-			},
-		)
-	return parserMemo
-}
+		),
+	)
 
 export type ModuleAstNode = {
 	type: string

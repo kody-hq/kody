@@ -1,3 +1,4 @@
+import { isolateMemo } from '#worker/isolate-memo.ts'
 /**
  * Load postal-mime from the deferred additional module. Specifier must stay
  * `./node_modules/.kody-generated/…` relative to `packages/worker/src` so
@@ -14,19 +15,12 @@ export type PostalMimeParser = typeof import('postal-mime').default
 export type PostalMimeAddress = import('postal-mime').Address
 export type PostalMimeAttachment = import('postal-mime').Attachment
 
-let memo: Promise<PostalMimeParser> | null = null
-
 /**
  * Every MIME parse is already async (inbound delivery, attachment reads), so
  * the parser loads on first use and is cached for the isolate.
  */
-export function loadPostalMime(): Promise<PostalMimeParser> {
-	memo ??= import('./node_modules/.kody-generated/postal-mime.mjs').then(
+export const loadPostalMime: () => Promise<PostalMimeParser> = isolateMemo(() =>
+	import('./node_modules/.kody-generated/postal-mime.mjs').then(
 		(module) => module.PostalMime,
-		(error: unknown) => {
-			memo = null
-			throw error
-		},
-	)
-	return memo
-}
+	),
+)

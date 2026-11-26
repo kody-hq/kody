@@ -44,6 +44,9 @@ type PendingDurableObjectUsage = {
 const pendingByKey = new Map<string, PendingDurableObjectUsage>()
 let coalesceTimer: ReturnType<typeof setTimeout> | null = null
 let flushWaitUntil: (() => void) | null = null
+// Serializes flushes; a waiter tolerates a flush whose request ended (see
+// `flushQueuedDurableObjectUsage`).
+// oxlint-disable-next-line kody-custom/no-isolate-promise-memo
 let inFlightFlush: Promise<void> | null = null
 let burstStartedAt: number | null = null
 

@@ -55,6 +55,7 @@ import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
 import { grantHasRetiredConnectionProfile } from '#worker/orgs/oauth-grant.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 export const mcpResourcePath = '/mcp'
 export const protectedResourceMetadataPath =
@@ -368,8 +369,6 @@ function jsonRpcMessageNeedsAccountWriteLease(
 	return name !== 'search'
 }
 
-let statelessLaneMemo: Promise<typeof StatelessLane> | null = null
-
 // The stateless lane pulls in the MCP server SDK; load it on the first MCP
 // request instead of during Worker startup (see startup-budget.md).
 type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown }
@@ -388,15 +387,9 @@ function unsettle<T>(settled: Settled<T>): T {
 	throw settled.error
 }
 
-function loadStatelessLane() {
-	statelessLaneMemo ??= import('./mcp/stateless-lane.ts').catch(
-		(error: unknown) => {
-			statelessLaneMemo = null
-			throw error
-		},
-	)
-	return statelessLaneMemo
-}
+const loadStatelessLane: () => Promise<typeof StatelessLane> = isolateMemo(
+	() => import('./mcp/stateless-lane.ts'),
+)
 
 export async function handleMcpRequest({
 	request,

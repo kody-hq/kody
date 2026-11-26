@@ -17,8 +17,7 @@ import { getCachedMcpClientHubSnapshot } from '#worker/mcp-client/hub-client.ts'
 import { listEnabledMcpServerRefsCached } from '#worker/mcp-client/settings-service.ts'
 import type { McpServerSnapshot } from '#worker/mcp-client/types.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-
-let staticRegistryMemo: Promise<BuiltCapabilityRegistry> | null = null
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 /**
  * Building the builtin registry loads every domain module (Zod schema
@@ -27,15 +26,10 @@ let staticRegistryMemo: Promise<BuiltCapabilityRegistry> | null = null
  * Memoized so the work happens at most once per isolate, on first use. Async
  * because the domain modules are loaded lazily (see `builtin-domains.ts`).
  */
-export function getStaticRegistry(): Promise<BuiltCapabilityRegistry> {
-	staticRegistryMemo ??= loadBuiltinDomains()
-		.then((domains) => buildCapabilityRegistry(domains))
-		.catch((error: unknown) => {
-			staticRegistryMemo = null
-			throw error
-		})
-	return staticRegistryMemo
-}
+export const getStaticRegistry: () => Promise<BuiltCapabilityRegistry> =
+	isolateMemo(() =>
+		loadBuiltinDomains().then((domains) => buildCapabilityRegistry(domains)),
+	)
 
 export const capabilityRegistryCacheTtlMs = 30_000
 export const capabilityRegistryCacheLimit = 50
