@@ -68,8 +68,11 @@ class FakeWindow {
 	isMinimized() {
 		return false
 	}
-	show() {}
+	show() {
+		this.visible = true
+	}
 	hide() {
+		this.visible = false
 		this.hidden = true
 	}
 	focus() {}
@@ -364,8 +367,12 @@ test('menu bar, shortcuts, and start at login need their grants and clean up on 
 		['300x200'],
 	)
 	assert.deepEqual(popover.size, [300, 200])
+	assert.deepEqual(popover.bounds, { x: 700, y: 24, width: 300, height: 200 })
 	await call('menu-bar-size', '300x900')
 	assert.deepEqual(popover.size, [300, 200])
+	await call('menu-bar-set', '/menubar', 'Weather later')
+	assert.equal(tray.tooltip, 'Weather later')
+	assert.equal(popover.loads.length, 1)
 	await assert.rejects(call('shortcut-register', 'K'), /modifier/)
 	assert.equal(await call('shortcut-register', 'CmdOrCtrl+Shift+K'), true)
 	shortcuts.get('CmdOrCtrl+Shift+K')()

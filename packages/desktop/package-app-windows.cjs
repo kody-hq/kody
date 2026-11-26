@@ -437,6 +437,8 @@ function createPackageAppWindows(deps) {
 				if (popover !== window) return
 				const { width, height } = popoverSize(first)
 				popover.setSize(width, height)
+				if (popover.isVisible())
+					placePopover(trays.get(packageAppKey(app.owner, app.packageName)))
 				return
 			}
 			case 'shortcut-register': {
@@ -523,9 +525,10 @@ function createPackageAppWindows(deps) {
 			tray.on('click', () => togglePopover(key))
 		}
 		entry.tray.setToolTip(menuBar.tooltip || app.name)
+		const moved = entry.path !== undefined && entry.path !== menuBar.path
 		entry.path = menuBar.path
 		entry.app = app
-		if (entry.popover && !entry.popover.isDestroyed())
+		if (moved && entry.popover && !entry.popover.isDestroyed())
 			void entry.popover
 				.loadURL(packageAppUrl(app, menuBar.path))
 				.catch(() => {})
@@ -564,12 +567,20 @@ function createPackageAppWindows(deps) {
 			popover.hide()
 			return
 		}
-		const trayBounds = entry.tray.getBounds()
-		const { workArea } = screen.getDisplayMatching(trayBounds)
-		const [width, height] = popover.getSize()
-		popover.setBounds(popoverBounds(trayBounds, { width, height }, workArea))
+		placePopover(entry)
 		popover.show()
 		popover.focus()
+	}
+
+	function placePopover(entry) {
+		// Linux trays report empty bounds; the click point is the best anchor.
+		const reported = entry.tray.getBounds()
+		const anchor = reported.width
+			? reported
+			: { ...screen.getCursorScreenPoint(), width: 0, height: 0 }
+		const { workArea } = screen.getDisplayMatching(anchor)
+		const [width, height] = entry.popover.getSize()
+		entry.popover.setBounds(popoverBounds(anchor, { width, height }, workArea))
 	}
 
 	function removeTray(app) {
