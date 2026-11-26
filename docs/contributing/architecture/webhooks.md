@@ -285,7 +285,8 @@ synthetic records. The reader marks the result truncated if a cursor remains
 after 20 pages. The rejection report surfaces truncation and uses the `all`
 owner scope, which includes owners with off or soft-deleted endpoint rows. Auth
 regression alerts ignore truncation and use the `live` owner scope, which
-requires an undeleted endpoint that is not off. The verification scan also
-surfaces truncation. The rejection report and auth regression alerts use the
+requires an undeleted endpoint that is not off. The verification scan surfaces
+truncation and groups its selected endpoints by owner instead of using an owner
+scope. All three use the
 [shared concurrency helper](../../../packages/worker/src/concurrency.ts) with up
-to eight owners in flight per scan.
+to eight owners in flight per delivery scan.
