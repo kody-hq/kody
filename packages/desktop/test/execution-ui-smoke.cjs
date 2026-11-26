@@ -63,7 +63,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 										? 'export const onboardingQuery = () => ({queryKey:["onboarding"],queryFn:async()=>({payload:{needsOnboarding:window.fixture.needsOnboarding}})});'
 										: args.path.endsWith('experiment-opt-in')
 											? 'export const setExperiment = async()=>{};'
-											: 'export const loadExecutionContextsPage = async(input)=>{window.fixture.loads.push(input.data.orgSlug); return {payload:window.fixture.setup}}; export const runExecutionContextDaemonAction = async(input)=>{window.fixture.daemonActions.push(input.data.action); return {ok:true,message:null,lines:input.data.action==="logs"?["runner ready"]:null}}; export const putDesktopExecutionFirst = async(input)=>{window.fixture.puts.push(input.data); if(window.fixture.failChain){window.fixture.failChain=false;throw new Error("Your chain changed. Try again.")}};',
+											: 'export const loadExecutionContextsPage = async(input)=>{window.fixture.loads.push(input.data.orgSlug); const setup=window.fixture.setup; return {payload:{...setup,selected:setup.contexts.find((context)=>context.id===input.data.contextId)??null}}}; export const runExecutionContextDaemonAction = async(input)=>{window.fixture.daemonActions.push(input.data.action); return {ok:true,message:null,lines:input.data.action==="logs"?["runner ready"]:null}}; export const putDesktopExecutionFirst = async(input)=>{window.fixture.puts.push(input.data); if(window.fixture.failChain){window.fixture.failChain=false;throw new Error("Your chain changed. Try again.")}};',
 					}))
 				},
 			},
@@ -140,6 +140,11 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 											{ kind: 'context', id: 'ec_one' },
 											{ kind: 'context', id: 'ec_two' },
 											{ kind: 'context', id: 'ec_three' },
+											{ kind: 'context', id: 'ec_four' },
+											{ kind: 'context', id: 'ec_five' },
+											{ kind: 'context', id: 'ec_six' },
+											{ kind: 'context', id: 'ec_seven' },
+											{ kind: 'context', id: 'ec_eight' },
 											{ kind: 'cloud' },
 										]
 									: [{ kind: 'cloud' }],
