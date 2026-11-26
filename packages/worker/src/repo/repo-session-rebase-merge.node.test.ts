@@ -38,7 +38,15 @@ async function createSessionRepo() {
 	await write(base.replace('a = 1', 'a = 2'))
 	const sourceCommit = await commit('source moved', 'refs/heads/main')
 	await rawGit.checkout({ fs, dir, ref: 'sessions/s1', force: true })
-	return { fs, dir, write, read, commit, sourceCommit }
+	return {
+		fs,
+		files: workspace.fs.promises,
+		dir,
+		write,
+		read,
+		commit,
+		sourceCommit,
+	}
 }
 
 function merge(repo: Awaited<ReturnType<typeof createSessionRepo>>) {
@@ -128,7 +136,7 @@ test('binary files changed on both sides stop as a conflict instead of a text me
 	const bytes = (middle: number) =>
 		new Uint8Array([0xff, 0x0a, 0x0a, 0x0a, middle, 0x0a, 0x0a, 0x0a, 0x01])
 	const writeBinary = async (data: Uint8Array, ref: string) => {
-		await repo.fs.promises.writeFile(`${repo.dir}/${binaryPath}`, data)
+		await repo.files.writeFile(`${repo.dir}/${binaryPath}`, data)
 		await rawGit.add({ fs: repo.fs, dir: repo.dir, filepath: binaryPath })
 		return rawGit.commit({
 			fs: repo.fs,
@@ -138,7 +146,7 @@ test('binary files changed on both sides stop as a conflict instead of a text me
 			author,
 		})
 	}
-	await repo.fs.promises.mkdir(`${repo.dir}/assets`)
+	await repo.files.mkdir(`${repo.dir}/assets`)
 	await rawGit.checkout({
 		fs: repo.fs,
 		dir: repo.dir,
@@ -184,7 +192,7 @@ test('binary files changed on both sides stop as a conflict instead of a text me
 	expect(
 		await rawGit.resolveRef({ fs: repo.fs, dir: repo.dir, ref: 'sessions/s1' }),
 	).toBe(sessionHead)
-	expect(await repo.fs.promises.readFile(`${repo.dir}/${binaryPath}`)).toEqual(
+	expect(await repo.files.readFile(`${repo.dir}/${binaryPath}`)).toEqual(
 		sessionBytes,
 	)
 })
