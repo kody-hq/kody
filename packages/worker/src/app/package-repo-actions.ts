@@ -423,7 +423,10 @@ async function resolvePackageAppInstallTarget(
 	}
 }
 
-/** `kody.app.desktop` from the published manifest; null when it cannot load. */
+/**
+ * `kody.app.desktop` from the published manifest. Permanent: when it cannot
+ * load, Install still works with the package icon and no declared menu bar.
+ */
 async function loadPackageAppDesktopSettings(
 	page: Extract<PackagePageAccess, { kind: 'page' }>,
 	env: Env,
@@ -443,11 +446,14 @@ async function loadPackageAppDesktopSettings(
 		})
 		return manifest.kody.app?.desktop ?? null
 	} catch (error) {
-		console.warn('package-app-desktop-settings-failed', {
-			owner: page.username,
-			kodyId: page.kodyId,
-			error,
-		})
+		console.warn(
+			'package-app-desktop-settings-failed: Install uses the package icon and no declared menu bar',
+			{
+				owner: page.username,
+				kodyId: page.kodyId,
+				error,
+			},
+		)
 		return null
 	}
 }
