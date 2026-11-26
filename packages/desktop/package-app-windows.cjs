@@ -525,7 +525,9 @@ function createPackageAppWindows(deps) {
 			tray.on('click', () => togglePopover(key))
 		}
 		entry.tray.setToolTip(menuBar.tooltip || app.name)
-		const moved = entry.path !== undefined && entry.path !== menuBar.path
+		const moved =
+			entry.path !== undefined &&
+			(entry.path !== menuBar.path || entry.app.appOrigin !== app.appOrigin)
 		entry.path = menuBar.path
 		entry.app = app
 		if (moved && entry.popover && !entry.popover.isDestroyed())
@@ -567,17 +569,19 @@ function createPackageAppWindows(deps) {
 			popover.hide()
 			return
 		}
+		// Linux trays report empty bounds; the click point is the best anchor.
+		// Remove when: Electron reports tray bounds on Linux.
+		const reported = entry.tray.getBounds()
+		entry.anchor = reported.width
+			? reported
+			: { ...screen.getCursorScreenPoint(), width: 0, height: 0 }
 		placePopover(entry)
 		popover.show()
 		popover.focus()
 	}
 
 	function placePopover(entry) {
-		// Linux trays report empty bounds; the click point is the best anchor.
-		const reported = entry.tray.getBounds()
-		const anchor = reported.width
-			? reported
-			: { ...screen.getCursorScreenPoint(), width: 0, height: 0 }
+		const { anchor } = entry
 		const { workArea } = screen.getDisplayMatching(anchor)
 		const [width, height] = entry.popover.getSize()
 		entry.popover.setBounds(popoverBounds(anchor, { width, height }, workArea))
@@ -619,6 +623,8 @@ function createPackageAppWindows(deps) {
 	 * Resolves how many apps opened hidden.
 	 */
 	async function startBackground({ atLogin }) {
+		// Drops a login item whose last grant no longer applies.
+		updateStartAtLogin()
 		const wanted = store
 			.list()
 			.map((app) => ({
