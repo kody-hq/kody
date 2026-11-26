@@ -78,7 +78,7 @@ export type DesktopNavigationState = {
 export type DesktopShell = {
 	version: 1
 	execution?: DesktopExecutionBridge
-	/** Absent in shells that do not expose package app management. */
+	/** Older desktop shells omit this bridge. */
 	apps?: DesktopAppsBridge
 	authentication?: {
 		signIn: (mode: 'login' | 'signup') => Promise<void>
