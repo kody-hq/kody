@@ -12,6 +12,7 @@ import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
@@ -172,10 +173,42 @@ function listenOnce(port: number, host: string): Promise<number> {
 	})
 }
 
+const portClaimDir = join(tmpdir(), 'kody-dev-runtime-ports')
+
+function isLiveProcess(pid: number) {
+	try {
+		process.kill(pid, 0)
+		return true
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === 'EPERM'
+	}
+}
+
 /**
- * A port free on both loopbacks and not already handed out by this process.
- * `localhost` can resolve to `::1` first, so a port that is only free on
- * 127.0.0.1 can be answered by a different server (#5267).
+ * Claim `port` for this process across every local runtime. A free port is
+ * released until Wrangler binds it, so a runtime starting in another process
+ * (parallel test files, two `kody dev`s) could otherwise bind it first and
+ * answer this origin's `/health`. Claims of exited processes are reclaimed.
+ */
+function claimPort(port: number) {
+	mkdirSync(portClaimDir, { recursive: true })
+	const file = join(portClaimDir, String(port))
+	try {
+		writeFileSync(file, String(process.pid), { flag: 'wx' })
+		return true
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+	}
+	const owner = Number.parseInt(readFileSync(file, 'utf8'), 10)
+	if (owner === process.pid || (owner > 0 && isLiveProcess(owner))) return false
+	writeFileSync(file, String(process.pid))
+	return true
+}
+
+/**
+ * A port free on both loopbacks and not already handed out to any live local
+ * runtime. `localhost` can resolve to `::1` first, so a port that is only free
+ * on 127.0.0.1 can be answered by a different server (#5267).
  */
 export async function getFreePort(): Promise<number> {
 	for (let attempt = 0; attempt < 20; attempt++) {
@@ -193,7 +226,7 @@ export async function getFreePort(): Promise<number> {
 				throw error
 			},
 		)
-		if (!ipv6Free || handedOutPorts.has(port)) continue
+		if (!ipv6Free || handedOutPorts.has(port) || !claimPort(port)) continue
 		handedOutPorts.add(port)
 		return port
 	}

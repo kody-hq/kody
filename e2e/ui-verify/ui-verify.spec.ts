@@ -16,6 +16,7 @@ import {
 	findAxeViolations,
 	sweepFocus,
 } from './checks.ts'
+import { isolateGallerySection } from './gallery.ts'
 import { uiVerifyPaths, uiVerifyUpdateCommand } from './paths.ts'
 import { pinnedBrowserEndpoint } from './pinned-browser.ts'
 import {
@@ -94,6 +95,7 @@ for (const target of uiVerifyTargets) {
 							),
 						)
 						for (const id of ids) {
+							await isolateGallerySection(page, id)
 							await expect
 								.soft(
 									page.locator(`[data-ui-gallery-section="${id}"]`),
@@ -101,6 +103,7 @@ for (const target of uiVerifyTargets) {
 								)
 								.toHaveScreenshot(`gallery-${id}-${theme}-${viewport}.png`)
 						}
+						await isolateGallerySection(page, null)
 					} else if (target.visual.kind === 'page') {
 						await expect
 							.soft(
