@@ -167,7 +167,7 @@ test('a run chain follows the default chain shape rules', () => {
 	const names = (n: number) => Array.from({ length: n }, (_, i) => `ctx-${i}`)
 	expect(runChainShapeError(names(9))?.code).toBe('chain_too_long')
 	expect(runChainShapeError(names(9))?.message).toBe(
-		'A chain holds at most 8 contexts plus Kody cloud. Remove one with `kody chain remove <name>` or executionChainSet, then add the new one.',
+		'A chain holds at most 8 contexts plus Kody cloud. Remove one from this chain, then try again.',
 	)
 	expect(runChainShapeError(names(8))).toBeNull()
 	expect(runChainShapeError([...names(8), 'cloud'])).toBeNull()
