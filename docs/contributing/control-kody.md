@@ -35,13 +35,12 @@ npm run control-kody -- search --origin <preview> --query "packageSave" [--domai
 
 Same entry: `node tools/control-kody.ts`.
 
-`doctor` checks Node 26, the Playwright browser revision in
-`node_modules/playwright-core/browsers.json`, git `core.hooksPath`, installed
-root and workspace dependencies vs `package-lock.json` (`run npm ci` when they
-drift), origin `/health`, and local APP_DB. Playwright passes only when
-`chromium-<rev>` and `chromium_headless_shell-<rev>` each contain
-`INSTALLATION_COMPLETE`. A missing revision fails with the unzip steps in
-[Cursor Cloud Agent notes](./cloud-agents.md).
+`doctor` checks Node 26,
+[Playwright browsers](./cloud-agents.md#playwright-browsers), git hooks,
+installed dependencies, and origin `/health`. For local D1, it probes seed login
+when a local origin is running; otherwise it looks for a readable `users` table
+in the configured Wrangler persist directory. Use the remediation printed for a
+failing check.
 
 `health --sha` succeeds when `/health` `commitSha` equals the argument, uniquely
 starts with it (git short SHA, 7+ characters), or is a descendant that contains

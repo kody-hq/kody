@@ -13,11 +13,10 @@ import {
  * named by the promotion code's `kody_interval` metadata (`month` or
  * `year`). An untagged code is monthly.
  *
- * Each person claims one promo code ever, across all of their organizations.
- * A promotion code tagged `kody_claim_scope: campaign` narrows that: only an
- * earlier claim of the same campaign (`kody_campaign`, defaulting to the
- * promotion code itself) or of the same code blocks it. Claims of untagged
- * codes still count against every later untagged code.
+ * Claims are per person across organizations. A code without a claim-scope
+ * tag is blocked by any earlier claim or live reservation. With
+ * `kody_claim_scope: campaign`, only a claim or live reservation for the
+ * same campaign or Stripe promotion code blocks checkout.
  */
 
 export const promoIntervalMetadataKey = 'kody_interval'
@@ -190,8 +189,8 @@ const promoReservationMaxAgeMs = 25 * 60 * 60 * 1000
  * Reserve the person's claim under `claimKey` before the Checkout Session
  * exists. A lifetime claim is blocked by any earlier claim or reservation; a
  * campaign claim only by one with the same claim key or promotion code. The
- * check and insert are one statement, so of two concurrent checkouts exactly
- * one inserts and the other is refused. Returns false when refused.
+ * check and insert are one statement. If an earlier insert blocks this
+ * reservation, this returns false.
  */
 export async function reservePromoClaim(input: {
 	db: D1Database

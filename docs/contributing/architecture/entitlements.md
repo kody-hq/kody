@@ -402,8 +402,9 @@ later runs reach every candidate. CPU, Durable Object duration, RunLog rows, and
 email are not debited. Nobody is invoiced for overage. There is no
 overage-invoice ledger.
 
-**Top-ups.** `POST /account/credits/top-up.json` (Pro only) opens a one-off
-Checkout Session (`mode=payment`, `price_data`, card saved with
+**Top-ups.** The
+[`startCreditTopUp` server function](../../../packages/worker/start/server/billing-mutations.ts)
+opens a one-off Checkout Session (`mode=payment`, `price_data`, card saved with
 `setup_future_usage=off_session`, metadata `kody_credit_top_up`). The account
 URL `/account/usage?topup=success` is an intermediate redirect. Authenticated
 requests 302 to `/@<slug>/-/usage?topup=success` with the query intact.
@@ -433,13 +434,16 @@ the calling admin's, without a Stripe charge. Each grant requires a nonempty
 reason, stored as the ledger note, and writes a ledger row with
 `granted_by_user_id`, amount, recipient, time, and that note, plus an admin
 audit event. `adminOrgCreditGrant` takes an optional `idempotencyKey` (1 to 200
-characters, stored in `credit_ledger_entries.idempotency_key` with a unique
-index): a retry with the same key returns the original grant with
-`replayed: true` and writes no second ledger row, balance change, or org audit
-event. Keys are global, so reusing one for a different organization or amount
-fails with 409. Calls without a key always grant. `adminOrgGet` reads the wallet
-and recent ledger. Leftover `adminCreditGrant` and `adminCreditWalletGet` still
-forward to the personal org.
+characters after trimming). A valid retry with the same key, organization, and
+amount returns the original grant with `replayed: true` and does not repeat the
+ledger write, balance change, or organization audit event
+([idempotency test](../../../packages/worker/src/admin/org-billing-mutations.node.test.ts)).
+Keys are global: reusing one for a different organization or amount returns an
+MCP caller error
+([capability](../../../packages/worker/src/mcp/capabilities/admin/admin-org-credit-grant.ts)).
+Valid calls without a key each make a grant. `adminOrgGet` reads the wallet and
+recent ledger. The deprecated `adminCreditGrant` and `adminCreditWalletGet`
+target the personal org.
 
 **Signup welcome credits.** Every newly created person account (password signup,
 OAuth signup, admin-created) receives a one-shot house grant of
@@ -1488,71 +1492,82 @@ price id only disables purchase of that interval. `retiredStandardPriceIds` /
 and earlier) price ids to `standard` / `pro` so existing subscribers keep their
 plan; none of them is wallet-eligible.
 
-Checkout sessions are created server-side for authenticated users via
-`POST /@:orgSlug/-/billing/checkout.json` for the organization in the URL
-(Stripe Checkout Session, JSON body
-`{ plan: "pro", interval: "month" | "year", promoCode?: string }`,
-`mode=subscription`, quantity = live seats (owners, admins, and members, at
-least 1), with a signed `client_reference_id` and `metadata.kody_org_id`). Only
-`billing:write` (Owners, Admins, and Billing members) may call it;
-`/@<slug>/-/billing` redirects to the signup organization's billing page.
-Sessions enable Stripe automatic tax (`automatic_tax[enabled]`; Stripe Tax is
-active on the account and computes 0 until a registration exists) and tax-ID
-collection for business customers; when an existing `customer` is passed,
-`customer_update` address/name are `auto` so Checkout can store what tax needs.
+The billing page calls the
+[`startCheckout` server function](../../../packages/worker/start/server/billing-mutations.ts)
+with `{ orgSlug, plan: "pro", interval: "month" | "year", promoCode?: string }`.
+The function
+[requires a signed-in session](../../../packages/worker/start/server/mutation-context.ts)
+and the handler
+[checks `billing:write` for the requested organization](../../../packages/worker/src/app/handlers/org-billing.ts).
+It creates a Stripe Checkout Session with `mode=subscription`, quantity = live
+seats (owners, admins, and members, at least 1), a signed `client_reference_id`,
+and `metadata.kody_org_id`. `/account/billing` redirects to the signup
+organization's billing page. Sessions enable Stripe automatic tax
+(`automatic_tax[enabled]`; Stripe Tax is active on the account and computes 0
+until a registration exists) and tax-ID collection for business customers; when
+an existing `customer` is passed, `customer_update` address/name are `auto` so
+Checkout can store what tax needs.
 
-Sessions never set `allow_promotion_codes`. Stripe can restrict a coupon to a
-product but not a price, and monthly and annual Pro are one product, so a
-one-month code typed on Stripe's page would zero out a year. Customers type the
-code on the Kody billing page instead
-(`packages/worker/src/billing/checkout-promo.ts`). The code is looked up
-(`GET /v1/promotion_codes?code=…&active=true`), checked for expiry and
-redemptions, checked against its billing interval, and attached as
-`discounts[0][promotion_code]`. The promotion code's `kody_interval` metadata
+The
+[Stripe session builder](../../../packages/worker/src/billing/stripe-client.ts)
+omits `allow_promotion_codes`. Stripe can restrict a coupon to a product but not
+a price, and monthly and annual Pro are one product, so a one-month code typed
+on Stripe's page would zero out a year. Customers type the code on the Kody
+billing page instead. The
+[checkout promo validator](../../../packages/worker/src/billing/checkout-promo.ts)
+looks up the code (`GET /v1/promotion_codes?code=…&active=true`) and checks
+expiry, redemptions, and billing interval. Checkout attaches the validated code
+as `discounts[0][promotion_code]`. The promotion code's `kody_interval` metadata
 names the interval: `year` codes work only on annual checkout, `month` codes
-only on monthly checkout, and an untagged code is monthly. A mismatch gets 400
-naming the code's interval ("That promo code is for annual billing. Choose
-annual to use it."); an unrecognized tag is treated as an invalid code. Codes
-are for new subscriptions only; a customer with a plan-retaining subscription
-gets 409. Each person can claim one promo code across all of their organizations
-(`billing_promo_claims`). A promotion code can narrow that with
-`kody_claim_scope: campaign` metadata (works with either `kody_interval`): only
-an earlier claim or live reservation of the same campaign or the same code
-blocks it. The campaign is `kody_campaign` (trimmed, case-insensitive),
-defaulting to the promotion code itself, so codes sharing a `kody_campaign` are
-one claim per person between them. Claims of untagged codes still count against
-every later untagged code, campaign claims included. An unrecognized
-`kody_claim_scope`, or `kody_campaign` without `kody_claim_scope: campaign`,
-gets 400 "That promo code isn't set up correctly. Please contact support." and a
-`billing_checkout_promo_claim_scope_unrecognized` error log. A blocked campaign
-code gets 409 "You have already claimed this promotion. It can be claimed once
-per person, across all of your organizations." Claims are keyed by person and
-claim key (`lifetime` or `campaign:<id>`); the check and the reservation are one
-statement, so concurrent checkouts cannot both claim. There is no public Payment
-Link path: checkout requires a signed-in session so unauthenticated card-testing
-is not possible. `GET /@<slug>/-/billing/success` verifies `client_reference_id`
+only on monthly checkout, and a code without an interval tag is monthly. A
+mismatch produces an error naming the code's interval; an unrecognized tag is
+treated as an invalid code. The
+[checkout handler](../../../packages/worker/src/app/handlers/org-billing.ts)
+rejects a code when the linked customer has a plan-retaining Kody subscription.
+
+[Promo claims](../../../packages/worker/src/billing/checkout-promo.ts) are keyed
+by person across all their organizations. A code without a claim-scope tag is
+blocked by any earlier claim or live reservation, including a campaign claim.
+With `kody_claim_scope: campaign`, only a claim or live reservation for the same
+campaign or the same Stripe promotion code blocks checkout. Operators can group
+codes via `kody_campaign` (trimmed, case-insensitive); if it is blank or absent,
+the campaign ID defaults to the Stripe promotion code ID. An unrecognized
+`kody_claim_scope`, or a nonempty `kody_campaign` without
+`kody_claim_scope: campaign`, produces "That promo code isn't set up correctly.
+Please contact support." and a `billing_checkout_promo_claim_scope_unrecognized`
+error log. Claim keys are `lifetime` or `campaign:<id>`. The conflict check and
+reservation use one SQL statement, so once one checkout reserves a claim, a
+competing checkout that conflicts with it is rejected before creating a Stripe
+Checkout Session
+([checkout tests](../../../packages/worker/src/app/handlers/org-billing.node.test.ts)).
+
+`GET /@<slug>/-/billing/success`
+[checks the session's `client_reference_id` against the signed reference for the requested organization](../../../packages/worker/src/billing/subscription-sync.ts)
 before linking `orgs.stripe_customer_id`, then refreshes `orgs.stripe_plan` and
 renders a thank-you page (Discord invite; connect-your-agent when
-`needsOnboarding`). A successful `stripe_plan` write also best-effort re-syncs
-official Kody Discord Standard/Pro roles when the user has a Discord
-social-login connection (see [`social-login.md`](../social-login.md)).
-`GET /@<slug>/-/billing/portal` opens the Stripe customer portal for linked
-customers, pinned to `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` when set.
+`needsOnboarding`). A successful `stripe_plan` write for a personal organization
+also best-effort re-syncs official Kody Discord Standard/Pro roles when the
+person has a Discord social-login connection (see
+[`social-login.md`](../social-login.md)). The
+[`openBillingPortal` server function](../../../packages/worker/start/server/billing-mutations.ts)
+opens the Stripe customer portal for linked customers, pinned to
+`STRIPE_BILLING_PORTAL_CONFIGURATION_ID` when set.
 
-**Plan changes for existing subscribers never create a second subscription.**
-When the checkout handler finds a linked `stripe_customer_id`, it lists the
-customer's subscriptions and keeps the plan-retaining ones (`active` /
-`trialing` / `past_due`, the same set `resolveSubscriptionPlan` grants from).
-With exactly one, it creates a Billing Portal session with
+**Plan changes for a linked customer use the portal when a Kody subscription
+retains the plan.** The
+[checkout handler](../../../packages/worker/src/app/handlers/org-billing.ts)
+filters the customer's subscriptions to plan-retaining Kody subscriptions
+(`active` / `trialing` / `past_due`). With one subscription and a subscription
+item ID, it creates a Billing Portal session with
 `flow_data[type]=subscription_update_confirm` that moves that subscription's
 item to the requested Pro price (prorated with `always_invoice`) and returns
 `{ ok: true, url, mode: 'portal_update' }`; Stripe redirects back to
 `/@<slug>/-/billing?billing=updated` after the customer confirms the prorated
-change. Requesting the price the subscription already has returns
-`409 { error: 'You are already on that plan.' }`. More than one plan-retaining
-subscription (legacy double subscriptions) returns the plain portal with
-`mode: 'portal'` so the customer chooses which to keep. Only customers with no
-plan-retaining subscription (or no customer at all) get a Checkout Session
+change. Requesting the price the subscription already has produces
+`You are already on that plan.` When there are multiple plan-retaining
+subscriptions or the subscription item ID is missing, the handler returns the
+plain portal with `mode: 'portal'`. Only organizations without a linked customer
+or without a plan-retaining Kody subscription get a Checkout Session
 (`mode: 'checkout'`). The billing page labels these buttons "Switch to …
 (prorated)", and `loadAccountBillingData` reports `stripeInterval` (from the
 configured monthly/yearly price ids) so the current tier can offer the other
