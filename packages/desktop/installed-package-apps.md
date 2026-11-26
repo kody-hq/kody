@@ -15,10 +15,10 @@ Installing a package app:
 - Opens it in a [sandboxed window](package-app-windows.cjs) using the Kody
   session for the Open app handoff. The [navigation guard](package-apps.cjs)
   allows the app's origin, a new origin reached through that app's handoff, and
-  the Kody handoff and sign-in pages. Other HTTP(S) and mail links open in the
-  default browser; unsupported destinations are blocked. Page calls to
-  `window.open` open eligible links in the system browser instead of creating an
-  Electron window ([window-open handler](package-app-windows.cjs)).
+  Kody's handoff, sign-in, and approval pages. Other external HTTP(S) and mail
+  links open in the default browser; unsupported destinations are blocked. Page
+  calls to `window.open` open eligible links in the system browser instead of
+  creating an Electron window ([window-open handler](package-app-windows.cjs)).
 - Creates a launcher that opens `kody://app/<owner>/<package>`: an `.app` in
   `~/Applications/Kody Apps/` on macOS, a Start Menu shortcut in `Kody Apps`
   with its own AppUserModelID on Windows, and a `.desktop` entry in

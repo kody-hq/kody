@@ -39,8 +39,8 @@ Same entry: `node tools/control-kody.ts`.
 [Playwright browsers](./cloud-agents.md#playwright-browsers), git hooks,
 installed dependencies, and origin `/health`. For local D1, it probes seed login
 when a local origin is running; otherwise it looks for a readable `users` table
-in the configured Wrangler persist directory. Use the remediation printed for a
-failing check.
+in the configured Wrangler persist directory. A non-local origin skips the local
+D1 check. Use the remediation printed for a failing check.
 
 `health --sha` succeeds when `/health` `commitSha` equals the argument, uniquely
 starts with it (git short SHA, 7+ characters), or is a descendant that contains

@@ -404,12 +404,13 @@ overage-invoice ledger.
 
 **Top-ups.** The
 [`startCreditTopUp` server function](../../../packages/worker/start/server/billing-mutations.ts)
-opens a one-off Checkout Session (`mode=payment`, `price_data`, card saved with
-`setup_future_usage=off_session`, metadata `kody_credit_top_up`). The account
-URL `/account/usage?topup=success` is an intermediate redirect. Authenticated
-requests 302 to `/@<slug>/-/usage?topup=success` with the query intact.
-Anonymous requests first redirect to `/login` and preserve the original path in
-`redirectTo`. The completion return URL is
+opens a one-off Checkout Session for eligible paid Pro organizations
+(`mode=payment`, `price_data`, card saved with `setup_future_usage=off_session`,
+metadata `kody_credit_top_up`). The account URL `/account/usage?topup=success`
+is an intermediate redirect. Authenticated requests 302 to
+`/@<slug>/-/usage?topup=success` with the query intact. Anonymous requests first
+redirect to `/login` and preserve the original path in `redirectTo`. The
+completion return URL is
 `/@<slug>/-/usage?topup=success&session_id=<CHECKOUT_SESSION_ID>#credits`. That
 completion redirect and the `checkout.session.completed` webhook both call
 `applyCreditTopUpFromCheckoutSession`, which credits Stripe's `amount_total`
