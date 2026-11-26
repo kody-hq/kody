@@ -55,7 +55,7 @@ export type PackageAppInstallTarget = {
 	owner: string
 	packageName: string
 	name: string
-	/** Hosted origin the installed window starts out locked to, with exceptions for Kody handoffs and sign-in. */
+	/** Initial allowed origin. Also allows Kody handoff/sign-in pages and handoff destinations, including custom domains. */
 	appOrigin: string
 	iconUrl: string | null
 	/** `kody.app.desktop.icon` on the app origin, for the launcher. */
