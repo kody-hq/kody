@@ -116,6 +116,8 @@ function fixture(platform = 'darwin', background = false) {
 			}
 		}
 	}
+	let installFlag = false
+	let signedIn = true
 	const mocks = {
 		electron: {
 			app,
@@ -130,6 +132,17 @@ function fixture(platform = 'darwin', background = false) {
 				fromPartition: () => ({
 					setPermissionRequestHandler() {},
 					setPermissionCheckHandler() {},
+					fetch: async () => ({
+						ok: true,
+						json: async () => ({
+							ok: signedIn,
+							session: {
+								featureFlags: {
+									'desktop-install-package-apps': installFlag,
+								},
+							},
+						}),
+					}),
 				}),
 			},
 			clipboard: {
@@ -224,6 +237,15 @@ function fixture(platform = 'darwin', background = false) {
 		app,
 		windows,
 		errors,
+		setInstallFlag: (on) => {
+			installFlag = on
+		},
+		signOut: () => {
+			signedIn = false
+		},
+		signIn: () => {
+			signedIn = true
+		},
 		start: async () => {
 			ready()
 			await Promise.resolve()
@@ -612,4 +634,49 @@ test('Windows background mode preserves the last window until explicit Quit', as
 	f.app.emit('before-quit', { preventDefault() {} })
 	window.close()
 	assert.equal(window.destroyed, true)
+})
+
+test('a kody://app link for an app that is not installed offers to install it', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	f.setInstallFlag(true)
+	f.app.emit('second-instance', {}, ['kody', 'kody://app/kent/weather/today'])
+	await new Promise((resolve) => setTimeout(resolve, 0))
+	await new Promise(setImmediate)
+	assert.deepEqual(f.windows[0].loads, ['https://kody.codes/account'])
+	assert.deepEqual(f.windows[1].loads, [
+		'https://kody.codes/@kent/weather?install=desktop',
+	])
+})
+
+test('a signed-out shell offers a kody://app install link after desktop sign-in', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	f.setInstallFlag(true)
+	f.signOut()
+	f.app.emit('second-instance', {}, ['kody', 'kody://app/kent/weather'])
+	await new Promise((resolve) => setTimeout(resolve, 0))
+	await new Promise(setImmediate)
+	assert.equal(f.windows.length, 1)
+	assert.deepEqual(f.windows[0].loads, ['https://kody.codes/account'])
+	const pending = f.ipc('authentication', f.windows[0], 'login')
+	f.signIn()
+	f.finishLogin()
+	await pending
+	assert.equal(
+		f.windows[0].loads.at(-1),
+		'https://kody.codes/@kent/weather?install=desktop',
+	)
+})
+
+test('with the flag off a kody://app install link only shows Kody', async () => {
+	const f = fixture()
+	await f.start()
+	await f.finish()
+	f.app.emit('second-instance', {}, ['kody', 'kody://app/kent/weather'])
+	await new Promise((resolve) => setTimeout(resolve, 0))
+	await new Promise(setImmediate)
+	assert.deepEqual(f.windows[0].loads, ['https://kody.codes/account'])
 })

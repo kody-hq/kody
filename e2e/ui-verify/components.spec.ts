@@ -187,7 +187,10 @@ test.describe('Install package app dialog', () => {
 	for (const theme of themes) {
 		test(`confirms, installs, and passes axe (${theme})`, async ({ page }) => {
 			await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
-			const trigger = page.getByRole('button', { name: 'Install Weather' })
+			const trigger = page.getByRole('button', {
+				name: 'Install Weather',
+				exact: true,
+			})
 			await trigger.click()
 			const dialog = page.getByRole('dialog', { name: 'Install Weather?' })
 			await expect(dialog).toHaveAccessibleDescription(

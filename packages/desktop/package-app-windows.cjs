@@ -157,10 +157,25 @@ function createPackageAppWindows(deps) {
 		return true
 	}
 
+	/**
+	 * Where a link for an app that is not installed goes: `{ path }` to the
+	 * package page that offers to install it, `{ signIn: true }` when the shell
+	 * has no session to check the owner's flag, or null when the flag is off.
+	 * Checks the session fresh, so an earlier signed-out answer is never reused.
+	 */
+	async function installPagePath(link) {
+		if (store.get(link.owner, link.packageName)) return null
+		const allowed = await installAllowed(link.owner)
+		if (allowed === null) return { signIn: true }
+		flags.set(link.owner, { on: allowed === true, at: Date.now() })
+		if (allowed !== true) return null
+		return { path: `/@${link.owner}/${link.packageName}?install=desktop` }
+	}
+
 	const flagMaxAge = 60_000
 	/** The owner's session flag, rechecked once it is a minute old. */
 	async function refreshFlag(owner) {
-		const on = await installAllowed(owner).catch(() => false)
+		const on = (await installAllowed(owner).catch(() => false)) === true
 		flags.set(owner, { on, at: Date.now() })
 		return on
 	}
@@ -757,6 +772,7 @@ function createPackageAppWindows(deps) {
 
 	return {
 		install,
+		installPagePath,
 		uninstall,
 		list,
 		openLink,
