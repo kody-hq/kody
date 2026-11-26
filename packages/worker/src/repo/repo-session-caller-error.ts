@@ -71,6 +71,65 @@ export function isGitPushNotFastForwardError(error: unknown) {
 }
 
 /**
+ * Stable prefix when `repoRebaseSession` cannot merge the latest source into
+ * the session. isomorphic-git conflict errors (`MergeConflictError`,
+ * `MergeNotSupportedError`, `CheckoutConflictError`) reflect session content,
+ * not platform state, so the DO rethrows them with this prefix and MCP
+ * observability keeps them out of Sentry. KODY-HH.
+ */
+export const repoSessionRebaseStoppedMessagePrefix =
+	'repoRebaseSession did not rebase the session: '
+
+export function isRepoSessionRebaseStoppedMessage(message: string) {
+	return message.startsWith(repoSessionRebaseStoppedMessagePrefix)
+}
+
+function readGitErrorFilepaths(error: object) {
+	const data = 'data' in error ? error.data : null
+	if (typeof data !== 'object' || data === null || !('filepaths' in data)) {
+		return []
+	}
+	const { filepaths } = data
+	return Array.isArray(filepaths)
+		? filepaths.filter((path): path is string => typeof path === 'string')
+		: []
+}
+
+const repoSessionRebaseReapplyGuidance =
+	'Your session changes are kept and committed on the session branch. Open a new repo session on the latest source and reapply your changes there.'
+
+/**
+ * Map an isomorphic-git merge/checkout conflict from a session rebase to an
+ * actionable caller error. Returns null for anything else (missing objects,
+ * transport failures) so platform faults still reach Sentry.
+ */
+export function toRepoSessionRebaseCallerError(error: unknown) {
+	if (typeof error !== 'object' || error === null) return null
+	const code =
+		'code' in error && typeof error.code === 'string' ? error.code : null
+	const files = readGitErrorFilepaths(error).join(', ')
+	switch (code) {
+		case 'MergeConflictError':
+			return new Error(
+				`${repoSessionRebaseStoppedMessagePrefix}the latest source changed the same lines as the session in: ${files}. ${repoSessionRebaseReapplyGuidance}`,
+				{ cause: error },
+			)
+		case 'MergeNotSupportedError':
+			return new Error(
+				`${repoSessionRebaseStoppedMessagePrefix}the latest source cannot be merged automatically (for example a file and a folder at the same path). ${repoSessionRebaseReapplyGuidance}`,
+				{ cause: error },
+			)
+		case 'CheckoutConflictError':
+			return new Error(
+				`${repoSessionRebaseStoppedMessagePrefix}the latest source would overwrite files that git does not track in this session (often ignored files): ${files}. Delete or move those files with repoEditFiles, then retry repoRebaseSession.`,
+				{ cause: error },
+			)
+		default:
+			return null
+	}
+}
+
+/**
  * Stable prefix for invalid `mode=regex` patterns from repo session search.
  * Agents often pass Python/PCRE inline flags (`(?s)`, `(?i)`) that JavaScript
  * RegExp rejects; treat those as caller-correctable input, not platform bugs.

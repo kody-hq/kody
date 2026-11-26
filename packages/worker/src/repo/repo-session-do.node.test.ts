@@ -35,6 +35,7 @@ import {
 	stubPackageSourceForOpenSession,
 	setCommonSessionFixtures,
 } from '#worker/test-support/repo-session-do.ts'
+import { isRepoSessionRebaseStoppedMessage } from './repo-session-caller-error.ts'
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<typeof CloudflareWorkers>()
@@ -135,8 +136,12 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 			commit: (...args: Parameters<typeof git.commit>) =>
 				mockModule.rawCommit(...args),
 			readBlob: mockModule.readBlob,
-			pull: (...args: Parameters<typeof git.pull>) =>
-				mockModule.rawPull(...args),
+			fetch: (...args: Parameters<typeof git.fetch>) =>
+				mockModule.rawFetch(...args),
+			merge: (...args: Parameters<typeof git.merge>) =>
+				mockModule.rawMerge(...args),
+			checkout: (...args: Parameters<typeof git.checkout>) =>
+				mockModule.rawCheckout(...args),
 			resolveRef: (...args: Parameters<typeof git.resolveRef>) =>
 				mockModule.rawResolveRef(...args),
 			writeRef: (...args: Parameters<typeof git.writeRef>) =>
@@ -540,6 +545,49 @@ test('repo sessions inventory workspace bytes through open, mutation, and cleanu
 	)
 })
 
+test('rebaseSession commits uncommitted edits before merging so they carry onto the new base', async () => {
+	setCommonSessionFixtures()
+	const repo = repoSession()
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+
+	await repo.rebaseSession(session)
+
+	expect(mockModule.git.commit).toHaveBeenCalledWith(
+		expect.objectContaining({
+			message: 'Save repo session session-1 changes before rebase',
+		}),
+	)
+	expect(mockModule.git.commit.mock.invocationCallOrder[0]!).toBeLessThan(
+		mockModule.rawMerge.mock.invocationCallOrder[0]!,
+	)
+	expect(mockModule.rawCheckout).toHaveBeenCalledWith(
+		expect.objectContaining({ ref: 'commit-merged', noUpdateHead: true }),
+	)
+})
+
+test('rebaseSession reports merge conflicts as a caller error and leaves the session unpushed', async () => {
+	setCommonSessionFixtures()
+	const repo = repoSession()
+	mockModule.rawMerge.mockRejectedValueOnce(
+		Object.assign(new Error('Automatic merge failed'), {
+			code: 'MergeConflictError',
+			data: { filepaths: ['src/client/index.ts'] },
+		}),
+	)
+
+	const error = await repo.rebaseSession(session).then(
+		() => null,
+		(caught: unknown) => caught,
+	)
+
+	expect(error).toBeInstanceOf(Error)
+	expect(isRepoSessionRebaseStoppedMessage((error as Error).message)).toBe(true)
+	expect((error as Error).message).toContain('src/client/index.ts')
+	expect(mockModule.rawCheckout).not.toHaveBeenCalled()
+	expect(mockModule.git.push).not.toHaveBeenCalled()
+	expect(mockModule.updateRepoSession).not.toHaveBeenCalled()
+})
+
 test('rebaseSession and publishSession use Artifacts username/password auth without token override', async () => {
 	// Best-effort publish git-note attachment fails in this mocked git
 	// environment and logs a warning; it is asserted at the end of the test.
@@ -551,16 +599,18 @@ test('rebaseSession and publishSession use Artifacts username/password auth with
 	const noToken = expect.not.objectContaining({ token: expect.anything() })
 
 	await repo.rebaseSession(session)
+	expect(mockModule.rawFetch).toHaveBeenCalledWith(
+		expect.objectContaining({ remote: 'origin', ref: 'main' }),
+	)
+	const fetch = mockModule.rawFetch.mock.calls[0]![0]
+	expect(fetch.onAuth?.('', {} as never)).toEqual(artifactsAuth)
 	// Merge the source branch into the session branch, never into local main.
-	expect(mockModule.rawPull).toHaveBeenCalledWith(
+	expect(mockModule.rawMerge).toHaveBeenCalledWith(
 		expect.objectContaining({
-			remote: 'origin',
-			ref: 'sessions/session1',
-			remoteRef: 'main',
+			ours: 'sessions/session1',
+			theirs: 'commit-source-head',
 		}),
 	)
-	const pull = mockModule.rawPull.mock.calls[0]![0]
-	expect(pull.onAuth?.('', {} as never)).toEqual(artifactsAuth)
 	expect(mockModule.git.push).toHaveBeenCalledWith(
 		expect.objectContaining({
 			remote: 'origin',

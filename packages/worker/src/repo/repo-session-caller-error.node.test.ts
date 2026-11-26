@@ -12,7 +12,9 @@ import {
 	isRepoSessionDirectoryTargetCallerMessage,
 	isRepoSessionInactiveMessage,
 	isRepoSessionNotFoundMessage,
+	isRepoSessionRebaseStoppedMessage,
 	isRepoSessionStructuralEditCallerMessage,
+	toRepoSessionRebaseCallerError,
 } from './repo-session-caller-error.ts'
 
 test('isGitPushNotFastForwardError matches isomorphic-git PushRejected non-FF only', () => {
@@ -248,4 +250,20 @@ test('isRepoSessionApplyPatchCallerMessage matches apply-patch caller phrases on
 			isRepoSessionApplyPatchCallerMessage(message),
 		),
 	).toEqual([])
+})
+
+test('toRepoSessionRebaseCallerError maps only conflict errors', () => {
+	const conflict = toRepoSessionRebaseCallerError(
+		Object.assign(new Error('raw'), {
+			code: 'CheckoutConflictError',
+			data: { filepaths: ['src/client/index.ts'] },
+		}),
+	)
+	expect(isRepoSessionRebaseStoppedMessage(conflict!.message)).toBe(true)
+	expect(conflict!.message).toContain('src/client/index.ts')
+	expect(
+		toRepoSessionRebaseCallerError(
+			Object.assign(new Error('raw'), { code: 'NotFoundError' }),
+		),
+	).toBeNull()
 })

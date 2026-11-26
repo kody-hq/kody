@@ -22,7 +22,7 @@ export const repoRebaseSessionCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:write',
 		description:
-			'Rebase a repo session against the latest published source state when the base commit has moved.',
+			'Rebase a repo session against the latest published source state when the base commit has moved. Uncommitted edits are committed first and merged onto the new base. If the source changed the same lines, the call fails naming the files and leaves the session as it was; open a new session on the latest source and reapply those changes.',
 		keywords: ['repo', 'rebase', 'session', 'publish', 'base moved'],
 		readOnly: false,
 		idempotent: false,

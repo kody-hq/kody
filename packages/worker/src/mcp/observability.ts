@@ -27,6 +27,7 @@ import {
 	isRepoSessionDirectoryTargetCallerMessage,
 	isRepoSessionInactiveMessage,
 	isRepoSessionNotFoundMessage,
+	isRepoSessionRebaseStoppedMessage,
 	isRepoSessionStructuralEditCallerMessage,
 	isRawWorkspaceEisdirMessage,
 } from '#worker/repo/repo-session-caller-error.ts'
@@ -194,10 +195,11 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 	// regexes, blank/whitespace-only repoSearch patterns (KODY-BA),
 	// disallowed repo paths, structural delete/move validation, directory
 	// read/edit targets (KODY-A6, KODY-CA), and malformed / non-applying repoApplyPatch
-	// diffs are thrown inside the RepoSession Durable Object as plain
-	// Errors. Match the stable phrases so they stay out of Sentry even when
-	// a capability forgets to re-wrap as McpCallerError.
-	// KODY-9B, KODY-A3, KODY-A6, KODY-BA, KODY-CA.
+	// diffs, and rebase merge/checkout conflicts are thrown inside the
+	// RepoSession Durable Object as plain Errors. Match the stable phrases so
+	// they stay out of Sentry even when a capability forgets to re-wrap as
+	// McpCallerError.
+	// KODY-9B, KODY-A3, KODY-A6, KODY-BA, KODY-CA, KODY-HH.
 	if (
 		getErrorCauseChain(cause).some(
 			(entry) =>
@@ -209,7 +211,8 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 					isRepoDisallowedPathMessage(entry.message) ||
 					isRepoSessionStructuralEditCallerMessage(entry.message) ||
 					isRepoSessionDirectoryTargetCallerMessage(entry.message) ||
-					isRepoSessionApplyPatchCallerMessage(entry.message)),
+					isRepoSessionApplyPatchCallerMessage(entry.message) ||
+					isRepoSessionRebaseStoppedMessage(entry.message)),
 		)
 	) {
 		return true
