@@ -525,11 +525,17 @@ test('a changed or dropped declared menu bar follows the publisher; a runtime on
 	const { apps, window, asked, store } = await setup({ answers: [true] })
 	store.remove('kent', 'weather')
 	const install = async (menuBar) => {
-		await apps.install({ ...app, ...(menuBar ? { menuBar } : {}) })
+		await apps.install({ ...app, menuBar })
 		await new Promise((resolve) => setImmediate(resolve))
 	}
 	await install({ path: '/menubar' })
+	const tray = FakeTray.last
+	await install({ path: '/menubar' })
+	assert.equal(FakeTray.last, tray)
+	assert.notEqual(tray.destroyed, true)
 	await install({ path: '/tray' })
+	assert.equal(store.get('kent', 'weather').menuBar.path, '/tray')
+	await install(undefined)
 	assert.equal(store.get('kent', 'weather').menuBar.path, '/tray')
 	await install(null)
 	assert.equal(store.get('kent', 'weather').menuBar, null)

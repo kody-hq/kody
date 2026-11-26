@@ -410,7 +410,9 @@ async function resolvePackageAppInstallTarget(
 		installIconUrl: desktop?.icon
 			? new URL(`${location.appBasePath}${desktop.icon}`, appOrigin).href
 			: null,
-		menuBar: desktop?.menuBar ?? null,
+		// Left out when the manifest could not load, so the desktop app keeps
+		// the menu bar it already has.
+		menuBar: desktop === undefined ? undefined : (desktop?.menuBar ?? null),
 		iconUrl:
 			listing?.iconUrl ??
 			(publishedCommit
@@ -424,8 +426,9 @@ async function resolvePackageAppInstallTarget(
 }
 
 /**
- * `kody.app.desktop` from the published manifest. Permanent: when it cannot
- * load, Install still works with the package icon and no declared menu bar.
+ * `kody.app.desktop` from the published manifest, null when it declares none.
+ * Permanent: undefined when it cannot load, and Install still works with the
+ * package icon.
  */
 async function loadPackageAppDesktopSettings(
 	page: Extract<PackagePageAccess, { kind: 'page' }>,
@@ -447,13 +450,13 @@ async function loadPackageAppDesktopSettings(
 		return manifest.kody.app?.desktop ?? null
 	} catch (error) {
 		console.warn(
-			'package-app-desktop-settings-failed: Install uses the package icon and no declared menu bar',
+			'package-app-desktop-settings-failed: Install uses the package icon and keeps any menu bar',
 			{
 				owner: page.username,
 				kodyId: page.kodyId,
 				error,
 			},
 		)
-		return null
+		return undefined
 	}
 }

@@ -80,6 +80,7 @@ function parseInstallRequest(value, { kodyOrigin, allowLoopback = false }) {
 		const icon = new URL(String(value.installIconUrl), appOrigin)
 		if (icon.origin === appOrigin) app.installIconUrl = icon.href
 	}
+	if (value.menuBar === null) app.declaredMenuBar = null
 	const menuBarPath = value.menuBar?.path
 	if (
 		typeof menuBarPath === 'string' &&
@@ -261,9 +262,13 @@ const maxIconBytes = 2 * 1024 * 1024
  * is capped and an empty one is refused (the caller then tries the next icon).
  */
 async function readIconResponse(response) {
-	if (!response.ok) throw new Error(`Icon request failed: ${response.status}`)
+	const refuse = async (message) => {
+		await response.body?.cancel().catch(() => {})
+		throw new Error(message)
+	}
+	if (!response.ok) await refuse(`Icon request failed: ${response.status}`)
 	if (Number(response.headers.get('content-length')) > maxIconBytes)
-		throw new Error('The app icon is too large.')
+		await refuse('The app icon is too large.')
 	const chunks = []
 	let size = 0
 	for await (const chunk of response.body ?? []) {

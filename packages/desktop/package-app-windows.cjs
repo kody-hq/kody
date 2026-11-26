@@ -123,7 +123,10 @@ function createPackageAppWindows(deps) {
 			void offerMenuBar(saved, declaredMenuBar).catch((error) => {
 				console.warn(`Kody could not add the menu-bar item: ${error.message}`)
 			})
-		else if (saved.menuBar?.declared) removeTray(saved)
+		// null: the publisher declares no menu bar. Missing: the page could not
+		// read the manifest, so keep what is there.
+		else if (declaredMenuBar === null && saved.menuBar?.declared)
+			removeTray(saved)
 		return {
 			owner: saved.owner,
 			packageName: saved.packageName,
@@ -159,7 +162,6 @@ function createPackageAppWindows(deps) {
 		if ((await gate.request(app, origin, 'menuBar')) !== 'granted') return
 		const current = store.get(app.owner, app.packageName)
 		if (!current || (current.menuBar && !current.menuBar.declared)) return
-		removeTray(current)
 		const menuBar = {
 			...declared,
 			declared: true,
