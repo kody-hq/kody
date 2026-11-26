@@ -32,6 +32,7 @@ import {
 import { Table } from '../components/table.tsx'
 import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
 import { TextLink } from '../components/text-link.tsx'
+import { PackageAppInstallDialog } from '../components/package-app-install.tsx'
 import { Tooltip } from '../components/tooltip.tsx'
 import { AccountSectionTabs } from './account-section-tabs.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
@@ -219,6 +220,11 @@ const uiGallerySections: ReadonlyArray<{
 				</DialogDemo>
 			</GalleryRow>
 		),
+	},
+	{
+		id: 'install-app',
+		title: 'Install package app',
+		render: () => <InstallAppDemo />,
 	},
 	{
 		id: 'menu',
@@ -427,6 +433,35 @@ function MenuDemo() {
 				{last}
 			</span>
 		</>
+	)
+}
+
+const galleryInstallApps = {
+	install: () => new Promise<void>((resolve) => setTimeout(resolve, 600)),
+}
+
+function InstallAppDemo() {
+	const [open, setOpen] = useState(false)
+	return (
+		<GalleryRow label="dialog">
+			<Button type="button" variant="secondary" onClick={() => setOpen(true)}>
+				Install Weather
+			</Button>
+			{open ? (
+				<PackageAppInstallDialog
+					apps={galleryInstallApps}
+					install={{
+						owner: 'kody',
+						packageName: 'weather',
+						name: 'Weather',
+						appOrigin: 'https://weather--kody.kody.run',
+						iconUrl: null,
+					}}
+					openHref="/@kody/packages/weather/open"
+					onClose={() => setOpen(false)}
+				/>
+			) : null}
+		</GalleryRow>
 	)
 }
 

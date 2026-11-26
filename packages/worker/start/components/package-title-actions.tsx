@@ -19,6 +19,7 @@ import {
 } from './fork-outdated-copy-button.tsx'
 import { renderIcon, type IconName } from './icon.tsx'
 import { ForkTargetDialog } from './fork-target-dialog.tsx'
+import { PackageAppInstallControl } from './package-app-install.tsx'
 import type { ForkTargetChoice } from '../fork-target.ts'
 import {
 	inlineSpinnerCss,
@@ -111,6 +112,13 @@ export function renderPackageRepoActions(
 				</Button>
 			) : null}
 			{actions.fork ? renderStatusControl(actions.fork) : null}
+			{actions.packageAppHref && actions.packageAppInstall ? (
+				<PackageAppInstallControl
+					install={actions.packageAppInstall}
+					openHref={actions.packageAppHref}
+					css={packageActionCss}
+				/>
+			) : null}
 			{actions.packageAppHref ? (
 				<Button
 					href={actions.packageAppHref}

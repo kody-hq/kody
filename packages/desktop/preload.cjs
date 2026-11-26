@@ -23,6 +23,12 @@ if (process.isMainFrame && location.origin === origin) {
 					},
 				}
 			: {}),
+		apps: {
+			install: (app) => ipcRenderer.invoke('kody:package-apps', 'install', app),
+			list: () => ipcRenderer.invoke('kody:package-apps', 'list'),
+			uninstall: (app) =>
+				ipcRenderer.invoke('kody:package-apps', 'uninstall', app),
+		},
 		execution: {
 			// Machine sign-in approves in an app window when the session allows.
 			approvesInApp: true,

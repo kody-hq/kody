@@ -10,7 +10,11 @@ import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import type { ViewerListingInstall } from '#universal/community-public-types.ts'
-import type { PackageRepoActions } from '#universal/package-repo-actions.ts'
+import type {
+	PackageAppInstallTarget,
+	PackageRepoActions,
+} from '#universal/package-repo-actions.ts'
+import { buildPackageIdentityIconUrl } from '#universal/identity-icon-urls.ts'
 import { routes } from '#universal/routes.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
@@ -374,5 +378,40 @@ export async function buildPackageRepoActionsForPage(
 		hasApp: owner ? owner.hasApp : undefined,
 	})
 	if (!links) return actions
-	return { ...actions, ...links }
+	return {
+		...actions,
+		...links,
+		packageAppInstall: links.packageAppHref
+			? await resolvePackageAppInstallTarget(page, env)
+			: null,
+	}
+}
+
+async function resolvePackageAppInstallTarget(
+	page: Extract<PackagePageAccess, { kind: 'page' }>,
+	env: Env,
+): Promise<PackageAppInstallTarget | null> {
+	const location = await resolvePublicPackageAppLocation({
+		env,
+		username: page.username,
+		kodyId: page.kodyId,
+	})
+	if (!location) return null
+	const listing = page.listing?.listing ?? null
+	const publishedCommit = page.ownerPackage?.publishedCommit ?? null
+	return {
+		owner: page.username,
+		packageName: page.kodyId,
+		name: listing?.name ?? page.ownerPackage?.name ?? page.kodyId,
+		appOrigin: new URL(location.hostedUrl).origin,
+		iconUrl:
+			listing?.iconUrl ??
+			(publishedCommit
+				? buildPackageIdentityIconUrl({
+						username: page.username,
+						kodyId: page.kodyId,
+						iconCommit: publishedCommit,
+					})
+				: null),
+	}
 }

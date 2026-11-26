@@ -86,6 +86,27 @@ shell bundles the workspace CLI and runs it in a separate process using
 Electron's Node runtime, without needing Node or a global CLI on PATH. Native
 Node-API dependencies keep their normal Node build, not an Electron rebuild.
 
+## Installed package apps
+
+Behind the `desktop-install-package-apps` flag, the package page shows
+**Install** inside this shell. Before installing, the shell asks `/session` with
+`?org=<owner>` and installs only when the flag is on for that package owner's
+org, so it trusts the same session flag as the page. Installing a package app:
+
+- Saves it to `package-apps.json` in the app's user data folder, with its
+  remembered window bounds. Nothing is uploaded to the Kody account.
+- Opens it in its own sandboxed window on the app's hosted origin, sharing the
+  Kody session so the Open app handoff signs it in. The window has no preload,
+  so app pages and frames get no desktop bridge. Top-level navigation stays on
+  the app origin (plus the Open app handoff and sign-in pages); other links and
+  `window.open` go to the default browser.
+- Creates a launcher that opens `kody://app/<owner>/<package>`: an `.app` in
+  `~/Applications/Kody Apps/` on macOS, a Start Menu shortcut in `Kody Apps`
+  with its own AppUserModelID on Windows, and a `.desktop` entry in
+  `~/.local/share/applications` on Linux. A launcher opens only that app's
+  window, not the dashboard.
+- When the app is gone or access ends, the window offers Retry or Uninstall.
+
 ## Background mode
 
 On macOS and Windows, new installs and existing installs upgrading to this
