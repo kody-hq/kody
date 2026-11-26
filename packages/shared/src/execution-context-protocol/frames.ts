@@ -30,7 +30,7 @@ export const ecpDeadlineCancelGraceMs = 5_000
 export const ecpLostAfterDeadlineMs = 30_000
 export const ecpMaxRunLogLines = 200
 export const ecpMaxConcurrentRunsCap = 8
-export const ecpMaxChainContexts = 3
+export const ecpMaxChainContexts = 8
 export const ecpFramesPerSecond = 50
 
 export const ecpServerFrameTypes = [

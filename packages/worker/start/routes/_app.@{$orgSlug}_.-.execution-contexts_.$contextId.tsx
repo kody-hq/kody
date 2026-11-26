@@ -21,13 +21,15 @@ export const Route = createFileRoute(
 		orgScope: { section: 'execution-contexts' },
 		presentationSearchKeys: executionContextsPresentationSearchKeys,
 	},
+	loaderDeps: ({ search }) => ({ cursor: search.cursor }),
 	shouldReload: ({ context }) => !context.inPlaceNavigation,
-	loader: ({ context, preload, params }) =>
+	loader: ({ context, preload, params, deps }) =>
 		loadPageQuery(
 			context.queryClient,
 			pageQuery(context.actorKey, {
 				orgSlug: params.orgSlug,
 				contextId: params.contextId,
+				cursor: deps.cursor,
 			}),
 			preload,
 		),
@@ -36,11 +38,13 @@ export const Route = createFileRoute(
 })
 function Page() {
 	const params = Route.useParams()
+	const { cursor } = Route.useSearch()
 	const { actorKey, pageLocation } = Route.useRouteContext()
 	const { payload } = usePageQuery(
 		pageQuery(actorKey, {
 			orgSlug: params.orgSlug,
 			contextId: params.contextId,
+			cursor,
 		}),
 	).data
 	return (

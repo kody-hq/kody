@@ -55,7 +55,7 @@ export function runChainShapeError(
 	if (contexts.length > ecpMaxChainContexts) {
 		return {
 			code: 'chain_too_long',
-			message: `chain can list at most ${ecpMaxChainContexts} contexts, plus "cloud" last.`,
+			message: `A chain holds at most ${ecpMaxChainContexts} contexts plus Kody cloud. Remove one from this chain, then try again.`,
 		}
 	}
 	if (trimmed.length === 0) {

@@ -32,7 +32,7 @@ export const automationExecutionSchema = z
 			.max(ecpMaxChainContexts + 1)
 			.optional()
 			.describe(
-				'This automation\'s own ordered chain, replacing the default chain: up to 3 context names or ids, with "cloud" allowed only last.',
+				`This automation's own ordered chain, replacing the default chain: up to ${ecpMaxChainContexts} context names or ids, with "cloud" allowed only last.`,
 			),
 		requires: z
 			.array(z.enum(executeRequirements))

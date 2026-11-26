@@ -36,6 +36,7 @@ import {
 	type ExecutionContextsPageData,
 	type ExecutionContextUnutilized,
 	chainEntryInputs,
+	executionContextListMaxLimit,
 	isUnusableReason,
 	normalizeChain,
 	visibleContexts,
@@ -399,6 +400,7 @@ export async function loadExecutionContextsPageData(input: {
 	user: AppUser
 	orgSlug: string
 	contextId: string | null
+	cursor: string | null
 }): Promise<ExecutionContextsPageData | { notFound: true }> {
 	const { env, user } = input
 	const pageOrg = await getOrgBySlug(env.APP_DB, input.orgSlug)
@@ -421,7 +423,11 @@ export async function loadExecutionContextsPageData(input: {
 			orgs,
 			machineAccess,
 		] = await Promise.all([
-			callCapability(scope, executionContextCapabilityNames.list, {}),
+			callCapability(
+				scope,
+				executionContextCapabilityNames.list,
+				input.cursor ? { cursor: input.cursor } : {},
+			),
 			callCapability(scope, executionContextCapabilityNames.chainGet, {}),
 			input.contextId
 				? callCapability(scope, executionContextCapabilityNames.get, {
@@ -446,6 +452,25 @@ export async function loadExecutionContextsPageData(input: {
 		const contexts = visibleContexts(readContexts(listResult), Date.now())
 		const selected = selectedResult ? readContext(selectedResult) : null
 		if (selected && machineAccess) selected.machineAccess = machineAccess
+		const chain = parseChain(record(chainResult.chain) ?? chainResult)
+		const listed = new Set(contexts.map((context) => context.id))
+		const chainContexts = (
+			await Promise.all(
+				normalizeChain(chain.entries).flatMap((entry) =>
+					entry.kind !== 'context' || listed.has(entry.id)
+						? []
+						: [
+								entry.id === selected?.id
+									? Promise.resolve(selected)
+									: callCapability(scope, executionContextCapabilityNames.get, {
+											id: entry.id,
+										})
+											.then(readContext)
+											.catch(() => null),
+							],
+				),
+			)
+		).filter((context) => context !== null)
 		if (selected?.openShell) {
 			const use = await loadShellUse(scope, selected.id)
 			if (use) selected.openShell.use = use
@@ -471,7 +496,13 @@ export async function loadExecutionContextsPageData(input: {
 						context.id === selected.id ? { ...context, ...selected } : context,
 					)
 				: contexts,
-			chain: parseChain(record(chainResult.chain) ?? chainResult),
+			cursor: input.cursor,
+			nextCursor:
+				typeof listResult.nextCursor === 'string'
+					? listResult.nextCursor
+					: null,
+			chain,
+			chainContexts,
 			unutilized:
 				parseUnutilized(listResult.unutilized) ??
 				parseUnutilized(chainResult.unutilized),
@@ -1115,20 +1146,33 @@ export async function getAutomationExecutionForUser(
 			executionContextCapabilityNames.automationGet,
 			automationTargetArgs(input.target),
 		)) as AutomationExecutionSettingView,
-		contexts: await callCapability(
+		contexts: await listContextChoices(scope),
+	}))
+}
+
+/** Every visible context as a picker choice, following list pages. */
+async function listContextChoices(scope: ExecutionContextsScope) {
+	const choices: Array<{ id: string; name: string }> = []
+	let cursor: string | null = null
+	do {
+		const result = await callCapability(
 			scope,
 			executionContextCapabilityNames.list,
-			{},
-		).then((result) =>
-			(Array.isArray(result.contexts) ? result.contexts : [])
-				.map((context) => record(context))
-				.filter((context) => context !== null)
-				.map((context) => ({
-					id: String(context.id ?? ''),
-					name: String(context.name ?? context.id ?? ''),
-				})),
-		),
-	}))
+			{ limit: executionContextListMaxLimit, ...(cursor ? { cursor } : {}) },
+		)
+		for (const context of Array.isArray(result.contexts)
+			? result.contexts
+			: []) {
+			const row = record(context)
+			if (row)
+				choices.push({
+					id: String(row.id ?? ''),
+					name: String(row.name ?? row.id ?? ''),
+				})
+		}
+		cursor = typeof result.nextCursor === 'string' ? result.nextCursor : null
+	} while (cursor)
+	return choices
 }
 
 export async function setAutomationExecutionForUser(

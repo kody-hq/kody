@@ -82,9 +82,13 @@ test('moving a context keeps cloud last and clamps at the ends', () => {
 	).toEqual([c, a, b, cloud])
 })
 
-test('unusable stored entries count toward the three-context cap', () => {
-	expect(chainIsFull([a, b, cloud])).toBe(false)
-	expect(chainIsFull([a, b, c, cloud])).toBe(true)
+test('unusable stored entries count toward the eight-context cap', () => {
+	const others = Array.from({ length: 5 }, (_, index) => ({
+		...c,
+		id: `ec_extra_${index}`,
+	}))
+	expect(chainIsFull([a, b, ...others, cloud])).toBe(false)
+	expect(chainIsFull([a, b, c, ...others, cloud])).toBe(true)
 })
 
 test('insertBeforeCloud appends after the last context and never duplicates', () => {

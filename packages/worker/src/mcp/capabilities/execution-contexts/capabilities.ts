@@ -1,3 +1,8 @@
+import {
+	executionContextListDefaultLimit,
+	executionContextListMaxLimit,
+} from '#universal/execution-contexts.ts'
+import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { z } from 'zod'
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
@@ -97,7 +102,7 @@ export const executionContextListCapability = defineDomainCapability(domain, {
 	contextRuns: 'allow',
 	orgPermission: 'execution_context:read',
 	description:
-		'List execution contexts (machines running `kody daemon`) visible in this org: yours, ones shared with you, and ones attached to this org. Each item says whether you can use it, why not (unusableReason), whether it is in your chain, and its grant summary. The response also lists usable contexts that are in none of your chain (unutilized).',
+		'List execution contexts (machines running `kody daemon`) visible in this org: yours, ones shared with you, and ones attached to this org. Each item says whether you can use it, why not (unusableReason), whether it is in your chain, and its grant summary. The response also lists usable contexts that are in none of your chain (unutilized). Results are ordered by name and paged: pass nextCursor back as cursor until it is null.',
 	keywords: [
 		'execution context',
 		'machine',
@@ -109,9 +114,25 @@ export const executionContextListCapability = defineDomainCapability(domain, {
 	readOnly: true,
 	idempotent: true,
 	destructive: false,
-	inputSchema: z.object({}),
-	async handler(_args, ctx) {
-		return await listContexts(await caller(ctx))
+	inputSchema: z.object({
+		cursor: z
+			.string()
+			.min(1)
+			.max(1024)
+			.optional()
+			.describe('nextCursor from a previous page. Omit for the first page.'),
+		limit: z
+			.number()
+			.int()
+			.min(1)
+			.max(executionContextListMaxLimit)
+			.optional()
+			.describe(
+				`Contexts per page, ${executionContextListDefaultLimit} by default and at most ${executionContextListMaxLimit}.`,
+			),
+	}),
+	async handler(args, ctx) {
+		return await listContexts(await caller(ctx), args)
 	},
 })
 
@@ -683,8 +704,7 @@ export const executionChainGetCapability = defineDomainCapability(domain, {
 	name: 'executionChainGet',
 	contextRuns: 'allow',
 	orgPermission: 'execution_context:read',
-	description:
-		'Your execution chain in this org: the order Kody tries execution contexts for execute runs that do not name one, up to 3 contexts followed by Kody cloud (always last when present). Unusable entries stay listed with unusableReason and are skipped.',
+	description: `Your execution chain in this org: the order Kody tries execution contexts for execute runs that do not name one, up to ${ecpMaxChainContexts} contexts followed by Kody cloud (always last when present). Unusable entries stay listed with unusableReason and are skipped.`,
 	keywords: ['execution chain', 'fallback', 'order'],
 	readOnly: true,
 	idempotent: true,

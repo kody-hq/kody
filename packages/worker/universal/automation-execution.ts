@@ -1,6 +1,7 @@
+import { maxChainContexts } from './execution-contexts.ts'
 const automationQueueDefaultMinutes = 60
 export const automationQueueMaxMinutes = 24 * 60
-export const automationChainMaxContexts = 3
+export const automationChainMaxContexts = maxChainContexts
 
 type AutomationExecutionMode = 'cloud' | 'context' | 'chain'
 

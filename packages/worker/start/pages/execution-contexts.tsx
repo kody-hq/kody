@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { useDesktopMachine } from '../components/desktop-execution.tsx'
 import { DesktopMachinePanel } from '../components/desktop-machine-panel.tsx'
@@ -157,6 +158,7 @@ function EnabledPage(props: {
 	const status =
 		typeof searchParams.status === 'string' ? searchParams.status : ''
 	const contexts = payload.contexts
+	const chainPanelContexts = [...payload.contexts, ...payload.chainContexts]
 	const filtered = contexts.filter((context) => {
 		if (
 			q &&
@@ -180,6 +182,14 @@ function EnabledPage(props: {
 			? [selected, ...filtered]
 			: filtered
 	const note = unutilizedNote(payload.unutilized)
+	const listPath = orgResourcePath(payload.orgSlug, 'execution-contexts')
+	function pageHref(cursor: string | null) {
+		const params = new URLSearchParams(search)
+		if (cursor) params.set('cursor', cursor)
+		else params.delete('cursor')
+		const query = params.toString()
+		return query ? `${listPath}?${query}` : listPath
+	}
 	const register = registerCopy({
 		orgSlug: payload.personalOrg ? null : payload.orgSlug,
 	})
@@ -218,7 +228,7 @@ function EnabledPage(props: {
 				<ExecutionChainPanel
 					orgSlug={payload.orgSlug}
 					chain={payload.chain}
-					contexts={payload.contexts}
+					contexts={chainPanelContexts}
 				/>
 			</AccountManagementPanel>
 			{props.selectedId && !selected ? (
@@ -237,7 +247,7 @@ function EnabledPage(props: {
 							orgSlug={payload.orgSlug}
 							context={selected}
 							chain={payload.chain}
-							contexts={payload.contexts}
+							contexts={chainPanelContexts}
 						/>
 					) : undefined
 				}
@@ -296,6 +306,28 @@ function EnabledPage(props: {
 					},
 				}))}
 			/>
+			{payload.cursor || payload.nextCursor ? (
+				<nav
+					aria-label="Execution context pages"
+					data-testid="execution-contexts-pagination"
+					css={{ display: 'flex', gap: spacing.sm, justifyContent: 'flex-end' }}
+				>
+					{payload.cursor ? (
+						<Button href={pageHref(null)} variant="secondary" size="sm">
+							First page
+						</Button>
+					) : null}
+					{payload.nextCursor ? (
+						<Button
+							href={pageHref(payload.nextCursor)}
+							variant="secondary"
+							size="sm"
+						>
+							Next page
+						</Button>
+					) : null}
+				</nav>
+			) : null}
 			{!desktop ? (
 				<AccountManagementPanel
 					title="Register a machine"

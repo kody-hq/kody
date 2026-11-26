@@ -482,7 +482,7 @@ preview (see the TEST ONLY rule below).
   the blocked host (and port), and that the machine owner can change it with
   `executionContextUpdate` `grant.egress`, instead of workerd's
   `internal error; reference = …`.
-- Chains are per user per org, hold up to 3 contexts, and Kody cloud is always
+- Chains are per user per org, hold up to 8 contexts, and Kody cloud is always
   the last entry when present. A chain PUT with anything after cloud is a 400.
   Leaving cloud out makes the chain strict.
 - Every routed execute response carries `ranOn` (MCP `structuredContent`, CLI

@@ -62,11 +62,10 @@ export function DesktopMachinePanel({
 	const server = useQuery({
 		queryKey: ['desktop-machine-server', orgSlug, contextId],
 		queryFn: async () => {
-			const page = await loadPage({ data: { orgSlug: orgSlug!, search: [] } })
-			return page.payload.enabled
-				? (page.payload.contexts.find((context) => context.id === contextId) ??
-						null)
-				: null
+			const page = await loadPage({
+				data: { orgSlug: orgSlug!, contextId: contextId!, search: [] },
+			})
+			return page.payload.enabled ? page.payload.selected : null
 		},
 		enabled: Boolean(orgSlug && contextId),
 		refetchInterval: 15000,

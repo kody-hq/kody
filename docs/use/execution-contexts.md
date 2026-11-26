@@ -11,7 +11,7 @@ Execution contexts are an experiment. Turn them on at
 
 ## Fields
 
-- `execute` takes `context` (id or name), `fallback: "chain"`, `chain` (up to 3
+- `execute` takes `context` (id or name), `fallback: "chain"`, `chain` (up to 8
   contexts, `"cloud"` only last), and `requires: ["fs" | "lan"]`. See
   [Execute and workflows](./execute.md#execution-contexts).
 - Results carry `ranOn`:

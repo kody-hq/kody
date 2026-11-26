@@ -17,9 +17,14 @@ export function validateExecutionContextsSearch(
 			search.status === 'not-in-chain'
 				? search.status
 				: undefined,
+		cursor:
+			typeof search.cursor === 'string' && search.cursor
+				? search.cursor
+				: undefined,
 	} as {
 		q?: string
 		status?: 'online' | 'offline' | 'revoked' | 'not-in-chain'
+		cursor?: string
 	}
 }
 
@@ -32,7 +37,7 @@ const pageQuery = createPageQuery(
 
 export function executionContextsPageQuery(
 	actorKey: string | null,
-	input: { orgSlug: string; contextId?: string },
+	input: { orgSlug: string; contextId?: string; cursor?: string },
 ) {
 	return pageQuery(actorKey, { ...input, search: [] })
 }

@@ -103,6 +103,9 @@ export function pageFixture(
 		},
 		selected: null,
 		selectedMissing: false,
+		cursor: null,
+		nextCursor: null,
+		chainContexts: [],
 		...overrides,
 	}
 }

@@ -1,4 +1,4 @@
-import { apiJson } from './client.js'
+import { apiJson, listAllExecutionContexts } from './client.js'
 import {
 	type FsMode,
 	canonicalHostPath,
@@ -134,11 +134,7 @@ async function getContext(api: Api, id: string) {
 
 async function resolveId(api: Api, ref: string) {
 	if (ref.startsWith('ec_')) return ref
-	const body = await apiJson({
-		...api,
-		method: 'GET',
-		path: '/v1/execution-contexts',
-	})
+	const body = await listAllExecutionContexts(api)
 	const match = (
 		(body.contexts ?? []) as Array<{ id: string; name: string }>
 	).find((c) => c.name === ref)

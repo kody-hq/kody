@@ -16,6 +16,15 @@ import { authorizeOrgWide } from '#worker/authorization/authorize.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { authenticateApiRequest } from '#worker/open-api/authenticate.ts'
 import { ApiError, invalidRequest } from '#worker/open-api/errors.ts'
+import {
+	buildExecutionContextLimitMessage,
+	entitlementLimitErrorCode,
+	executionContextOrgLimit,
+} from '#worker/entitlements/errors.ts'
+import { getCachedUserEntitlement } from '#worker/entitlements/service.ts'
+import { countLiveSeats } from '#worker/orgs/billing.ts'
+import { entitlementEmailForOwner } from '#worker/request-context/owner-id.ts'
+import { resolveEntitlementLimits } from '#universal/plans.ts'
 import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
 import { registrationAuthorizationError } from './errors.ts'
 import {
@@ -29,6 +38,7 @@ import testServerKeys from './server-keys.local.json'
 import {
 	chainCounts,
 	consumeRegistrationChallenge,
+	countLiveOwnedContexts,
 	createRegistrationChallenge,
 	getExecutionContext,
 	getExecutionContextByThumbprint,
@@ -363,8 +373,56 @@ export async function handleExecutionContextKeyRoute(input: {
 		...boxLoginColumns(caller),
 		login_checked_at: new Date().toISOString(),
 	}
+	const [entitlement, seats] = await Promise.all([
+		getCachedUserEntitlement(env.APP_DB, {
+			userId: caller.org.id,
+			email: entitlementEmailForOwner(api.callerContext, caller.org.id),
+		}),
+		countLiveSeats(env.APP_DB, caller.org.id),
+	])
+	const perSeat =
+		resolveEntitlementLimits(entitlement).maxExecutionContextsPerSeat
+	const caps = {
+		perOperator: perSeat,
+		perOrg: executionContextOrgLimit({
+			plan: entitlement.plan,
+			perSeat,
+			seats,
+		}),
+	}
 	try {
-		await insertExecutionContext(env.APP_DB, row)
+		if (!(await insertExecutionContext(env.APP_DB, row, caps))) {
+			const live = await countLiveOwnedContexts(env.APP_DB, {
+				orgId: caller.org.id,
+				operatorUserId: userId,
+			})
+			const orgSlug = caller.org.slug ?? caller.org.id
+			const scope = live.operator >= caps.perOperator ? 'seat' : 'org'
+			const current = scope === 'seat' ? live.operator : live.org
+			throw new ApiError({
+				status: 429,
+				code: 'entitlement_limit',
+				message: buildExecutionContextLimitMessage({
+					scope,
+					plan: entitlement.plan,
+					perSeat,
+					seats,
+					current,
+					orgSlug,
+				}),
+				details: {
+					code: entitlementLimitErrorCode,
+					resource:
+						scope === 'seat'
+							? 'execution_contexts_per_seat'
+							: 'execution_contexts_per_org',
+					plan: entitlement.plan,
+					limit: scope === 'seat' ? caps.perOperator : caps.perOrg,
+					current,
+					orgSlug,
+				},
+			})
+		}
 	} catch (error) {
 		if (String(error).includes('UNIQUE')) {
 			throw new ApiError({

@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
+import { maxChainContexts } from '#universal/execution-contexts.ts'
 import { routes } from '#universal/routes.ts'
 import type { loadExecutionContextsScope } from '#app/handlers/execution-contexts.ts'
 
@@ -21,6 +22,7 @@ export const loadExecutionContextsPage = createServerFn({ method: 'GET' })
 		z.object({
 			orgSlug,
 			contextId: segment.optional(),
+			cursor: z.string().min(1).max(1024).optional(),
 			search: searchEntries,
 		}),
 	)
@@ -39,6 +41,7 @@ export const loadExecutionContextsPage = createServerFn({ method: 'GET' })
 			rest: data.contextId ?? null,
 		})
 		const params = new URLSearchParams(data.search)
+		if (data.cursor) params.set('cursor', data.cursor)
 		const search = params.size ? `?${params}` : ''
 		const { bindings, request, user } = await loadScopedCollection({
 			orgSlug: data.orgSlug,
@@ -51,6 +54,7 @@ export const loadExecutionContextsPage = createServerFn({ method: 'GET' })
 			user,
 			orgSlug: data.orgSlug,
 			contextId: data.contextId ?? null,
+			cursor: data.cursor ?? null,
 		})
 		if ('notFound' in payload) throw notFound()
 		return {
@@ -204,7 +208,7 @@ export const setExecutionChain = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({
 			orgSlug,
-			entries: z.array(chainEntry).max(4),
+			entries: z.array(chainEntry).max(maxChainContexts + 1),
 			strict: z.boolean(),
 			ifMatch: z.string().max(200).nullable(),
 		}),
@@ -482,11 +486,12 @@ export const putDesktopExecutionFirst = createServerFn({ method: 'POST' })
 				throw new Error('Your account changed. Start machine setup again.')
 			const page = await loadExecutionContextsPageData({
 				...input,
-				contextId: null,
+				contextId: data.contextId,
+				cursor: null,
 			})
 			if ('notFound' in page || !page.enabled || !page.personalOrg)
 				throw new Error('Set up this machine in your personal workspace.')
-			const context = page.contexts.find((item) => item.id === data.contextId)
+			const context = page.selected
 			if (
 				!context ||
 				context.operator.handle !== data.username ||
@@ -501,6 +506,7 @@ export const putDesktopExecutionFirst = createServerFn({ method: 'POST' })
 				const target = await loadExecutionContextsPageData({
 					...chainOrg,
 					contextId: null,
+					cursor: null,
 				})
 				if ('notFound' in target || !target.enabled || target.personalOrg)
 					throw new Error(

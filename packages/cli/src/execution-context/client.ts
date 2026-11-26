@@ -436,6 +436,28 @@ export async function fetchServerKeys(input: {
 	return set.keys.filter((key) => key.notAfter > now)
 }
 
+/** Every execution context the caller can see, following list pages. */
+export async function listAllExecutionContexts(
+	input: Omit<Parameters<typeof apiJson>[0], 'method' | 'path' | 'body'>,
+) {
+	const contexts: Array<unknown> = []
+	let cursor: string | null = null
+	let body: Record<string, unknown> = {}
+	do {
+		const query = new URLSearchParams({ limit: '100' })
+		if (cursor) query.set('cursor', cursor)
+		body = await apiJson({
+			...input,
+			method: 'GET',
+			path: `/v1/execution-contexts?${query}`,
+		})
+		if (Array.isArray(body.contexts)) contexts.push(...body.contexts)
+		cursor = typeof body.nextCursor === 'string' ? body.nextCursor : null
+	} while (cursor)
+	const { nextCursor: _nextCursor, ...rest } = body
+	return { ...rest, contexts }
+}
+
 export async function apiJson(input: {
 	apiUrl: string
 	token: string

@@ -31,15 +31,11 @@ test('desktop registration goes first, without duplicating entries or changing f
 	})
 })
 test('a full chain requires an explicit replacement and preserves the other entries', () => {
-	expect(() => desktopExecutionChain(chain(['a', 'b', 'c']), 'new')).toThrow(
-		'full',
-	)
-	expect(
-		desktopExecutionChain(chain(['a', 'b', 'c']), 'new', 'b').entries,
-	).toEqual([
+	const full = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+	expect(() => desktopExecutionChain(chain(full), 'new')).toThrow('full')
+	expect(desktopExecutionChain(chain(full), 'new', 'b').entries).toEqual([
 		{ kind: 'context', id: 'new' },
-		{ kind: 'context', id: 'a' },
-		{ kind: 'context', id: 'c' },
+		...full.filter((id) => id !== 'b').map((id) => ({ kind: 'context', id })),
 		{ kind: 'cloud' },
 	])
 	expect(() => desktopExecutionChain(chain(['a']), 'new', 'missing')).toThrow(

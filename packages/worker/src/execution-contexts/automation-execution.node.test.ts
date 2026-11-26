@@ -20,12 +20,17 @@ test('execution setting mirrors execute routing rules', () => {
 		automationExecutionSchema.safeParse({ chain: ['a', 'b', 'c', 'cloud'] })
 			.success,
 	).toBe(true)
+	expect(
+		automationExecutionSchema.safeParse({
+			chain: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'cloud'],
+		}).success,
+	).toBe(true)
 	for (const bad of [
 		{},
 		{ fallback: 'chain' },
 		{ chain: ['cloud', 'a'] },
 		{ chain: ['a', 'a'] },
-		{ chain: ['a', 'b', 'c', 'd'] },
+		{ chain: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] },
 		{ context: 'a', queueMinutes: 5 },
 		{
 			context: 'a',

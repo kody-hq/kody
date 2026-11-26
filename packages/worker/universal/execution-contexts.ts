@@ -1,3 +1,4 @@
+import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/frames.ts'
 /**
  * Website contract for execution contexts: the list, detail and chain shapes
  * the API returns (docs/design execution-contexts-ui-plan section 12), plus the
@@ -5,8 +6,12 @@
  * chain entry; contexts are ordered above it.
  */
 
-export const maxChainContexts = 3
+export const maxChainContexts = ecpMaxChainContexts
 const unutilizedNamedMax = 3
+
+/** executionContextList page size: the default and the most one call returns. */
+export const executionContextListDefaultLimit = 20
+export const executionContextListMaxLimit = 100
 const revokedVisibleDays = 30
 
 const executionContextUnusableReasons = [
@@ -374,8 +379,14 @@ export type ExecutionContextsPageData =
 			teams: Array<{ slug: string; name: string; orgSlug: string }>
 			attachableOrgs: Array<{ slug: string; name?: string }>
 			contexts: Array<ExecutionContextListItem>
+			/** The page's cursor; null on the first page. */
+			cursor: string | null
+			/** Cursor for the next page; null when this page is the last. */
+			nextCursor: string | null
 			chain: ExecutionChain
 			unutilized: ExecutionContextUnutilized | null
+			/** Chain entries that are not on this page, so the chain panel can show them. */
+			chainContexts: Array<ExecutionContextListItem>
 			selected: ExecutionContextListItem | null
 			selectedMissing: boolean
 	  }
