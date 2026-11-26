@@ -195,6 +195,16 @@ class PackageAppStore {
 		app.bounds = valid
 		this.save()
 	}
+	/** `state` is 'granted', 'denied', or null to ask again next time. */
+	setPermission(owner, packageName, origin, kind, state) {
+		const app = this.get(owner, packageName)
+		if (!app) return
+		const forOrigin = { ...app.permissions?.[origin] }
+		if (state) forOrigin[kind] = state
+		else delete forOrigin[kind]
+		app.permissions = { ...app.permissions, [origin]: forOrigin }
+		this.save()
+	}
 	remove(owner, packageName) {
 		const removed = this.apps.delete(packageAppKey(owner, packageName))
 		if (removed) this.save()

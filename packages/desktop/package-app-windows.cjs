@@ -12,13 +12,32 @@ const {
 	packageAppUrl,
 	parseInstallRequest,
 } = require('./package-apps.cjs')
+const {
+	createPermissionGate,
+	permissionKinds,
+	permissionLabels,
+	permissionState,
+} = require('./package-app-permissions.cjs')
 
 const unavailableStatuses = new Set([401, 403, 404, 410])
+const maxExtraWindows = 8
+// Kinds an app can request today; the rest resolve 'unavailable'.
+const supportedPermissions = new Set(['notifications', 'floating'])
+
+/** An in-app path from page input: one leading slash, no scheme or host. */
+function appPath(value) {
+	if (typeof value !== 'string' || value.length > 2048) return null
+	if (!value.startsWith('/') || value.startsWith('//')) return null
+	if (/[\\\s]/.test(value)) return null
+	return value
+}
 
 /**
  * Installed package apps: one sandboxed window per app on the app's hosted
  * origin, sharing the Kody session so the Open app handoff signs it in.
- * Windows get no preload, so no desktop bridge reaches app pages or frames.
+ * The app preload exposes `window.kodyDesktopApp` only to the main frame on
+ * the app's origin while the session flag is on, and every call is checked
+ * again here against the sending frame.
  */
 const unavailableDetail = {
 	signIn:
@@ -42,8 +61,16 @@ function createPackageAppWindows(deps) {
 		fs,
 		platform = process.platform,
 		partition = 'persist:kody',
+		preload,
+		askPermission,
+		setBadge = () => {},
 	} = deps
 	const windows = new Map()
+	const extras = new Map()
+	const records = new Map()
+	const flags = new Map()
+	const badges = new Map()
+	const gate = createPermissionGate({ store, ask: askPermission })
 
 	function planFor(app) {
 		return launcherPlan({ ...launcherContext, platform, app })
@@ -91,7 +118,10 @@ function createPackageAppWindows(deps) {
 	async function uninstall({ owner, packageName }) {
 		const app = store.get(String(owner), String(packageName))
 		if (!app) return
-		windows.get(packageAppKey(app.owner, app.packageName))?.destroy()
+		const key = packageAppKey(app.owner, app.packageName)
+		windows.get(key)?.destroy()
+		for (const extra of extras.get(key) ?? []) extra.destroy()
+		if (badges.delete(key)) totalBadge()
 		await removeLauncher(planFor(app), { fs })
 		store.remove(app.owner, app.packageName)
 	}
@@ -125,15 +155,43 @@ function createPackageAppWindows(deps) {
 		window.on('closed', () => {
 			if (windows.get(key) === window) windows.delete(key)
 		})
-		void window.loadURL(packageAppUrl(app, path)).catch(() => {})
+		load(app, window, path)
 		return window
 	}
 
-	function createWindow(app) {
+	function load(app, window, path) {
+		void installAllowed(app.owner)
+			.catch(() => false)
+			.then((on) => {
+				flags.set(app.owner, on)
+				if (!window.isDestroyed())
+					return window.loadURL(packageAppUrl(app, path))
+			})
+			.catch(() => {})
+	}
+
+	function openExtra(app, path, options) {
+		const key = packageAppKey(app.owner, app.packageName)
+		const set = extras.get(key) ?? new Set()
+		if (set.size >= maxExtraWindows)
+			throw new Error(`An app can open up to ${maxExtraWindows} extra windows.`)
+		const size = (value, min, max) =>
+			Number.isFinite(value) ? Math.min(Math.max(value, min), max) : undefined
+		const window = createWindow(app, {
+			width: size(options?.width, 240, 2400) ?? 640,
+			height: size(options?.height, 200, 1600) ?? 480,
+		})
+		set.add(window)
+		extras.set(key, set)
+		window.on('closed', () => set.delete(window))
+		void window.loadURL(packageAppUrl(app, path)).catch(() => {})
+	}
+
+	function createWindow(app, extra) {
 		const window = new BrowserWindow({
 			width: 1100,
 			height: 760,
-			...app.bounds,
+			...(extra ?? app.bounds),
 			minWidth: 360,
 			minHeight: 280,
 			title: app.name,
@@ -145,6 +203,7 @@ function createPackageAppWindows(deps) {
 				sandbox: true,
 				webviewTag: false,
 				partition,
+				...(preload ? { preload } : {}),
 			},
 		})
 		if (platform === 'win32')
@@ -154,6 +213,9 @@ function createPackageAppWindows(deps) {
 		const contents = window.webContents
 		const origins = [app.appOrigin]
 		let lastHop = null
+		const contentsId = contents.id
+		records.set(contentsId, { app, window, origins })
+		window.on('closed', () => records.delete(contentsId))
 		function guard(event, url) {
 			const kind = installedNavigation(app, url, kodyOrigin, origins)
 			if (kind === 'stay') {
@@ -220,10 +282,192 @@ function createPackageAppWindows(deps) {
 			},
 		)
 		window.on('close', () => {
+			if (extra) return
 			if (!window.isMinimized() && !window.isFullScreen())
 				store.setBounds(app.owner, app.packageName, window.getNormalBounds())
 		})
 		return window
+	}
+
+	function recordFor(contents) {
+		const record = contents && records.get(contents.id)
+		if (!record || record.window.isDestroyed()) return null
+		return record
+	}
+
+	function frameOrigin(url) {
+		try {
+			return new URL(url).origin
+		} catch {
+			return null
+		}
+	}
+
+	/** Sync check from the app preload: main frame, app origin, flag on. */
+	function bridgeAllowed(contents, frame, origin) {
+		const record = recordFor(contents)
+		return Boolean(
+			record &&
+			frame &&
+			!frame.parent &&
+			frame.origin === origin &&
+			record.origins.includes(origin) &&
+			flags.get(record.app.owner) === true,
+		)
+	}
+
+	function totalBadge() {
+		let total = 0
+		for (const count of badges.values()) total += count
+		setBadge(total)
+	}
+
+	async function call(contents, frame, action, args) {
+		const record = recordFor(contents)
+		if (!record || !bridgeAllowed(contents, frame, frame?.origin))
+			throw new Error('Desktop features are only available in installed apps.')
+		const { window } = record
+		const app = store.get(record.app.owner, record.app.packageName)
+		if (!app) throw new Error('This app is not installed.')
+		const origin = frame.origin
+		const granted = (kind) => permissionState(app, origin, kind) === 'granted'
+		const [first, second] = args
+		switch (action) {
+			case 'permission-query':
+				if (!supportedPermissions.has(first)) return 'unavailable'
+				return permissionState(app, origin, first)
+			case 'permission-request':
+				if (!supportedPermissions.has(first)) return 'unavailable'
+				return gate.request(app, origin, first)
+			case 'badge': {
+				if (!granted('notifications')) return
+				const count = Number.isInteger(first) && first > 0 ? first : 0
+				badges.set(packageAppKey(app.owner, app.packageName), count)
+				totalBadge()
+				return
+			}
+			case 'window-show':
+				window.show()
+				return
+			case 'window-hide':
+				window.hide()
+				return
+			case 'window-focus':
+				if (window.isMinimized()) window.restore()
+				window.show()
+				window.focus()
+				return
+			case 'window-floating':
+				if (!granted('floating')) return
+				window.setAlwaysOnTop(first === true, 'floating')
+				return
+			case 'window-open': {
+				const path = appPath(first)
+				if (!path) throw new Error('Open a path inside this app.')
+				openExtra(app, path, second)
+				return
+			}
+			case 'open-path': {
+				const path = appPath(first)
+				if (!path) return
+				open(app, path)
+				return
+			}
+			default:
+				throw new Error('Unknown desktop action.')
+		}
+	}
+
+	/**
+	 * Web permission requests from installed app windows; undefined for other
+	 * windows so the Kody shell's own policy applies.
+	 */
+	function permissionRequest(contents, permission, details) {
+		const record = recordFor(contents)
+		if (!record) return undefined
+		if (permission !== 'notifications' || !details?.isMainFrame) return false
+		const origin = frameOrigin(details.requestingUrl)
+		if (!origin || !bridgeAllowed(contents, contents.mainFrame, origin))
+			return false
+		return gate
+			.request(record.app, origin, 'notifications')
+			.then((state) => state === 'granted')
+	}
+
+	function permissionCheck(contents, permission, origin) {
+		const record = recordFor(contents)
+		if (!record) return undefined
+		const app = store.get(record.app.owner, record.app.packageName)
+		const normalized = frameOrigin(origin)
+		return Boolean(
+			permission === 'notifications' &&
+			app &&
+			normalized &&
+			record.origins.includes(normalized) &&
+			flags.get(app.owner) === true &&
+			permissionState(app, normalized, 'notifications') === 'granted',
+		)
+	}
+
+	/** The Permissions menu for a focused installed app window, or null. */
+	function menuFor(window) {
+		const record = window && recordFor(window.webContents)
+		if (!record) return null
+		const app = store.get(record.app.owner, record.app.packageName)
+		const origin = frameOrigin(window.webContents.getURL())
+		if (!app || !origin || !record.origins.includes(origin)) return null
+		return {
+			label: 'App',
+			submenu: [
+				{ label: `${app.name} permissions`, enabled: false },
+				...permissionKinds
+					.filter((kind) => supportedPermissions.has(kind))
+					.map((kind) => ({
+						label: permissionLabels[kind],
+						type: 'checkbox',
+						checked: permissionState(app, origin, kind) === 'granted',
+						click: (item) =>
+							store.setPermission(
+								app.owner,
+								app.packageName,
+								origin,
+								kind,
+								item.checked ? 'granted' : 'denied',
+							),
+					})),
+				{
+					label: 'Ask again for every permission',
+					click: () => {
+						for (const kind of permissionKinds)
+							store.setPermission(
+								app.owner,
+								app.packageName,
+								origin,
+								kind,
+								null,
+							)
+					},
+				},
+				{ type: 'separator' },
+				{
+					label: `Uninstall ${app.name}…`,
+					click: () => void confirmUninstall(window, app),
+				},
+			],
+		}
+	}
+
+	async function confirmUninstall(window, app) {
+		const { response } = await dialog.showMessageBox(window, {
+			type: 'question',
+			buttons: ['Uninstall', 'Cancel'],
+			defaultId: 1,
+			cancelId: 1,
+			message: `Uninstall ${app.name}?`,
+			detail:
+				'This removes its window, launcher, and permissions from this computer.',
+		})
+		if (response === 0) await uninstall(app)
 	}
 
 	return {
@@ -231,6 +475,11 @@ function createPackageAppWindows(deps) {
 		uninstall,
 		list,
 		openLink,
+		bridgeAllowed,
+		call,
+		permissionRequest,
+		permissionCheck,
+		menuFor,
 		get size() {
 			return windows.size
 		},

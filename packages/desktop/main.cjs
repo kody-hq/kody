@@ -49,6 +49,7 @@ const {
 } = require('./package-app-links.cjs')
 const { PackageAppStore, packageAppStorePath } = require('./package-apps.cjs')
 const { createPackageAppWindows } = require('./package-app-windows.cjs')
+const { permissionLabels } = require('./package-app-permissions.cjs')
 
 app.setName('Kody')
 let appOrigin = productionOrigin
@@ -106,6 +107,19 @@ function installedApps() {
 		dialog,
 		fs: fs.promises,
 		store: new PackageAppStore({ path: packageAppStorePath(userData), fs }),
+		preload: join(__dirname, 'package-app-preload.cjs'),
+		askPermission: async (installed, origin, kind) => {
+			const { response } = await dialog.showMessageBox({
+				type: 'question',
+				buttons: ['Allow', 'Don’t Allow'],
+				defaultId: 0,
+				cancelId: 1,
+				message: `${installed.name} wants to: ${permissionLabels[kind]}`,
+				detail: `${origin}\n\nKody remembers your answer on this computer. Change it any time from the App menu.`,
+			})
+			return response === 0
+		},
+		setBadge: (count) => app.setBadgeCount(count),
 		kodyOrigin: appOrigin,
 		allowLoopback: appOrigin !== productionOrigin,
 		openBrowser: (url) =>
@@ -179,6 +193,14 @@ ipcMain.handle('kody:package-apps', async (event, action, input) => {
 			throw new Error('Unknown apps action.')
 	}
 })
+// The app preload asks synchronously whether its document gets the bridge.
+ipcMain.on('kody:package-app-bridge', (event, origin) => {
+	event.returnValue =
+		packageApps?.bridgeAllowed(event.sender, event.senderFrame, origin) === true
+})
+ipcMain.handle('kody:package-app', (event, action, ...args) =>
+	installedApps().call(event.sender, event.senderFrame, action, args),
+)
 /** Opens an installed app for a `kody://app/...` link; false when not installed. */
 function openPackageAppLink(value) {
 	const link = typeof value === 'string' ? parsePackageAppLink(value) : value
@@ -487,9 +509,11 @@ async function machineRunner(command) {
 	}
 }
 function updateMenu() {
+	const packageAppMenu = packageApps?.menuFor(BrowserWindow.getFocusedWindow())
 	Menu.setApplicationMenu(
 		Menu.buildFromTemplate([
 			...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+			...(packageAppMenu ? [packageAppMenu] : []),
 			{
 				label: 'File',
 				submenu: [
@@ -633,6 +657,38 @@ async function showApp(path, window = currentWindow()) {
 	if (!quitting && window && !window.isDestroyed()) showWindow(window, path)
 	return window
 }
+// One policy for the shared session, set before any window opens: installed
+// app windows follow their local grants, the Kody shell may write the clipboard.
+function configurePermissions(kodySession) {
+	kodySession.setPermissionRequestHandler(
+		(contents, permission, callback, details) => {
+			const installed = packageApps?.permissionRequest(
+				contents,
+				permission,
+				details,
+			)
+			if (installed !== undefined) {
+				void Promise.resolve(installed).then(callback, () => callback(false))
+				return
+			}
+			callback(
+				permission === 'clipboard-sanitized-write' &&
+					details.isMainFrame &&
+					isCurrentAppUrl(details.requestingUrl) &&
+					isCurrentAppUrl(contents.getURL()),
+			)
+		},
+	)
+	kodySession.setPermissionCheckHandler(
+		(contents, permission, origin, details) =>
+			packageApps?.permissionCheck(contents, permission, origin) ??
+			(permission === 'clipboard-sanitized-write' &&
+				details.isMainFrame &&
+				isCurrentAppUrl(origin) &&
+				!!contents &&
+				isCurrentAppUrl(contents.getURL())),
+	)
+}
 function quitWithoutWindows() {
 	if (
 		process.platform !== 'darwin' &&
@@ -738,24 +794,6 @@ async function createWindow(path = '/account') {
 	window.on('focus', () => {
 		lastWindow = window
 	})
-	window.webContents.session.setPermissionRequestHandler(
-		(contents, permission, callback, details) => {
-			callback(
-				permission === 'clipboard-sanitized-write' &&
-					details.isMainFrame &&
-					isCurrentAppUrl(details.requestingUrl) &&
-					isCurrentAppUrl(contents.getURL()),
-			)
-		},
-	)
-	window.webContents.session.setPermissionCheckHandler(
-		(contents, permission, origin, details) =>
-			permission === 'clipboard-sanitized-write' &&
-			details.isMainFrame &&
-			isCurrentAppUrl(origin) &&
-			!!contents &&
-			isCurrentAppUrl(contents.getURL()),
-	)
 	window.webContents.on('will-attach-webview', (event) =>
 		event.preventDefault(),
 	)
@@ -868,6 +906,7 @@ else {
 		void showApp()
 	})
 	app.on('activate', () => showApp())
+	app.on('browser-window-focus', () => updateMenu())
 	app.on('window-all-closed', quitWithoutWindows)
 	app.on('before-quit', (event) => {
 		loginAttempt?.cancel()
@@ -893,6 +932,7 @@ else {
 				dialog,
 				changed: updateMenu,
 			})
+			configurePermissions(session.fromPartition('persist:kody'))
 			loadState()
 			presence.start()
 			updateMenu()
