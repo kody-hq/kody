@@ -17,7 +17,7 @@ import { webhookEndpointNotOffSql } from './repo.ts'
  */
 export const webhookOwnerScanConcurrency = 8
 const ownerPageSize = 1_000
-/** RunLog keeps at most 2,000 runs per owner: 20 full pages. */
+/** Twenty full pages cover RunLog's 2,000-run retention target. */
 const maxPagesPerQuery = 20
 
 export type WebhookOwner = {
@@ -26,9 +26,8 @@ export type WebhookOwner = {
 }
 
 /**
- * Every owner with a webhook URL. `live` keeps only not-off, undeleted
- * endpoints (what can still receive deliveries); `all` also includes owners
- * whose endpoints were turned off or deleted, whose RunLog history remains.
+ * Owners with endpoint rows. `live` requires an undeleted endpoint that is
+ * not off; `all` includes owners whose endpoint rows are off or soft-deleted.
  */
 export async function listWebhookOwners(input: {
 	db: D1Database
@@ -99,8 +98,9 @@ export function toWebhookDelivery(run: RunRecord): WebhookDelivery {
 }
 
 /**
- * Newest-first webhook deliveries for one owner. `stopWhen` ends the walk
- * early; `truncated` means the page cap was hit before the window ended.
+ * Newest-first webhook deliveries for one owner, skipping running and
+ * synthetic records. `stopWhen` ends the walk after including the match;
+ * `truncated` means a cursor remained after the last allowed page.
  */
 export async function readWebhookDeliveries(input: {
 	env: Env

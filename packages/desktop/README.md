@@ -88,10 +88,40 @@ Node-API dependencies keep their normal Node build, not an Electron rebuild.
 
 ## Installed package apps
 
-Behind the `desktop-install-package-apps` flag, the package page shows
-**Install** inside this shell. Before installing, the shell asks `/session` with
-`?org=<owner>` and installs only when the flag is on for that package owner's
-org, so it trusts the same session flag as the page. Installing a package app:
+Install a hosted package app from its package page to give it its own window and
+launcher. In Kody, **Install** opens the confirmation dialog. In a browser, it
+offers **Open in Kody** or **Download Kody**.
+
+See [Install flow and links](#install-flow-and-links) for availability and deep
+links, [Local windows and launchers](#local-windows-and-launchers) for what gets
+installed, or [Installed app APIs](#installed-app-apis) for the bridge available
+to the app.
+
+### Install flow and links
+
+The [package page control](../worker/start/components/package-app-install.tsx)
+shows **Install** when the package owner's org has the
+`desktop-install-package-apps` flag. The main Kody window's
+[`window.kodyDesktop.apps` bridge](./preload.cjs) provides `install`, `list`,
+and `uninstall`. When the bridge is absent, the page uses the browser handoff.
+Before installing, the [shell checks the owner's session flag](./main.cjs)
+through `/session?org=<owner>` and the
+[install handler](./package-app-windows.cjs) rejects the request unless the flag
+is on.
+
+`kody://app/<owner>/<package>/<path>` opens that path in an installed app, for
+launchers, notification clicks, and links. The scheme is registered from
+Info.plist on macOS, from the MSIX manifest on Windows, and on first launch on
+Linux. When the app is not installed and the flag is on for the owner's org, the
+link opens the package page with `?install=desktop` in its own window, which
+opens the Install dialog; with the flag off the link only shows Kody. A
+signed-out shell shows sign-in and offers the install after it. In a browser,
+the package page's Install dialog offers **Open in Kody** (the same `kody://`
+link) or **Download Kody** through `/download`.
+
+### Local windows and launchers
+
+Installing a package app:
 
 - Saves it to `package-apps.json` in the app's user data folder, with its
   remembered window bounds. Nothing is uploaded to the Kody account.
@@ -106,15 +136,7 @@ org, so it trusts the same session flag as the page. Installing a package app:
   window, not the dashboard.
 - When the app is gone or access ends, the window offers Retry or Uninstall.
 
-`kody://app/<owner>/<package>/<path>` opens that path in an installed app, for
-launchers, notification clicks, and links. The scheme is registered from
-Info.plist on macOS, from the MSIX manifest on Windows, and on first launch on
-Linux. When the app is not installed and the flag is on for the owner's org, the
-link opens the package page with `?install=desktop` in its own window, which
-opens the Install dialog; with the flag off the link only shows Kody. A
-signed-out shell shows sign-in and offers the install after it. In a browser,
-the package page's Install dialog offers **Open in Kody** (the same `kody://`
-link) or **Download Kody** through `/download`.
+### Installed app APIs
 
 Installed windows load `package-app-preload.cjs`, which exposes
 `window.kodyDesktopApp` only to the main frame on the app's own origin while the

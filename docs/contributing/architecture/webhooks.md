@@ -277,3 +277,13 @@ signing secret are injected server-side and never returned to the model.
 Delivery history is in the per-user `RunLog` Durable Object (`webhook` surface),
 not in D1. See [Data storage](./data-storage.md) and
 [Run records](./run-records.md).
+
+Fleet scans use
+[delivery outcomes](../../../packages/worker/src/webhooks/delivery-outcomes.ts)
+to page through each owner's RunLog, newest first, skipping running and
+synthetic records. The scan reports truncation if a cursor remains after 20
+pages. The rejection report uses the `all` owner scope, which includes owners
+with off or soft-deleted endpoint rows. Auth regression alerts use the `live`
+owner scope, which requires an undeleted endpoint that is not off. Both use the
+[shared concurrency helper](../../../packages/worker/src/concurrency.ts) with up
+to eight owners in flight per scan.

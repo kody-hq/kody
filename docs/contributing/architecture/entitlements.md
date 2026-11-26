@@ -1504,33 +1504,40 @@ collection for business customers; when an existing `customer` is passed,
 Sessions never set `allow_promotion_codes`. Stripe can restrict a coupon to a
 product but not a price, and monthly and annual Pro are one product, so a
 one-month code typed on Stripe's page would zero out a year. Customers type the
-code on the Kody billing page instead
-(`packages/worker/src/billing/checkout-promo.ts`). The code is looked up
-(`GET /v1/promotion_codes?code=…&active=true`), checked for expiry and
-redemptions, checked against its billing interval, and attached as
-`discounts[0][promotion_code]`. The promotion code's `kody_interval` metadata
-names the interval: `year` codes work only on annual checkout, `month` codes
-only on monthly checkout, and an untagged code is monthly. A mismatch gets 400
-naming the code's interval ("That promo code is for annual billing. Choose
+code on the Kody billing page instead. The
+[`resolveCheckoutPromotionCode` resolver](../../../packages/worker/src/billing/checkout-promo.ts)
+looks up the code (`GET /v1/promotion_codes?code=…&active=true`) and checks
+expiry, redemptions, and the billing interval. Checkout attaches the validated
+code as `discounts[0][promotion_code]`. The promotion code's `kody_interval`
+metadata names the interval: `year` codes work only on annual checkout, `month`
+codes only on monthly checkout, and an untagged code is monthly. A mismatch gets
+400 naming the code's interval ("That promo code is for annual billing. Choose
 annual to use it."); an unrecognized tag is treated as an invalid code. Codes
 are for new subscriptions only; a customer with a plan-retaining subscription
-gets 409. Each person can claim one promo code across all of their organizations
-(`billing_promo_claims`). A promotion code can narrow that with
-`kody_claim_scope: campaign` metadata (works with either `kody_interval`): only
-an earlier claim or live reservation of the same campaign or the same code
-blocks it. The campaign is `kody_campaign` (trimmed, case-insensitive),
-defaulting to the promotion code itself, so codes sharing a `kody_campaign` are
-one claim per person between them. Claims of untagged codes still count against
-every later untagged code, campaign claims included. An unrecognized
-`kody_claim_scope`, or `kody_campaign` without `kody_claim_scope: campaign`,
-gets 400 "That promo code isn't set up correctly. Please contact support." and a
-`billing_checkout_promo_claim_scope_unrecognized` error log. A blocked campaign
-code gets 409 "You have already claimed this promotion. It can be claimed once
-per person, across all of your organizations." Claims are keyed by person and
-claim key (`lifetime` or `campaign:<id>`); the check and the reservation are one
-statement, so concurrent checkouts cannot both claim. There is no public Payment
-Link path: checkout requires a signed-in session so unauthenticated card-testing
-is not possible. `GET /@<slug>/-/billing/success` verifies `client_reference_id`
+gets 409. The resolver returns the Stripe promotion code ID and a claim key. The
+[reservation check](../../../packages/worker/src/billing/checkout-promo.ts) uses
+the person's ID across all of their organizations:
+
+- With no claim-scope tag, the key is `lifetime`. Any earlier claim or live
+  reservation blocks the code, including campaign claims.
+- With `kody_claim_scope: campaign` (for either billing interval), the key is
+  `campaign:<id>`. Only an earlier claim or live reservation of the same
+  campaign or the same code blocks it. The ID is `kody_campaign` (trimmed,
+  case-insensitive), or the Stripe promotion code ID when no campaign is set.
+
+An unrecognized `kody_claim_scope`, or `kody_campaign` without
+`kody_claim_scope: campaign`, gets 400 "That promo code isn't set up correctly.
+Please contact support." and a `billing_checkout_promo_claim_scope_unrecognized`
+error log. A blocked campaign code gets 409 "You have already claimed this
+promotion. It can be claimed once per person, across all of your organizations."
+The
+[reservation check and insert](../../../packages/worker/src/billing/checkout-promo.ts)
+are one statement, so concurrent checkouts for the same person and claim key
+cannot both reserve it.
+
+A [signed-in session](../../../packages/worker/start/server/mutation-context.ts)
+is required to start website checkout. `GET /@<slug>/-/billing/success`
+[verifies the org's signed `client_reference_id`](../../../packages/worker/src/billing/subscription-sync.ts)
 before linking `orgs.stripe_customer_id`, then refreshes `orgs.stripe_plan` and
 renders a thank-you page (Discord invite; connect-your-agent when
 `needsOnboarding`). A successful `stripe_plan` write also best-effort re-syncs
