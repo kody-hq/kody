@@ -13,10 +13,7 @@ import { useActor } from '@xstate/react'
 import { loginState, type AuthFormState } from '#client/routes/login-state.ts'
 import type { LifecycleStateOf } from '@kody-internal/shared/state-machine.ts'
 import { useServerFn } from '@tanstack/react-start'
-import {
-	getHandleFormatError,
-	suggestHandle,
-} from '@kody-internal/shared/handle-rules.ts'
+import { getHandleFormatError } from '@kody-internal/shared/handle-rules.ts'
 import { validateAuthFormFields } from '#client/auth-form-validation.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { fathomEventNames, trackFathomEvent } from '#client/fathom-events.ts'
@@ -109,9 +106,7 @@ export function LoginPage({
 	const [signupEmail, setSignupEmail] = useState('')
 	const usernameAvailability = useUsernameAvailability(
 		mode === 'signup' ? signupUsername : '',
-		{ email: signupEmail },
 	)
-	const usernameTouched = useRef(false)
 	const [confirmedUsername, setConfirmedUsername] = useState<string | null>(
 		null,
 	)
@@ -186,7 +181,6 @@ export function LoginPage({
 			username,
 		})
 		if (clientValidation) {
-			if (clientValidation.field === 'username') usernameTouched.current = true
 			sendFormEvent({
 				type: 'VALIDATION_ERROR',
 				data: { message: clientValidation.message },
@@ -452,17 +446,8 @@ export function LoginPage({
 					confirmedUsername !== null &&
 					confirmedUsername === signupUsername.trim().toLowerCase()
 				}
-				onSignupEmailInput={(value) => {
-					setSignupEmail(value)
-					if (!usernameTouched.current) {
-						const local = value.split('@')[0] ?? ''
-						const suggestion = suggestHandle(local) ?? ''
-						setSignupUsername(suggestion)
-						setConfirmedUsername(null)
-					}
-				}}
+				onSignupEmailInput={setSignupEmail}
 				onSignupUsernameInput={(value) => {
-					usernameTouched.current = true
 					setSignupUsername(value)
 					setConfirmedUsername(null)
 					// Format errors stay in UsernameChoiceField; keep the form

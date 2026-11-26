@@ -100,8 +100,9 @@ function availabilityFromResponse(
 
 /**
  * Live availability for a username draft: idle when empty, invalid on a
- * format problem, otherwise a debounced server check. Fields and forms that
- * pass the same value and seeds share one check.
+ * format problem, otherwise a debounced server check. The check is keyed on
+ * the username alone: seeds only shape suggestions for a taken name, so
+ * editing them (like the email beside the field) never starts a new check.
  */
 export function useUsernameAvailability(
 	value: string,
@@ -110,15 +111,15 @@ export function useUsernameAvailability(
 	const checkAvailability = useServerFn(checkWebsiteUsernameAvailability)
 	const trimmed = value.trim()
 	const formatError = trimmed ? getHandleFormatProblem(trimmed)?.message : null
-	const data = {
-		username: trimmed,
-		email: seeds?.email ?? null,
-		providerUsername: seeds?.providerUsername ?? null,
-		displayName: seeds?.displayName ?? null,
-	}
 	const query = useQuery({
-		queryKey: ['username-availability', data],
+		queryKey: ['username-availability', trimmed],
 		queryFn: async ({ signal }) => {
+			const data = {
+				username: trimmed,
+				email: seeds?.email ?? null,
+				providerUsername: seeds?.providerUsername ?? null,
+				displayName: seeds?.displayName ?? null,
+			}
 			await waitForDebounce(availabilityDebounceMs, signal)
 			try {
 				return availabilityFromResponse(
