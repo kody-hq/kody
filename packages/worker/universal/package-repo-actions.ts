@@ -60,7 +60,7 @@ export type PackageAppInstallTarget = {
 	iconUrl: string | null
 	/** `kody.app.desktop.icon` on the app origin, for the launcher. */
 	installIconUrl?: string | null
-	/** Declared menu bar offer. Null clears it; omission preserves it. */
+	/** Null clears a publisher-declared item, not an item set by `menuBar.set`. Omission preserves either. */
 	menuBar?: { path: string; tooltip?: string } | null
 }
 
