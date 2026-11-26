@@ -145,7 +145,9 @@ export const repoSessionMockModule = (() => {
 		rawCommit: vi.fn<typeof isomorphicGit.commit>(
 			async () => 'commit-orphan-root',
 		),
-		rawPull: vi.fn<typeof isomorphicGit.pull>(async () => undefined),
+		rawFetch: vi.fn<typeof isomorphicGit.fetch>(),
+		rawMerge: vi.fn<typeof isomorphicGit.merge>(),
+		rawCheckout: vi.fn<typeof isomorphicGit.checkout>(async () => undefined),
 		rawResolveRef: vi.fn<typeof isomorphicGit.resolveRef>(
 			async () => gitState.headCommit,
 		),
@@ -354,7 +356,9 @@ export function restoreRepoSessionMockBaseline() {
 		mocks.getSavedPackageById,
 		mocks.rawPush,
 		mocks.rawCommit,
-		mocks.rawPull,
+		mocks.rawFetch,
+		mocks.rawMerge,
+		mocks.rawCheckout,
 		mocks.rawResolveRef,
 		mocks.rawWriteRef,
 		mocks.workspaceExists,
@@ -386,6 +390,15 @@ export function restoreRepoSessionMockBaseline() {
 		createExternalClone(gitState.headCommit),
 	)
 	mocks.rawResolveRef.mockImplementation(async () => gitState.headCommit)
+	mocks.rawFetch.mockImplementation(async () => ({
+		defaultBranch: 'refs/heads/main',
+		fetchHead: 'commit-source-head',
+		fetchHeadDescription: "branch 'main' of origin",
+	}))
+	mocks.rawMerge.mockImplementation(async () => ({
+		oid: 'commit-merged',
+		mergeCommit: true,
+	}))
 	mocks.rawCommit.mockImplementation(async () => {
 		gitState.headCommit = 'commit-orphan-root'
 		return gitState.headCommit

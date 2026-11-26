@@ -26,6 +26,7 @@ import {
 	sessionRow,
 	setCommonSessionFixtures,
 } from '#worker/test-support/repo-session-do.ts'
+import { isRepoSessionRebaseStoppedMessage } from './repo-session-caller-error.ts'
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<typeof CloudflareWorkers>()
@@ -126,8 +127,9 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 			commit: (...args: Parameters<typeof git.commit>) =>
 				mockModule.rawCommit(...args),
 			readBlob: mockModule.readBlob,
-			pull: (...args: Parameters<typeof git.pull>) =>
-				mockModule.rawPull(...args),
+			fetch: mockModule.rawFetch,
+			merge: mockModule.rawMerge,
+			checkout: mockModule.rawCheckout,
 			resolveRef: (...args: Parameters<typeof git.resolveRef>) =>
 				mockModule.rawResolveRef(...args),
 			writeRef: (...args: Parameters<typeof git.writeRef>) =>
@@ -1173,4 +1175,47 @@ test('listPublishedPackageArtifactTargets skips clone for published sessions', a
 		]),
 	)
 	expect(mockModule.git.clone).not.toHaveBeenCalled()
+})
+
+test('rebaseSession commits uncommitted edits before merging so they carry onto the new base', async () => {
+	setCommonSessionFixtures()
+	const repo = repoSession()
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+
+	await repo.rebaseSession(session)
+
+	expect(mockModule.git.commit).toHaveBeenCalledWith(
+		expect.objectContaining({
+			message: 'Save repo session session-1 changes before rebase',
+		}),
+	)
+	expect(mockModule.git.commit.mock.invocationCallOrder[0]!).toBeLessThan(
+		mockModule.rawMerge.mock.invocationCallOrder[0]!,
+	)
+	expect(mockModule.rawCheckout).toHaveBeenCalledWith(
+		expect.objectContaining({ ref: 'commit-merged', noUpdateHead: true }),
+	)
+})
+
+test('rebaseSession reports merge conflicts as a caller error and leaves the session unpushed', async () => {
+	setCommonSessionFixtures()
+	const repo = repoSession()
+	mockModule.rawMerge.mockRejectedValueOnce(
+		Object.assign(new Error('Automatic merge failed'), {
+			code: 'MergeConflictError',
+			data: { filepaths: ['src/client/index.ts'] },
+		}),
+	)
+
+	const error = await repo.rebaseSession(session).then(
+		() => null,
+		(caught: unknown) => caught,
+	)
+
+	expect(error).toBeInstanceOf(Error)
+	expect(isRepoSessionRebaseStoppedMessage((error as Error).message)).toBe(true)
+	expect((error as Error).message).toContain('src/client/index.ts')
+	expect(mockModule.rawCheckout).not.toHaveBeenCalled()
+	expect(mockModule.git.push).not.toHaveBeenCalled()
+	expect(mockModule.updateRepoSession).not.toHaveBeenCalled()
 })

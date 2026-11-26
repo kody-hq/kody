@@ -65214,7 +65214,7 @@ export const capabilityManifest = {
 				{
 					"name": "repoRebaseSession",
 					"domain": "repo",
-					"description": "Rebase a repo session against the latest published source state when the base commit has moved.",
+					"description": "Rebase a repo session against the latest published source state when the base commit has moved. Uncommitted edits are committed first and merged onto the new base. If the source and the session changed the same files in ways git cannot merge, the call fails naming the files; the session keeps your edits committed on its branch at the old base, so open a new session on the latest source and reapply them.",
 					"keywords": [
 						"repo",
 						"rebase",

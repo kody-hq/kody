@@ -129,8 +129,12 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 			commit: (...args: Parameters<typeof git.commit>) =>
 				mockModule.rawCommit(...args),
 			readBlob: mockModule.readBlob,
-			pull: (...args: Parameters<typeof git.pull>) =>
-				mockModule.rawPull(...args),
+			fetch: (...args: Parameters<typeof git.fetch>) =>
+				mockModule.rawFetch(...args),
+			merge: (...args: Parameters<typeof git.merge>) =>
+				mockModule.rawMerge(...args),
+			checkout: (...args: Parameters<typeof git.checkout>) =>
+				mockModule.rawCheckout(...args),
 			resolveRef: (...args: Parameters<typeof git.resolveRef>) =>
 				mockModule.rawResolveRef(...args),
 			writeRef: (...args: Parameters<typeof git.writeRef>) =>

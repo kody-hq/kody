@@ -135,8 +135,9 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 			commit: (...args: Parameters<typeof git.commit>) =>
 				mockModule.rawCommit(...args),
 			readBlob: mockModule.readBlob,
-			pull: (...args: Parameters<typeof git.pull>) =>
-				mockModule.rawPull(...args),
+			fetch: mockModule.rawFetch,
+			merge: mockModule.rawMerge,
+			checkout: mockModule.rawCheckout,
 			resolveRef: (...args: Parameters<typeof git.resolveRef>) =>
 				mockModule.rawResolveRef(...args),
 			writeRef: (...args: Parameters<typeof git.writeRef>) =>
@@ -551,16 +552,14 @@ test('rebaseSession and publishSession use Artifacts username/password auth with
 	const noToken = expect.not.objectContaining({ token: expect.anything() })
 
 	await repo.rebaseSession(session)
+	const fetch = mockModule.rawFetch.mock.calls[0]![0]
+	expect(fetch).toMatchObject({ remote: 'origin', ref: 'main' })
+	expect(fetch.onAuth?.('', {} as never)).toEqual(artifactsAuth)
 	// Merge the source branch into the session branch, never into local main.
-	expect(mockModule.rawPull).toHaveBeenCalledWith(
-		expect.objectContaining({
-			remote: 'origin',
-			ref: 'sessions/session1',
-			remoteRef: 'main',
-		}),
-	)
-	const pull = mockModule.rawPull.mock.calls[0]![0]
-	expect(pull.onAuth?.('', {} as never)).toEqual(artifactsAuth)
+	expect(mockModule.rawMerge.mock.calls[0]![0]).toMatchObject({
+		ours: 'sessions/session1',
+		theirs: 'commit-source-head',
+	})
 	expect(mockModule.git.push).toHaveBeenCalledWith(
 		expect.objectContaining({
 			remote: 'origin',

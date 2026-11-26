@@ -216,6 +216,7 @@ import {
 	isRawWorkspaceEisdirMessage,
 	type RepoSessionDirectoryTargetKind,
 } from './repo-session-caller-error.ts'
+import { mergeSourceIntoSessionBranch } from './repo-session-rebase-merge.ts'
 import {
 	assertPackagePrivateVisibilityChangeAllowed,
 	assertPackageSourceOverwriteAllowed,
@@ -4064,23 +4065,40 @@ class RepoSessionBase extends DurableObject<Env> {
 		)
 		const sessionBranch = sessionRow.session_branch
 		await this.attachHeadToSessionBranch(sessionBranch)
-		// Merge the source branch into the session branch. Pulling with
-		// `ref: <source branch>` would merge into and check out the local source
-		// branch instead, stranding later commits off the session branch.
+		// Uncommitted edits are the agent's in-progress work (publish commits
+		// them too). Commit them first so the merge carries them onto the
+		// latest source instead of a checkout refusing to overwrite them.
+		await this.commitIfDirty(
+			`Save repo session ${sessionRow.id} changes before rebase`,
+		)
 		const { git, http } = await loadIsomorphicGit()
-		const pullAuth = buildArtifactsGitAuth({ token: sessionAccess.token })
-		await git.pull({
+		const fetchAuth = buildArtifactsGitAuth({ token: sessionAccess.token })
+		const { fetchHead } = await git.fetch({
 			fs: this.rawGitFileSystem,
 			http,
 			dir: repoSessionWorkspacePrefix,
 			remote: 'origin',
-			ref: sessionBranch,
-			remoteRef: sessionRow.source_branch,
+			ref: sessionRow.source_branch,
 			singleBranch: true,
-			author: sessionCommitAuthor,
 			onAuth() {
-				return pullAuth
+				return fetchAuth
 			},
+		})
+		if (!fetchHead) {
+			throw new Error(
+				`Source branch "${sessionRow.source_branch}" was not found on the session remote.`,
+			)
+		}
+		// Merge into the session branch, never the local source branch, so
+		// later commits stay on the branch publish pushes.
+		await mergeSourceIntoSessionBranch({
+			git,
+			fs: this.rawGitFileSystem,
+			dir: repoSessionWorkspacePrefix,
+			sessionBranch,
+			sourceBranch: sessionRow.source_branch,
+			sourceCommit: fetchHead,
+			author: sessionCommitAuthor,
 		})
 		const headCommit = await this.getHeadCommit()
 		// Session branches are ephemeral workspace state; pull/merge can rewrite

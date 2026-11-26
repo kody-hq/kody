@@ -44,7 +44,12 @@ inside sessions. For saved packages, use `packageGetGitRemote` when you need
 full git.
 
 Merge drift from the published default branch is handled separately by
-**`repoRebaseSession`**.
+**`repoRebaseSession`**. It commits any uncommitted edits first, then merges the
+latest source into the session branch, so your edits carry onto the new base.
+When the source and the session changed the same files in ways git cannot merge,
+the rebase fails with an error that names the files. The session keeps your
+edits, now committed on its branch at the old base; open a new session on the
+latest source and reapply them.
 
 ### Core edit and git-inspection capabilities
 
