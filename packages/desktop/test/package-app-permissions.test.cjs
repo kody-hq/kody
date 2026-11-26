@@ -44,6 +44,7 @@ class FakeWindow {
 			setWindowOpenHandler: () => {},
 			getURL: () => this.loads.at(-1) ?? '',
 			isLoading: () => false,
+			once: (name, handler) => this.handlers.set(`once:${name}`, [handler]),
 			sent: [],
 			send: (...args) => this.webContents.sent.push(args),
 		}
@@ -375,6 +376,14 @@ test('menu bar, shortcuts, and start at login need their grants and clean up on 
 	await call('start-at-login', true)
 	assert.deepEqual(startAtLogin, [true])
 	assert.equal(store.get('kent', 'weather').menuBar.path, '/menubar')
+	window.destroy()
+	shortcuts.get('CmdOrCtrl+Shift+K')()
+	const reopened = FakeWindow.all.at(-1)
+	assert.deepEqual(reopened.webContents.sent, [])
+	reopened.handlers.get('once:did-finish-load')[0]()
+	assert.deepEqual(reopened.webContents.sent, [
+		['kody:package-app-shortcut', 'CmdOrCtrl+Shift+K'],
+	])
 	await apps.uninstall(app)
 	assert.equal(tray.destroyed, true)
 	assert.equal(shortcuts.size, 0)

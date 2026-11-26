@@ -491,12 +491,14 @@ function createPackageAppWindows(deps) {
 
 	function pressShortcut(app, accelerator) {
 		const key = packageAppKey(app.owner, app.packageName)
-		const window = windows.get(key) ?? open(app, '/')
+		const existing = windows.get(key)
+		const window = existing ?? open(app, '/')
 		const send = () => {
 			if (!window.isDestroyed())
 				window.webContents.send('kody:package-app-shortcut', accelerator)
 		}
-		if (window.webContents.isLoading())
+		// A reopened window starts loading only after the flag check.
+		if (!existing || window.webContents.isLoading())
 			window.webContents.once('did-finish-load', send)
 		else send()
 	}
