@@ -608,15 +608,25 @@ function createPackageAppWindows(deps) {
 	 * Resolves how many apps opened hidden.
 	 */
 	async function startBackground({ atLogin }) {
+		const wanted = store
+			.list()
+			.map((app) => ({
+				app,
+				tray: stillGranted(app, app.menuBar, 'menuBar'),
+				start: atLogin && stillGranted(app, app.startAtLogin, 'startAtLogin'),
+			}))
+			.filter(({ tray, start }) => tray || start)
+		const owners = new Map(
+			[...new Set(wanted.map(({ app }) => app.owner))].map((owner) => [
+				owner,
+				refreshFlag(owner),
+			]),
+		)
 		let opened = 0
-		for (const app of store.list()) {
-			const wantsTray = stillGranted(app, app.menuBar, 'menuBar')
-			const wantsStart =
-				atLogin && stillGranted(app, app.startAtLogin, 'startAtLogin')
-			if (!wantsTray && !wantsStart) continue
-			if (!(await refreshFlag(app.owner))) continue
-			if (wantsTray) showTray(app)
-			if (wantsStart) {
+		for (const { app, tray, start } of wanted) {
+			if (!(await owners.get(app.owner))) continue
+			if (tray) showTray(app)
+			if (start) {
 				open(app, '/', { hidden: true })
 				opened++
 			}

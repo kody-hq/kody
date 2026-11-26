@@ -160,7 +160,10 @@ function installedApps() {
 				? process.env.XDG_CONFIG_HOME
 				: join(app.getPath('home'), '.config')
 			const entry = join(configHome, 'autostart', 'kody-apps.desktop')
-			if (!open) return void fs.promises.rm(entry, { force: true })
+			const failed = (error) =>
+				console.warn(`Kody could not set start at login: ${error.message}`)
+			if (!open)
+				return void fs.promises.rm(entry, { force: true }).catch(failed)
 			void fs.promises
 				.mkdir(join(configHome, 'autostart'), { recursive: true })
 				.then(() =>
@@ -169,9 +172,7 @@ function installedApps() {
 						linuxAutostartEntry(process.env.APPIMAGE ?? process.execPath),
 					),
 				)
-				.catch((error) =>
-					console.warn(`Kody could not set start at login: ${error.message}`),
-				)
+				.catch(failed)
 		},
 		kodyOrigin: appOrigin,
 		allowLoopback: appOrigin !== productionOrigin,
@@ -1004,9 +1005,12 @@ else {
 				process.argv.includes(startHiddenArgument) ||
 				(process.platform === 'darwin' &&
 					app.getLoginItemSettings().wasOpenedAtLogin)
-			const hiddenApps = await installedApps().startBackground({ atLogin })
+			// Login items exist only for installed apps, so a login start never
+			// shows the dashboard, even when no app could open.
+			const background = installedApps().startBackground({ atLogin })
+			if (atLogin) await background
 			const [launchLink, ...moreLinks] = appLinks.start()
-			if ((!openedApps.length && !(atLogin && hiddenApps)) || launchLink)
+			if ((!openedApps.length && !atLogin) || launchLink)
 				await showApp(launchLink)
 			for (const path of moreLinks) void newWindow(path)
 			await presence.onboard()
