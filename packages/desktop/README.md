@@ -140,6 +140,11 @@ origin, and the flag again on every call. The bridge offers:
 - `startAtLogin.set(on)` (needs `startAtLogin`). At login Kody opens the granted
   apps hidden, without the dashboard or a sign-in.
 
+An app can declare install settings in `kody.app.desktop` in its `package.json`:
+`icon`, a path the app serves for the launcher icon, and `menuBar`,
+`{ path, tooltip }` for a menu-bar page offered right after install. Kody asks
+for the menu bar permission once and adds the item only when granted.
+
 Permissions start off, are asked once in a native dialog, and are saved in
 `package-apps.json` per app and origin. They survive publishes, reinstalls, and
 Kody sign-in or sign-out. The **App** menu of an installed window changes them,

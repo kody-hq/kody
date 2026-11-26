@@ -66,7 +66,35 @@ function parseInstallRequest(value, { kodyOrigin, allowLoopback = false }) {
 		String(value.name ?? '')
 			.trim()
 			.slice(0, 100) || packageName
-	return { owner, packageName, name, appOrigin, openUrl: openUrl.href, iconUrl }
+	const app = {
+		owner,
+		packageName,
+		name,
+		appOrigin,
+		openUrl: openUrl.href,
+		iconUrl,
+	}
+	// `kody.app.desktop` settings: a launcher icon the app serves and a
+	// menu-bar page offered after install.
+	if (value.installIconUrl) {
+		const icon = new URL(String(value.installIconUrl), appOrigin)
+		if (icon.origin === appOrigin) app.installIconUrl = icon.href
+	}
+	const menuBarPath = value.menuBar?.path
+	if (
+		typeof menuBarPath === 'string' &&
+		menuBarPath.length <= 512 &&
+		menuBarPath.startsWith('/') &&
+		!menuBarPath.startsWith('//') &&
+		!/[\\\s]/.test(menuBarPath)
+	) {
+		const tooltip = value.menuBar.tooltip
+		app.declaredMenuBar = {
+			path: menuBarPath,
+			tooltip: typeof tooltip === 'string' ? tooltip.slice(0, 120) : null,
+		}
+	}
+	return app
 }
 
 function isHandoffUrl(app, value, kodyOrigin) {

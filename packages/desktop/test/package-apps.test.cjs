@@ -101,6 +101,32 @@ test('install requests stay on the app origin or the matching Kody handoff', () 
 		).iconUrl,
 		null,
 	)
+	const declared = parseInstallRequest(
+		{
+			...app,
+			installIconUrl: '/icons/icon-512.png',
+			menuBar: { path: '/menubar', tooltip: 'Now' },
+		},
+		{ kodyOrigin },
+	)
+	assert.equal(
+		declared.installIconUrl,
+		'https://weather--kent.kody.run/icons/icon-512.png',
+	)
+	assert.deepEqual(declared.declaredMenuBar, {
+		path: '/menubar',
+		tooltip: 'Now',
+	})
+	const foreign = parseInstallRequest(
+		{
+			...app,
+			installIconUrl: 'https://evil.example/icon.png',
+			menuBar: { path: 'https://evil.example/' },
+		},
+		{ kodyOrigin },
+	)
+	assert.equal(foreign.installIconUrl, undefined)
+	assert.equal(foreign.declaredMenuBar, undefined)
 	for (const bad of [
 		{ appOrigin: 'http://weather--kent.kody.run' },
 		{ appOrigin: kodyOrigin },

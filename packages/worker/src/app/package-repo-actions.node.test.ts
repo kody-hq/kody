@@ -27,7 +27,26 @@ vi.mock('#app/package-app-owner.ts', () => ({
 
 vi.mock('#worker/package-invocations/module-artifacts.ts', () => ({
 	resolveSavedPackageForPackageAppSlug: async () => ({
-		savedPackage: { id: 'pkg-demo', hasApp: true },
+		savedPackage: { id: 'pkg-demo', hasApp: true, sourceId: 'src-demo' },
+	}),
+}))
+
+const desktopManifest = vi.hoisted(() => ({
+	desktop: null as Record<string, unknown> | null,
+}))
+
+vi.mock('#worker/package-registry/source.ts', () => ({
+	loadPackageManifestBySourceId: async () => ({
+		manifest: {
+			kody: {
+				app: {
+					entry: './src/app.ts',
+					...(desktopManifest.desktop
+						? { desktop: desktopManifest.desktop }
+						: {}),
+				},
+			},
+		},
 	}),
 }))
 
@@ -202,7 +221,19 @@ test('install target follows Open app onto the hosted app origin', async () => {
 		name: '@pkg-owner/demo-app',
 		appOrigin: 'https://demo-app--pkg-owner.kody.run',
 		iconUrl: '/community/listing-1/icon/abc1234567890',
+		installIconUrl: null,
+		menuBar: null,
 	})
+	desktopManifest.desktop = {
+		icon: '/icons/icon-512.png',
+		menuBar: { path: '/menubar', tooltip: 'Demo now' },
+	}
+	const declared = await buildPackageRepoActionsForPage(page, env)
+	expect(declared.packageAppInstall).toMatchObject({
+		installIconUrl: 'https://demo-app--pkg-owner.kody.run/icons/icon-512.png',
+		menuBar: { path: '/menubar', tooltip: 'Demo now' },
+	})
+	desktopManifest.desktop = null
 	publicLocation.hostedUrl = null
 	const inline = await buildPackageRepoActionsForPage(page, env)
 	expect(inline.packageAppInstall).toBeNull()

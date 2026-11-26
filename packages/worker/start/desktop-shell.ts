@@ -32,6 +32,8 @@ type DesktopPackageAppInstall = {
 	openUrl: string
 	appOrigin: string
 	iconUrl: string | null
+	installIconUrl?: string | null
+	menuBar?: { path: string; tooltip?: string } | null
 }
 type DesktopInstalledPackageApp = {
 	owner: string
