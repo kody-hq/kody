@@ -123,6 +123,7 @@ function createPackageAppWindows(deps) {
 			void offerMenuBar(saved, declaredMenuBar).catch((error) => {
 				console.warn(`Kody could not add the menu-bar item: ${error.message}`)
 			})
+		else if (saved.menuBar?.declared) removeTray(saved)
 		return {
 			owner: saved.owner,
 			packageName: saved.packageName,
@@ -130,7 +131,11 @@ function createPackageAppWindows(deps) {
 		}
 	}
 
-	/** The `kody.app.desktop.icon` the app serves, else the package icon. */
+	/**
+	 * The `kody.app.desktop.icon` the app serves, else the package icon.
+	 * Permanent: a private app's own icon needs its app session, which only
+	 * exists after the Open app handoff, so the package icon stays the fallback.
+	 */
 	async function launcherIcon(app) {
 		for (const url of [app.installIconUrl, app.iconUrl]) {
 			if (!url) continue
@@ -146,15 +151,22 @@ function createPackageAppWindows(deps) {
 
 	/**
 	 * A declared `kody.app.desktop.menuBar` asks for the menu bar permission
-	 * once, then adds the item unless the app already set its own.
+	 * once, then adds or updates the item unless the app set its own with
+	 * `menuBar.set`.
 	 */
 	async function offerMenuBar(app, declared) {
 		const origin = app.appOrigin
 		if ((await gate.request(app, origin, 'menuBar')) !== 'granted') return
 		const current = store.get(app.owner, app.packageName)
-		if (!current || current.menuBar) return
-		const menuBar = { ...declared, origin, appOrigin: current.appOrigin }
-		store.put({ ...current, menuBar })
+		if (!current || (current.menuBar && !current.menuBar.declared)) return
+		removeTray(current)
+		const menuBar = {
+			...declared,
+			declared: true,
+			origin,
+			appOrigin: current.appOrigin,
+		}
+		store.put({ ...store.get(app.owner, app.packageName), menuBar })
 		showTray(store.get(app.owner, app.packageName))
 	}
 

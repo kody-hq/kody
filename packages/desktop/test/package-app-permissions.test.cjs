@@ -520,3 +520,24 @@ test('a declined declared menu bar adds nothing and is not asked again', async (
 	assert.equal(store.get('kent', 'weather').menuBar, undefined)
 	await apps.uninstall(app)
 })
+
+test('a changed or dropped declared menu bar follows the publisher; a runtime one stays', async () => {
+	const { apps, window, asked, store } = await setup({ answers: [true] })
+	store.remove('kent', 'weather')
+	const install = async (menuBar) => {
+		await apps.install({ ...app, ...(menuBar ? { menuBar } : {}) })
+		await new Promise((resolve) => setImmediate(resolve))
+	}
+	await install({ path: '/menubar' })
+	await install({ path: '/tray' })
+	assert.equal(store.get('kent', 'weather').menuBar.path, '/tray')
+	await install(null)
+	assert.equal(store.get('kent', 'weather').menuBar, null)
+	const contents = FakeWindow.all.at(-1).webContents
+	await apps.call(contents, contents.mainFrame, 'menu-bar-set', ['/mine'])
+	await install({ path: '/menubar' })
+	assert.equal(store.get('kent', 'weather').menuBar.path, '/mine')
+	assert.equal(asked.length, 1)
+	assert.ok(window)
+	await apps.uninstall(app)
+})
