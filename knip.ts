@@ -39,6 +39,7 @@ export default defineConfig({
 			entry: [
 				'cli-host.cjs',
 				'preload.cjs',
+				'package-app-preload.cjs',
 				'electron-builder*.cjs',
 				'test/**/*.cjs',
 			],

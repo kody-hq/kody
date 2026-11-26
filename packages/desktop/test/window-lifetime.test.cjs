@@ -125,6 +125,12 @@ function fixture(platform = 'darwin', background = false) {
 				},
 				buildFromTemplate: (value) => value,
 			},
+			session: {
+				fromPartition: () => ({
+					setPermissionRequestHandler() {},
+					setPermissionCheckHandler() {},
+				}),
+			},
 			clipboard: {
 				writeText(value) {
 					mocks.copiedAddress = value
@@ -169,6 +175,7 @@ function fixture(platform = 'darwin', background = false) {
 		'./package-app-links.cjs': require('../package-app-links.cjs'),
 		'./package-apps.cjs': require('../package-apps.cjs'),
 		'./package-app-windows.cjs': require('../package-app-windows.cjs'),
+		'./package-app-permissions.cjs': require('../package-app-permissions.cjs'),
 		'./runner.cjs': {
 			Runner: class extends EventEmitter {
 				constructor() {

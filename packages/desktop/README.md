@@ -96,16 +96,34 @@ org, so it trusts the same session flag as the page. Installing a package app:
 - Saves it to `package-apps.json` in the app's user data folder, with its
   remembered window bounds. Nothing is uploaded to the Kody account.
 - Opens it in its own sandboxed window on the app's hosted origin, sharing the
-  Kody session so the Open app handoff signs it in. The window has no preload,
-  so app pages and frames get no desktop bridge. Top-level navigation stays on
-  the app origin (plus the Open app handoff and sign-in pages); other links and
-  `window.open` go to the default browser.
+  Kody session so the Open app handoff signs it in. Top-level navigation stays
+  on the app origin (plus the Open app handoff and sign-in pages); other links
+  and `window.open` go to the default browser.
 - Creates a launcher that opens `kody://app/<owner>/<package>`: an `.app` in
   `~/Applications/Kody Apps/` on macOS, a Start Menu shortcut in `Kody Apps`
   with its own AppUserModelID on Windows, and a `.desktop` entry in
   `~/.local/share/applications` on Linux. A launcher opens only that app's
   window, not the dashboard.
 - When the app is gone or access ends, the window offers Retry or Uninstall.
+
+Installed windows load `package-app-preload.cjs`, which exposes
+`window.kodyDesktopApp` only to the main frame on the app's own origin while the
+flag is on for the owner's org. The main process checks the sending frame, the
+origin, and the flag again on every call. The bridge offers:
+
+- `permissions.query(kind)` and `permissions.request(kind)`, resolving
+  `granted`, `denied`, `prompt`, or `unavailable` for kinds not supported yet.
+- Web `Notification`, after `notifications` is granted. A notification created
+  with `{ data: { path } }` focuses the app and opens that path when clicked.
+- `badge.set(count)` (needs `notifications`), `window.show()`, `hide()`,
+  `focus()`, `setFloating(on)` (needs `floating`), and `window.open(path)` for
+  up to eight extra windows on the same app.
+
+Permissions start off, are asked once in a native dialog, and are saved in
+`package-apps.json` per app and origin. They survive publishes, reinstalls, and
+Kody sign-in or sign-out. The **App** menu of an installed window changes them,
+resets them, or uninstalls the app. Nothing reaches files, commands, or
+credentials.
 
 ## Background mode
 
