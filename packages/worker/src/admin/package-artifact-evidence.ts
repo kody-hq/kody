@@ -1,5 +1,5 @@
 import type { JobRecord } from '@kody-internal/shared/jobs/types.ts'
-import { mapWithConcurrency } from '#worker/admin/insights-runlog-snapshot.ts'
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import {
 	resolvePackageForProvenance,
 	type PackageProvenanceTarget,

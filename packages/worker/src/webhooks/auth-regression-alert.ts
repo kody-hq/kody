@@ -1,8 +1,8 @@
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import * as Sentry from '@sentry/cloudflare'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	listWebhookOwners,
-	mapWithConcurrency,
 	readWebhookDeliveries,
 	webhookOwnerScanConcurrency,
 	type WebhookDelivery,

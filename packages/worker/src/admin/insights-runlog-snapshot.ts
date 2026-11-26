@@ -3,6 +3,7 @@
  * reads this instead of fanning out per-user Durable Object RPCs.
  */
 
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { RunLogAdminInsightsSnapshot } from '#worker/run-records/admin-insights-snapshot.ts'
 import { getAdminInsightsSnapshot } from '#worker/run-records/service.ts'
@@ -269,29 +270,6 @@ export function hoursFromVerifiedToActivation(
 	const hours = (activatedMs - verifiedMs) / hourMs
 	if (!Number.isFinite(hours) || hours < 0) return null
 	return hours
-}
-
-export async function mapWithConcurrency<T, R>(
-	items: ReadonlyArray<T>,
-	concurrency: number,
-	mapper: (item: T) => Promise<R>,
-): Promise<Array<R>> {
-	if (items.length === 0) return []
-	const limit = Math.max(1, Math.min(concurrency, items.length))
-	const results: Array<R | undefined> = Array.from({ length: items.length })
-	let nextIndex = 0
-	await Promise.all(
-		Array.from({ length: limit }, async () => {
-			while (nextIndex < items.length) {
-				const index = nextIndex
-				nextIndex += 1
-				const item = items[index]
-				if (item === undefined) return
-				results[index] = await mapper(item)
-			}
-		}),
-	)
-	return results as Array<R>
 }
 
 /** Median of an ascending list. Even-length lists average the middle pair. */

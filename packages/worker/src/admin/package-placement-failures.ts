@@ -7,7 +7,7 @@
  */
 
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { mapWithConcurrency } from '#worker/admin/insights-runlog-snapshot.ts'
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import { listPackageCodemodRunItems } from '#worker/package-codemods/ledger.ts'
 import {
 	packageFailureSummaryMaxPackageIds,

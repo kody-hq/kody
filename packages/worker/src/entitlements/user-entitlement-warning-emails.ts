@@ -1,3 +1,4 @@
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import { utcDayKey, utcMonthKey } from '@kody-internal/shared/date-keys.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -829,25 +830,4 @@ export async function listUsersForEntitlementWarningSweep(
 		if (byUserId.size >= userEntitlementWarningSweepLimit) break
 	}
 	return [...byUserId.values()]
-}
-
-async function mapWithConcurrency<T>(
-	items: ReadonlyArray<T>,
-	concurrency: number,
-	mapper: (item: T) => Promise<void>,
-): Promise<void> {
-	if (items.length === 0) return
-	const limit = Math.max(1, Math.min(concurrency, items.length))
-	let nextIndex = 0
-	await Promise.all(
-		Array.from({ length: limit }, async () => {
-			while (nextIndex < items.length) {
-				const index = nextIndex
-				nextIndex += 1
-				const item = items[index]
-				if (item === undefined) return
-				await mapper(item)
-			}
-		}),
-	)
 }

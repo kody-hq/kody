@@ -8,6 +8,7 @@ import {
 	createKvCachifiedCache,
 	derivedCacheKeyPrefix,
 } from '#worker/kv-cachified.ts'
+import { deleteKvKeys } from '#worker/kv-delete.ts'
 import {
 	processCommunityIcon,
 	renderCommunityIconFallbackPng,
@@ -185,11 +186,11 @@ export async function deleteIdentityIconAssets(input: {
 				prefix,
 				cursor: kvCursor,
 			})
-			await Promise.all(
+			await deleteKvKeys(
+				input.env.BUNDLE_ARTIFACTS_KV,
 				page.keys
 					.map((key) => key.name)
-					.filter((name) => !keptKvKeys.has(name))
-					.map((name) => input.env.BUNDLE_ARTIFACTS_KV.delete(name)),
+					.filter((name) => !keptKvKeys.has(name)),
 			)
 			kvCursor = page.list_complete ? undefined : page.cursor
 		} while (kvCursor)
