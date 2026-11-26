@@ -243,6 +243,9 @@ function fixture(platform = 'darwin', background = false) {
 		signOut: () => {
 			signedIn = false
 		},
+		signIn: () => {
+			signedIn = true
+		},
 		start: async () => {
 			ready()
 			await Promise.resolve()
@@ -647,7 +650,7 @@ test('a kody://app link for an app that is not installed offers to install it', 
 	])
 })
 
-test('a signed-out shell keeps the dashboard for a kody://app install link', async () => {
+test('a signed-out shell offers a kody://app install link after desktop sign-in', async () => {
 	const f = fixture()
 	await f.start()
 	await f.finish()
@@ -658,6 +661,14 @@ test('a signed-out shell keeps the dashboard for a kody://app install link', asy
 	await new Promise(setImmediate)
 	assert.equal(f.windows.length, 1)
 	assert.deepEqual(f.windows[0].loads, ['https://kody.codes/account'])
+	const pending = f.ipc('authentication', f.windows[0], 'login')
+	f.signIn()
+	f.finishLogin()
+	await pending
+	assert.equal(
+		f.windows[0].loads.at(-1),
+		'https://kody.codes/@kent/weather?install=desktop',
+	)
 })
 
 test('with the flag off a kody://app install link only shows Kody', async () => {
