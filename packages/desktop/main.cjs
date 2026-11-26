@@ -52,7 +52,11 @@ const {
 	packageAppLinkFromArgv,
 	parsePackageAppLink,
 } = require('./package-app-links.cjs')
-const { PackageAppStore, packageAppStorePath } = require('./package-apps.cjs')
+const {
+	PackageAppStore,
+	packageAppStorePath,
+	readIconResponse,
+} = require('./package-apps.cjs')
 const { createPackageAppWindows } = require('./package-app-windows.cjs')
 const { permissionLabels } = require('./package-app-permissions.cjs')
 const {
@@ -198,14 +202,14 @@ function installedApps() {
 				result.session?.featureFlags?.['desktop-install-package-apps'] === true
 			)
 		},
-		fetchIcon: async (url) => {
-			const response = await kodySession.fetch(url, {
-				signal: AbortSignal.timeout(10_000),
-			})
-			if (!response.ok)
-				throw new Error(`Icon request failed: ${response.status}`)
-			return Buffer.from(await response.arrayBuffer())
-		},
+		// No redirects: an icon URL checked against its origin stays there.
+		fetchIcon: async (url) =>
+			readIconResponse(
+				await kodySession.fetch(url, {
+					redirect: 'error',
+					signal: AbortSignal.timeout(10_000),
+				}),
+			),
 		launcherContext: {
 			home: app.getPath('home'),
 			appData: app.getPath('appData'),

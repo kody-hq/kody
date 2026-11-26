@@ -254,8 +254,30 @@ function packageAppStorePath(userData) {
 	return join(userData, 'package-apps.json')
 }
 
+const maxIconBytes = 2 * 1024 * 1024
+
+/**
+ * Reads a launcher icon download. Icons come from the publisher, so the body
+ * is capped and an empty one is refused (the caller then tries the next icon).
+ */
+async function readIconResponse(response) {
+	if (!response.ok) throw new Error(`Icon request failed: ${response.status}`)
+	if (Number(response.headers.get('content-length')) > maxIconBytes)
+		throw new Error('The app icon is too large.')
+	const chunks = []
+	let size = 0
+	for await (const chunk of response.body ?? []) {
+		size += chunk.byteLength
+		if (size > maxIconBytes) throw new Error('The app icon is too large.')
+		chunks.push(Buffer.from(chunk))
+	}
+	if (size === 0) throw new Error('The app icon is empty.')
+	return Buffer.concat(chunks)
+}
+
 module.exports = {
 	PackageAppStore,
+	readIconResponse,
 	handoffDestination,
 	installedNavigation,
 	packageAppStorePath,

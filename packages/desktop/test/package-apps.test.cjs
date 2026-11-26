@@ -24,6 +24,7 @@ const {
 	installedNavigation,
 	packageAppUrl,
 	parseInstallRequest,
+	readIconResponse,
 } = require('../package-apps.cjs')
 
 const kodyOrigin = 'https://kody.codes'
@@ -500,4 +501,21 @@ test('a launcher that fails to write leaves no install record or files', async (
 	)
 	assert.equal(store.list().length, 0)
 	assert.equal(written.size, 0)
+})
+
+test('launcher icon downloads are capped and must not be empty', async () => {
+	const png = Buffer.from('png')
+	assert.deepEqual(await readIconResponse(new Response(png)), png)
+	await assert.rejects(
+		readIconResponse(new Response(null, { status: 204 })),
+		/empty/,
+	)
+	await assert.rejects(
+		readIconResponse(new Response('', { status: 404 })),
+		/404/,
+	)
+	await assert.rejects(
+		readIconResponse(new Response(new Uint8Array(2 * 1024 * 1024 + 1))),
+		/too large/,
+	)
 })
