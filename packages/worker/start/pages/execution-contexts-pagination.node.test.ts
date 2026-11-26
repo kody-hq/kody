@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { expect, test } from 'vitest'
 import type {
+	ExecutionChain,
 	ExecutionContextListItem,
 	ExecutionContextsPageData,
 } from '#universal/execution-contexts.ts'
@@ -37,6 +38,8 @@ async function render(input: {
 	count: number
 	cursor: string | null
 	nextCursor: string | null
+	chain?: ExecutionChain
+	chainContexts?: Array<ExecutionContextListItem>
 }) {
 	const payload: ExecutionContextsPageData = {
 		enabled: true,
@@ -47,7 +50,13 @@ async function render(input: {
 		contexts: Array.from({ length: input.count }, (_, index) => context(index)),
 		cursor: input.cursor,
 		nextCursor: input.nextCursor,
-		chain: { entries: [], strict: false, updatedAt: null, updatedBy: null },
+		chain: input.chain ?? {
+			entries: [],
+			strict: false,
+			updatedAt: null,
+			updatedBy: null,
+		},
+		chainContexts: input.chainContexts ?? [],
 		unutilized: null,
 		selected: null,
 		selectedMissing: false,
@@ -85,4 +94,22 @@ test('the last page links back to the first page only', async () => {
 	expect(html).toContain('First page')
 	expect(html).toContain('href="/@acme/-/execution-contexts"')
 	expect(html).not.toContain('Next page')
+})
+
+test('the chain panel names a chain entry that is on another page', async () => {
+	const late = { ...context(40), name: 'late-box' }
+	const html = await render({
+		count: 20,
+		cursor: null,
+		nextCursor: 'page2',
+		chain: {
+			entries: [{ kind: 'context', id: late.id, usable: true }],
+			strict: true,
+			updatedAt: null,
+			updatedBy: null,
+		},
+		chainContexts: [late],
+	})
+	expect(html).toContain('late-box')
+	expect(html).not.toContain('No context in your chain is online')
 })

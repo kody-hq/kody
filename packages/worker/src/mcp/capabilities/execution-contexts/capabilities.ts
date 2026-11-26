@@ -1,3 +1,7 @@
+import {
+	executionContextListDefaultLimit,
+	executionContextListMaxLimit,
+} from '#universal/execution-contexts.ts'
 import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { z } from 'zod'
@@ -40,8 +44,6 @@ import {
 	getContextDetail,
 	getSharing,
 	listAudit,
-	executionContextListDefaultLimit,
-	executionContextListMaxLimit,
 	listContexts,
 	listRuns,
 	optIn,

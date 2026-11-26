@@ -8,6 +8,10 @@ import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-pro
 
 export const maxChainContexts = ecpMaxChainContexts
 const unutilizedNamedMax = 3
+
+/** executionContextList page size: the default and the most one call returns. */
+export const executionContextListDefaultLimit = 20
+export const executionContextListMaxLimit = 100
 const revokedVisibleDays = 30
 
 const executionContextUnusableReasons = [
@@ -381,6 +385,8 @@ export type ExecutionContextsPageData =
 			nextCursor: string | null
 			chain: ExecutionChain
 			unutilized: ExecutionContextUnutilized | null
+			/** Chain entries that are not on this page, so the chain panel can show them. */
+			chainContexts: Array<ExecutionContextListItem>
 			selected: ExecutionContextListItem | null
 			selectedMissing: boolean
 	  }

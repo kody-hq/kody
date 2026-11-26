@@ -66,6 +66,8 @@ import { kodyCloudTarget } from './routing.ts'
 import { latestCliVersion } from './latest-cli-version.ts'
 import {
 	buildAccessRoster,
+	executionContextListDefaultLimit,
+	executionContextListMaxLimit,
 	isOlderCliVersion,
 	type ExecutionContextShareGrant,
 } from '#universal/execution-contexts.ts'
@@ -348,9 +350,6 @@ function isOrgOwner(caller: ExecutionContextCaller) {
 	return role === 'owner' || role === 'admin'
 }
 
-export const executionContextListDefaultLimit = 20
-export const executionContextListMaxLimit = 100
-
 function encodeListCursor(row: Pick<ExecutionContextRow, 'name' | 'id'>) {
 	return utf8ToBase64Url(JSON.stringify([row.name, row.id]))
 }
@@ -369,7 +368,7 @@ function decodeListCursor(cursor: string): ExecutionContextListPosition {
 			return { name: value[0], id: value[1] }
 		}
 	} catch {
-		// Falls through to the refusal below.
+		// Any cursor we did not issue gets the same refusal, whatever broke.
 	}
 	throw new ExecutionContextError({
 		status: 400,

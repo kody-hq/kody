@@ -158,6 +158,7 @@ function EnabledPage(props: {
 	const status =
 		typeof searchParams.status === 'string' ? searchParams.status : ''
 	const contexts = payload.contexts
+	const chainPanelContexts = [...payload.contexts, ...payload.chainContexts]
 	const filtered = contexts.filter((context) => {
 		if (
 			q &&
@@ -227,7 +228,7 @@ function EnabledPage(props: {
 				<ExecutionChainPanel
 					orgSlug={payload.orgSlug}
 					chain={payload.chain}
-					contexts={payload.contexts}
+					contexts={chainPanelContexts}
 				/>
 			</AccountManagementPanel>
 			{props.selectedId && !selected ? (
@@ -246,7 +247,7 @@ function EnabledPage(props: {
 							orgSlug={payload.orgSlug}
 							context={selected}
 							chain={payload.chain}
-							contexts={payload.contexts}
+							contexts={chainPanelContexts}
 						/>
 					) : undefined
 				}

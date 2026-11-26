@@ -16,6 +16,7 @@ import {
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
 	apiJson,
+	listAllExecutionContexts,
 	fetchServerKeys,
 	generateContextKey,
 	importContextKey,
@@ -477,11 +478,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return 0
 	}
 	if (input.command === 'context' && (sub === 'list' || sub === undefined)) {
-		const body = await apiJson({
+		const body = await listAllExecutionContexts({
 			...base,
 			token: await input.token(),
-			method: 'GET',
-			path: '/v1/execution-contexts',
 		})
 		const contexts = (body.contexts ?? []) as Array<
 			HostAccessContext & {
@@ -592,14 +591,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		})
 		const current = chainOf(read)
 		const contexts = async () =>
-			contextsById(
-				await apiJson({
-					...base,
-					token,
-					method: 'GET',
-					path: '/v1/execution-contexts',
-				}),
-			)
+			contextsById(await listAllExecutionContexts({ ...base, token }))
 		// Names and status are display-only; never fail the chain command on them.
 		const contextMetadata = async () => {
 			if (input.values.json) return new Map<string, ContextSummary>()
@@ -1258,11 +1250,7 @@ async function resolveContextId(input: {
 	fetchFn?: typeof fetch
 }) {
 	if (input.ref.startsWith('ec_')) return input.ref
-	const body = await apiJson({
-		...input,
-		method: 'GET',
-		path: '/v1/execution-contexts',
-	})
+	const body = await listAllExecutionContexts(input)
 	const match = (
 		(body.contexts ?? []) as Array<{ id: string; name: string }>
 	).find((c) => c.name === input.ref)

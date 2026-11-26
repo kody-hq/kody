@@ -431,6 +431,41 @@ test('kody chain show and add read the chain out of the API response', async () 
 	])
 })
 
+test('kody context list and name lookups follow every list page', async () => {
+	const requested: Array<string> = []
+	const fetchFn = (async (url: URL | string) => {
+		const parsed = new URL(url)
+		requested.push(parsed.search)
+		if (parsed.pathname !== '/v1/execution-contexts')
+			return Response.json({ chain: { entries: [{ kind: 'cloud' }] } })
+		const second = parsed.searchParams.get('cursor') === 'page-2'
+		return Response.json({
+			contexts: [
+				second
+					? { id: 'ec_late', name: 'late', status: 'online', usable: true }
+					: { id: 'ec_early', name: 'early', status: 'online', usable: true },
+			],
+			nextCursor: second ? null : 'page-2',
+		})
+	}) as typeof fetch
+	let text = ''
+	await runExecutionContextCommand({
+		command: 'context',
+		positionals: ['list'],
+		values: {},
+		apiUrl: 'https://api.kody.test',
+		token: async () => 'kody_at_test',
+		clientVersion: '0.0.0',
+		write: (chunk) => {
+			text += chunk
+		},
+		fetchFn,
+	})
+	assert.match(text, /early \(ec_early\)/)
+	assert.match(text, /late \(ec_late\)/)
+	assert.deepEqual(requested, ['?limit=100', '?limit=100&cursor=page-2'])
+})
+
 test('kody chain show prints names and an offline marker, and add on an empty chain keeps cloud last', async () => {
 	let chain: Record<string, unknown> = {
 		entries: [],

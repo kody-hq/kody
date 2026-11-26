@@ -387,10 +387,9 @@ export function buildExecutionContextLimitMessage(input: {
 	const holder =
 		input.scope === 'seat' ? 'you have registered' : 'the organization has'
 	const page = routes.orgExecutionContexts.href({ orgSlug: input.orgSlug })
-	const next =
-		input.plan === 'max'
-			? 'contact support at /support for a higher limit'
-			: `upgrade your plan at ${orgBillingPath(input.orgSlug)}`
+	const next = hasHigherPublicPlan(input.plan)
+		? `upgrade your plan at ${orgBillingPath(input.orgSlug)}`
+		: 'contact support at /support for a higher limit'
 	return `Kody plan limit reached for @${input.orgSlug}: your "${input.plan}" plan allows at most ${label} and ${holder} ${input.current}. Revoke an unused context with \`kody context revoke <name>\` or on the execution contexts page at ${page}, or ${next}.`
 }
 

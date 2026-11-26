@@ -134,7 +134,7 @@ test('limit messages name the cap, how it is made, and the next step', () => {
 			seats: 2,
 		}),
 	).toBe(
-		'Kody plan limit reached for @acme: your "pro" plan allows at most 40 live execution contexts in this organization (20 per seat x 2 seats) and the organization has 40. Revoke an unused context with `kody context revoke <name>` or on the execution contexts page at /@acme/-/execution-contexts, or upgrade your plan at /@acme/-/billing.',
+		'Kody plan limit reached for @acme: your "pro" plan allows at most 40 live execution contexts in this organization (20 per seat x 2 seats) and the organization has 40. Revoke an unused context with `kody context revoke <name>` or on the execution contexts page at /@acme/-/execution-contexts, or contact support at /support for a higher limit.',
 	)
 	const seat = buildExecutionContextLimitMessage({
 		...base,
@@ -146,6 +146,7 @@ test('limit messages name the cap, how it is made, and the next step', () => {
 	})
 	expect(seat).toContain('at most 10 live execution contexts per person')
 	expect(seat).toContain('you have registered 10')
+	expect(seat).toContain('upgrade your plan at /@acme/-/billing')
 	const max = buildExecutionContextLimitMessage({
 		...base,
 		current: 50,

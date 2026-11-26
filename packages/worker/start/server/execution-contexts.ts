@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
+import { maxChainContexts } from '#universal/execution-contexts.ts'
 import { routes } from '#universal/routes.ts'
 import type { loadExecutionContextsScope } from '#app/handlers/execution-contexts.ts'
 
@@ -207,7 +208,7 @@ export const setExecutionChain = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({
 			orgSlug,
-			entries: z.array(chainEntry).max(4),
+			entries: z.array(chainEntry).max(maxChainContexts + 1),
 			strict: z.boolean(),
 			ifMatch: z.string().max(200).nullable(),
 		}),
