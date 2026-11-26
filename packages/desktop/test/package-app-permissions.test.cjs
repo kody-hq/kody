@@ -386,8 +386,8 @@ test('a login start restores menu-bar items and opens start-at-login apps hidden
 	const { store } = newStore()
 	store.put({
 		...app,
-		startAtLogin: true,
-		menuBar: { path: '/menubar', origin: appOrigin, tooltip: null },
+		startAtLogin: { origin: appOrigin, appOrigin },
+		menuBar: { path: '/menubar', origin: appOrigin, appOrigin, tooltip: null },
 		permissions: {
 			[appOrigin]: { menuBar: 'granted', startAtLogin: 'granted' },
 		},
@@ -399,8 +399,8 @@ test('a login start restores menu-bar items and opens start-at-login apps hidden
 	await apps.uninstall(app)
 	store.put({
 		...app,
-		startAtLogin: true,
-		menuBar: { path: '/menubar', origin: appOrigin, tooltip: null },
+		startAtLogin: { origin: appOrigin, appOrigin },
+		menuBar: { path: '/menubar', origin: appOrigin, appOrigin, tooltip: null },
 		permissions: {
 			[appOrigin]: { menuBar: 'granted', startAtLogin: 'granted' },
 		},
@@ -410,4 +410,12 @@ test('a login start restores menu-bar items and opens start-at-login apps hidden
 	const opened = FakeWindow.all.at(-1)
 	assert.ok(FakeWindow.all.length > before)
 	assert.equal(opened.options.show, false)
+	await apps.uninstall(app)
+	store.put({
+		...app,
+		appOrigin: 'https://elsewhere.example',
+		startAtLogin: { origin: appOrigin, appOrigin },
+		permissions: { [appOrigin]: { startAtLogin: 'granted' } },
+	})
+	assert.equal(await apps.startBackground({ atLogin: true }), 0)
 })

@@ -419,6 +419,7 @@ function createPackageAppWindows(deps) {
 				const menuBar = {
 					path,
 					origin,
+					appOrigin: app.appOrigin,
 					tooltip: typeof second === 'string' ? second.slice(0, 120) : null,
 				}
 				store.put({ ...app, menuBar })
@@ -426,7 +427,8 @@ function createPackageAppWindows(deps) {
 				return
 			}
 			case 'menu-bar-remove':
-				removeTray(app)
+				if (store.get(app.owner, app.packageName)?.menuBar?.origin === origin)
+					removeTray(app)
 				return
 			case 'menu-bar-size': {
 				const popover = trays.get(
@@ -442,8 +444,9 @@ function createPackageAppWindows(deps) {
 				const accelerator = validAccelerator(first)
 				if (!accelerator) throw new Error('Use a modifier and one key.')
 				const key = packageAppKey(app.owner, app.packageName)
-				const set = shortcuts.get(key) ?? new Set()
-				if (set.has(accelerator)) return true
+				const set = shortcuts.get(key) ?? new Map()
+				if (set.get(accelerator) === origin) return true
+				if (set.has(accelerator)) return false
 				if (set.size >= maxShortcuts)
 					throw new Error(
 						`An app can register up to ${maxShortcuts} shortcuts.`,
@@ -452,20 +455,26 @@ function createPackageAppWindows(deps) {
 					pressShortcut(app, accelerator),
 				)
 				if (ok) {
-					set.add(accelerator)
+					set.set(accelerator, origin)
 					shortcuts.set(key, set)
 				}
 				return ok
 			}
 			case 'shortcut-unregister': {
 				const set = shortcuts.get(packageAppKey(app.owner, app.packageName))
-				if (typeof first === 'string' && set?.delete(first))
+				if (set?.get(first) === origin) {
+					set.delete(first)
 					globalShortcut.unregister(first)
+				}
 				return
 			}
 			case 'start-at-login': {
 				if (!granted('startAtLogin')) return
-				store.put({ ...app, startAtLogin: first === true })
+				store.put({
+					...app,
+					startAtLogin:
+						first === true ? { origin, appOrigin: app.appOrigin } : null,
+				})
 				updateStartAtLogin()
 				return
 			}
@@ -493,7 +502,7 @@ function createPackageAppWindows(deps) {
 	}
 
 	function unregisterShortcuts(key) {
-		for (const accelerator of shortcuts.get(key) ?? [])
+		for (const accelerator of shortcuts.get(key)?.keys() ?? [])
 			globalShortcut.unregister(accelerator)
 		shortcuts.delete(key)
 	}
@@ -502,11 +511,7 @@ function createPackageAppWindows(deps) {
 	function showTray(app) {
 		const key = packageAppKey(app.owner, app.packageName)
 		const { menuBar } = app
-		if (
-			!menuBar ||
-			permissionState(app, menuBar.origin, 'menuBar') !== 'granted'
-		)
-			return
+		if (!stillGranted(app, menuBar, 'menuBar')) return
 		let entry = trays.get(key)
 		if (!entry) {
 			const icon = trayIcon(app)
@@ -577,9 +582,13 @@ function createPackageAppWindows(deps) {
 			store.put({ ...store.get(app.owner, app.packageName), menuBar: null })
 	}
 
-	function grantedSomewhere(app, kind) {
-		return Object.values(app.permissions ?? {}).some(
-			(forOrigin) => forOrigin?.[kind] === 'granted',
+	// A saved background setting counts only for the origin that asked for it,
+	// and only while the package is still hosted where it was then.
+	function stillGranted(app, setting, kind) {
+		return Boolean(
+			setting?.origin &&
+			setting.appOrigin === app.appOrigin &&
+			permissionState(app, setting.origin, kind) === 'granted',
 		)
 	}
 
@@ -587,9 +596,7 @@ function createPackageAppWindows(deps) {
 		setStartAtLogin(
 			store
 				.list()
-				.some(
-					(app) => app.startAtLogin && grantedSomewhere(app, 'startAtLogin'),
-				),
+				.some((app) => stillGranted(app, app.startAtLogin, 'startAtLogin')),
 		)
 	}
 
@@ -601,9 +608,9 @@ function createPackageAppWindows(deps) {
 	async function startBackground({ atLogin }) {
 		let opened = 0
 		for (const app of store.list()) {
-			const wantsTray = Boolean(app.menuBar)
+			const wantsTray = stillGranted(app, app.menuBar, 'menuBar')
 			const wantsStart =
-				atLogin && app.startAtLogin && grantedSomewhere(app, 'startAtLogin')
+				atLogin && stillGranted(app, app.startAtLogin, 'startAtLogin')
 			if (!wantsTray && !wantsStart) continue
 			if (!(await refreshFlag(app.owner))) continue
 			if (wantsTray) showTray(app)
