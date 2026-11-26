@@ -25,9 +25,10 @@ const installSearchParam = 'install'
 type InstallState = 'idle' | 'installing' | 'installed' | 'error'
 
 /**
- * Install as a desktop app, with the flag on for the page's org (the package
- * owner's org). The desktop shell installs directly; a browser hands off to
- * the shell with a `kody://` link or offers the desktop download.
+ * Show the package page's Install action when the shell session enables it.
+ *
+ * Use {@link PackageAppInstallDialog} when the desktop bridge is available,
+ * or {@link PackageAppHandoffDialog} to open or download Kody.
  */
 export function PackageAppInstallControl(props: {
 	install: PackageAppInstallTarget

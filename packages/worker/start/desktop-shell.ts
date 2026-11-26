@@ -28,7 +28,7 @@ type DesktopPackageAppInstall = {
 	owner: string
 	packageName: string
 	name: string
-	/** Absolute Open app URL: the Kody handoff path or the hosted app. */
+	/** Absolute URL on the app origin or the matching Kody Open app handoff. */
 	openUrl: string
 	appOrigin: string
 	iconUrl: string | null
@@ -40,7 +40,7 @@ type DesktopInstalledPackageApp = {
 	packageName: string
 	name: string
 }
-/** Installed package apps. Older desktop apps omit this. */
+/** Manage locally installed package apps from the main Kody window. */
 export type DesktopAppsBridge = {
 	install: (app: DesktopPackageAppInstall) => Promise<void>
 	list: () => Promise<Array<DesktopInstalledPackageApp>>
@@ -78,6 +78,7 @@ export type DesktopNavigationState = {
 export type DesktopShell = {
 	version: 1
 	execution?: DesktopExecutionBridge
+	/** Older desktop shells omit this bridge. */
 	apps?: DesktopAppsBridge
 	authentication?: {
 		signIn: (mode: 'login' | 'signup') => Promise<void>

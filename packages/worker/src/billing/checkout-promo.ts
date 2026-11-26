@@ -16,7 +16,8 @@ import {
  * Claims are per person across organizations. A code without a claim-scope
  * tag is blocked by any earlier claim or live reservation. With
  * `kody_claim_scope: campaign`, only a claim or live reservation for the
- * same campaign or Stripe promotion code blocks checkout.
+ * same campaign (`kody_campaign`, defaulting to the Stripe promotion code ID)
+ * or Stripe promotion code blocks checkout.
  */
 
 export const promoIntervalMetadataKey = 'kody_interval'
@@ -126,10 +127,9 @@ function promoIntervalMismatch(
 }
 
 /**
- * The Stripe promotion code id for `code` on a checkout billed every
- * `interval`. Stripe enforces the product restriction, expiry, and
- * redemption limit again when the Checkout Session is created; checking here
- * gives the customer a specific message.
+ * Resolve the Stripe promotion code ID and claim key for the requested
+ * billing interval. Check expiry and redemption limits for specific errors;
+ * Stripe also checks coupon restrictions when creating the Checkout Session.
  */
 export async function resolveCheckoutPromotionCode(
 	env: StripeEnv,
@@ -187,10 +187,10 @@ const promoReservationMaxAgeMs = 25 * 60 * 60 * 1000
 
 /**
  * Reserve the person's claim under `claimKey` before the Checkout Session
- * exists. A lifetime claim is blocked by any earlier claim or reservation; a
- * campaign claim only by one with the same claim key or promotion code. The
- * check and insert are one statement. If an earlier insert blocks this
- * reservation, this returns false.
+ * exists. A lifetime claim is blocked by any earlier claim or live reservation;
+ * a campaign claim only by one with the same claim key or promotion code.
+ * Stale reservations are cleared first. The check and insert are one
+ * statement. Returns false if no reservation was inserted.
  */
 export async function reservePromoClaim(input: {
 	db: D1Database

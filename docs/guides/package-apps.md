@@ -44,6 +44,9 @@ To serve an app on a domain you own (for example `apps.example.com`), see
 [Custom domains](./package-app-custom-domains.md)
 (`guide:package_app_custom_domains`).
 
+To give a hosted app its own window and launcher, see
+[Install as a desktop app](#install-as-a-desktop-app).
+
 ## Browse apps in the workspace
 
 Open **Apps** in the workspace sidebar (`/@<slug>/-/apps`) to browse hosted apps
@@ -1821,13 +1824,26 @@ keep them out of the client bundle too, declare them as
   declared, anything shaped like the compiled module
   (`client.<16-char-hash>.js`). Publish rejects a root asset with either name;
   nest it or rename it.
-- `desktop` — optional Kody desktop app settings for people who install the app.
-  `icon` is a path the app serves (like `/icons/icon-512.png`) used for the
-  launcher instead of `.kody/icon`. `menuBar` is
-  `{ "path": "/menubar", "tooltip": "Weather now" }`: after install the desktop
-  app asks once for the menu bar permission and, when granted, adds that page as
-  a menu-bar popover unless the app already set its own with `menuBar.set`. Size
-  the popover with `<meta name="kody-menubar-size" content="360x480">`.
+- `desktop` — optional [desktop install settings](#install-as-a-desktop-app) for
+  the launcher icon and menu bar.
+
+### Install as a desktop app
+
+A hosted package app can open in its own window with a local launcher. If
+**Install** appears on the package page, select it to confirm in Kody or, from a
+browser, to open or download Kody first.
+
+Set these optional fields under `kody.app.desktop`:
+
+- `icon` — a path the app serves, such as `/icons/icon-512.png`. Kody tries it
+  for the launcher before falling back to the package icon or the default icon.
+- `menuBar` — for example, `{ "path": "/menubar", "tooltip": "Weather now" }`.
+  The
+  [desktop installer](https://github.com/kody-hq/kody/blob/main/packages/desktop/package-app-windows.cjs)
+  requests menu bar permission after installation and adds the popover if
+  permission is granted and the app has not set its own menu bar item with
+  `menuBar.set`. Size the popover with
+  `<meta name="kody-menubar-size" content="360x480">`.
 
 ### Stable `packageContext` fields
 

@@ -43,8 +43,8 @@ export type PackageRepoActions = {
 	packageAppOriginHref?: string | null
 	/**
 	 * Install as a desktop app: set with Open app when the app has its own
-	 * hosted origin. Shown only inside the Kody desktop shell with the
-	 * `desktop-install-package-apps` flag on.
+	 * hosted origin. The flag-gated action installs through the desktop bridge
+	 * or offers the browser handoff.
 	 */
 	packageAppInstall?: PackageAppInstallTarget | null
 	follow?: PackageRepoFollowAction | null
@@ -55,12 +55,12 @@ export type PackageAppInstallTarget = {
 	owner: string
 	packageName: string
 	name: string
-	/** Hosted app origin the installed window is locked to. */
+	/** Initial allowed origin. Also allows Kody handoff/sign-in pages and handoff destinations, including custom domains. */
 	appOrigin: string
 	iconUrl: string | null
 	/** `kody.app.desktop.icon` on the app origin, for the launcher. */
 	installIconUrl?: string | null
-	/** `kody.app.desktop.menuBar`, offered after install. */
+	/** Null clears a publisher-declared item, not an item set by `menuBar.set`. Omission preserves either. */
 	menuBar?: { path: string; tooltip?: string } | null
 }
 

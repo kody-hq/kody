@@ -5,8 +5,11 @@ window and add a launcher on this computer.
 
 ## Install and launch
 
-The package page shows **Install** behind the `desktop-install-package-apps`
-flag. The shell checks `/session?org=<owner>` and
+The [package page control](../worker/start/components/package-app-install.tsx)
+shows **Install** when the shell session has the `desktop-install-package-apps`
+flag. The main Kody window's [`window.kodyDesktop.apps` bridge](preload.cjs)
+provides `install`, `list`, and `uninstall`. When the bridge is absent, the page
+uses the browser handoff. The shell checks `/session?org=<owner>` and
 [installs only when the package owner's flag is on](test/package-apps.test.cjs).
 Installing a package app:
 
@@ -71,10 +74,10 @@ exposes the following actions:
 
 ## Manifest settings and permissions
 
-An app can declare install settings in `kody.app.desktop` in its `package.json`:
-`icon`, a path the app serves for the launcher icon, and `menuBar`,
-`{ path, tooltip }` for a menu-bar page offered right after install. Kody asks
-for the menu bar permission once and
+See the
+[desktop install settings in the Package apps guide](https://kody.codes/docs/package-apps#install-as-a-desktop-app)
+for the optional `kody.app.desktop` manifest fields. Kody asks for the menu-bar
+permission once and
 [adds the item only when granted](test/package-app-permissions.test.cjs).
 
 The [permission gate](package-app-permissions.cjs) prompts for each permission

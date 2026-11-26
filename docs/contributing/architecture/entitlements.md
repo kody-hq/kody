@@ -1518,10 +1518,11 @@ omits `allow_promotion_codes`. Stripe can restrict a coupon to a product but not
 a price, and monthly and annual Pro are one product, so a one-month code typed
 on Stripe's page would zero out a year. Customers type the code on the Kody
 billing page instead. The
-[checkout promo validator](../../../packages/worker/src/billing/checkout-promo.ts)
-looks up the code (`GET /v1/promotion_codes?code=…&active=true`) and checks
-expiry, redemptions, and billing interval. Checkout attaches the validated code
-as `discounts[0][promotion_code]`. The promotion code's `kody_interval` metadata
+[`resolveCheckoutPromotionCode` resolver](../../../packages/worker/src/billing/checkout-promo.ts)
+looks up the code (`GET /v1/promotion_codes?code=…&active=true`), checks expiry,
+redemptions, and billing interval, and returns the Stripe promotion code ID and
+claim key. Checkout attaches the validated code as
+`discounts[0][promotion_code]`. The promotion code's `kody_interval` metadata
 names the interval: `year` codes work only on annual checkout, `month` codes
 only on monthly checkout, and a code without an interval tag is monthly. A
 mismatch produces an error naming the code's interval; an unrecognized tag is
@@ -1530,19 +1531,25 @@ treated as an invalid code. The
 rejects a code when the linked customer has a plan-retaining Kody subscription.
 
 [Promo claims](../../../packages/worker/src/billing/checkout-promo.ts) are keyed
-by person across all their organizations. A code without a claim-scope tag is
-blocked by any earlier claim or live reservation, including a campaign claim.
-With `kody_claim_scope: campaign`, only a claim or live reservation for the same
-campaign or the same Stripe promotion code blocks checkout. Operators can group
-codes via `kody_campaign` (trimmed, case-insensitive); if it is blank or absent,
-the campaign ID defaults to the Stripe promotion code ID. An unrecognized
-`kody_claim_scope`, or a nonempty `kody_campaign` without
+by person across all their organizations:
+
+- With no claim-scope tag, the key is `lifetime`. Any earlier claim or live
+  reservation blocks the code, including a campaign claim.
+- With `kody_claim_scope: campaign` (for either billing interval), the key is
+  `campaign:<id>`. Only a claim or live reservation for the same campaign or
+  Stripe promotion code blocks checkout. Operators can group codes via
+  `kody_campaign` (trimmed, case-insensitive); if it is blank or absent, the
+  campaign ID defaults to the Stripe promotion code ID.
+
+An unrecognized `kody_claim_scope`, or a nonempty `kody_campaign` without
 `kody_claim_scope: campaign`, produces "That promo code isn't set up correctly.
 Please contact support." and a `billing_checkout_promo_claim_scope_unrecognized`
-error log. Claim keys are `lifetime` or `campaign:<id>`. The conflict check and
-reservation use one SQL statement, so once one checkout reserves a claim, a
-competing checkout that conflicts with it is rejected before creating a Stripe
-Checkout Session
+error log. When a campaign code is blocked, checkout is refused and the billing
+page shows "You have already claimed this promotion. It can be claimed once per
+person, across all of your organizations." The conflict check and reservation
+use one SQL statement, so once one checkout reserves a claim, a competing
+checkout that conflicts with it is rejected before creating a Stripe Checkout
+Session
 ([checkout tests](../../../packages/worker/src/app/handlers/org-billing.node.test.ts)).
 
 `GET /@<slug>/-/billing/success`
