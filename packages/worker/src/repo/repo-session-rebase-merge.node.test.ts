@@ -121,3 +121,70 @@ test('uncommitted edits the source changed fail checkout without moving the bran
 	).resolves.toBe(sessionHead)
 	expect(await repo.read()).toBe(base.replace('b = 1', 'b = 22'))
 })
+
+test('binary files changed on both sides stop as a conflict instead of a text merge', async () => {
+	const repo = await createSessionRepo()
+	const binaryPath = 'assets/logo.bin'
+	const bytes = (middle: number) =>
+		new Uint8Array([0xff, 0x0a, 0x0a, 0x0a, middle, 0x0a, 0x0a, 0x0a, 0x01])
+	const writeBinary = async (data: Uint8Array, ref: string) => {
+		await repo.fs.promises.writeFile(`${repo.dir}/${binaryPath}`, data)
+		await rawGit.add({ fs: repo.fs, dir: repo.dir, filepath: binaryPath })
+		return rawGit.commit({
+			fs: repo.fs,
+			dir: repo.dir,
+			ref,
+			message: ref,
+			author,
+		})
+	}
+	await repo.fs.promises.mkdir(`${repo.dir}/assets`)
+	await rawGit.checkout({
+		fs: repo.fs,
+		dir: repo.dir,
+		ref: 'main',
+		force: true,
+	})
+	await writeBinary(bytes(0x02), 'refs/heads/main')
+	await rawGit.branch({
+		fs: repo.fs,
+		dir: repo.dir,
+		ref: 'sessions/s1',
+		force: true,
+		checkout: true,
+	})
+	await rawGit.checkout({
+		fs: repo.fs,
+		dir: repo.dir,
+		ref: 'main',
+		force: true,
+	})
+	const sourceCommit = await writeBinary(
+		new Uint8Array([0xff, 0x0a, 0x0a, 0x0a, 0x02, 0x0a, 0x0a, 0x0a, 0x03]),
+		'refs/heads/main',
+	)
+	await rawGit.checkout({
+		fs: repo.fs,
+		dir: repo.dir,
+		ref: 'sessions/s1',
+		force: true,
+	})
+	const sessionBytes = new Uint8Array([
+		0xfe, 0x0a, 0x0a, 0x0a, 0x02, 0x0a, 0x0a, 0x0a, 0x01,
+	])
+	const sessionHead = await writeBinary(sessionBytes, 'refs/heads/sessions/s1')
+
+	const error = await merge({ ...repo, sourceCommit }).then(
+		() => null,
+		(caught: unknown) => caught as Error,
+	)
+
+	expect(isRepoSessionRebaseStoppedMessage(error!.message)).toBe(true)
+	expect(error!.message).toContain(binaryPath)
+	expect(
+		await rawGit.resolveRef({ fs: repo.fs, dir: repo.dir, ref: 'sessions/s1' }),
+	).toBe(sessionHead)
+	expect(await repo.fs.promises.readFile(`${repo.dir}/${binaryPath}`)).toEqual(
+		sessionBytes,
+	)
+})

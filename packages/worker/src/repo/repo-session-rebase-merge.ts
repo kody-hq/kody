@@ -19,16 +19,28 @@ export async function mergeSourceIntoSessionBranch(input: {
 	author: { name: string; email: string }
 }) {
 	const { git, fs, dir } = input
+	const mergeArgs = {
+		fs,
+		dir,
+		ours: input.sessionBranch,
+		theirs: input.sourceCommit,
+		noUpdateBranch: true,
+		message: `Merge branch '${input.sourceBranch}' into ${input.sessionBranch}`,
+		author: input.author,
+	}
 	try {
-		const merge = await git.merge({
-			fs,
-			dir,
-			ours: input.sessionBranch,
-			theirs: input.sourceCommit,
-			noUpdateBranch: true,
-			message: `Merge branch '${input.sourceBranch}' into ${input.sessionBranch}`,
-			author: input.author,
+		// isomorphic-git decodes blobs changed on both sides as UTF-8 and
+		// text-merges them, which corrupts binary bytes. A dry run first reports
+		// those files as conflicts instead.
+		await git.merge({
+			...mergeArgs,
+			dryRun: true,
+			mergeDriver: ({ contents }) => ({
+				cleanMerge: !contents.some((text) => text.includes('\uFFFD')),
+				mergedText: contents[1] ?? '',
+			}),
 		})
+		const merge = await git.merge(mergeArgs)
 		if (!merge.oid) {
 			throw new Error(
 				`Merging "${input.sourceBranch}" into "${input.sessionBranch}" returned no commit.`,
