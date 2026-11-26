@@ -50,6 +50,7 @@ import type {
 } from '@kody-internal/shared/request-context.ts'
 import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
+import { isolateMemoByKey } from '#worker/isolate-memo.ts'
 
 export const packageAppVisitTicketHeaderName = 'X-Kody-Visit-Ticket'
 export const packageAppVisitTicketTtlMs = 60_000
@@ -180,7 +181,27 @@ type StoredAnonymousVisitTicket = {
 
 const liveNonces = isolateCollection(new Map<string, number>())
 const burnedNonces = isolateCollection(new Map<string, number>())
-const signingKeys = isolateCollection(new Map<string, Promise<CryptoKey>>())
+const signingKeys = isolateMemoByKey(async (secret) => {
+	const base = await crypto.subtle.importKey(
+		'raw',
+		new TextEncoder().encode(secret),
+		'HKDF',
+		false,
+		['deriveKey'],
+	)
+	return await crypto.subtle.deriveKey(
+		{
+			name: 'HKDF',
+			hash: 'SHA-256',
+			salt: new Uint8Array(),
+			info: signingInfo,
+		},
+		base,
+		{ name: 'HMAC', hash: 'SHA-256', length: 256 },
+		false,
+		['sign', 'verify'],
+	)
+})
 const localSigningSecret = isolateState((): string | null => null)
 
 export class PackageAppVisitTicketError extends Error {
@@ -208,36 +229,7 @@ function signingSecret(secretStoreKey: string | undefined) {
 }
 
 function derivationKey(secretStoreKey: string | undefined) {
-	const secret = signingSecret(secretStoreKey)
-	let key = signingKeys.get(secret)
-	if (!key) {
-		key = (async () => {
-			const base = await crypto.subtle.importKey(
-				'raw',
-				new TextEncoder().encode(secret),
-				'HKDF',
-				false,
-				['deriveKey'],
-			)
-			return await crypto.subtle.deriveKey(
-				{
-					name: 'HKDF',
-					hash: 'SHA-256',
-					salt: new Uint8Array(),
-					info: signingInfo,
-				},
-				base,
-				{ name: 'HMAC', hash: 'SHA-256', length: 256 },
-				false,
-				['sign', 'verify'],
-			)
-		})()
-		key.catch(() => {
-			signingKeys.delete(secret)
-		})
-		signingKeys.set(secret, key)
-	}
-	return key
+	return signingKeys(signingSecret(secretStoreKey))
 }
 
 function pruneNonceMaps(now: number) {

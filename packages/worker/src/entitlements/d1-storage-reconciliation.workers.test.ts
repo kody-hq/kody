@@ -344,8 +344,7 @@ test('lazy per-owner enqueue seeds a cold meter from physical bytes and dedupes 
 		userId: ownerIdFromStored(owner.userId),
 		now: new Date('2026-08-01T03:00:00.000Z'),
 	})
-	expect(second).toBe(first)
-	await settleIsolateState()
+	await Promise.all([first, second])
 	expect(await owner.meter.readStorageBytes()).toMatchObject({
 		outcome: 'ready',
 		bytes: expectedBytes,

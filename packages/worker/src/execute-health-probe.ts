@@ -6,6 +6,7 @@ import {
 } from './maintenance-handler.ts'
 import { handleMcpRequest, mcpResourcePath } from './mcp-auth.ts'
 import { mediaType } from '@kody-internal/shared/media-type.ts'
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 export const executeHealthMaintenancePath = '/__maintenance/mcp-execute-health'
 export const executeHealthProbeCode = 'export default async () => 1'
@@ -145,21 +146,13 @@ export async function handleExecuteHealthProbeRequest(
 	})
 }
 
-let legacyMcpFetchMemo: Promise<LegacyMcpFetch> | null = null
-
-function loadLegacyMcpFetch(): Promise<LegacyMcpFetch> {
-	legacyMcpFetchMemo ??= import('./mcp/index.ts')
-		.then(
-			({ MCP }) =>
-				MCP.serve(mcpResourcePath, { binding: 'MCP_OBJECT' })
-					.fetch as LegacyMcpFetch,
-		)
-		.catch((error: unknown) => {
-			legacyMcpFetchMemo = null
-			throw error
-		})
-	return legacyMcpFetchMemo
-}
+const loadLegacyMcpFetch: () => Promise<LegacyMcpFetch> = isolateMemo(() =>
+	import('./mcp/index.ts').then(
+		({ MCP }) =>
+			MCP.serve(mcpResourcePath, { binding: 'MCP_OBJECT' })
+				.fetch as LegacyMcpFetch,
+	),
+)
 
 function mcpJsonRpcRequest(input: {
 	url: string

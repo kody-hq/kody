@@ -1089,12 +1089,111 @@ const requireExitConditionCommentRule = {
 	},
 }
 
+const ISOLATE_PROMISE_MEMO_EXEMPT_PATH_PATTERN =
+	/(?:^|\/)(?:packages\/(?:cli|desktop)|packages\/worker\/client|tools)\//
+
+function containsPromiseType(node) {
+	if (!node || typeof node !== 'object') return false
+	if (Array.isArray(node)) return node.some(containsPromiseType)
+	if (
+		node.type === 'TSTypeReference' &&
+		node.typeName?.type === 'Identifier' &&
+		node.typeName.name === 'Promise'
+	) {
+		return true
+	}
+	return Object.entries(node).some(
+		([key, child]) => key !== 'parent' && containsPromiseType(child),
+	)
+}
+
+function isPromiseValuedMapType(type) {
+	return (
+		type?.type === 'TSTypeReference' &&
+		type.typeName?.type === 'Identifier' &&
+		type.typeName.name === 'Map' &&
+		containsPromiseType(
+			(type.typeArguments ?? type.typeParameters)?.params?.[1],
+		)
+	)
+}
+
+function promiseValuedMap(init) {
+	if (init?.type === 'CallExpression') {
+		return init.arguments.some((argument) => promiseValuedMap(argument))
+	}
+	if (
+		init?.type !== 'NewExpression' ||
+		init.callee.type !== 'Identifier' ||
+		init.callee.name !== 'Map'
+	) {
+		return false
+	}
+	const valueType = (init.typeArguments ?? init.typeParameters)?.params?.[1]
+	return containsPromiseType(valueType)
+}
+
+const noIsolatePromiseMemoRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Module-scope promise memos hand later requests a promise that can never settle once its request ends.',
+		},
+		schema: [],
+		messages: {
+			isolatePromiseMemo:
+				'A promise belongs to the request that created it, so a module-scope `{{name}}` wedges the isolate once that request ends. Use `isolateMemo`/`isolateMemoByKey` from `#worker/isolate-memo.ts` or `PromiseLruCache`.',
+		},
+	},
+	createOnce(context) {
+		let skip = false
+		function check(declaration) {
+			if (declaration?.type !== 'VariableDeclaration') return
+			for (const declarator of declaration.declarations) {
+				const memoType =
+					declaration.kind !== 'const' &&
+					containsPromiseType(declarator.id.typeAnnotation)
+				const mapType =
+					isPromiseValuedMapType(
+						declarator.id.typeAnnotation?.typeAnnotation,
+					) || promiseValuedMap(declarator.init)
+				if (!memoType && !mapType) continue
+				context.report({
+					node: declarator,
+					messageId: 'isolatePromiseMemo',
+					data: { name: declarator.id.name ?? 'memo' },
+				})
+			}
+		}
+		return {
+			before() {
+				const relativePath = repoRelativePath(context.filename)
+				skip =
+					NON_PRODUCTION_PATH_PATTERN.test(relativePath) ||
+					ISOLATE_PROMISE_MEMO_EXEMPT_PATH_PATTERN.test(relativePath)
+			},
+			Program(node) {
+				if (skip) return
+				for (const statement of node.body) {
+					check(
+						statement.type === 'ExportNamedDeclaration'
+							? statement.declaration
+							: statement,
+					)
+				}
+			},
+		}
+	},
+}
+
 const plugin = {
 	meta: { name: 'kody-custom' },
 	rules: {
 		'enforce-import-boundaries': enforceImportBoundariesRule,
 		'no-example-identifier': noExampleIdentifierRule,
 		'no-floating-promise': noFloatingPromiseRule,
+		'no-isolate-promise-memo': noIsolatePromiseMemoRule,
 		'no-inline-type-only-import': noInlineTypeOnlyImportRule,
 		'no-literal-frame-src': noLiteralFrameSrcRule,
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,

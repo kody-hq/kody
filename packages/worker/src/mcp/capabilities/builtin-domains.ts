@@ -1,5 +1,6 @@
 import { importCapabilityManifest } from '#worker/capability-manifest-module.ts'
 import type { Capability, DomainSpec } from './types.ts'
+import { isolateMemo, isolateMemoByKey } from '#worker/isolate-memo.ts'
 
 /**
  * Builtin domains merged by `buildCapabilityRegistry` in `registry.ts`.
@@ -61,26 +62,21 @@ export const builtinDomainModuleLoaders: Readonly<
 	webhooks: () => import('./webhooks/domain.ts').then((m) => m.webhooksDomain),
 }
 
-const builtinDomainModuleMemos = new Map<string, Promise<DomainSpec>>()
+const loadBuiltinDomainModuleMemo = isolateMemoByKey(
+	(name) => {
+		const load = builtinDomainModuleLoaders[name]
+		if (!load) throw new Error(`Unknown builtin domain "${name}"`)
+		return load()
+	},
+	{ limit: Number.POSITIVE_INFINITY },
+)
 
 /** Loads one builtin domain module (real definitions and handlers). */
 export function loadBuiltinDomainModule(name: string): Promise<DomainSpec> {
-	let memo = builtinDomainModuleMemos.get(name)
-	if (!memo) {
-		const load = Object.hasOwn(builtinDomainModuleLoaders, name)
-			? builtinDomainModuleLoaders[name]
-			: undefined
-		if (!load) {
-			return Promise.reject(new Error(`Unknown builtin domain "${name}"`))
-		}
-		memo = load().catch((error: unknown) => {
-			// A failed load must not poison every later call for the isolate.
-			builtinDomainModuleMemos.delete(name)
-			throw error
-		})
-		builtinDomainModuleMemos.set(name, memo)
+	if (!Object.hasOwn(builtinDomainModuleLoaders, name)) {
+		return Promise.reject(new Error(`Unknown builtin domain "${name}"`))
 	}
-	return memo
+	return loadBuiltinDomainModuleMemo(name)
 }
 
 async function loadBuiltinCapabilityHandler(
@@ -107,11 +103,9 @@ function createLazyHandler(
 		(await loadBuiltinCapabilityHandler(domainName, capabilityName))(args, ctx)
 }
 
-let builtinDomainsMemo: Promise<ReadonlyArray<DomainSpec>> | null = null
-
-export function loadBuiltinDomains(): Promise<ReadonlyArray<DomainSpec>> {
-	builtinDomainsMemo ??= importCapabilityManifest()
-		.then(({ capabilityManifest }) =>
+export const loadBuiltinDomains: () => Promise<ReadonlyArray<DomainSpec>> =
+	isolateMemo(() =>
+		importCapabilityManifest().then(({ capabilityManifest }) =>
 			capabilityManifest.domains.map(
 				({ capabilities, ...domain }): DomainSpec => ({
 					...domain,
@@ -121,10 +115,5 @@ export function loadBuiltinDomains(): Promise<ReadonlyArray<DomainSpec>> {
 					})),
 				}),
 			),
-		)
-		.catch((error: unknown) => {
-			builtinDomainsMemo = null
-			throw error
-		})
-	return builtinDomainsMemo
-}
+		),
+	)

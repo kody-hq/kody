@@ -8,6 +8,7 @@ import {
 	listUsersForD1StorageReconciliation,
 	reconcileUserD1StorageBytes,
 } from './service.ts'
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 
 /**
  * Corrective physical-storage reconciliation under UserMeter authority.
@@ -30,20 +31,19 @@ import {
  * Cold reserve and usage reads call {@link enqueueOwnerD1StorageReconcile}
  * for an immediate per-owner cold bootstrap (initialize only — never CAS a
  * live meter) so a cold meter is not stuck at 0 until the keyset sweep wraps.
- * Concurrent callers share one in-flight promise (lazy enqueue).
+ * Concurrent callers share one in-flight bootstrap (lazy enqueue).
  */
 export const d1StorageReconciliationBatchSize = 8
 
 const inFlightOwnerReconciles = isolateCollection(
-	new Map<OwnerId, Promise<unknown>>(),
-	{ pending: (tasks) => tasks.values() },
+	new PromiseLruCache<unknown>({ retainSettled: false }),
 )
 
 /**
  * Lazy per-owner cold physical bootstrap. Dedupes in-flight work for the same
- * owner and returns the shared promise so reserve and usage reads share one
- * SUM. Uses {@link bootstrapOwnerD1StorageBytes} (initialize only) — never the
- * CAS path, so a concurrent reserve cannot be wiped by an absolute set.
+ * owner so reserve and usage reads share one SUM. Uses
+ * {@link bootstrapOwnerD1StorageBytes} (initialize only) — never the CAS path,
+ * so a concurrent reserve cannot be wiped by an absolute set.
  * Callers that detach without awaiting should pass `waitUntil`.
  *
  * By default failures propagate (fail closed for awaited reserve/seed). Pass
@@ -63,33 +63,24 @@ export function enqueueOwnerD1StorageReconcile(input: {
 	 */
 	soft?: boolean
 }): Promise<unknown> {
-	const existing = inFlightOwnerReconciles.get(input.userId)
-	if (existing) {
-		input.waitUntil?.(existing)
-		return existing
-	}
-
 	const soft = input.soft === true
-	const task = bootstrapOwnerD1StorageBytes({
-		db: input.db,
-		env: input.env,
-		userId: input.userId,
-		now: input.now,
-		jobs: input.jobs,
+	const task = inFlightOwnerReconciles.getOrCreate({
+		cacheKey: input.userId,
+		create: () =>
+			bootstrapOwnerD1StorageBytes({
+				db: input.db,
+				env: input.env,
+				userId: input.userId,
+				now: input.now,
+				jobs: input.jobs,
+			}).catch((error: unknown) => {
+				if (soft) {
+					console.warn('d1-storage-owner-reconcile-failed', input.userId, error)
+					return
+				}
+				throw error
+			}),
 	})
-		.catch((error: unknown) => {
-			if (soft) {
-				console.warn('d1-storage-owner-reconcile-failed', input.userId, error)
-				return
-			}
-			throw error
-		})
-		.finally(() => {
-			if (inFlightOwnerReconciles.get(input.userId) === task) {
-				inFlightOwnerReconciles.delete(input.userId)
-			}
-		})
-	inFlightOwnerReconciles.set(input.userId, task)
 	input.waitUntil?.(task)
 	return task
 }

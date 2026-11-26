@@ -11,18 +11,13 @@ import {
 	readApiRequestProgress,
 	runWithApiRequestProgress,
 } from './request-progress.ts'
-
-let httpHandlerMemo: Promise<typeof HttpHandler> | null = null
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 // The handler pulls in the capability registry; load it on the first API
 // request instead of during origin startup (see startup-budget.md).
-function loadHttpHandler() {
-	httpHandlerMemo ??= import('./http-handler.ts').catch((error: unknown) => {
-		httpHandlerMemo = null
-		throw error
-	})
-	return httpHandlerMemo
-}
+const loadHttpHandler: () => Promise<typeof HttpHandler> = isolateMemo(
+	() => import('./http-handler.ts'),
+)
 
 /**
  * `KodyApi` — the origin's entrypoint for the `kody-api` edge worker that

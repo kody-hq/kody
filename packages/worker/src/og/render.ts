@@ -17,6 +17,7 @@ import {
 	type OgTheme,
 	OG_DEFAULT_THEME,
 } from '#worker/og/palette.ts'
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 export type { OgAssetsFetcher } from '#worker/og/og-image-assets.ts'
 
@@ -91,19 +92,11 @@ function renderSatoriChild(child: SatoriChild): ReactNode {
 	)
 }
 
-let wasmReady: Promise<void> | null = null
-
-export function ensureOgWasmReady(): Promise<void> {
-	if (!wasmReady) {
-		wasmReady = Promise.all([initSatori(ogYogaWasm), ensureResvgWasmReady()])
-			.then(() => undefined)
-			.catch((error) => {
-				wasmReady = null
-				throw error
-			})
-	}
-	return wasmReady
-}
+export const ensureOgWasmReady: () => Promise<void> = isolateMemo(() =>
+	Promise.all([initSatori(ogYogaWasm), ensureResvgWasmReady()]).then(
+		() => undefined,
+	),
+)
 
 export async function ensureRenderPipelineReady(input?: {
 	assets?: OgAssetsFetcher

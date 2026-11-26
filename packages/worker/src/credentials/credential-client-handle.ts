@@ -12,6 +12,7 @@ import {
 import { z } from 'zod'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { packageCredentialKindValues } from '#worker/package-registry/types.ts'
+import { isolateMemoByKey } from '#worker/isolate-memo.ts'
 
 const handlePrefix = 'kch1.'
 const handleLifetimeMs = 12 * 60 * 60 * 1000
@@ -66,36 +67,28 @@ export function newRunCredentialClientBinding() {
 	return `run:${crypto.randomUUID()}`
 }
 
-const signingKeys = new Map<string, Promise<CryptoKey>>()
-
-function signingKey(secretStoreKey: string) {
-	let key = signingKeys.get(secretStoreKey)
-	if (!key) {
-		key = (async () => {
-			const base = await crypto.subtle.importKey(
-				'raw',
-				new TextEncoder().encode(secretStoreKey),
-				'HKDF',
-				false,
-				['deriveKey'],
-			)
-			return await crypto.subtle.deriveKey(
-				{
-					name: 'HKDF',
-					hash: 'SHA-256',
-					salt: new Uint8Array(),
-					info: signingInfo,
-				},
-				base,
-				{ name: 'HMAC', hash: 'SHA-256', length: 256 },
-				false,
-				['sign', 'verify'],
-			)
-		})()
-		signingKeys.set(secretStoreKey, key)
-	}
-	return key
-}
+const signingKey: (secretStoreKey: string) => Promise<CryptoKey> =
+	isolateMemoByKey(async (secretStoreKey) => {
+		const base = await crypto.subtle.importKey(
+			'raw',
+			new TextEncoder().encode(secretStoreKey),
+			'HKDF',
+			false,
+			['deriveKey'],
+		)
+		return await crypto.subtle.deriveKey(
+			{
+				name: 'HKDF',
+				hash: 'SHA-256',
+				salt: new Uint8Array(),
+				info: signingInfo,
+			},
+			base,
+			{ name: 'HMAC', hash: 'SHA-256', length: 256 },
+			false,
+			['sign', 'verify'],
+		)
+	})
 
 export async function signCredentialClientHandle(input: {
 	env: Pick<Env, 'SECRET_STORE_KEY'>

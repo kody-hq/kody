@@ -3,6 +3,7 @@ import {
 	bytesToBase64Url,
 } from '@kody-internal/shared/base64.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { isolateMemoByKey } from '#worker/isolate-memo.ts'
 
 const ivBytes = 12
 
@@ -17,31 +18,23 @@ const ciphertextVersion = 'v2'
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
-const derivedEncryptionKeyCache = new Map<string, Promise<CryptoKey>>()
+const derivedEncryptionKeys = isolateMemoByKey((cacheKey) =>
+	crypto.subtle
+		.digest('SHA-256', textEncoder.encode(cacheKey))
+		.then((digest) =>
+			crypto.subtle.importKey('raw', digest, 'AES-GCM', false, [
+				'encrypt',
+				'decrypt',
+			]),
+		),
+)
 
 function buildAad(purpose: string, context: string) {
 	return textEncoder.encode(`kody.${ciphertextVersion}|${purpose}|${context}`)
 }
 
 function deriveEncryptionKey(secret: string, purpose: string) {
-	const cacheKey = `${purpose}:${secret}`
-	const cached = derivedEncryptionKeyCache.get(cacheKey)
-	if (cached) return cached
-
-	const derivationPromise = crypto.subtle
-		.digest('SHA-256', textEncoder.encode(`${purpose}:${secret}`))
-		.then((digest) =>
-			crypto.subtle.importKey('raw', digest, 'AES-GCM', false, [
-				'encrypt',
-				'decrypt',
-			]),
-		)
-		.catch((error) => {
-			derivedEncryptionKeyCache.delete(cacheKey)
-			throw error
-		})
-	derivedEncryptionKeyCache.set(cacheKey, derivationPromise)
-	return derivationPromise
+	return derivedEncryptionKeys(`${purpose}:${secret}`)
 }
 
 async function encryptWithKey(

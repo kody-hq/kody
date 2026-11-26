@@ -1,6 +1,7 @@
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { readFleetExecuteLastSuccess } from '#worker/execute-health-heartbeat.ts'
 import type { AppEnv } from '#worker/env-schema.ts'
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 
 /**
  * Component-level health for operators and the public status prober
@@ -188,30 +189,15 @@ async function readExecuteEvidence(
 export function createHealthComponentsHandler(appEnv: HealthComponentsEnv) {
 	// Concurrent requests share one in-flight collection so public traffic at
 	// cache expiry cannot fan out into parallel probes of the same bindings.
-	let cached: { report: HealthComponentsReport; expiresAt: number } | null =
-		null
-	let inFlight: Promise<HealthComponentsReport> | null = null
+	const reports = new PromiseLruCache<HealthComponentsReport>({
+		ttlMs: resultCacheTtlMs,
+		limit: 1,
+	})
 	return async () => {
-		const now = Date.now()
-		let report: HealthComponentsReport
-		if (cached && cached.expiresAt > now) {
-			report = cached.report
-		} else {
-			if (!inFlight) {
-				inFlight = collectHealthComponents(appEnv)
-					.then((collected) => {
-						cached = {
-							report: collected,
-							expiresAt: Date.now() + resultCacheTtlMs,
-						}
-						return collected
-					})
-					.finally(() => {
-						inFlight = null
-					})
-			}
-			report = await inFlight
-		}
+		const report = await reports.getOrCreate({
+			cacheKey: 'report',
+			create: () => collectHealthComponents(appEnv),
+		})
 		return Response.json(report, {
 			status: report.ok ? 200 : 503,
 			headers: { 'Cache-Control': 'no-store' },

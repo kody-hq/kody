@@ -110,12 +110,12 @@ import { enrichOAuthTokenResponse } from '#worker/oidc/token-enrichment.ts'
 import { handleMcpOAuthTokenRequest } from '#worker/oauth-refresh-family.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
 import { mediaType } from '@kody-internal/shared/media-type.ts'
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 // Immutable caching is only safe when asset URLs are versioned by a real
 // commit sha. In local dev the build id falls back to a constant ('dev'), so
 // an immutable header would pin browsers to a stale bundle across rebuilds.
 type LegacyMcpFetch = Parameters<typeof handleMcpRequest>[0]['fetchMcp']
-let legacyMcpFetchMemo: Promise<LegacyMcpFetch> | null = null
 
 /**
  * The legacy MCP lane routes through the `MCP` Durable Object stub via the
@@ -124,19 +124,13 @@ let legacyMcpFetchMemo: Promise<LegacyMcpFetch> | null = null
  * for it instead and the served fetch is cached for the isolate.
  * Remove when: MCP protocol metrics show no 2025-era lane traffic.
  */
-function loadLegacyMcpFetch(): Promise<LegacyMcpFetch> {
-	legacyMcpFetchMemo ??= import('./mcp/index.ts')
-		.then(
-			({ MCP }) =>
-				MCP.serve(mcpResourcePath, { binding: 'MCP_OBJECT' })
-					.fetch as LegacyMcpFetch,
-		)
-		.catch((error: unknown) => {
-			legacyMcpFetchMemo = null
-			throw error
-		})
-	return legacyMcpFetchMemo
-}
+const loadLegacyMcpFetch: () => Promise<LegacyMcpFetch> = isolateMemo(() =>
+	import('./mcp/index.ts').then(
+		({ MCP }) =>
+			MCP.serve(mcpResourcePath, { binding: 'MCP_OBJECT' })
+				.fetch as LegacyMcpFetch,
+	),
+)
 
 function shouldApplyLongLivedAssetCaching(pathname: string, env: Env) {
 	if (

@@ -15,20 +15,13 @@ import type * as OpenApiInvoke from '#worker/open-api/invoke.ts'
 import type { StructuredContentFromFields } from './mcp-tool-output.ts'
 import { buildKodyToolIcons } from './tool-icons.ts'
 import { finishToolTiming, startToolTiming } from './tool-timing.ts'
-
-let openApiInvokeMemo: Promise<typeof OpenApiInvoke> | null = null
+import { isolateMemo } from '#worker/isolate-memo.ts'
 
 // The operation catalog builds zod schemas at module scope; load it on the
 // first api call instead of during platform startup (see startup-budget.md).
-function loadOpenApiInvoke() {
-	openApiInvokeMemo ??= import('#worker/open-api/invoke.ts').catch(
-		(error: unknown) => {
-			openApiInvokeMemo = null
-			throw error
-		},
-	)
-	return openApiInvokeMemo
-}
+const loadOpenApiInvoke: () => Promise<typeof OpenApiInvoke> = isolateMemo(
+	() => import('#worker/open-api/invoke.ts'),
+)
 
 export const apiToolDescription = [
 	'Call one Kody API operation directly: no sandbox, no execute quota. Same operations as the HTTP API at https://api.kody.codes/openapi.json.',

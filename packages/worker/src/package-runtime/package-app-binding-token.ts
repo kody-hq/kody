@@ -1,4 +1,5 @@
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
+import { isolateMemoByKey } from '#worker/isolate-memo.ts'
 
 /**
  * The per-package bridge capability a package app wrapper holds in its private
@@ -21,39 +22,28 @@ const bindingTokenInfo = new TextEncoder().encode(
 	'kody-package-app-binding-token-v1',
 )
 
-const derivationKeys = new Map<string, Promise<CryptoKey>>()
-
-function derivationKey(secretStoreKey: string) {
-	let key = derivationKeys.get(secretStoreKey)
-	if (!key) {
-		key = (async () => {
-			const base = await crypto.subtle.importKey(
-				'raw',
-				new TextEncoder().encode(secretStoreKey),
-				'HKDF',
-				false,
-				['deriveKey'],
-			)
-			return await crypto.subtle.deriveKey(
-				{
-					name: 'HKDF',
-					hash: 'SHA-256',
-					salt: new Uint8Array(),
-					info: bindingTokenInfo,
-				},
-				base,
-				{ name: 'HMAC', hash: 'SHA-256', length: 256 },
-				false,
-				['sign'],
-			)
-		})()
-		key.catch(() => {
-			derivationKeys.delete(secretStoreKey)
-		})
-		derivationKeys.set(secretStoreKey, key)
-	}
-	return key
-}
+const derivationKey: (secretStoreKey: string) => Promise<CryptoKey> =
+	isolateMemoByKey(async (secretStoreKey) => {
+		const base = await crypto.subtle.importKey(
+			'raw',
+			new TextEncoder().encode(secretStoreKey),
+			'HKDF',
+			false,
+			['deriveKey'],
+		)
+		return await crypto.subtle.deriveKey(
+			{
+				name: 'HKDF',
+				hash: 'SHA-256',
+				salt: new Uint8Array(),
+				info: bindingTokenInfo,
+			},
+			base,
+			{ name: 'HMAC', hash: 'SHA-256', length: 256 },
+			false,
+			['sign'],
+		)
+	})
 
 function toHex(bytes: Uint8Array) {
 	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
