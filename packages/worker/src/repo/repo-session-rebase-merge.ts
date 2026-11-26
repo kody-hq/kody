@@ -31,12 +31,15 @@ export async function mergeSourceIntoSessionBranch(input: {
 	try {
 		// isomorphic-git decodes blobs changed on both sides as UTF-8 and
 		// text-merges them, which corrupts binary bytes. A dry run first reports
-		// those files as conflicts instead.
+		// those files as conflicts instead, using git's NUL byte heuristic plus
+		// invalid UTF-8.
 		await git.merge({
 			...mergeArgs,
 			dryRun: true,
 			mergeDriver: ({ contents }) => ({
-				cleanMerge: !contents.some((text) => text.includes('\uFFFD')),
+				cleanMerge: !contents.some(
+					(text) => text.includes('\uFFFD') || text.includes('\0'),
+				),
 				mergedText: contents[1] ?? '',
 			}),
 		})
