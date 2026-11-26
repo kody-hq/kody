@@ -609,12 +609,14 @@ function createPackageAppWindows(deps) {
 		)
 	}
 
+	function wantsStartAtLogin() {
+		return store
+			.list()
+			.some((app) => stillGranted(app, app.startAtLogin, 'startAtLogin'))
+	}
+
 	function updateStartAtLogin() {
-		setStartAtLogin(
-			store
-				.list()
-				.some((app) => stillGranted(app, app.startAtLogin, 'startAtLogin')),
-		)
+		setStartAtLogin(wantsStartAtLogin())
 	}
 
 	/**
@@ -623,8 +625,9 @@ function createPackageAppWindows(deps) {
 	 * Resolves how many apps opened hidden.
 	 */
 	async function startBackground({ atLogin }) {
-		// Drops a login item whose last grant no longer applies.
-		updateStartAtLogin()
+		// Drops a login item whose last grant no longer applies, without
+		// re-enabling one the person turned off in their OS settings.
+		if (!wantsStartAtLogin()) setStartAtLogin(false)
 		const wanted = store
 			.list()
 			.map((app) => ({
