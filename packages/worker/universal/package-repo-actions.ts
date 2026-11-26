@@ -58,6 +58,10 @@ export type PackageAppInstallTarget = {
 	/** Hosted app origin the installed window is locked to. */
 	appOrigin: string
 	iconUrl: string | null
+	/** `kody.app.desktop.icon` on the app origin, for the launcher. */
+	installIconUrl?: string | null
+	/** `kody.app.desktop.menuBar`, offered after install. */
+	menuBar?: { path: string; tooltip?: string } | null
 }
 
 export type PackageRepoFollowAction = {

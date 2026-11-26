@@ -1821,6 +1821,13 @@ keep them out of the client bundle too, declare them as
   declared, anything shaped like the compiled module
   (`client.<16-char-hash>.js`). Publish rejects a root asset with either name;
   nest it or rename it.
+- `desktop` — optional Kody desktop app settings for people who install the app.
+  `icon` is a path the app serves (like `/icons/icon-512.png`) used for the
+  launcher instead of `.kody/icon`. `menuBar` is
+  `{ "path": "/menubar", "tooltip": "Weather now" }`: after install the desktop
+  app asks once for the menu bar permission and, when granted, adds that page as
+  a menu-bar popover unless the app already set its own with `menuBar.set`. Size
+  the popover with `<meta name="kody-menubar-size" content="360x480">`.
 
 ### Stable `packageContext` fields
 

@@ -66,7 +66,36 @@ function parseInstallRequest(value, { kodyOrigin, allowLoopback = false }) {
 		String(value.name ?? '')
 			.trim()
 			.slice(0, 100) || packageName
-	return { owner, packageName, name, appOrigin, openUrl: openUrl.href, iconUrl }
+	const app = {
+		owner,
+		packageName,
+		name,
+		appOrigin,
+		openUrl: openUrl.href,
+		iconUrl,
+	}
+	// `kody.app.desktop` settings: a launcher icon the app serves and a
+	// menu-bar page offered after install.
+	if (value.installIconUrl) {
+		const icon = new URL(String(value.installIconUrl), appOrigin)
+		if (icon.origin === appOrigin) app.installIconUrl = icon.href
+	}
+	if (value.menuBar === null) app.declaredMenuBar = null
+	const menuBarPath = value.menuBar?.path
+	if (
+		typeof menuBarPath === 'string' &&
+		menuBarPath.length <= 512 &&
+		menuBarPath.startsWith('/') &&
+		!menuBarPath.startsWith('//') &&
+		!/[\\\s]/.test(menuBarPath)
+	) {
+		const tooltip = value.menuBar.tooltip
+		app.declaredMenuBar = {
+			path: menuBarPath,
+			tooltip: typeof tooltip === 'string' ? tooltip.slice(0, 120) : null,
+		}
+	}
+	return app
 }
 
 function isHandoffUrl(app, value, kodyOrigin) {
@@ -226,8 +255,34 @@ function packageAppStorePath(userData) {
 	return join(userData, 'package-apps.json')
 }
 
+const maxIconBytes = 2 * 1024 * 1024
+
+/**
+ * Reads a launcher icon download. Icons come from the publisher, so the body
+ * is capped and an empty one is refused (the caller then tries the next icon).
+ */
+async function readIconResponse(response) {
+	const refuse = async (message) => {
+		await response.body?.cancel().catch(() => {})
+		throw new Error(message)
+	}
+	if (!response.ok) await refuse(`Icon request failed: ${response.status}`)
+	if (Number(response.headers.get('content-length')) > maxIconBytes)
+		await refuse('The app icon is too large.')
+	const chunks = []
+	let size = 0
+	for await (const chunk of response.body ?? []) {
+		size += chunk.byteLength
+		if (size > maxIconBytes) throw new Error('The app icon is too large.')
+		chunks.push(Buffer.from(chunk))
+	}
+	if (size === 0) throw new Error('The app icon is empty.')
+	return Buffer.concat(chunks)
+}
+
 module.exports = {
 	PackageAppStore,
+	readIconResponse,
 	handoffDestination,
 	installedNavigation,
 	packageAppStorePath,

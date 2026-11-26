@@ -19,6 +19,7 @@ import { routes } from '#universal/routes.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
 import { buildPackagePublishApprovalPath } from '#worker/package-registry/package-publish-lock.ts'
+import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 
 export function buildSourceAheadPublishHref(input: {
 	username: string
@@ -399,11 +400,19 @@ async function resolvePackageAppInstallTarget(
 	if (!location) return null
 	const listing = page.listing?.listing ?? null
 	const publishedCommit = page.ownerPackage?.publishedCommit ?? null
+	const appOrigin = new URL(location.hostedUrl).origin
+	const desktop = await loadPackageAppDesktopSettings(page, env)
 	return {
 		owner: page.username,
 		packageName: page.kodyId,
 		name: listing?.name ?? page.ownerPackage?.name ?? page.kodyId,
-		appOrigin: new URL(location.hostedUrl).origin,
+		appOrigin,
+		installIconUrl: desktop?.icon
+			? new URL(`${location.appBasePath}${desktop.icon}`, appOrigin).href
+			: null,
+		// Left out when the manifest could not load, so the desktop app keeps
+		// the menu bar it already has.
+		menuBar: desktop === undefined ? undefined : (desktop?.menuBar ?? null),
 		iconUrl:
 			listing?.iconUrl ??
 			(publishedCommit
@@ -413,5 +422,41 @@ async function resolvePackageAppInstallTarget(
 						iconCommit: publishedCommit,
 					})
 				: null),
+	}
+}
+
+/**
+ * `kody.app.desktop` from the published manifest, null when it declares none.
+ * Permanent: undefined when it cannot load, and Install still works with the
+ * package icon.
+ */
+async function loadPackageAppDesktopSettings(
+	page: Extract<PackagePageAccess, { kind: 'page' }>,
+	env: Env,
+) {
+	try {
+		const found = await resolveSavedPackageForPackageAppSlug({
+			db: env.APP_DB,
+			userId: page.ownerUserId,
+			slug: page.kodyId,
+		})
+		if (!found) return null
+		const { manifest } = await loadPackageManifestBySourceId({
+			env,
+			baseUrl: env.APP_BASE_URL,
+			userId: page.ownerUserId,
+			sourceId: found.savedPackage.sourceId,
+		})
+		return manifest.kody.app?.desktop ?? null
+	} catch (error) {
+		console.warn(
+			'package-app-desktop-settings-failed: Install uses the package icon and keeps any menu bar',
+			{
+				owner: page.username,
+				kodyId: page.kodyId,
+				error,
+			},
+		)
+		return undefined
 	}
 }

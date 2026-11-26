@@ -120,6 +120,7 @@ async function setup({ flag = true, answers = [], store: given } = {}) {
 	const shortcuts = new Map()
 	const startAtLogin = []
 	const badges = []
+	const icons = []
 	const apps = createPackageAppWindows({
 		BrowserWindow: FakeWindow,
 		dialog: {},
@@ -128,7 +129,15 @@ async function setup({ flag = true, answers = [], store: given } = {}) {
 		installAllowed: async () => flag,
 		openBrowser: async () => {},
 		launcherContext: { home: '/home/k', iconDirectory: '/i', io: {} },
-		fs: { rm: async () => {} },
+		fs: {
+			mkdir: async () => {},
+			rm: async () => {},
+			writeFile: async () => {},
+		},
+		fetchIcon: async (url) => {
+			icons.push(url)
+			return Buffer.from('png')
+		},
 		platform: 'linux',
 		preload: '/preload.cjs',
 		askPermission: async (_app, origin, kind) => {
@@ -155,7 +164,7 @@ async function setup({ flag = true, answers = [], store: given } = {}) {
 	apps.openLink({ owner: 'kent', packageName: 'weather', path: '/' })
 	const window = FakeWindow.all.at(-1)
 	await new Promise((resolve) => setImmediate(resolve))
-	return { store, apps, window, asked, badges, shortcuts, startAtLogin }
+	return { store, apps, window, asked, badges, icons, shortcuts, startAtLogin }
 }
 
 test('permissions start off, ask once, and keep the answer per origin', async () => {
@@ -472,4 +481,69 @@ test('an install link offers the install page only for a missing app with the fl
 		}),
 		null,
 	)
+})
+
+test('kody.app.desktop: the install icon wins and a declared menu bar asks once', async () => {
+	const { apps, asked, icons, store } = await setup({ answers: [true] })
+	store.remove('kent', 'weather')
+	FakeTray.last = undefined
+	const request = {
+		...app,
+		iconUrl: 'https://kody.codes/@kent/weather/icon/abc',
+		installIconUrl: `${appOrigin}/icons/icon-512.png`,
+		menuBar: { path: '/menubar', tooltip: 'Weather now' },
+	}
+	await apps.install(request)
+	await new Promise((resolve) => setImmediate(resolve))
+	assert.deepEqual(icons, [`${appOrigin}/icons/icon-512.png`])
+	assert.deepEqual(asked, [[appOrigin, 'menuBar']])
+	assert.equal(FakeTray.last.tooltip, 'Weather now')
+	assert.equal(store.get('kent', 'weather').menuBar.path, '/menubar')
+	assert.equal(store.get('kent', 'weather').declaredMenuBar, undefined)
+	await apps.install(request)
+	await new Promise((resolve) => setImmediate(resolve))
+	assert.equal(asked.length, 1)
+	await apps.uninstall(app)
+})
+
+test('a declined declared menu bar adds nothing and is not asked again', async () => {
+	const { apps, asked, store } = await setup({ answers: [false] })
+	store.remove('kent', 'weather')
+	FakeTray.last = undefined
+	const request = { ...app, menuBar: { path: '/menubar' } }
+	await apps.install(request)
+	await new Promise((resolve) => setImmediate(resolve))
+	await apps.install(request)
+	await new Promise((resolve) => setImmediate(resolve))
+	assert.deepEqual(asked, [[appOrigin, 'menuBar']])
+	assert.equal(FakeTray.last, undefined)
+	assert.equal(store.get('kent', 'weather').menuBar, undefined)
+	await apps.uninstall(app)
+})
+
+test('a changed or dropped declared menu bar follows the publisher; a runtime one stays', async () => {
+	const { apps, window, asked, store } = await setup({ answers: [true] })
+	store.remove('kent', 'weather')
+	const install = async (menuBar) => {
+		await apps.install({ ...app, menuBar })
+		await new Promise((resolve) => setImmediate(resolve))
+	}
+	await install({ path: '/menubar' })
+	const tray = FakeTray.last
+	await install({ path: '/menubar' })
+	assert.equal(FakeTray.last, tray)
+	assert.notEqual(tray.destroyed, true)
+	await install({ path: '/tray' })
+	assert.equal(store.get('kent', 'weather').menuBar.path, '/tray')
+	await install(undefined)
+	assert.equal(store.get('kent', 'weather').menuBar.path, '/tray')
+	await install(null)
+	assert.equal(store.get('kent', 'weather').menuBar, null)
+	const contents = FakeWindow.all.at(-1).webContents
+	await apps.call(contents, contents.mainFrame, 'menu-bar-set', ['/mine'])
+	await install({ path: '/menubar' })
+	assert.equal(store.get('kent', 'weather').menuBar.path, '/mine')
+	assert.equal(asked.length, 1)
+	assert.ok(window)
+	await apps.uninstall(app)
 })

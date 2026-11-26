@@ -91,16 +91,13 @@ function createPackageAppWindows(deps) {
 	}
 
 	async function install(request) {
-		const app = parseInstallRequest(request, { kodyOrigin, allowLoopback })
+		const { declaredMenuBar, ...app } = parseInstallRequest(request, {
+			kodyOrigin,
+			allowLoopback,
+		})
 		if (!(await installAllowed(app.owner)))
 			throw new Error('Installing apps is not available for this account yet.')
-		const icon = app.iconUrl
-			? await fetchIcon(app.iconUrl).catch((error) => {
-					// The launcher still opens the app, with the default icon.
-					console.warn(`Kody could not download the app icon: ${error.message}`)
-					return null
-				})
-			: null
+		const icon = await launcherIcon(app)
 		const plan = planFor(app)
 		try {
 			await writeLauncher(plan, {
@@ -122,11 +119,57 @@ function createPackageAppWindows(deps) {
 		}
 		const saved = store.put(app)
 		open(saved, '/')
+		if (declaredMenuBar)
+			void offerMenuBar(saved, declaredMenuBar).catch((error) => {
+				console.warn(`Kody could not add the menu-bar item: ${error.message}`)
+			})
+		// null: the publisher declares no menu bar. Missing: the page could not
+		// read the manifest, so keep what is there.
+		else if (declaredMenuBar === null && saved.menuBar?.declared)
+			removeTray(saved)
 		return {
 			owner: saved.owner,
 			packageName: saved.packageName,
 			name: saved.name,
 		}
+	}
+
+	/**
+	 * The `kody.app.desktop.icon` the app serves, else the package icon.
+	 * Permanent: a private app's own icon needs its app session, which only
+	 * exists after the Open app handoff, so the package icon stays the fallback.
+	 */
+	async function launcherIcon(app) {
+		for (const url of [app.installIconUrl, app.iconUrl]) {
+			if (!url) continue
+			try {
+				return await fetchIcon(url)
+			} catch (error) {
+				// The launcher still opens the app, with the default icon.
+				console.warn(`Kody could not download the app icon: ${error.message}`)
+			}
+		}
+		return null
+	}
+
+	/**
+	 * A declared `kody.app.desktop.menuBar` asks for the menu bar permission
+	 * once, then adds or updates the item unless the app set its own with
+	 * `menuBar.set`.
+	 */
+	async function offerMenuBar(app, declared) {
+		const origin = app.appOrigin
+		if ((await gate.request(app, origin, 'menuBar')) !== 'granted') return
+		const current = store.get(app.owner, app.packageName)
+		if (!current || (current.menuBar && !current.menuBar.declared)) return
+		const menuBar = {
+			...declared,
+			declared: true,
+			origin,
+			appOrigin: current.appOrigin,
+		}
+		store.put({ ...store.get(app.owner, app.packageName), menuBar })
+		showTray(store.get(app.owner, app.packageName))
 	}
 
 	async function uninstall({ owner, packageName }) {

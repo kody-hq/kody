@@ -130,6 +130,34 @@ const messageIdSchema = {
 	additionalProperties: false,
 }
 
+test('kody.app.desktop declares an install icon and a menu-bar page inside the app', () => {
+	const manifest = parse('@kentcdodds/weather', {
+		app: {
+			entry: './src/app.ts',
+			desktop: {
+				icon: '/icons/icon-512.png',
+				menuBar: { path: '/menubar', tooltip: 'Weather now' },
+			},
+		},
+	})
+	expect(manifest.kody.app?.desktop).toEqual({
+		icon: '/icons/icon-512.png',
+		menuBar: { path: '/menubar', tooltip: 'Weather now' },
+	})
+	for (const desktop of [
+		{ icon: 'https://evil.example/icon.png' },
+		{ icon: '//evil.example/icon.png' },
+		{ menuBar: { path: 'menubar' } },
+		{ menuBar: { path: '/menubar', size: '360x480' } },
+		{ window: true },
+	])
+		expect(() =>
+			parse('@kentcdodds/weather', {
+				app: { entry: './src/app.ts', desktop },
+			}),
+		).toThrow()
+})
+
 test('parseAuthoredPackageJson accepts kody.app.client and kody.app.assets next to the Worker entry', () => {
 	const manifest = parse('@kentcdodds/browser-app', {
 		app: {

@@ -164,6 +164,12 @@ export const packageAppAnonymousRealtimeModes = ['receive', 'two-way'] as const
 export type PackageAppAnonymousRealtimeMode =
 	(typeof packageAppAnonymousRealtimeModes)[number]
 
+const packageAppPathSchema = z
+	.string()
+	.trim()
+	.max(512)
+	.regex(/^\/(?!\/)[^\s\\]*$/, 'Use a path inside the app, like /menubar.')
+
 export const packageAppDefinitionSchema = z.object({
 	/**
 	 * Server entry bundled for the package-app isolate. The default export
@@ -228,6 +234,23 @@ export const packageAppDefinitionSchema = z.object({
 	realtime: z
 		.strictObject({
 			anonymous: z.enum(packageAppAnonymousRealtimeModes).optional(),
+		})
+		.optional(),
+	/**
+	 * Kody desktop app install settings. `icon` is a path the app serves (like
+	 * `/icons/icon-512.png`) used for the launcher instead of `.kody/icon`.
+	 * `menuBar` is a page the desktop app offers as a menu-bar popover after
+	 * install, once the person grants the menu bar permission.
+	 */
+	desktop: z
+		.strictObject({
+			icon: packageAppPathSchema.optional(),
+			menuBar: z
+				.strictObject({
+					path: packageAppPathSchema,
+					tooltip: z.string().trim().min(1).max(120).optional(),
+				})
+				.optional(),
 		})
 		.optional(),
 })
