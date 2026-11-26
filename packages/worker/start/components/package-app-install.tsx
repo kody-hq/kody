@@ -14,11 +14,20 @@ import { renderIcon } from './icon.tsx'
 
 const subscribeNever = () => () => {}
 
+/** The `kody://` link the desktop shell opens, or offers to install. */
+export function packageAppDesktopLink(owner: string, packageName: string) {
+	return `kody://app/${encodeURIComponent(owner)}/${encodeURIComponent(packageName)}`
+}
+
+/** Query the desktop shell adds when a `kody://` link names a missing app. */
+const installSearchParam = 'install'
+
 type InstallState = 'idle' | 'installing' | 'installed' | 'error'
 
 /**
- * Install as a desktop app. Rendered only inside the Kody desktop shell with
- * the flag on for the page's org (the package owner's org).
+ * Install as a desktop app, with the flag on for the page's org (the package
+ * owner's org). The desktop shell installs directly; a browser hands off to
+ * the shell with a `kody://` link or offers the desktop download.
  */
 export function PackageAppInstallControl(props: {
 	install: PackageAppInstallTarget
@@ -28,10 +37,25 @@ export function PackageAppInstallControl(props: {
 	const { session } = useShellData()
 	const apps = useSyncExternalStore(
 		subscribeNever,
-		() => window.kodyDesktop?.apps ?? null,
+		() => window.kodyDesktop?.apps ?? 'browser',
 		() => null,
 	)
-	const [open, setOpen] = useState(false)
+	const requested = useSyncExternalStore(
+		subscribeNever,
+		() =>
+			new URLSearchParams(window.location.search).get(installSearchParam) ===
+			'desktop',
+		() => false,
+	)
+	const [choice, setChoice] = useState<boolean | null>(null)
+	const open = choice ?? requested
+	function close() {
+		setChoice(false)
+		const url = new URL(window.location.href)
+		if (!url.searchParams.has(installSearchParam)) return
+		url.searchParams.delete(installSearchParam)
+		window.history.replaceState(window.history.state, '', url)
+	}
 	if (!apps || !isFeatureFlagEnabled(session, 'desktop-install-package-apps'))
 		return null
 	return (
@@ -41,18 +65,22 @@ export function PackageAppInstallControl(props: {
 				data-testid="install-package-app"
 				variant="secondary"
 				css={props.css as never}
-				onClick={() => setOpen(true)}
+				onClick={() => setChoice(true)}
 			>
 				{renderIcon('monitor', { size: '1.1em' })}
 				<span>Install</span>
 			</Button>
 			{open ? (
-				<PackageAppInstallDialog
-					apps={apps}
-					install={props.install}
-					openHref={props.openHref}
-					onClose={() => setOpen(false)}
-				/>
+				apps === 'browser' ? (
+					<PackageAppHandoffDialog install={props.install} onClose={close} />
+				) : (
+					<PackageAppInstallDialog
+						apps={apps}
+						install={props.install}
+						openHref={props.openHref}
+						onClose={close}
+					/>
+				)
 			) : null}
 		</>
 	)
@@ -98,18 +126,7 @@ export function PackageAppInstallDialog(props: {
 			}
 			data-testid="install-package-app-dialog"
 		>
-			<div css={stageCss} data-state={state} aria-hidden>
-				<div css={tileCss} data-state={state}>
-					{install.iconUrl ? (
-						<img src={install.iconUrl} alt="" css={iconCss} />
-					) : (
-						<span css={iconFallbackCss}>
-							{install.name.slice(0, 1).toUpperCase()}
-						</span>
-					)}
-				</div>
-				<div css={dockCss} data-state={state} />
-			</div>
+			<InstallStage install={install} state={state} />
 			{error ? (
 				<p role="alert" css={errorCss}>
 					{error}
@@ -148,6 +165,64 @@ export function PackageAppInstallDialog(props: {
 				)}
 			</DialogActions>
 		</Dialog>
+	)
+}
+
+/** From a browser: open the desktop shell to install, or download it first. */
+export function PackageAppHandoffDialog(props: {
+	install: PackageAppInstallTarget
+	onClose: () => void
+}) {
+	const { install } = props
+	return (
+		<Dialog
+			open
+			onClose={props.onClose}
+			title={`Install ${install.name}?`}
+			description="Open Kody on this computer to install it in its own window with a launcher. If you do not have the Kody desktop app yet, download it, then open this page again."
+			data-testid="install-package-app-handoff"
+		>
+			<InstallStage install={install} state="idle" />
+			<DialogActions>
+				<Button
+					href="/download"
+					reloadDocument
+					variant="secondary"
+					data-testid="install-package-app-download"
+				>
+					Download Kody
+				</Button>
+				<Button
+					href={packageAppDesktopLink(install.owner, install.packageName)}
+					variant="primary"
+					data-testid="install-package-app-open-in-kody"
+					onClick={props.onClose}
+				>
+					Open in Kody
+				</Button>
+			</DialogActions>
+		</Dialog>
+	)
+}
+
+function InstallStage(props: {
+	install: PackageAppInstallTarget
+	state: InstallState
+}) {
+	const { install, state } = props
+	return (
+		<div css={stageCss} data-state={state} aria-hidden>
+			<div css={tileCss} data-state={state}>
+				{install.iconUrl ? (
+					<img src={install.iconUrl} alt="" css={iconCss} />
+				) : (
+					<span css={iconFallbackCss}>
+						{install.name.slice(0, 1).toUpperCase()}
+					</span>
+				)}
+			</div>
+			<div css={dockCss} data-state={state} />
+		</div>
 	)
 }
 
