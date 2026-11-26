@@ -1515,16 +1515,29 @@ naming the code's interval ("That promo code is for annual billing. Choose
 annual to use it."); an unrecognized tag is treated as an invalid code. Codes
 are for new subscriptions only; a customer with a plan-retaining subscription
 gets 409. Each person can claim one promo code across all of their organizations
-(`billing_promo_claims`). There is no public Payment Link path: checkout
-requires a signed-in session so unauthenticated card-testing is not possible.
-`GET /@<slug>/-/billing/success` verifies `client_reference_id` before linking
-`orgs.stripe_customer_id`, then refreshes `orgs.stripe_plan` and renders a
-thank-you page (Discord invite; connect-your-agent when `needsOnboarding`). A
-successful `stripe_plan` write also best-effort re-syncs official Kody Discord
-Standard/Pro roles when the user has a Discord social-login connection (see
-[`social-login.md`](../social-login.md)). `GET /@<slug>/-/billing/portal` opens
-the Stripe customer portal for linked customers, pinned to
-`STRIPE_BILLING_PORTAL_CONFIGURATION_ID` when set.
+(`billing_promo_claims`). A promotion code can narrow that with
+`kody_claim_scope: campaign` metadata (works with either `kody_interval`): only
+an earlier claim or live reservation of the same campaign or the same code
+blocks it. The campaign is `kody_campaign` (trimmed, case-insensitive),
+defaulting to the promotion code itself, so codes sharing a `kody_campaign` are
+one claim per person between them. Claims of untagged codes still count against
+every later untagged code, campaign claims included. An unrecognized
+`kody_claim_scope`, or `kody_campaign` without `kody_claim_scope: campaign`,
+gets 400 "That promo code isn't set up correctly. Please contact support." and a
+`billing_checkout_promo_claim_scope_unrecognized` error log. A blocked campaign
+code gets 409 "You have already claimed this promotion. It can be claimed once
+per person, across all of your organizations." Claims are keyed by person and
+claim key (`lifetime` or `campaign:<id>`); the check and the reservation are one
+statement, so concurrent checkouts cannot both claim. There is no public Payment
+Link path: checkout requires a signed-in session so unauthenticated card-testing
+is not possible. `GET /@<slug>/-/billing/success` verifies `client_reference_id`
+before linking `orgs.stripe_customer_id`, then refreshes `orgs.stripe_plan` and
+renders a thank-you page (Discord invite; connect-your-agent when
+`needsOnboarding`). A successful `stripe_plan` write also best-effort re-syncs
+official Kody Discord Standard/Pro roles when the user has a Discord
+social-login connection (see [`social-login.md`](../social-login.md)).
+`GET /@<slug>/-/billing/portal` opens the Stripe customer portal for linked
+customers, pinned to `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` when set.
 
 **Plan changes for existing subscribers never create a second subscription.**
 When the checkout handler finds a linked `stripe_customer_id`, it lists the
