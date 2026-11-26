@@ -47,7 +47,9 @@ class FakeWindow {
 		FakeWindow.all.push(this)
 	}
 	on(name, handler) {
-		this.handlers.set(name, handler)
+		const list = this.handlers.get(name) ?? []
+		list.push(handler)
+		this.handlers.set(name, list)
 	}
 	async loadURL(url) {
 		this.loads.push(url)
@@ -57,7 +59,7 @@ class FakeWindow {
 	}
 	destroy() {
 		this.destroyed = true
-		this.handlers.get('closed')?.()
+		for (const handler of this.handlers.get('closed') ?? []) handler()
 	}
 	isMinimized() {
 		return false
@@ -243,5 +245,33 @@ test('web notification requests follow the local grant; other windows are not de
 	assert.equal(
 		apps.permissionCheck({ id: -1 }, 'notifications', appOrigin),
 		undefined,
+	)
+})
+
+test('revoking from the App menu stops floating and clears the badge', async () => {
+	const { apps, window, badges } = await setup({ answers: [true, true] })
+	const contents = window.webContents
+	const call = (action, ...args) =>
+		apps.call(contents, contents.mainFrame, action, args)
+	await call('permission-request', 'notifications')
+	await call('permission-request', 'floating')
+	await call('window-floating', true)
+	await call('badge', 2)
+	assert.equal(window.alwaysOnTop, true)
+	window.loads.push(`${appOrigin}/today`)
+	window.isFocused = () => true
+	const menu = apps.menuFor(window)
+	const item = (label) => menu.submenu.find((entry) => entry.label === label)
+	assert.equal(item('Float above other windows').checked, true)
+	item('Float above other windows').click({ checked: false })
+	assert.equal(window.alwaysOnTop, false)
+	item('Ask again for every permission').click()
+	assert.deepEqual(badges, [2, 0])
+	assert.equal(apps.menuFor(window).submenu[1].checked, false)
+	assert.equal(await call('permission-query', 'notifications'), 'prompt')
+	await call('open-path', '/')
+	assert.equal(
+		window.loads.at(-1),
+		'https://kody.codes/@kent/packages/weather/open',
 	)
 })

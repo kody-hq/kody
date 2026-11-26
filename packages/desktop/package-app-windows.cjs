@@ -64,6 +64,7 @@ function createPackageAppWindows(deps) {
 		preload,
 		askPermission,
 		setBadge = () => {},
+		menuChanged = () => {},
 	} = deps
 	const windows = new Map()
 	const extras = new Map()
@@ -140,14 +141,31 @@ function createPackageAppWindows(deps) {
 		return true
 	}
 
-	function open(app, path) {
+	const flagMaxAge = 60_000
+	/** The owner's session flag, rechecked once it is a minute old. */
+	async function refreshFlag(owner) {
+		const on = await installAllowed(owner).catch(() => false)
+		flags.set(owner, { on, at: Date.now() })
+		return on
+	}
+	function flagOn(owner) {
+		return flags.get(owner)?.on === true
+	}
+	async function currentFlag(owner) {
+		const cached = flags.get(owner)
+		if (cached && Date.now() - cached.at < flagMaxAge) return cached.on
+		return refreshFlag(owner)
+	}
+
+	function open(app, path, { navigate = false } = {}) {
 		const key = packageAppKey(app.owner, app.packageName)
 		const existing = windows.get(key)
 		if (existing && !existing.isDestroyed()) {
 			if (existing.isMinimized()) existing.restore()
 			existing.show()
 			existing.focus()
-			if (path && path !== '/') void existing.loadURL(packageAppUrl(app, path))
+			if (path && (navigate || path !== '/'))
+				void existing.loadURL(packageAppUrl(app, path))
 			return existing
 		}
 		const window = createWindow(app)
@@ -160,10 +178,8 @@ function createPackageAppWindows(deps) {
 	}
 
 	function load(app, window, path) {
-		void installAllowed(app.owner)
-			.catch(() => false)
-			.then((on) => {
-				flags.set(app.owner, on)
+		void refreshFlag(app.owner)
+			.then(() => {
 				if (!window.isDestroyed())
 					return window.loadURL(packageAppUrl(app, path))
 			})
@@ -227,7 +243,13 @@ function createPackageAppWindows(deps) {
 			if (kind === 'unavailable') void unavailable('gone')
 		}
 		contents.on('did-start-navigation', (event) => {
-			if (event.isMainFrame) lastHop = event.url
+			if (!event.isMainFrame) return
+			lastHop = event.url
+			// Signing in through the handoff can turn the owner's flag on.
+			if (frameOrigin(event.url) === kodyOrigin) void refreshFlag(app.owner)
+		})
+		contents.on('did-navigate', () => {
+			if (window.isFocused?.()) menuChanged()
 		})
 		contents.on('will-navigate', guard)
 		contents.on('will-redirect', (event, url) => {
@@ -263,8 +285,7 @@ function createPackageAppWindows(deps) {
 			})
 			prompting = false
 			if (window.isDestroyed()) return
-			if (response === 0)
-				void window.loadURL(packageAppUrl(app, '/')).catch(() => {})
+			if (response === 0) load(app, window, '/')
 			else if (response === 1) await uninstall(app)
 			else window.close()
 		}
@@ -312,7 +333,7 @@ function createPackageAppWindows(deps) {
 			!frame.parent &&
 			frame.origin === origin &&
 			record.origins.includes(origin) &&
-			flags.get(record.app.owner) === true,
+			flagOn(record.app.owner),
 		)
 	}
 
@@ -327,6 +348,8 @@ function createPackageAppWindows(deps) {
 		if (!record || !bridgeAllowed(contents, frame, frame?.origin))
 			throw new Error('Desktop features are only available in installed apps.')
 		const { window } = record
+		if (!(await currentFlag(record.app.owner)))
+			throw new Error('Desktop features are only available in installed apps.')
 		const app = store.get(record.app.owner, record.app.packageName)
 		if (!app) throw new Error('This app is not installed.')
 		const origin = frame.origin
@@ -370,7 +393,7 @@ function createPackageAppWindows(deps) {
 			case 'open-path': {
 				const path = appPath(first)
 				if (!path) return
-				open(app, path)
+				open(app, path, { navigate: true })
 				return
 			}
 			default:
@@ -404,7 +427,7 @@ function createPackageAppWindows(deps) {
 			app &&
 			normalized &&
 			record.origins.includes(normalized) &&
-			flags.get(app.owner) === true &&
+			flagOn(app.owner) &&
 			permissionState(app, normalized, 'notifications') === 'granted',
 		)
 	}
@@ -427,9 +450,8 @@ function createPackageAppWindows(deps) {
 						type: 'checkbox',
 						checked: permissionState(app, origin, kind) === 'granted',
 						click: (item) =>
-							store.setPermission(
-								app.owner,
-								app.packageName,
+							changePermission(
+								app,
 								origin,
 								kind,
 								item.checked ? 'granted' : 'denied',
@@ -439,13 +461,7 @@ function createPackageAppWindows(deps) {
 					label: 'Ask again for every permission',
 					click: () => {
 						for (const kind of permissionKinds)
-							store.setPermission(
-								app.owner,
-								app.packageName,
-								origin,
-								kind,
-								null,
-							)
+							changePermission(app, origin, kind, null)
 					},
 				},
 				{ type: 'separator' },
@@ -455,6 +471,19 @@ function createPackageAppWindows(deps) {
 				},
 			],
 		}
+	}
+
+	/** Saves a change from the App menu and stops what a revoked grant allowed. */
+	function changePermission(app, origin, kind, state) {
+		store.setPermission(app.owner, app.packageName, origin, kind, state)
+		if (state !== 'granted') {
+			const key = packageAppKey(app.owner, app.packageName)
+			if (kind === 'floating')
+				for (const window of [windows.get(key), ...(extras.get(key) ?? [])])
+					if (window && !window.isDestroyed()) window.setAlwaysOnTop(false)
+			if (kind === 'notifications' && badges.delete(key)) totalBadge()
+		}
+		menuChanged()
 	}
 
 	async function confirmUninstall(window, app) {
