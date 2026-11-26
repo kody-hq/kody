@@ -96,7 +96,7 @@ function readGitErrorFilepaths(error: object) {
 }
 
 const repoSessionRebaseReapplyGuidance =
-	'Your session changes are kept and committed on the session branch. Open a new repo session on the latest source and reapply your changes there.'
+	'The session keeps your edits, now committed on its branch at the old base. Open a new repo session on the latest source and reapply your changes there.'
 
 /**
  * Map an isomorphic-git merge/checkout conflict from a session rebase to an
@@ -111,7 +111,7 @@ export function toRepoSessionRebaseCallerError(error: unknown) {
 	switch (code) {
 		case 'MergeConflictError':
 			return new Error(
-				`${repoSessionRebaseStoppedMessagePrefix}the latest source changed the same lines as the session in: ${files}. ${repoSessionRebaseReapplyGuidance}`,
+				`${repoSessionRebaseStoppedMessagePrefix}the latest source and the session both changed these files and git cannot merge them: ${files}. ${repoSessionRebaseReapplyGuidance}`,
 				{ cause: error },
 			)
 		case 'MergeNotSupportedError':
