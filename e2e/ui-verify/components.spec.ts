@@ -2,6 +2,7 @@ import path from 'node:path'
 import { waitForAnimationsToSettle } from '../page-settle.ts'
 import { expect, test, waitForClientHydration } from '../playwright-utils.ts'
 import { findAxeViolations } from './checks.ts'
+import { isolateGallerySection } from './gallery.ts'
 import { uiVerifyPaths, uiVerifyUpdateCommand } from './paths.ts'
 import { pinnedBrowserEndpoint } from './pinned-browser.ts'
 import { themes } from './targets.ts'
@@ -139,6 +140,7 @@ test.describe('Dialog', () => {
 			page,
 		}) => {
 			await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+			await isolateGallerySection(page, 'dialog')
 			for (const [trigger, role] of [
 				['Rename file', 'dialog'],
 				['Delete file', 'alertdialog'],
@@ -187,6 +189,7 @@ test.describe('Install package app dialog', () => {
 	for (const theme of themes) {
 		test(`confirms, installs, and passes axe (${theme})`, async ({ page }) => {
 			await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+			await isolateGallerySection(page, 'install-app')
 			const trigger = page.getByRole('button', {
 				name: 'Install Weather',
 				exact: true,
@@ -290,6 +293,7 @@ test.describe('Menu', () => {
 			page,
 		}) => {
 			await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+			await isolateGallerySection(page, 'menu')
 			const trigger = page.getByRole('button', { name: 'File actions' })
 			await trigger.click()
 			const menu = page.getByRole('menu', { name: 'File actions' })

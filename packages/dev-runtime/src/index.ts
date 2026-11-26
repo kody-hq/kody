@@ -9,9 +9,19 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+	existsSync,
+	linkSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	rmdirSync,
+	unlinkSync,
+	writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:net'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createPasswordHash } from '@kody-internal/shared/password-hash.ts'
@@ -172,10 +182,74 @@ function listenOnce(port: number, host: string): Promise<number> {
 	})
 }
 
+const portClaimDir = join(
+	tmpdir(),
+	`kody-dev-runtime-ports-${process.getuid?.() ?? 'shared'}`,
+)
+
+function isLiveProcess(pid: number) {
+	try {
+		process.kill(pid, 0)
+		return true
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === 'EPERM'
+	}
+}
+
+/** Write this pid to `target` atomically: create (`link`) or replace (`rename`). */
+function publishClaim(target: string, replace: boolean) {
+	const temp = `${target}.${process.pid}.tmp`
+	writeFileSync(temp, String(process.pid))
+	try {
+		if (replace) renameSync(temp, target)
+		else linkSync(temp, target)
+	} finally {
+		if (!replace) unlinkSync(temp)
+	}
+}
+
+function claimOwnerIsLive(file: string) {
+	const owner = Number.parseInt(readFileSync(file, 'utf8'), 10)
+	return owner === process.pid || (owner > 0 && isLiveProcess(owner))
+}
+
 /**
- * A port free on both loopbacks and not already handed out by this process.
- * `localhost` can resolve to `::1` first, so a port that is only free on
- * 127.0.0.1 can be answered by a different server (#5267).
+ * Claim `port` for this process across every local runtime. A free port is
+ * released until Wrangler binds it, so a runtime starting in another process
+ * (parallel test files, two `kody dev`s) could otherwise bind it first and
+ * answer this origin's `/health`. A claim of an exited process is taken over
+ * under a `.lock` directory, rechecking the owner inside it.
+ */
+function claimPort(port: number) {
+	mkdirSync(portClaimDir, { recursive: true })
+	const file = join(portClaimDir, String(port))
+	try {
+		publishClaim(file, false)
+		return true
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+	}
+	if (claimOwnerIsLive(file)) return false
+	const lock = `${file}.lock`
+	try {
+		mkdirSync(lock)
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false
+		throw error
+	}
+	try {
+		if (claimOwnerIsLive(file)) return false
+		publishClaim(file, true)
+		return true
+	} finally {
+		rmdirSync(lock)
+	}
+}
+
+/**
+ * A port free on both loopbacks and not already handed out to any live local
+ * runtime. `localhost` can resolve to `::1` first, so a port that is only free
+ * on 127.0.0.1 can be answered by a different server (#5267).
  */
 export async function getFreePort(): Promise<number> {
 	for (let attempt = 0; attempt < 20; attempt++) {
@@ -193,7 +267,7 @@ export async function getFreePort(): Promise<number> {
 				throw error
 			},
 		)
-		if (!ipv6Free || handedOutPorts.has(port)) continue
+		if (!ipv6Free || handedOutPorts.has(port) || !claimPort(port)) continue
 		handedOutPorts.add(port)
 		return port
 	}
@@ -464,6 +538,9 @@ export async function startDevRuntime(
 		}
 		writeLocalState(stateDir, state)
 	}
+	// Saved ports keep their numbers (the origin is persisted); claiming them
+	// stops another runtime's getFreePort from handing them out while we run.
+	for (const saved of Object.values(state.ports)) claimPort(saved)
 	const port = state.ports.origin
 	const mockPort = state.ports.mockCloudflare
 	const origin = `http://localhost:${port}`
