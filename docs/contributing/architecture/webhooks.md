@@ -281,9 +281,11 @@ not in D1. See [Data storage](./data-storage.md) and
 Fleet scans use
 [delivery outcomes](../../../packages/worker/src/webhooks/delivery-outcomes.ts)
 to page through each owner's RunLog, newest first, skipping running and
-synthetic records. The scan reports truncation if a cursor remains after 20
-pages. The rejection report uses the `all` owner scope, which includes owners
-with off or soft-deleted endpoint rows. Auth regression alerts use the `live`
-owner scope, which requires an undeleted endpoint that is not off. Both use the
+synthetic records. The reader marks the result truncated if a cursor remains
+after 20 pages. The rejection report surfaces truncation and uses the `all`
+owner scope, which includes owners with off or soft-deleted endpoint rows. Auth
+regression alerts ignore truncation and use the `live` owner scope, which
+requires an undeleted endpoint that is not off. The verification scan also
+surfaces truncation. The rejection report and auth regression alerts use the
 [shared concurrency helper](../../../packages/worker/src/concurrency.ts) with up
 to eight owners in flight per scan.
