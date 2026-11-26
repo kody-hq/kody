@@ -118,6 +118,10 @@ const contextColumns = `id, org_id, operator_user_id, all_members, name, public_
 	client_version, capabilities_json, grant_json, grant_version, login_kind,
 	login_user_id, login_profile_id, login_token_id, login_checked_at, team_id,
 	paused_at, paused_by_user_id, pause_reason`
+const qualifiedContextColumns = contextColumns
+	.split(',')
+	.map((column) => `c.${column.trim()}`)
+	.join(', ')
 
 export async function getExecutionContext(db: D1Database, id: string) {
 	return await db
@@ -200,11 +204,22 @@ export async function resolveExecutionContextRef(
 			.first()
 		return attached ? row : null
 	}
-	return (
-		(await listOrgExecutionContexts(db, orgId)).find(
-			(row) => row.name === trimmed && !row.revoked_at,
-		) ?? null
-	)
+	return await db
+		.prepare(
+			`SELECT ${contextColumns} FROM (
+				SELECT ${qualifiedContextColumns}, 1 AS owner_priority FROM execution_contexts c
+				WHERE c.org_id = ? AND c.name = ? AND c.revoked_at IS NULL
+				UNION ALL
+				SELECT ${qualifiedContextColumns}, 0 AS owner_priority
+				FROM execution_context_org_attachments a
+				JOIN execution_contexts c ON c.id = a.context_id
+				WHERE a.org_id = ? AND c.name = ? AND c.revoked_at IS NULL
+			)
+			ORDER BY owner_priority DESC, id
+			LIMIT 1`,
+		)
+		.bind(orgId, trimmed, orgId, trimmed)
+		.first<ExecutionContextRow>()
 }
 
 /**

@@ -1,4 +1,5 @@
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
+import { deleteKvKeysByPrefix } from '../kv-delete.ts'
 import { linkedPackageImportPrefix } from './module-graph-paths.ts'
 
 /**
@@ -203,14 +204,11 @@ export async function deleteLinkedArtifactGroups(input: {
 	prefix: string
 }) {
 	if (typeof input.kv.list !== 'function') return 0
-	let deleted = 0
-	let cursor: string | undefined
-	do {
-		const page = await input.kv.list({ prefix: input.prefix, cursor })
-		await Promise.all(page.keys.map((key) => input.kv.delete(key.name)))
-		for (const key of page.keys) recentWrites.delete(key.name)
-		deleted += page.keys.length
-		cursor = page.list_complete ? undefined : page.cursor
-	} while (cursor)
-	return deleted
+	return await deleteKvKeysByPrefix({
+		kv: input.kv,
+		prefix: input.prefix,
+		afterPageDeleted(keys) {
+			for (const key of keys) recentWrites.delete(key)
+		},
+	})
 }

@@ -1,3 +1,4 @@
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { listPackageWebhooks } from '#worker/package-registry/manifest.ts'
@@ -5,7 +6,6 @@ import { loadPackageManifestBySourceId } from '#worker/package-registry/source.t
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { webhookEndpointNotOffSql } from './repo.ts'
 import {
-	mapWithConcurrency,
 	readWebhookDeliveries,
 	webhookOwnerScanConcurrency,
 } from './delivery-outcomes.ts'

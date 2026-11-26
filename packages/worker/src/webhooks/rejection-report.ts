@@ -1,7 +1,7 @@
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	listWebhookOwners,
-	mapWithConcurrency,
 	readWebhookDeliveries,
 	webhookOwnerScanConcurrency,
 	type WebhookDelivery,

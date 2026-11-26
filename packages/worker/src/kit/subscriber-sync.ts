@@ -4,6 +4,7 @@
  * lifecycle only adds/removes tags when the email already exists in Kit.
  */
 
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import { waitUntil } from 'cloudflare:workers'
 import { parseStripePlanName } from '#universal/plans.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -422,27 +423,6 @@ export function scheduleKitSubscriberSync(input: {
 	waitUntil(
 		maybeSyncKitSubscriberForUser(input).catch((error) => {
 			console.warn('Failed to sync Kit subscriber:', error)
-		}),
-	)
-}
-
-async function mapWithConcurrency<T>(
-	items: ReadonlyArray<T>,
-	concurrency: number,
-	mapper: (item: T) => Promise<void>,
-): Promise<void> {
-	if (items.length === 0) return
-	const limit = Math.max(1, Math.min(concurrency, items.length))
-	let nextIndex = 0
-	await Promise.all(
-		Array.from({ length: limit }, async () => {
-			while (nextIndex < items.length) {
-				const index = nextIndex
-				nextIndex += 1
-				const item = items[index]
-				if (item === undefined) return
-				await mapper(item)
-			}
 		}),
 	)
 }

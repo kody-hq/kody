@@ -1,3 +1,4 @@
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import {
 	deleteLinkedArtifactGroups,
 	linkedArtifactSourceKvPrefix,
@@ -72,26 +73,6 @@ export type LoadedPublishedBundleArtifact = {
  * half without reopening the session-DO memory failure in kody-hq/kody#987.
  */
 const publishedPackageArtifactRebuildConcurrency = 2
-
-async function mapWithConcurrency<T>(
-	items: ReadonlyArray<T>,
-	concurrency: number,
-	mapper: (item: T) => Promise<void>,
-) {
-	if (items.length === 0) return
-	const limit = Math.max(1, Math.min(concurrency, items.length))
-	let nextIndex = 0
-	async function worker() {
-		while (nextIndex < items.length) {
-			const index = nextIndex
-			nextIndex += 1
-			const item = items[index]
-			if (item === undefined) return
-			await mapper(item)
-		}
-	}
-	await Promise.all(Array.from({ length: limit }, () => worker()))
-}
 
 export function publishedBundleLoadIdentityKey(input: {
 	sourceId: string

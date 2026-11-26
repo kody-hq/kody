@@ -133,23 +133,3 @@ export async function readWebhookDeliveries(input: {
 	}
 	return { deliveries, truncated: true }
 }
-
-export async function mapWithConcurrency<T, R>(
-	items: ReadonlyArray<T>,
-	concurrency: number,
-	mapper: (item: T) => Promise<R>,
-): Promise<Array<R>> {
-	const results: Array<R> = []
-	let next = 0
-	const workers = Array.from(
-		{ length: Math.min(concurrency, items.length) },
-		async () => {
-			while (next < items.length) {
-				const index = next++
-				results[index] = await mapper(items[index]!)
-			}
-		},
-	)
-	await Promise.all(workers)
-	return results
-}

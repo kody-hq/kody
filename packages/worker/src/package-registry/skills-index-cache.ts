@@ -1,3 +1,4 @@
+import { deleteKvKeysByPrefix } from '../kv-delete.ts'
 import {
 	packageSkillsIndexVersion,
 	type PackageSkillsIndex,
@@ -57,22 +58,27 @@ export async function listPackageSkillsIndexes(input: {
 }) {
 	const kv = getSkillsKv(input.env)
 	const prefix = buildPackageSkillsIndexPrefix(input)
-	const keys = await listPackageSkillsIndexKeys({ kv, prefix })
 	const indexes: Array<PackageSkillsIndex> = []
-	// Bound concurrent KV reads even for packages with long histories.
-	for (let offset = 0; offset < keys.length; offset += 10) {
-		const batch = await Promise.all(
-			keys.slice(offset, offset + 10).map(async (key) => {
-				if (!key.startsWith(prefix))
-					throw new Error('Invalid skills history key.')
-				return readPackageSkillsIndex({
-					...input,
-					publishedCommit: key.slice(prefix.length),
-				})
-			}),
-		)
-		for (const index of batch) if (index) indexes.push(index)
-	}
+	let cursor: string | undefined
+	do {
+		const result = await kv.list({ prefix, cursor })
+		const keys = result.keys.map((key) => key.name)
+		// Bound concurrent KV reads even for packages with long histories.
+		for (let offset = 0; offset < keys.length; offset += 10) {
+			const batch = await Promise.all(
+				keys.slice(offset, offset + 10).map(async (key) => {
+					if (!key.startsWith(prefix))
+						throw new Error('Invalid skills history key.')
+					return readPackageSkillsIndex({
+						...input,
+						publishedCommit: key.slice(prefix.length),
+					})
+				}),
+			)
+			for (const index of batch) if (index) indexes.push(index)
+		}
+		cursor = result.list_complete ? undefined : result.cursor
+	} while (cursor)
 	return indexes
 }
 
@@ -86,20 +92,6 @@ function isPackageSkillsIndex(value: unknown): value is PackageSkillsIndex {
 			'string' &&
 		Array.isArray((value as { skills?: unknown }).skills)
 	)
-}
-
-async function listPackageSkillsIndexKeys(input: {
-	kv: KVNamespace
-	prefix: string
-}) {
-	const keys: Array<string> = []
-	let cursor: string | undefined
-	do {
-		const result = await input.kv.list({ prefix: input.prefix, cursor })
-		keys.push(...result.keys.map((key) => key.name))
-		cursor = result.list_complete ? undefined : result.cursor
-	} while (cursor)
-	return keys
 }
 
 /**
@@ -160,12 +152,10 @@ export async function removePackageSkillsIndexEntries(input: {
 	packageId: string
 }) {
 	if (!hasPackageSkillsKv(input.env)) return
-	const kv = getSkillsKv(input.env)
-	const keys = await listPackageSkillsIndexKeys({
-		kv,
+	await deleteKvKeysByPrefix({
+		kv: getSkillsKv(input.env),
 		prefix: buildPackageSkillsIndexPrefix(input),
 	})
-	await Promise.all(keys.map(async (key) => await kv.delete(key)))
 }
 
 /** Deletes every package skills index owned by a user (account deletion). */
@@ -174,15 +164,8 @@ export async function deleteAllPackageSkillsIndexEntriesForUser(input: {
 	userId: string
 }) {
 	if (!hasPackageSkillsKv(input.env)) return 0
-	const kv = getSkillsKv(input.env)
-	const prefix = `${skillsIndexCachePrefix}:v${packageSkillsIndexVersion}:${input.userId}:`
-	const keys = await listPackageSkillsIndexKeys({ kv, prefix })
-	const outOfScope = keys.find((key) => !key.startsWith(prefix))
-	if (outOfScope) {
-		throw new Error(
-			`Package skills KV listing returned out-of-scope key: ${outOfScope}`,
-		)
-	}
-	await Promise.all(keys.map(async (key) => await kv.delete(key)))
-	return keys.length
+	return await deleteKvKeysByPrefix({
+		kv: getSkillsKv(input.env),
+		prefix: `${skillsIndexCachePrefix}:v${packageSkillsIndexVersion}:${input.userId}:`,
+	})
 }

@@ -10,6 +10,7 @@ import {
 	createKvCachifiedCache,
 	derivedCacheKeyPrefix,
 } from '#worker/kv-cachified.ts'
+import { deleteKvKeys } from '#worker/kv-delete.ts'
 import { readFirstArtifactFileAtCommit } from '#worker/repo/artifact-file.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
@@ -191,11 +192,11 @@ export async function deleteCommunityIconAssets(input: {
 			const keepCurrentVersion = prefix.includes(
 				`community-icon:v${communityIconVersion}:`,
 			)
-			await Promise.all(
+			await deleteKvKeys(
+				input.env.BUNDLE_ARTIFACTS_KV,
 				page.keys
 					.map((key) => key.name)
-					.filter((name) => !keepCurrentVersion || !keptKvKeys.has(name))
-					.map((name) => input.env.BUNDLE_ARTIFACTS_KV.delete(name)),
+					.filter((name) => !keepCurrentVersion || !keptKvKeys.has(name)),
 			)
 			kvCursor = page.list_complete ? undefined : page.cursor
 		} while (kvCursor)

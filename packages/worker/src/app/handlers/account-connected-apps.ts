@@ -47,7 +47,7 @@ import {
 } from '#worker/package-invocations/module-artifacts.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
-import { mapWithConcurrency } from '#worker/webhooks/delivery-outcomes.ts'
+import { mapWithConcurrency } from '#worker/concurrency.ts'
 import {
 	personalOrgId,
 	type PersonId,
