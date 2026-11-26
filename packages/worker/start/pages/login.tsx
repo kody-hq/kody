@@ -106,7 +106,6 @@ export function LoginPage({
 	const [signupEmail, setSignupEmail] = useState('')
 	const usernameAvailability = useUsernameAvailability(
 		mode === 'signup' ? signupUsername : '',
-		{ email: signupEmail },
 	)
 	const [confirmedUsername, setConfirmedUsername] = useState<string | null>(
 		null,

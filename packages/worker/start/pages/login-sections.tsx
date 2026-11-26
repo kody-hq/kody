@@ -188,7 +188,6 @@ export function AuthForm(
 				<UsernameChoiceField
 					value={props.signupUsername}
 					onChange={props.onSignupUsernameInput}
-					seeds={{ email: props.signupEmail }}
 					autoFocus
 					inputId={`${props.handleId}-username`}
 					confirming={props.usernameConfirming}
