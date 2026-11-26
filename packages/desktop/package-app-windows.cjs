@@ -18,11 +18,16 @@ const {
 	permissionLabels,
 	permissionState,
 } = require('./package-app-permissions.cjs')
+const {
+	maxShortcuts,
+	popoverBounds,
+	popoverSize,
+	validAccelerator,
+} = require('./package-app-background.cjs')
 
 const unavailableStatuses = new Set([401, 403, 404, 410])
 const maxExtraWindows = 8
-// Kinds an app can request today; the rest resolve 'unavailable'.
-const supportedPermissions = new Set(['notifications', 'floating'])
+const supportedPermissions = new Set(permissionKinds)
 
 /** An in-app path from page input: one leading slash, no scheme or host. */
 function appPath(value) {
@@ -65,12 +70,20 @@ function createPackageAppWindows(deps) {
 		askPermission,
 		setBadge = () => {},
 		menuChanged = () => {},
+		Tray,
+		nativeImage,
+		globalShortcut,
+		screen,
+		trayIcon = () => null,
+		setStartAtLogin = () => {},
 	} = deps
 	const windows = new Map()
 	const extras = new Map()
 	const records = new Map()
 	const flags = new Map()
 	const badges = new Map()
+	const trays = new Map()
+	const shortcuts = new Map()
 	const gate = createPermissionGate({ store, ask: askPermission })
 
 	function planFor(app) {
@@ -123,8 +136,11 @@ function createPackageAppWindows(deps) {
 		windows.get(key)?.destroy()
 		for (const extra of extras.get(key) ?? []) extra.destroy()
 		if (badges.delete(key)) totalBadge()
+		removeTray(app)
+		unregisterShortcuts(key)
 		await removeLauncher(planFor(app), { fs })
 		store.remove(app.owner, app.packageName)
+		updateStartAtLogin()
 	}
 
 	function list() {
@@ -157,7 +173,7 @@ function createPackageAppWindows(deps) {
 		return refreshFlag(owner)
 	}
 
-	function open(app, path, { navigate = false } = {}) {
+	function open(app, path, { navigate = false, hidden = false } = {}) {
 		const key = packageAppKey(app.owner, app.packageName)
 		const existing = windows.get(key)
 		if (existing && !existing.isDestroyed()) {
@@ -168,7 +184,10 @@ function createPackageAppWindows(deps) {
 				void existing.loadURL(packageAppUrl(app, path))
 			return existing
 		}
-		const window = createWindow(app)
+		const window = createWindow(
+			app,
+			hidden ? { window: { show: false } } : null,
+		)
 		windows.set(key, window)
 		window.on('closed', () => {
 			if (windows.get(key) === window) windows.delete(key)
@@ -194,8 +213,10 @@ function createPackageAppWindows(deps) {
 		const size = (value, min, max) =>
 			Number.isFinite(value) ? Math.min(Math.max(value, min), max) : undefined
 		const window = createWindow(app, {
-			width: size(options?.width, 240, 2400) ?? 640,
-			height: size(options?.height, 200, 1600) ?? 480,
+			size: {
+				width: size(options?.width, 240, 2400) ?? 640,
+				height: size(options?.height, 200, 1600) ?? 480,
+			},
 		})
 		set.add(window)
 		extras.set(key, set)
@@ -207,12 +228,13 @@ function createPackageAppWindows(deps) {
 		const window = new BrowserWindow({
 			width: 1100,
 			height: 760,
-			...(extra ?? app.bounds),
+			...(extra?.size ?? app.bounds),
 			minWidth: 360,
 			minHeight: 280,
 			title: app.name,
 			backgroundColor: '#ffffff',
 			show: true,
+			...extra?.window,
 			webPreferences: {
 				nodeIntegration: false,
 				contextIsolation: true,
@@ -303,7 +325,7 @@ function createPackageAppWindows(deps) {
 			},
 		)
 		window.on('close', () => {
-			if (extra) return
+			if (extra?.size) return
 			if (!window.isMinimized() && !window.isFullScreen())
 				store.setBounds(app.owner, app.packageName, window.getNormalBounds())
 		})
@@ -390,6 +412,74 @@ function createPackageAppWindows(deps) {
 				openExtra(app, path, second)
 				return
 			}
+			case 'menu-bar-set': {
+				if (!granted('menuBar')) return
+				const path = appPath(first)
+				if (!path) throw new Error('Open a path inside this app.')
+				const menuBar = {
+					path,
+					origin,
+					appOrigin: app.appOrigin,
+					tooltip: typeof second === 'string' ? second.slice(0, 120) : null,
+				}
+				store.put({ ...app, menuBar })
+				showTray(store.get(app.owner, app.packageName))
+				return
+			}
+			case 'menu-bar-remove':
+				if (store.get(app.owner, app.packageName)?.menuBar?.origin === origin)
+					removeTray(app)
+				return
+			case 'menu-bar-size': {
+				const popover = trays.get(
+					packageAppKey(app.owner, app.packageName),
+				)?.popover
+				if (popover !== window) return
+				const { width, height } = popoverSize(first)
+				popover.setSize(width, height)
+				if (popover.isVisible())
+					placePopover(trays.get(packageAppKey(app.owner, app.packageName)))
+				return
+			}
+			case 'shortcut-register': {
+				if (!granted('shortcuts')) return false
+				const accelerator = validAccelerator(first)
+				if (!accelerator) throw new Error('Use a modifier and one key.')
+				const key = packageAppKey(app.owner, app.packageName)
+				const set = shortcuts.get(key) ?? new Map()
+				if (set.get(accelerator) === origin) return true
+				if (set.has(accelerator)) return false
+				if (set.size >= maxShortcuts)
+					throw new Error(
+						`An app can register up to ${maxShortcuts} shortcuts.`,
+					)
+				const ok = globalShortcut.register(accelerator, () =>
+					pressShortcut(app, accelerator),
+				)
+				if (ok) {
+					set.set(accelerator, origin)
+					shortcuts.set(key, set)
+				}
+				return ok
+			}
+			case 'shortcut-unregister': {
+				const set = shortcuts.get(packageAppKey(app.owner, app.packageName))
+				if (set?.get(first) === origin) {
+					set.delete(first)
+					globalShortcut.unregister(first)
+				}
+				return
+			}
+			case 'start-at-login': {
+				if (!granted('startAtLogin')) return
+				store.put({
+					...app,
+					startAtLogin:
+						first === true ? { origin, appOrigin: app.appOrigin } : null,
+				})
+				updateStartAtLogin()
+				return
+			}
 			case 'open-path': {
 				const path = appPath(first)
 				if (!path) return
@@ -399,6 +489,169 @@ function createPackageAppWindows(deps) {
 			default:
 				throw new Error('Unknown desktop action.')
 		}
+	}
+
+	function pressShortcut(app, accelerator) {
+		const key = packageAppKey(app.owner, app.packageName)
+		const existing = windows.get(key)
+		const window = existing ?? open(app, '/')
+		const send = () => {
+			if (!window.isDestroyed())
+				window.webContents.send('kody:package-app-shortcut', accelerator)
+		}
+		// A reopened window starts loading only after the flag check.
+		if (!existing || window.webContents.isLoading())
+			window.webContents.once('did-finish-load', send)
+		else send()
+	}
+
+	function unregisterShortcuts(key) {
+		for (const accelerator of shortcuts.get(key)?.keys() ?? [])
+			globalShortcut.unregister(accelerator)
+		shortcuts.delete(key)
+	}
+
+	/** A menu-bar icon whose click toggles a popover on the app's menu-bar page. */
+	function showTray(app) {
+		const key = packageAppKey(app.owner, app.packageName)
+		const { menuBar } = app
+		if (!stillGranted(app, menuBar, 'menuBar')) return
+		let entry = trays.get(key)
+		if (!entry) {
+			const icon = trayIcon(app)
+			const tray = new Tray(icon ?? nativeImage.createEmpty())
+			entry = { tray, popover: null }
+			trays.set(key, entry)
+			tray.on('click', () => togglePopover(key))
+		}
+		entry.tray.setToolTip(menuBar.tooltip || app.name)
+		const moved =
+			entry.path !== undefined &&
+			(entry.path !== menuBar.path || entry.app.appOrigin !== app.appOrigin)
+		entry.path = menuBar.path
+		entry.app = app
+		if (moved && entry.popover && !entry.popover.isDestroyed())
+			void entry.popover
+				.loadURL(packageAppUrl(app, menuBar.path))
+				.catch(() => {})
+	}
+
+	function togglePopover(key) {
+		const entry = trays.get(key)
+		if (!entry) return
+		if (!entry.popover || entry.popover.isDestroyed()) {
+			const popover = createWindow(entry.app, {
+				size: popoverSize(null),
+				window: {
+					show: false,
+					frame: false,
+					resizable: false,
+					movable: false,
+					minimizable: false,
+					maximizable: false,
+					fullscreenable: false,
+					skipTaskbar: true,
+					alwaysOnTop: true,
+					minWidth: 200,
+					minHeight: 120,
+				},
+			})
+			// Clicking the tray blurs the popover first; that click should close it.
+			popover.on('blur', () => {
+				entry.hiddenAt = Date.now()
+				popover.hide()
+			})
+			entry.popover = popover
+			void popover.loadURL(packageAppUrl(entry.app, entry.path)).catch(() => {})
+		}
+		const popover = entry.popover
+		if (popover.isVisible() || Date.now() - (entry.hiddenAt ?? 0) < 250) {
+			popover.hide()
+			return
+		}
+		// Linux trays report empty bounds; the click point is the best anchor.
+		// Remove when: Electron reports tray bounds on Linux.
+		const reported = entry.tray.getBounds()
+		entry.anchor = reported.width
+			? reported
+			: { ...screen.getCursorScreenPoint(), width: 0, height: 0 }
+		placePopover(entry)
+		popover.show()
+		popover.focus()
+	}
+
+	function placePopover(entry) {
+		const { anchor } = entry
+		const { workArea } = screen.getDisplayMatching(anchor)
+		const [width, height] = entry.popover.getSize()
+		entry.popover.setBounds(popoverBounds(anchor, { width, height }, workArea))
+	}
+
+	function removeTray(app) {
+		const key = packageAppKey(app.owner, app.packageName)
+		const entry = trays.get(key)
+		if (entry) {
+			entry.popover?.destroy()
+			entry.tray.destroy()
+			trays.delete(key)
+		}
+		if (store.get(app.owner, app.packageName)?.menuBar)
+			store.put({ ...store.get(app.owner, app.packageName), menuBar: null })
+	}
+
+	// A saved background setting counts only for the origin that asked for it,
+	// and only while the package is still hosted where it was then.
+	function stillGranted(app, setting, kind) {
+		return Boolean(
+			setting?.origin &&
+			setting.appOrigin === app.appOrigin &&
+			permissionState(app, setting.origin, kind) === 'granted',
+		)
+	}
+
+	function wantsStartAtLogin() {
+		return store
+			.list()
+			.some((app) => stillGranted(app, app.startAtLogin, 'startAtLogin'))
+	}
+
+	function updateStartAtLogin() {
+		setStartAtLogin(wantsStartAtLogin())
+	}
+
+	/**
+	 * At launch: restore granted menu-bar items, and after a login start open
+	 * granted start-at-login apps hidden. Only while the owner's flag is on.
+	 * Resolves how many apps opened hidden.
+	 */
+	async function startBackground({ atLogin }) {
+		// Drops a login item whose last grant no longer applies, without
+		// re-enabling one the person turned off in their OS settings.
+		if (!wantsStartAtLogin()) setStartAtLogin(false)
+		const wanted = store
+			.list()
+			.map((app) => ({
+				app,
+				tray: stillGranted(app, app.menuBar, 'menuBar'),
+				start: atLogin && stillGranted(app, app.startAtLogin, 'startAtLogin'),
+			}))
+			.filter(({ tray, start }) => tray || start)
+		const owners = new Map(
+			[...new Set(wanted.map(({ app }) => app.owner))].map((owner) => [
+				owner,
+				refreshFlag(owner),
+			]),
+		)
+		let opened = 0
+		for (const { app, tray, start } of wanted) {
+			if (!(await owners.get(app.owner))) continue
+			if (tray) showTray(app)
+			if (start) {
+				open(app, '/', { hidden: true })
+				opened++
+			}
+		}
+		return opened
 	}
 
 	/**
@@ -482,6 +735,9 @@ function createPackageAppWindows(deps) {
 				for (const window of [windows.get(key), ...(extras.get(key) ?? [])])
 					if (window && !window.isDestroyed()) window.setAlwaysOnTop(false)
 			if (kind === 'notifications' && badges.delete(key)) totalBadge()
+			if (kind === 'menuBar') removeTray(app)
+			if (kind === 'shortcuts') unregisterShortcuts(key)
+			if (kind === 'startAtLogin') updateStartAtLogin()
 		}
 		menuChanged()
 	}
@@ -509,8 +765,10 @@ function createPackageAppWindows(deps) {
 		permissionRequest,
 		permissionCheck,
 		menuFor,
+		startBackground,
+		/** Open app windows plus menu-bar items keeping an app running. */
 		get size() {
-			return windows.size
+			return windows.size + trays.size
 		},
 	}
 }
