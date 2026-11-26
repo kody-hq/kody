@@ -1009,6 +1009,12 @@ else {
 			// shows the dashboard, even when no app could open.
 			const background = installedApps().startBackground({ atLogin })
 			if (atLogin) await background
+			else
+				background.catch((error) =>
+					console.warn(
+						`Kody could not restore menu-bar apps: ${error.message}`,
+					),
+				)
 			const [launchLink, ...moreLinks] = appLinks.start()
 			if ((!openedApps.length && !atLogin) || launchLink)
 				await showApp(launchLink)
