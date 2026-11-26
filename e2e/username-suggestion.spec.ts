@@ -115,33 +115,42 @@ async function recordAvailabilityStatuses(page: Page) {
 		)
 }
 
+/** Longer than the field's availability debounce. */
+const pastDebounceMs = 1_000
+
 test('editing the email never checks, fills, or replaces the username', async ({
 	page,
 }) => {
 	const base = uniqueUsername()
 	await page.goto('/signup')
 	await waitForClientHydration(page)
+	await page.clock.install()
 	const username = page.getByLabel('Username', { exact: true })
 	const email = page.getByLabel('Email', { exact: true })
 	const checks = await recordUsernameChecks(page)
 
 	await email.pressSequentially(`${base}@example.com`)
-	await page.waitForTimeout(800)
+	await page.clock.fastForward(pastDebounceMs)
 	await expect(username).toHaveValue('')
-	expect(checks).toHaveLength(0)
 
 	await username.fill(base)
 	await expect(page.getByText(`${base} is available.`)).toBeVisible()
-	checks.length = 0
 	const statuses = await recordAvailabilityStatuses(page)
 
 	await email.fill('')
 	await email.pressSequentially(`someone-else-${base}@example.com`)
-	await page.waitForTimeout(800)
+	await page.clock.fastForward(pastDebounceMs)
 	await expect(username).toHaveValue(base)
 	await expect(page.getByText(`${base} is available.`)).toBeVisible()
-	expect(checks).toHaveLength(0)
 	expect(await statuses()).toEqual([])
+
+	// A later username edit orders after anything the email edits sent.
+	await username.fill(`${base}x`)
+	await expect(page.getByText(`${base}x is available.`)).toBeVisible()
+	expect(checks).toHaveLength(2)
+	expect(
+		requestHasMutationDataFields(checks[0]!, { username: base }),
+	).toBeTruthy()
 })
 
 test('editing the username runs one debounced availability check', async ({
@@ -150,10 +159,14 @@ test('editing the username runs one debounced availability check', async ({
 	const base = uniqueUsername()
 	await page.goto('/signup')
 	await waitForClientHydration(page)
+	await page.clock.install()
+	await page.clock.pauseAt(Date.now() + pastDebounceMs)
 	const username = page.getByLabel('Username', { exact: true })
 	const checks = await recordUsernameChecks(page)
 
-	await username.pressSequentially(base, { delay: 20 })
+	// Paused, every keystroke lands inside one debounce window.
+	await username.pressSequentially(base)
+	await page.clock.resume()
 	await expect(page.getByText(`${base} is available.`)).toBeVisible()
 	expect(checks).toHaveLength(1)
 	expect(
