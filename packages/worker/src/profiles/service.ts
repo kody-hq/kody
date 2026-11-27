@@ -628,7 +628,7 @@ export async function revokeProfile(
 		profileId: input.profileId,
 	})
 	const grants = await loadProfileGrants(caller.env.APP_DB, {
-		orgId: caller.orgId,
+		orgId: null,
 		profileIds: [input.profileId],
 	})
 	return view(
