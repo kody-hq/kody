@@ -113,8 +113,11 @@ export async function enqueueSessionCategoryMerged(input: {
 			} satisfies SessionCategoryMergedQueueMessage)
 			return
 		} catch (error) {
+			// Subscribers lose the retries and the dead letter: the merge gets
+			// one inline attempt below instead.
 			console.warn('session-category-merged-enqueue-failed', {
 				categoryId: input.event.from.id,
+				retried: false,
 				error: String(error),
 			})
 		}
@@ -122,8 +125,11 @@ export async function enqueueSessionCategoryMerged(input: {
 	try {
 		await deliverSessionCategoryMerged(input)
 	} catch (error) {
+		// Subscribers never hear about this merge: nothing retries it.
 		console.warn('session-analytics-event-dispatch-failed', {
 			topic: sessionCategoryMergedTopic,
+			categoryId: input.event.from.id,
+			retried: false,
 			error: String(error),
 		})
 	}

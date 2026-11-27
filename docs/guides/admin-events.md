@@ -1084,4 +1084,6 @@ A merge is sent once. It goes through the package events Queue: if finding
 subscribers or starting a subscriber fails, Kody tries again 30 seconds later,
 up to 3 retries (4 attempts in total), and then dead-letters the message. Every
 attempt uses the same idempotency key (the merged category and the package), so
-a subscriber that already handled the merge is not run again.
+a subscriber that already handled the merge is not run again. If the merge
+cannot be put on the Queue at all, Kody delivers it once directly, with no
+retry.
