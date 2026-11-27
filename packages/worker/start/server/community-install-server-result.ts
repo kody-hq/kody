@@ -59,6 +59,13 @@ export function unwrapCommunityInstallHandlerResult(
 		...(data.failedChecks !== undefined
 			? { failedChecks: data.failedChecks.map((check) => ({ ...check })) }
 			: {}),
+		...(data.leftoverOriginReferences !== undefined
+			? {
+					leftoverOriginReferences: data.leftoverOriginReferences.map(
+						(leftover) => ({ ...leftover }),
+					),
+				}
+			: {}),
 		...(data.alreadyInstalled !== undefined
 			? { alreadyInstalled: data.alreadyInstalled }
 			: {}),

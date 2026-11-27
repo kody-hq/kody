@@ -34379,6 +34379,35 @@ export const capabilityManifest = {
 									"additionalProperties": false
 								}
 							},
+							"leftover_origin_references": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"file": {
+											"type": "string",
+											"description": "Path in the fork."
+										},
+										"line": {
+											"type": "integer",
+											"exclusiveMinimum": 0,
+											"maximum": 9007199254740991,
+											"description": "1-based line number."
+										},
+										"snippet": {
+											"type": "string",
+											"description": "The line, or the part around the reference when the line is long."
+										}
+									},
+									"required": [
+										"file",
+										"line",
+										"snippet"
+									],
+									"additionalProperties": false
+								},
+								"description": "Lines in the fork that still name the origin package or scope after the fork rewrite, usually an escaped or encoded spelling the rewrite does not follow. Review each one and point it at the fork name where it should follow the fork. Empty when nothing is left. At most 50 entries."
+							},
 							"next_steps": {
 								"type": "string"
 							},
@@ -34416,13 +34445,14 @@ export const capabilityManifest = {
 							"origin_commit",
 							"already_forked",
 							"cross_scope_references",
+							"leftover_origin_references",
 							"next_steps",
 							"content_warning"
 						],
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type CommunityForkInput = {\n\t/** Catalog entry id to fork. */\n\tlisting_id: string\n\t/** Deprecated leftover alias for an optional package name leaf (or `@owner/leaf`). Prefer omitting this and using the listing leaf, or pass a leaf via future `name` once available. Omit to use the listing leaf, or the next free alternate when that leaf is already taken by an unrelated package. */\n\tkody_id?: string\n}",
-					"outputTypeDefinition": "type CommunityForkOutput = {\n\tfork_id: string\n\tpackage_id: string\n\tsource_id: string\n\ttarget_kody_id: string\n\ttarget_name: string\n\torigin_commit: string\n\t/** Files copied. Omitted when `already_forked` is true. */\n\tfiles_count?: number\n\t/** True when this returned an existing fork of the listing in this account instead of creating a new one. */\n\talready_forked: boolean\n\t/** Explains what happened when `already_forked` is true. */\n\tmessage?: string\n\tcross_scope_references: Array<{\n\tfile: string\n\tspecifier: string\n}>\n\tnext_steps: string\n\tcontent_warning: string\n\t/** Request-scoped phase timings. Same shape as execute serverTiming. Not stored. bootstrap-source includes Durable Object startup; subtract nested bootstrap-* phases to estimate cold start. */\n\tserverTiming?: Array<{\n\tname: string\n\tdurationMs: number\n}>\n}"
+					"outputTypeDefinition": "type CommunityForkOutput = {\n\tfork_id: string\n\tpackage_id: string\n\tsource_id: string\n\ttarget_kody_id: string\n\ttarget_name: string\n\torigin_commit: string\n\t/** Files copied. Omitted when `already_forked` is true. */\n\tfiles_count?: number\n\t/** True when this returned an existing fork of the listing in this account instead of creating a new one. */\n\talready_forked: boolean\n\t/** Explains what happened when `already_forked` is true. */\n\tmessage?: string\n\tcross_scope_references: Array<{\n\tfile: string\n\tspecifier: string\n}>\n\t/** Lines in the fork that still name the origin package or scope after the fork rewrite, usually an escaped or encoded spelling the rewrite does not follow. Review each one and point it at the fork name where it should follow the fork. Empty when nothing is left. At most 50 entries. */\n\tleftover_origin_references: Array<{\n\t/** Path in the fork. */\n\tfile: string\n\t/** 1-based line number. */\n\tline: number\n\t/** The line, or the part around the reference when the line is long. */\n\tsnippet: string\n}>\n\tnext_steps: string\n\tcontent_warning: string\n\t/** Request-scoped phase timings. Same shape as execute serverTiming. Not stored. bootstrap-source includes Durable Object startup; subtract nested bootstrap-* phases to estimate cold start. */\n\tserverTiming?: Array<{\n\tname: string\n\tdurationMs: number\n}>\n}"
 				},
 				{
 					"name": "communityForkAdopt",
@@ -57164,6 +57194,35 @@ export const capabilityManifest = {
 									"additionalProperties": false
 								}
 							},
+							"leftover_origin_references": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"file": {
+											"type": "string",
+											"description": "Path in the fork."
+										},
+										"line": {
+											"type": "integer",
+											"exclusiveMinimum": 0,
+											"maximum": 9007199254740991,
+											"description": "1-based line number."
+										},
+										"snippet": {
+											"type": "string",
+											"description": "The line, or the part around the reference when the line is long."
+										}
+									},
+									"required": [
+										"file",
+										"line",
+										"snippet"
+									],
+									"additionalProperties": false
+								},
+								"description": "Lines in the fork that still name the origin package or scope after the fork rewrite, usually an escaped or encoded spelling the rewrite does not follow. Review each one and point it at the fork name where it should follow the fork. Empty when nothing is left. At most 50 entries."
+							},
 							"next_steps": {
 								"type": "string"
 							},
@@ -57180,13 +57239,14 @@ export const capabilityManifest = {
 							"origin_commit",
 							"already_forked",
 							"cross_scope_references",
+							"leftover_origin_references",
 							"next_steps",
 							"content_warning"
 						],
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type PackageForkInput = {\n\t/** The package to fork, as `@owner/package-name`. */\n\tpackage: string\n\t/** Optional package name leaf (or `@owner/leaf`) for the fork. Omit to use the source leaf, or the next free alternate when it is taken. */\n\tkody_id?: string\n}",
-					"outputTypeDefinition": "type PackageForkOutput = {\n\tfork_id: string\n\tpackage_id: string\n\tsource_id: string\n\ttarget_kody_id: string\n\ttarget_name: string\n\torigin_commit: string\n\t/** Files copied. Omitted when `already_forked` is true. */\n\tfiles_count?: number\n\t/** True when this returned an existing fork of the package in this org instead of creating a new one. */\n\talready_forked: boolean\n\tmessage?: string\n\tcross_scope_references: Array<{\n\tfile: string\n\tspecifier: string\n}>\n\tnext_steps: string\n\tcontent_warning: string\n}"
+					"outputTypeDefinition": "type PackageForkOutput = {\n\tfork_id: string\n\tpackage_id: string\n\tsource_id: string\n\ttarget_kody_id: string\n\ttarget_name: string\n\torigin_commit: string\n\t/** Files copied. Omitted when `already_forked` is true. */\n\tfiles_count?: number\n\t/** True when this returned an existing fork of the package in this org instead of creating a new one. */\n\talready_forked: boolean\n\tmessage?: string\n\tcross_scope_references: Array<{\n\tfile: string\n\tspecifier: string\n}>\n\t/** Lines in the fork that still name the origin package or scope after the fork rewrite, usually an escaped or encoded spelling the rewrite does not follow. Review each one and point it at the fork name where it should follow the fork. Empty when nothing is left. At most 50 entries. */\n\tleftover_origin_references: Array<{\n\t/** Path in the fork. */\n\tfile: string\n\t/** 1-based line number. */\n\tline: number\n\t/** The line, or the part around the reference when the line is long. */\n\tsnippet: string\n}>\n\tnext_steps: string\n\tcontent_warning: string\n}"
 				},
 				{
 					"name": "packageList",

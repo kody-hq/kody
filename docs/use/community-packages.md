@@ -173,6 +173,19 @@ the published revision, or the listing pin if there is no published revision.
   declared topics would end up with the same name, choose a different fork name.
   See the
   [fork rewrite tests](../../packages/worker/src/community/fork-scan.node.test.ts).
+- References to the package's own name follow the fork in text files, in these
+  spellings, and keep the spelling they had: plain (`@kody/github`), an escaped
+  slash in a regex literal or JSON (`@kody\/github`), a double-escaped slash in
+  a string that builds a regex (`@kody\\/github`), and URL-encoded (`%40` for
+  `@`, `%2F` or `%2f` for `/`). A longer name such as `@kody/github-foo` or
+  `@kody/github2` is a different package and is left alone.
+- `leftover_origin_references` in the fork result lists each line that still
+  names the origin package after the rewrite (`file`, `line`, `snippet`), for
+  example a `\u0040` escape or a name joined from parts that the scan can still
+  see. It also lists escaped or encoded references to the origin scope. The fork
+  still succeeds. Review each line and change it where it should follow your
+  fork. The list is empty when nothing is left and holds at most 50 entries.
+  One-click install adds the same lines to the prompt it gives you.
 - **No saved package row is created**, so nothing runs yet — no imports, jobs,
   subscriptions, or package app. Lookups that need a saved package
   (`packageGet`, `packageGetGitRemote`) name the pending fork and point at

@@ -13,6 +13,7 @@ import {
 	communityContentWarning,
 	communityForkNextSteps,
 	crossScopeReferenceSchema,
+	leftoverOriginReferencesSchema,
 } from './shared.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
 
@@ -70,6 +71,7 @@ export const communityForkCapability = defineDomainCapability(
 				.optional()
 				.describe('Explains what happened when `already_forked` is true.'),
 			cross_scope_references: z.array(crossScopeReferenceSchema),
+			leftover_origin_references: leftoverOriginReferencesSchema,
 			next_steps: z.string(),
 			content_warning: z.string(),
 			serverTiming: z
@@ -149,6 +151,7 @@ export const communityForkCapability = defineDomainCapability(
 				already_forked: result.alreadyForked === true,
 				...(result.message ? { message: result.message } : {}),
 				cross_scope_references: result.crossScopeReferences,
+				leftover_origin_references: result.leftoverOriginReferences,
 				next_steps: communityForkNextSteps,
 				content_warning: communityContentWarning,
 				...(result.serverTiming && result.serverTiming.length > 0

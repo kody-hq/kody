@@ -133,6 +133,7 @@ import {
 	rewriteForkedPackageSelfReferences,
 	rewritePackageManifestForFork,
 	scanCrossScopeReferences,
+	scanLeftoverOriginReferences,
 } from './fork-scan.ts'
 import { rethrowCommunityForkFailure } from './fork-resource-limit.ts'
 import { withCommunityForkClaim } from './fork-claims.ts'
@@ -149,6 +150,7 @@ import type {
 	CommunityReportRecord,
 	CommunityReportResolutionAction,
 	CrossScopeReference,
+	LeftoverOriginReference,
 	ForkCommunityListingResult,
 } from './types.ts'
 
@@ -1302,6 +1304,7 @@ export type PreparedCommunityFork = {
 	files: Record<string, string>
 	changedFiles: Record<string, string>
 	crossScopeReferences: Array<CrossScopeReference>
+	leftoverOriginReferences: Array<LeftoverOriginReference>
 }
 
 function logCommunityPhaseTiming(input: {
@@ -1574,14 +1577,20 @@ async function prepareForkFromOriginFiles(args: {
 		...files,
 		'package.json': packageJsonContent,
 	}
+	const originPackageName = rewrittenManifest.originName ?? args.originName
 	const rewrittenFiles = rewriteForkedPackageSelfReferences({
 		files: {
 			...originFiles,
 			'package.json': rewrittenManifest.content,
 		},
-		originPackageName: rewrittenManifest.originName ?? args.originName,
+		originPackageName,
 		nextPackageName: rewrittenManifest.targetName,
 		topicRenames: rewrittenManifest.topicRenames,
+	})
+	const leftoverOriginReferences = scanLeftoverOriginReferences({
+		files: rewrittenFiles,
+		originPackageName,
+		nextPackageName: rewrittenManifest.targetName,
 	})
 	const crossScopeReferences = scanCrossScopeReferences({
 		files: rewrittenFiles,
@@ -1610,6 +1619,7 @@ async function prepareForkFromOriginFiles(args: {
 			rewrittenFiles,
 		}),
 		crossScopeReferences,
+		leftoverOriginReferences,
 	}
 }
 
@@ -1676,6 +1686,7 @@ export async function persistPreparedCommunityFork(
 	try {
 		let originCommit = prepared.originCommit
 		let syncedFiles = prepared.files
+		let leftoverOriginReferences = prepared.leftoverOriginReferences
 		if (copiedAtStorageLayer) {
 			try {
 				const persisted = await persistForkedArtifactRepoContents({
@@ -1752,6 +1763,11 @@ export async function persistPreparedCommunityFork(
 				}
 				originCommit = fallbackTree.originCommit
 				syncedFiles = fallbackTree.files
+				leftoverOriginReferences = scanLeftoverOriginReferences({
+					files: syncedFiles,
+					originPackageName: prepared.listingName,
+					nextPackageName: prepared.targetName,
+				})
 				const snapshotCommit = await syncArtifactSourceSnapshot({
 					env: prepared.env,
 					baseUrl: prepared.baseUrl,
@@ -1832,6 +1848,7 @@ export async function persistPreparedCommunityFork(
 			targetName: prepared.targetName,
 			originCommit,
 			crossScopeReferences: prepared.crossScopeReferences,
+			leftoverOriginReferences,
 			filesCount: Object.keys(syncedFiles).length,
 			files: syncedFiles,
 			...(serverTiming && serverTiming.length > 0 ? { serverTiming } : {}),
@@ -2210,6 +2227,7 @@ function existingForkResult(
 		targetName,
 		originCommit: fork.originCommit,
 		crossScopeReferences: [],
+		leftoverOriginReferences: [],
 		filesCount: 0,
 		files: {},
 		alreadyForked: true,

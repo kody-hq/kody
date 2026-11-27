@@ -241,9 +241,11 @@ function installResultPayload(
 				kind: check.kind,
 				message: check.message,
 			})),
+			leftoverOriginReferences: result.leftoverOriginReferences,
 			agentPrompt: buildInstallAdaptPrompt({
 				targetName: result.targetName,
 				sourceId: result.sourceId,
+				leftoverOriginReferences: result.leftoverOriginReferences,
 			}),
 		})
 	}
@@ -254,8 +256,10 @@ function installResultPayload(
 		sourceId: result.sourceId,
 		targetName: result.targetName,
 		...alreadyInstalledFields(result),
+		leftoverOriginReferences: result.leftoverOriginReferences,
 		agentPrompt: buildInstallSuccessPrompt({
 			targetName: result.targetName,
+			leftoverOriginReferences: result.leftoverOriginReferences,
 		}),
 	})
 }

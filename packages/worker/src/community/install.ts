@@ -21,6 +21,7 @@ import type {
 	CommunityForkActor,
 	CommunityForkRecord,
 	CrossScopeReference,
+	LeftoverOriginReference,
 } from './types.ts'
 
 type InstallProgressUpdate = {
@@ -71,6 +72,8 @@ type InstallForkSummary = {
 	 */
 	alreadyInstalled?: boolean
 	message?: string
+	/** Lines that still name the origin after the fork rewrite. */
+	leftoverOriginReferences: Array<LeftoverOriginReference>
 }
 
 export type InstallCommunityListingResult =
@@ -239,6 +242,7 @@ async function existingInstallResult(
 		targetKodyId: fork.targetKodyId,
 		targetName,
 		originCommit: fork.originCommit,
+		leftoverOriginReferences: [],
 		alreadyInstalled: true,
 		message: buildAlreadyForkedMessage({
 			targetName,
@@ -365,6 +369,7 @@ async function createCommunityInstall(
 		targetKodyId: fork.targetKodyId,
 		targetName: fork.targetName,
 		originCommit: fork.originCommit,
+		leftoverOriginReferences: fork.leftoverOriginReferences,
 	}
 	if (!checks.ok) {
 		await reportInstallProgress(input.reportProgress, {

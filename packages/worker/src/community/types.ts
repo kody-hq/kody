@@ -328,6 +328,18 @@ export type CrossScopeReference = {
 	specifier: string
 }
 
+/**
+ * A line of the fork that still names the origin package or scope after the
+ * fork rewrite: an escaped or encoded spelling the rewrite does not follow.
+ */
+export type LeftoverOriginReference = {
+	file: string
+	/** 1-based line number in `file`. */
+	line: number
+	/** The line, or the part around the reference when the line is long. */
+	snippet: string
+}
+
 export type ForkCommunityListingResult = {
 	forkId: string
 	packageId: string
@@ -336,6 +348,7 @@ export type ForkCommunityListingResult = {
 	targetName: string
 	originCommit: string
 	crossScopeReferences: Array<CrossScopeReference>
+	leftoverOriginReferences: Array<LeftoverOriginReference>
 	filesCount: number
 	/**
 	 * The rewritten snapshot files that were synced into the fork's source.
