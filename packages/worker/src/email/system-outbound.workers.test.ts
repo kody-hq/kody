@@ -755,3 +755,35 @@ test('a newsletter key whose attempt never finished is refused as outcome unknow
 		fetchSpy.mockRestore()
 	}
 })
+
+test('an unreadable 4xx rejection leaves the newsletter key retryable', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	let calls = 0
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () => {
+				calls++
+				return calls === 1
+					? new HttpResponse('<html>Bad Request</html>', { status: 400 })
+					: HttpResponse.json({
+							success: true,
+							result: { message_id: 'after-unreadable' },
+						})
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		idempotencyKey: 'campaign-unreadable:user-1',
+		now: new Date('2026-11-27T18:30:00.000Z'),
+	}
+	await expect(sendNewsletterEmail(input)).rejects.toThrow()
+	const retried = await sendNewsletterEmail(input)
+	expect(retried.providerMessageId).toBe('after-unreadable')
+	expect(calls).toBe(2)
+})
