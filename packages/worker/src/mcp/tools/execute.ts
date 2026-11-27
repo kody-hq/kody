@@ -1,3 +1,8 @@
+import { callerOrgSessionAnalyticsEnabled } from '#worker/session-analytics/consent.ts'
+import {
+	importedPackageNames,
+	observeSessionToolCall,
+} from '#worker/session-analytics/record.ts'
 import { walletGuardActorUserId } from '#worker/wallet-guard/enforce.ts'
 import { attachGuestResultBlock } from '#worker/guest/guest-result-block.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
@@ -74,7 +79,8 @@ import {
 } from '#mcp/observability.ts'
 import {
 	conversationIdInputField,
-	memoryContextInputField,
+	type memoryContextInputField,
+	memoryContextInputFieldFor,
 	resolveConversationId,
 } from './tool-call-context.ts'
 import {
@@ -317,6 +323,10 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 	)
 	const executionContextsEnabled =
 		featureFlags[executionContextsFlagKey] === true
+	const sessionAnalyticsEnabled = await callerOrgSessionAnalyticsEnabled(
+		agent.getEnv(),
+		agent.getCallerContext(),
+	)
 	agent.server.registerTool(
 		executeTool.name,
 		{
@@ -344,7 +354,7 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 							"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
 						),
 					conversationId: conversationIdInputField,
-					memoryContext: memoryContextInputField,
+					memoryContext: memoryContextInputFieldFor(sessionAnalyticsEnabled),
 					idempotencyKey: z
 						.string()
 						.min(1)
@@ -393,7 +403,25 @@ export type ExecuteToolCallArgs = {
 	credentials?: CredentialCallMapInput
 } & ExecuteRoutingArgs
 
-export async function runExecuteToolCall(input: {
+export async function runExecuteToolCall(
+	input: Parameters<typeof runExecuteToolCallUnobserved>[0],
+) {
+	return await observeSessionToolCall({
+		env: input.env,
+		callerContext: input.callerContext,
+		tool: 'execute',
+		conversationId: input.args.conversationId,
+		memoryContext: input.args.memoryContext,
+		waitUntil: input.waitUntil,
+		packageNames:
+			typeof input.args.code === 'string'
+				? importedPackageNames(input.args.code)
+				: [],
+		run: () => runExecuteToolCallUnobserved(input),
+	})
+}
+
+async function runExecuteToolCallUnobserved(input: {
 	env: Env
 	callerContext: ReturnType<McpRegistrationAgent['getCallerContext']>
 	loopbackExports: Cloudflare.Exports
@@ -442,6 +470,7 @@ export async function runExecuteToolCall(input: {
 		hasUser,
 		userId,
 		conversationId: resolvedConversationId,
+		hasMemoryContext: memoryContext != null,
 		...(activeStorageId ? { storageId: activeStorageId } : {}),
 	}
 	let claimedRunHandle: RunRecordHandle | null = null

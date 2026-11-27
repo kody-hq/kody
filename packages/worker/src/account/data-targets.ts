@@ -259,6 +259,26 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		columns: ['actor_user_id'],
 	},
 	{ kind: 'user_id', table: 'usage_connection_daily' },
+	// Session analytics rows carry the person who ran the session in
+	// `user_id`, in whichever organization they ran it.
+	{
+		kind: 'user_id',
+		table: 'session_analytics_links',
+		includeInExport: false,
+		surface: 'session_analytics_open_state',
+		reason:
+			'Short-lived state for a session still in progress. It holds ids and counters only and is folded into session_analytics_counts when the session closes.',
+	},
+	{
+		kind: 'user_id',
+		table: 'session_analytics_open_sessions',
+		includeInExport: false,
+		surface: 'session_analytics_open_state',
+		reason:
+			'Short-lived state for a session still in progress. It holds ids and counters only and is folded into session_analytics_counts when the session closes.',
+	},
+	{ kind: 'user_id', table: 'session_analytics_counts' },
+	{ kind: 'user_id', table: 'session_analytics_package_counts' },
 	{
 		kind: 'user_columns',
 		table: 'usage_connection_daily',

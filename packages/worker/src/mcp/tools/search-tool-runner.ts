@@ -1,3 +1,4 @@
+import { observeSessionToolCall } from '#worker/session-analytics/record.ts'
 import { attachGuestResultBlock } from '#worker/guest/guest-result-block.ts'
 import { recordSkillFileRead } from '#worker/package-registry/skill-read-events.ts'
 import {
@@ -135,10 +136,26 @@ async function stampFirstSearchIfAuthenticated(
 }
 
 export async function runSearchTool(
-	input: Parameters<typeof runSearchToolWithoutGuestBlock>[0],
+	input: Omit<
+		Parameters<typeof runSearchToolWithoutGuestBlock>[0],
+		'observed'
+	> & {
+		/** Keeps the session analytics write alive after the response. */
+		waitUntil?: (promise: Promise<unknown>) => void
+	},
 ) {
+	const observed: { searchTask: string | null } = { searchTask: null }
 	return await attachGuestResultBlock(
-		await runSearchToolWithoutGuestBlock(input),
+		await observeSessionToolCall({
+			env: input.env,
+			callerContext: input.callerContext,
+			tool: 'search',
+			conversationId: input.args.conversationId,
+			memoryContext: input.args.memoryContext,
+			waitUntil: input.waitUntil,
+			searchTask: () => observed.searchTask,
+			run: () => runSearchToolWithoutGuestBlock({ ...input, observed }),
+		}),
 		{ env: input.env, callerContext: input.callerContext },
 	)
 }
@@ -152,6 +169,8 @@ async function runSearchToolWithoutGuestBlock(input: {
 	 * preamble and onboarding-notice memory stay request-local.
 	 */
 	mcpAgent?: object
+	/** Receives the closed intent task name for session analytics. */
+	observed: { searchTask: string | null }
 }) {
 	const { env, callerContext, args } = input
 	const agent = (input.mcpAgent ?? {
@@ -193,6 +212,7 @@ async function runSearchToolWithoutGuestBlock(input: {
 		hasUser,
 		userId: userId ?? undefined,
 		conversationId,
+		hasMemoryContext: args.memoryContext != null,
 		...(storageId ? { storageId } : {}),
 	}
 	const includeHiddenPackages = !!args.includeHiddenPackages
@@ -773,6 +793,7 @@ async function runSearchToolWithoutGuestBlock(input: {
 			...(appStartersStructured ? { appStarters: appStartersStructured } : {}),
 			matches: slimMatches,
 		}
+		input.observed.searchTask = execution.result.intent.task.name
 		logMcpEvent({
 			category: 'mcp',
 			tool: 'search',

@@ -43,6 +43,7 @@ import {
 } from '../components/org-visibility-fieldset.tsx'
 import { OrgSettingsCustomDomains } from './org-settings-custom-domains.tsx'
 import { OrgSettingsMemberCreation } from './org-settings-member-creation.tsx'
+import { OrgSettingsSessionAnalytics } from './org-settings-session-analytics.tsx'
 import { OrgSettingsUsageWarnings } from './org-settings-usage-warnings.tsx'
 import {
 	AccountManagementMessage,
@@ -191,6 +192,11 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 						data={data}
 						queryKey={queryKey}
 					/>
+					<OrgSettingsSessionAnalytics
+						key={`session-analytics:${data.org.slug}`}
+						data={data}
+						queryKey={queryKey}
+					/>
 				</>
 			) : (
 				<>
@@ -334,6 +340,11 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 					/>
 					<OrgSettingsUsageWarnings
 						key={`usage-warnings:${data.org.slug}`}
+						data={data}
+						queryKey={queryKey}
+					/>
+					<OrgSettingsSessionAnalytics
+						key={`session-analytics:${data.org.slug}`}
 						data={data}
 						queryKey={queryKey}
 					/>

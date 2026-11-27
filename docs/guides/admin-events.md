@@ -29,7 +29,8 @@ setup, see [Subscriptions and events](./package-subscriptions.md).
   [package-owner errors](./admin-events.md#fleet.package_owner_error_spike-admins),
   [users affected](./admin-events.md#fleet.users_affected.elevated-fleet.users_affected.resolved-admins),
   [entitlements](./admin-events.md#fleet.entitlement.crossed-admins),
-  [D1 replicas](./admin-events.md#d1.replica_reads.alert-admins).
+  [D1 replicas](./admin-events.md#d1.replica_reads.alert-admins),
+  [session analytics](./admin-events.md#session.stuck_pattern.crossed-session.category.merged-admins).
 - **Accounts and delivery:**
   [lifecycle](./admin-events.md#user-created-deleted-and-guest-claimed-admins),
   [verification failures](./admin-events.md#user.email_verification.failed-admins),
@@ -1031,3 +1032,49 @@ id.
 Use this topic for notifier packages that page an operator when the shared
 sending domain is under platform-wide pressure. The per-user
 `user.email_outbound.paused` topic still fires when one account is paused.
+
+## `session.stuck_pattern.crossed`, `session.category.merged` (admins)
+
+Session analytics is opt-in per organization. Once a week (the first hourly
+`usage_aggregation` run of each UTC Monday) Kody merges near-duplicate category
+names and ranks where agent sessions got stuck over the last seven days. It
+dispatches both topics to packages saved by users who hold the admin role at
+delivery time. Both are metadata only: they never carry an organization, person,
+package, or session, and a stuck pattern is sent only when it covers at least 10
+sessions from at least 5 organizations.
+
+```ts
+type SessionStuckPatternCrossedEvent = {
+	event: 'session.stuck_pattern.crossed'
+	category: { id: string; name: string }
+	stuck_kind:
+		| 'user_code'
+		| 'credential_missing'
+		| 'credential_denied'
+		| 'validation'
+		| 'not_found'
+		| 'entitlement'
+		| 'timeout'
+		| 'platform'
+		| 'other'
+	/** The Kody tool the sessions were stuck on, such as `execute`. */
+	stuck_tool: string
+	sessions: number
+	orgs: number
+	/** Share of the category's sessions that ended stuck this way, 0 to 1. */
+	share: number
+	window: { start: string; end: string; days: number }
+	observed_at: string
+}
+
+type SessionCategoryMergedEvent = {
+	event: 'session.category.merged'
+	from: { id: string; name: string }
+	into: { id: string; name: string }
+	observed_at: string
+}
+```
+
+A pattern that stays over the minimum is sent again each week, with an
+idempotency key of the week's end day, category, error kind, and tool, so a
+subscriber can track it over time. A merge is sent once.

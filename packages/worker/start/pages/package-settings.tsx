@@ -19,6 +19,7 @@ import {
 	fallbackDefaultBranchName,
 } from '#universal/package-files.ts'
 import { AccountManagementMessage } from './account-management-components.tsx'
+import { PackageSessionInsights } from './package-session-insights.tsx'
 import { AccountPackageOwnerDetails } from './account-package-owner-details.tsx'
 import { PackageCreditAttributionPanel } from './account-usage-where-it-went.tsx'
 import { PackageWebhookSettings } from './package-webhook-settings.tsx'
@@ -128,11 +129,18 @@ export function PackageSettingsRoute({
 						) : null
 					}
 					webhooks={
-						<PackageWebhookSettings
-							key={`${username}/${kodyId}`}
-							username={username}
-							kodyId={kodyId}
-						/>
+						<>
+							<PackageWebhookSettings
+								key={`${username}/${kodyId}`}
+								username={username}
+								kodyId={kodyId}
+							/>
+							<PackageSessionInsights
+								key={`sessions:${username}/${kodyId}`}
+								username={username}
+								kodyId={kodyId}
+							/>
+						</>
 					}
 				/>
 			</PackageRepoTabPanel>

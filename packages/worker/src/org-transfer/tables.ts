@@ -261,6 +261,18 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	usage_attribution_daily: keep(usageHistory),
 	package_app_visitor_attribution_daily: keep(usageHistory),
 	usage_connection_daily: keep(usageHistory),
+	session_analytics_links: keep(
+		"Session analytics counts describe sessions run in the organization that held the resource at the time, under that organization's own opt-in. They stay there and are never copied to the destination.",
+	),
+	session_analytics_open_sessions: keep(
+		"Session analytics counts describe sessions run in the organization that held the resource at the time, under that organization's own opt-in. They stay there and are never copied to the destination.",
+	),
+	session_analytics_counts: keep(
+		"Session analytics counts describe sessions run in the organization that held the resource at the time, under that organization's own opt-in. They stay there and are never copied to the destination.",
+	),
+	session_analytics_package_counts: keep(
+		"Session analytics counts describe sessions run in the organization that held the resource at the time, under that organization's own opt-in. They stay there and are never copied to the destination.",
+	),
 	jwt_sign_any_host_callers: keep(
 		'Any-host secretJwtSign deprecation state is keyed to the caller org; a moved package starts over as a new caller and must pass send_to_host.',
 	),

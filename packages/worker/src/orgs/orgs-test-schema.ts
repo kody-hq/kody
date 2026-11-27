@@ -40,6 +40,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				members_can_create_packages INTEGER NOT NULL DEFAULT 0,
 				members_can_create_credentials INTEGER NOT NULL DEFAULT 1,
 				usage_warnings_enabled INTEGER NOT NULL DEFAULT 1,
+				session_analytics TEXT NOT NULL DEFAULT 'unset',
 				created_by_user_id TEXT,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL
@@ -59,6 +60,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 		'members_can_create_packages INTEGER NOT NULL DEFAULT 0',
 		'members_can_create_credentials INTEGER NOT NULL DEFAULT 1',
 		'usage_warnings_enabled INTEGER NOT NULL DEFAULT 1',
+		"session_analytics TEXT NOT NULL DEFAULT 'unset'",
 		'second_agent_gift_invoice_credit_requested_at TEXT',
 		'second_agent_gift_invoice_credit_id TEXT',
 	]) {

@@ -7,16 +7,25 @@ import {
 	type SearchToolArgs,
 } from './search-tool-definition.ts'
 import { runSearchTool } from './search-tool-runner.ts'
+import { callerOrgSessionAnalyticsEnabled } from '#worker/session-analytics/consent.ts'
+import { memoryContextInputFieldFor } from './tool-call-context.ts'
 import { buildKodyToolIcons } from './tool-icons.ts'
 
 export async function registerSearchTool(agent: McpRegistrationAgent) {
 	const icons = buildKodyToolIcons(agent.getCallerContext().baseUrl)
+	const sessionAnalyticsEnabled = await callerOrgSessionAnalyticsEnabled(
+		agent.getEnv(),
+		agent.getCallerContext(),
+	)
 	agent.server.registerTool(
 		searchTool.name,
 		{
 			title: searchTool.title,
 			description: searchTool.description,
-			inputSchema: searchToolInputSchema,
+			inputSchema: {
+				...searchToolInputSchema,
+				memoryContext: memoryContextInputFieldFor(sessionAnalyticsEnabled),
+			},
 			outputSchema: searchToolOutputSchema,
 			annotations: searchTool.annotations,
 			...(icons ? { icons } : {}),
@@ -27,6 +36,7 @@ export async function registerSearchTool(agent: McpRegistrationAgent) {
 				callerContext: agent.getCallerContext(),
 				args,
 				mcpAgent: agent,
+				waitUntil: agent.waitUntil?.bind(agent),
 			}),
 	)
 }

@@ -157,6 +157,7 @@ export async function collectWaitingSignals(input: {
 		discordJoined,
 		enablementsProbe,
 		contextNoticesProbe,
+		sessionAnalyticsChoice,
 	] = await Promise.all([
 		readOnboardingChecklistDismissed({
 			env,
@@ -204,6 +205,7 @@ export async function collectWaitingSignals(input: {
 				orgId: user.stableUserId,
 			}),
 		),
+		collectSessionAnalyticsChoice(env.APP_DB, user),
 	])
 
 	// A failed package probe leaves both inputs unknown so the checklist
@@ -255,6 +257,7 @@ export async function collectWaitingSignals(input: {
 		pendingEmailChange,
 		errorRate,
 		entitlementCaps,
+		sessionAnalyticsChoice,
 		contextNotices: contextNoticesProbe.ok
 			? contextNoticesProbe.value.map((notice) => ({
 					contextId: notice.contextId,
@@ -280,6 +283,33 @@ export async function collectWaitingSignals(input: {
 				: null,
 			discord: discordJoined,
 		}),
+	}
+}
+
+/**
+ * The org has not answered the session analytics question and the viewer is
+ * an Owner or Admin, the roles that can answer it. Fails closed to no item.
+ */
+async function collectSessionAnalyticsChoice(
+	db: D1Database,
+	user: DeriveWaitingUser,
+) {
+	try {
+		const row = await db
+			.prepare(
+				`SELECT o.display_name, o.slug
+				 FROM orgs o
+				 JOIN org_memberships m ON m.org_id = o.id
+				 WHERE o.id = ? AND m.user_id = ? AND m.role IN ('owner', 'admin')
+				   AND m.deleted_at IS NULL AND o.deleted_at IS NULL
+				   AND o.session_analytics = 'unset'
+				 LIMIT 1`,
+			)
+			.bind(user.stableUserId, user.actorStableUserId ?? user.stableUserId)
+			.first<{ display_name: string | null; slug: string }>()
+		return row ? { orgName: row.display_name?.trim() || row.slug } : null
+	} catch {
+		return null
 	}
 }
 

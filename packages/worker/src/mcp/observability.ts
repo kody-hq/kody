@@ -66,6 +66,11 @@ export type McpObservabilityPayload = {
 	 */
 	conversationId?: string
 	/**
+	 * Whether a search or execute call carried `memoryContext`. Presence only:
+	 * the content is never logged.
+	 */
+	hasMemoryContext?: boolean
+	/**
 	 * Bound durable storage id for execute/capability calls that run against a
 	 * specific bucket. Kept on context (not tags) for the same reason.
 	 */

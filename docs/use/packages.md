@@ -786,11 +786,12 @@ or did not dispatch, or checking which packages subscribe to
 `mcp.server.reconnected`, or admin-only topics such as `status.incident.opened`,
 `fleet.package_owner_error_spike`, `fleet.users_affected.elevated`,
 `fleet.users_affected.resolved`, `fleet.entitlement.crossed`,
-`auth.denial.burst`, `email.delivery.burst`, `user.created`, `user.deleted`,
-`user.guest_claimed`, `user.email_verification.failed`,
-`user.email_verification.stalled`, `user.email_outbound.paused`, and
-`email.system-message.sent`. After publish, smoke-test one declared handler from
-interactive MCP with `packageSubscriptionDispatch`
+`session.stuck_pattern.crossed`, `session.category.merged`, `auth.denial.burst`,
+`email.delivery.burst`, `user.created`, `user.deleted`, `user.guest_claimed`,
+`user.email_verification.failed`, `user.email_verification.stalled`,
+`user.email_outbound.paused`, and `email.system-message.sent`. After publish,
+smoke-test one declared handler from interactive MCP with
+`packageSubscriptionDispatch`
 ([Synthetic event dispatch](./synthetic-event-dispatch.md)). Reuse another
 package with a static `kody:@` import ([Package reuse](#package-reuse)).
 

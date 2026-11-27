@@ -212,6 +212,45 @@ repeated-execute events include the counts that tripped the threshold and admin
 dashboard URLs. These event kinds omit emails, plans, secrets, package source,
 and unrelated account content.
 
+## Session analytics (opt-in)
+
+Session analytics is off for every organization until an Owner or Admin turns it
+on in Organization settings. Until then Kody collects nothing for it. Everyone
+in the organization can see whether it is on. For a personal organization only
+the person can answer; an agent can pass the question along but cannot answer
+it.
+
+When it is on, Kody counts, for each agent session in that organization, a
+general category of work (two to four plain words such as "connect service"),
+the agent app that connected, how many calls and errors there were, whether the
+session ended without errors, and where it got stuck (a fixed list of error
+kinds and the Kody tool involved). To pick the category, the short task
+description your agent already sends for memory, or its search text when there
+is none, is read once by Cloudflare Workers AI and then discarded. Kody never
+stores it, and never stores code, queries, results, secrets, memory, or the
+names of your packages for session analytics. A new category name is kept only
+after a format check and a second model, which sees only the proposed name, both
+find no person, company, product, or project name in it.
+
+A session row exists only while the session is open. When it ends, or after 30
+minutes without a call, it is folded into daily counts and deleted. The daily
+counts are kept for 13 months. Each member sees the counts for their own
+sessions on the organization's Session insights page, and Owners and Admins see
+the organization's combined counts. Either can delete any entry or all of them;
+entries cannot be edited. Turning session analytics off deletes everything it
+stored for the organization right away, and deleting an account or organization
+deletes its counts too.
+
+Kody staff, and the publishers of public packages your sessions used, see only
+combined totals across organizations, and only once a number covers at least 10
+sessions from at least 5 organizations. Those totals never identify an
+organization, person, or session. An agent that hits the same error twice in a
+row in one session may get one extra fixed line of help on that error; no AI
+model runs for that. Admin-configured notification packages may receive
+metadata-only `session.stuck_pattern.crossed` and `session.category.merged`
+events, which carry a category name, an error kind, a tool name, and combined
+counts over the same minimum, and no organization, person, or session.
+
 ## Platform feedback
 
 When an agent encounters meaningful Kody friction, a Kody bug, a poor
@@ -342,8 +381,9 @@ Kody uses these subprocessors to run the hosted service. They process only the
 data needed for their role:
 
 - Cloudflare — application hosting, database, object storage, email delivery,
-  security, network infrastructure, and Workers AI embeddings and ranked-search
-  scoring
+  security, network infrastructure, and Workers AI embeddings, ranked-search
+  scoring, and session analytics categories for organizations that turned
+  session analytics on
 - Stripe — paid subscriptions, billing, and payment records
 - Kit — product email subscriptions when you submit your email for those
   purposes

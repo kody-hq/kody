@@ -67,3 +67,18 @@ function generateConversationId() {
 		(byte) => conversationIdAlphabet[byte % conversationIdAlphabet.length],
 	).join('')
 }
+
+const memoryContextSessionAnalyticsSentence =
+	' This organization turned on session analytics, so Kody also reads this once to pick a general category of work, so Kody can improve. It is never stored.'
+
+/**
+ * The `memoryContext` field for a tool list. Only an org that opted in to
+ * session analytics gets the extra sentence about the second use.
+ */
+export function memoryContextInputFieldFor(sessionAnalyticsEnabled: boolean) {
+	return sessionAnalyticsEnabled
+		? memoryContextInputField.describe(
+				memoryContextDescription + memoryContextSessionAnalyticsSentence,
+			)
+		: memoryContextInputField
+}

@@ -224,6 +224,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['POST', '/v1/access/invite-links/accept', 'inviteLinkAccept'],
 		['POST', '/v1/orgs', 'orgCreate'],
 		['PATCH', '/v1/orgs', 'orgUpdate'],
+		['GET', '/v1/orgs/session-insights', 'sessionInsightsGet'],
+		['POST', '/v1/orgs/session-insights/delete', 'sessionInsightsDelete'],
 		[
 			'GET',
 			'/v1/orgs/package-app-custom-hostnames',
@@ -361,6 +363,11 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/packages/runs/{workflow_id}', 'packageRunResult'],
 		['POST', '/v1/packages/fork', 'packageFork'],
 		['GET', '/v1/packages/{package_id}', 'packageGet'],
+		[
+			'GET',
+			'/v1/packages/{package_id}/session-insights',
+			'packageSessionInsights',
+		],
 		[
 			'GET',
 			'/v1/packages/{package_id}/collaborators',

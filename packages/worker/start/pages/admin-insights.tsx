@@ -5,6 +5,7 @@ import {
 	AccountManagementShell,
 	AdminPageHeader,
 } from './account-management-components.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { renderDashboard } from './admin-insights-dashboard.tsx'
 export function AdminInsightsRoute({
 	data,
@@ -23,6 +24,11 @@ export function AdminInsightsRoute({
 				description="Launch signals, paid mix, cost vs pay, and platform activity. Aggregated account metadata only, user content is never shown."
 				currentHref={currentHref}
 			/>
+			<p css={{ margin: 0 }}>
+				<TextLink href="/admin/insights/sessions">
+					Session insights: how agent sessions go and where they get stuck
+				</TextLink>
+			</p>
 			{renderDashboard(data)}
 		</AccountManagementShell>
 	)

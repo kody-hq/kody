@@ -301,6 +301,7 @@ const routeDocumentHeads = {
 	adminRoles: titleOnly('Admin roles'),
 	adminCommunityReports: titleOnly('Community reports'),
 	adminInsights: titleOnly('Admin insights'),
+	adminSessionInsights: titleOnly('Admin session insights'),
 	adminPlatformFeedback: titleOnly('Admin platform feedback'),
 	adminSystemEmail: titleOnly('Admin system email'),
 	blog: publicPageHead('blog', 'Blog', {

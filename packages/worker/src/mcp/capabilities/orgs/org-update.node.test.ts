@@ -104,6 +104,7 @@ test('orgUpdate changes a team org display name, keeps the handle permanent, and
 		members_can_create_packages: false,
 		members_can_create_credentials: true,
 		usage_warnings: true,
+		session_analytics: 'unset',
 	})
 
 	await expect(

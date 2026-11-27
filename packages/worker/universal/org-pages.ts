@@ -166,6 +166,10 @@ function parseOrgApprovalBundlePath(
 	return isOrganizationSlug(slug) && bundleId ? { slug, bundleId } : null
 }
 
+export function orgSessionInsightsPath(slug: string) {
+	return `/@${slug}/${orgPageSeparator}/settings/session-insights`
+}
+
 export function orgUsagePath(slug: string) {
 	return `/@${slug}/${orgPageSeparator}/usage`
 }
@@ -333,11 +337,14 @@ export function parseOrgManagementPath(
 	pathname: string,
 ): { slug: string; section: OrgManagementSection } | null {
 	const match = new RegExp(
-		`^/@([^/]+)/${orgPageSeparator}/(settings|members|teams|collaborators|grants(?:/user/[^/.]+|/team/[^/.]+|/everyone)?)/?$`,
+		`^/@([^/]+)/${orgPageSeparator}/(settings(?:/session-insights)?|members|teams|collaborators|grants(?:/user/[^/.]+|/team/[^/.]+|/everyone)?)/?$`,
 	).exec(pathname)
 	if (!match) return null
 	const slug = match[1] ?? ''
-	const section = match[2]?.replace(/\/(?:user\/.*|team\/.*|everyone)$/, '')
+	const section = match[2]?.replace(
+		/\/(?:user\/.*|team\/.*|everyone|session-insights)$/,
+		'',
+	)
 	if (
 		!isOrganizationSlug(slug) ||
 		!section ||
