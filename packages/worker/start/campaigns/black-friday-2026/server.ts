@@ -11,6 +11,7 @@ import {
 import type { BillingInterval } from '#worker/billing/billing-config.ts'
 import {
 	hasBlockingPromoClaim,
+	promoClaimedRejection,
 	resolveCheckoutPromotionCode,
 } from '#worker/billing/checkout-promo.ts'
 import {
@@ -24,7 +25,11 @@ import {
 } from '#worker/entitlements/service.ts'
 import { loadOrgBindingsForSlugs } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
-import { blackFridayCampaignId, isBlackFridayActive } from './offer.ts'
+import {
+	blackFridayCampaignId,
+	blackFridayCheckoutSummary,
+	isBlackFridayActive,
+} from './offer.ts'
 
 /** Stripe promotion codes by the billing interval the person picks. */
 const promotionCodes: Record<BillingInterval, string> = {
@@ -145,6 +150,47 @@ export async function loadBlackFridayBanner(input: {
 	} catch (error) {
 		console.error('black_friday_banner_load_failed', error)
 		return null
+	}
+}
+
+/**
+ * What a checkout link says about the sale before the person pays: the sale
+ * price when {@link resolveBlackFridayCheckoutPromo} would apply a code for
+ * them, or why it will not. Null once the sale is over. Never names a code.
+ */
+export async function loadBlackFridayCheckoutOffer(input: {
+	db: D1Database
+	userId: string
+	orgId: string
+	interval: BillingInterval
+	now: Date
+}): Promise<
+	{ applies: true; summary: string } | { applies: false; reason: string } | null
+> {
+	if (!isBlackFridayActive(input.now.getTime())) return null
+	const eligible = await blackFridayOfferOrgIds({
+		db: input.db,
+		userId: input.userId,
+		orgIds: [input.orgId],
+		now: input.now,
+	})
+	if (eligible.has(input.orgId)) {
+		return {
+			applies: true,
+			summary: blackFridayCheckoutSummary[input.interval],
+		}
+	}
+	const claimed = await hasBlockingPromoClaim({
+		db: input.db,
+		userId: input.userId,
+		claimKey,
+		now: input.now,
+	})
+	return {
+		applies: false,
+		reason: claimed
+			? promoClaimedRejection(claimKey)
+			: 'The sale price is for organizations on the Free plan with no subscription.',
 	}
 }
 

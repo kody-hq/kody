@@ -40,6 +40,45 @@ export const startCheckout = createServerFn({ method: 'POST' })
 				),
 		)
 	})
+/**
+ * The checkout link page's confirm button. Every check from the page runs
+ * again here, as whoever is signed in now, before a Stripe Checkout Session
+ * is created.
+ */
+export const startCheckoutFromLink = createServerFn({ method: 'POST' })
+	.validator(orgInput.extend({ interval: z.enum(['month', 'year']) }))
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { startWebsiteCheckout } =
+			await import('../../src/app/handlers/org-billing.ts')
+		const { evaluateCheckoutLinkForSession } =
+			await import('../../src/billing/checkout-link.ts')
+		const { requireOperationResult } =
+			await import('../../src/app/operation-result.ts')
+		return withWebsiteMutation(
+			{ scope: { orgSlug: data.orgSlug } },
+			async (context) => {
+				const decision = await evaluateCheckoutLinkForSession({
+					env: context.env,
+					person: context.user.mcpUser,
+					org: data.orgSlug,
+					plan: 'pro',
+					interval: data.interval,
+					now: new Date(),
+				})
+				if (!decision.ok) throw new Error(decision.reason)
+				const result = requireOperationResult(
+					await startWebsiteCheckout({
+						...context,
+						orgSlug: data.orgSlug,
+						body: { plan: 'pro', interval: data.interval },
+						newSubscriptionOnly: true,
+					}),
+				)
+				return { url: result.url }
+			},
+		)
+	})
 export const addReferrer = createServerFn({ method: 'POST' })
 	.validator(orgInput.extend({ referrer: z.string().max(256) }))
 	.handler(async ({ data }) => {

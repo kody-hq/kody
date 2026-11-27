@@ -67,6 +67,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'billingCheckoutLink',
+		method: 'POST',
+		pathTemplate: '/v1/billing/checkout-link',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'capabilityProxyCall',
 		method: 'POST',
 		pathTemplate: '/v1/capability-proxy/call',

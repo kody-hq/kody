@@ -100,6 +100,7 @@ Usage:
   kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--org <slug>] [--json]
   kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"] [--body <text | @file>] [--out <file>] [--synthetic] [--json]
   kody app list [--org <slug>] [--json]
+  kody billing checkout-link [--org <slug>] [--interval month|year] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
@@ -494,6 +495,13 @@ ${orgBlock}
   kody app list
              List the package apps you can run, across your orgs and apps
              shared with you. \`--org <slug>\` lists one org only.
+
+  kody billing checkout-link
+             Print a kody.codes link that starts Pro checkout for an org
+             (\`billingCheckoutLink\`). Whoever opens it signs in, needs to
+             be an owner or billing admin, and pays on Stripe; a running sale
+             price is applied for people who qualify. Prints the reason and
+             exits 1 when checkout does not apply.
 
 Environment:
   KODY_MCP_URL        Override the default MCP URL (${defaultMcpUrl})

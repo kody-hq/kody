@@ -1,4 +1,5 @@
 import { buildCredentialCreateHref } from '#universal/credential-contracts.ts'
+import type { OrgBillingCheckoutLoaderData } from '#universal/loader-data.ts'
 import { PermissionDeniedError } from '#universal/permission-denied.ts'
 import { z } from 'zod'
 import { routes } from '#universal/routes.ts'
@@ -843,6 +844,70 @@ export const loadMovePlanPage = createServerFn({ method: 'GET' })
 				'orgBillingMovePlan',
 				pathname,
 				{ accountBillingMovePlan: payload },
+				search,
+			),
+		}
+	})
+
+export const loadCheckoutLinkPage = createServerFn({ method: 'GET' })
+	.validator(
+		z.object({
+			orgSlug: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+			plan: z.string().max(64).nullable(),
+			interval: z.string().max(64).nullable(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ loadPersonalCollection },
+			{ evaluateCheckoutLinkForSession },
+			{ loadDocumentHead },
+			{ orgBillingPath },
+		] = await Promise.all([
+			import('./collection-context.ts'),
+			import('../../src/billing/checkout-link.ts'),
+			import('./document-head.ts'),
+			import('../../universal/org-pages.ts'),
+		])
+		const pathname = `${orgBillingPath(data.orgSlug)}/checkout`
+		const params = new URLSearchParams()
+		if (data.plan !== null) params.set('plan', data.plan)
+		if (data.interval !== null) params.set('interval', data.interval)
+		const search = params.size ? `?${params}` : ''
+		// Signed-out visitors sign in and come back to this same link.
+		const { bindings, user } = await loadPersonalCollection(pathname + search)
+		const decision = await evaluateCheckoutLinkForSession({
+			env: bindings,
+			person: user.mcpUser,
+			org: data.orgSlug,
+			plan: data.plan ?? 'pro',
+			interval: data.interval ?? 'month',
+			now: new Date(),
+		})
+		const payload: OrgBillingCheckoutLoaderData = decision.ok
+			? {
+					ok: true,
+					org: {
+						slug: decision.org.slug,
+						displayName: decision.org.displayName,
+					},
+					interval: decision.interval,
+					offer: decision.offer
+						? {
+								applies: decision.offer.applies,
+								message: decision.offer.applies
+									? decision.offer.summary
+									: decision.offer.reason,
+							}
+						: null,
+				}
+			: { ok: false, orgSlug: data.orgSlug, reason: decision.reason }
+		return {
+			payload,
+			head: loadDocumentHead(
+				'orgBillingCheckout',
+				pathname,
+				{ orgBillingCheckout: payload },
 				search,
 			),
 		}

@@ -536,6 +536,30 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 		],
 	},
 	{
+		name: 'billing',
+		summary: 'Get a checkout link a person opens to pay',
+		usage: ['kody billing <command> [flags]'],
+		subcommands: [
+			{
+				name: 'checkout-link',
+				summary: 'Print a kody.codes link that starts Pro checkout',
+				usage: [
+					'kody billing checkout-link [--org <slug>] [--interval month|year] [--json]',
+				],
+				notes: [
+					'Prints a link, not a payment page. Whoever opens it signs in, needs to be an owner or billing admin of the org, and pays on Stripe. Nothing is charged until they finish.',
+					'A running sale price is applied for people who qualify. Otherwise checkout is at the regular price.',
+					'When checkout does not apply (the org already has a paid plan, or you cannot manage its billing), prints the reason and exits 1.',
+				],
+				flags: [
+					orgFlag,
+					['--interval month|year', 'Billing interval (default month)'],
+					jsonFlag,
+				],
+			},
+		],
+	},
+	{
 		name: 'app',
 		summary: 'Call, list, and check package apps',
 		usage: ['kody app <command> [flags]'],

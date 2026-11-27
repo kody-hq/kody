@@ -36,6 +36,7 @@ import {
 	selectKodyPlanRetainingSubscriptions,
 	subscriptionHasPrice,
 } from '#worker/billing/billing-config.ts'
+import { checkoutLinkReasons } from '#worker/billing/checkout-link.ts'
 import {
 	attachPromoReservationSession,
 	existingSubscriptionPromoRejection,
@@ -392,6 +393,11 @@ export async function startWebsiteCheckout(input: {
 	user: AuthenticatedAppUser
 	orgSlug?: string
 	body: unknown
+	/**
+	 * Refuse an organization that already has a Kody subscription instead of
+	 * sending it to the Stripe portal to change plans.
+	 */
+	newSubscriptionOnly?: boolean
 }) {
 	const { env, request, user } = input
 	const access = await resolveOrgBillingAccess({
@@ -458,6 +464,15 @@ export async function startWebsiteCheckout(input: {
 				env,
 				await listSubscriptions(env, customerId),
 			)
+			if (planRetaining.length > 0 && input.newSubscriptionOnly) {
+				return operationResult(
+					{
+						ok: false,
+						error: checkoutLinkReasons.alreadySubscribed(org.slug),
+					},
+					409,
+				)
+			}
 			if (planRetaining.length > 0 && promo.code) {
 				return operationResult(
 					{ ok: false, error: existingSubscriptionPromoRejection },

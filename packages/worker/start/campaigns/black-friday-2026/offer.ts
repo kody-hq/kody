@@ -43,6 +43,12 @@ const monthlyOffer = `Or start monthly at ${salePrice(offer.month)} for ${monthC
 const annualSale = salePrice(offer.year)
 const annualList = dollars(offer.year.listCents)
 
+/** What the checkout link page and `billingCheckoutLink` say about the sale. */
+export const blackFridayCheckoutSummary = {
+	year: `Black Friday price: annual Pro is ${annualSale} for the first year, normally ${annualList}.`,
+	month: `Black Friday price: monthly Pro is ${salePrice(offer.month)} for ${monthCountWords[offer.month.months]} months, then ${dollars(offer.month.listCents)}.`,
+} as const
+
 export type BlackFridayAudience = 'signed-out' | 'free'
 
 export const blackFridayCopy = {

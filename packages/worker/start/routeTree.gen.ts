@@ -280,6 +280,7 @@ import { Route as AppAtChar123orgSlugChar125ActivityRunIdRouteImport } from './r
 import { Route as AppAtChar123orgSlugChar125AgentsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.new'
 import { Route as AppAtChar123orgSlugChar125AgentsUsageRouteImport } from './routes/_app.@{$orgSlug}_.-.agents_.usage'
 import { Route as AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport } from './routes/_app.@{$orgSlug}_.-.approvals.$bundleId'
+import { Route as AppAtChar123orgSlugChar125BillingCheckoutRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.checkout'
 import { Route as AppAtChar123orgSlugChar125BillingMovePlanRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.move-plan'
 import { Route as AppAtChar123orgSlugChar125BillingSuccessRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.success'
 import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId'
@@ -1788,6 +1789,12 @@ const AppAtChar123orgSlugChar125ApprovalsBundleIdRoute =
     path: '/@{$orgSlug}/-/approvals/$bundleId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125BillingCheckoutRoute =
+  AppAtChar123orgSlugChar125BillingCheckoutRouteImport.update({
+    id: '/@{$orgSlug}_/-/billing_/checkout',
+    path: '/@{$orgSlug}/-/billing/checkout',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125BillingMovePlanRoute =
   AppAtChar123orgSlugChar125BillingMovePlanRouteImport.update({
     id: '/@{$orgSlug}_/-/billing_/move-plan',
@@ -2312,6 +2319,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/agents/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/@{$orgSlug}/-/agents/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/@{$orgSlug}/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/@{$orgSlug}/-/billing/checkout': typeof AppAtChar123orgSlugChar125BillingCheckoutRoute
   '/@{$orgSlug}/-/billing/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
@@ -2624,6 +2632,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/agents/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/@{$orgSlug}/-/agents/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/@{$orgSlug}/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/@{$orgSlug}/-/billing/checkout': typeof AppAtChar123orgSlugChar125BillingCheckoutRoute
   '/@{$orgSlug}/-/billing/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
@@ -2939,6 +2948,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/agents_/new': typeof AppAtChar123orgSlugChar125AgentsNewRoute
   '/_app/@{$orgSlug}_/-/agents_/usage': typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   '/_app/@{$orgSlug}_/-/approvals/$bundleId': typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  '/_app/@{$orgSlug}_/-/billing_/checkout': typeof AppAtChar123orgSlugChar125BillingCheckoutRoute
   '/_app/@{$orgSlug}_/-/billing_/move-plan': typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   '/_app/@{$orgSlug}_/-/billing_/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/_app/@{$orgSlug}_/-/credentials_/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
@@ -3254,6 +3264,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/agents/new'
     | '/@{$orgSlug}/-/agents/usage'
     | '/@{$orgSlug}/-/approvals/$bundleId'
+    | '/@{$orgSlug}/-/billing/checkout'
     | '/@{$orgSlug}/-/billing/move-plan'
     | '/@{$orgSlug}/-/billing/success'
     | '/@{$orgSlug}/-/credentials/$credentialId'
@@ -3566,6 +3577,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/agents/new'
     | '/@{$orgSlug}/-/agents/usage'
     | '/@{$orgSlug}/-/approvals/$bundleId'
+    | '/@{$orgSlug}/-/billing/checkout'
     | '/@{$orgSlug}/-/billing/move-plan'
     | '/@{$orgSlug}/-/billing/success'
     | '/@{$orgSlug}/-/credentials/$credentialId'
@@ -3880,6 +3892,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/agents_/new'
     | '/_app/@{$orgSlug}_/-/agents_/usage'
     | '/_app/@{$orgSlug}_/-/approvals/$bundleId'
+    | '/_app/@{$orgSlug}_/-/billing_/checkout'
     | '/_app/@{$orgSlug}_/-/billing_/move-plan'
     | '/_app/@{$orgSlug}_/-/billing_/success'
     | '/_app/@{$orgSlug}_/-/credentials_/$credentialId'
@@ -5974,6 +5987,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/billing_/checkout': {
+      id: '/_app/@{$orgSlug}_/-/billing_/checkout'
+      path: '/@{$orgSlug}/-/billing/checkout'
+      fullPath: '/@{$orgSlug}/-/billing/checkout'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125BillingCheckoutRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/billing_/move-plan': {
       id: '/_app/@{$orgSlug}_/-/billing_/move-plan'
       path: '/@{$orgSlug}/-/billing/move-plan'
@@ -6396,6 +6416,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125AgentsNewRoute: typeof AppAtChar123orgSlugChar125AgentsNewRoute
   AppAtChar123orgSlugChar125AgentsUsageRoute: typeof AppAtChar123orgSlugChar125AgentsUsageRoute
   AppAtChar123orgSlugChar125ApprovalsBundleIdRoute: typeof AppAtChar123orgSlugChar125ApprovalsBundleIdRoute
+  AppAtChar123orgSlugChar125BillingCheckoutRoute: typeof AppAtChar123orgSlugChar125BillingCheckoutRoute
   AppAtChar123orgSlugChar125BillingMovePlanRoute: typeof AppAtChar123orgSlugChar125BillingMovePlanRoute
   AppAtChar123orgSlugChar125BillingSuccessRoute: typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   AppAtChar123orgSlugChar125CredentialsCredentialIdRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
@@ -6593,6 +6614,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125AgentsUsageRoute,
   AppAtChar123orgSlugChar125ApprovalsBundleIdRoute:
     AppAtChar123orgSlugChar125ApprovalsBundleIdRoute,
+  AppAtChar123orgSlugChar125BillingCheckoutRoute:
+    AppAtChar123orgSlugChar125BillingCheckoutRoute,
   AppAtChar123orgSlugChar125BillingMovePlanRoute:
     AppAtChar123orgSlugChar125BillingMovePlanRoute,
   AppAtChar123orgSlugChar125BillingSuccessRoute:

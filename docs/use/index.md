@@ -45,9 +45,11 @@ Workspace pages on a team org (`/@<slug>/-/…`):
 [Share a package](../guides/package-sharing.md#access-for-one-person) and
 [Organizations](../guides/organizations.md#access-for-one-person) (Grants and
 per-person Access), [Triggers](../guides/triggers.md) next to
-[Inbound webhooks](./webhooks.md), and
+[Inbound webhooks](./webhooks.md),
 [Move a Pro plan](../guides/organizations.md#move-a-pro-plan)
-(`/-/billing/move-plan`).
+(`/-/billing/move-plan`), and
+[Help someone check out Pro](../guides/organizations.md#help-someone-check-out-pro)
+(`billingCheckoutLink`, `kody billing checkout-link`, `/-/billing/checkout`).
 
 ## Field reference
 
