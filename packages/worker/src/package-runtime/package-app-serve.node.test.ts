@@ -152,6 +152,9 @@ const mockModule = vi.hoisted(() => ({
 	findLivePackageAppOauthGrant: vi.fn(
 		async (..._args: Array<unknown>): Promise<unknown> => null,
 	),
+	createPackageAppVisitorPersonalRequest: vi.fn(
+		async (_input: { visitor: unknown }) => null,
+	),
 	openCredentialClient: vi.fn(async (..._args: Array<unknown>) => ({
 		token: 'credential-handle',
 	})),
@@ -259,7 +262,11 @@ vi.mock(
 			>()
 		return {
 			...actual,
-			createPackageAppVisitorPersonalRequest: vi.fn(async () => null),
+			createPackageAppVisitorPersonalRequest: (
+				...args: Parameters<
+					typeof actual.createPackageAppVisitorPersonalRequest
+				>
+			) => mockModule.createPackageAppVisitorPersonalRequest(...args),
 		}
 	},
 )
@@ -770,8 +777,17 @@ test('an agent visit gets the consent link, or a profile grant error when the ne
 	mockModule.openCredentialClient.mockReset()
 	mockModule.openCredentialClient.mockRejectedValueOnce(unbound)
 	mockModule.openCredentialClient.mockResolvedValue({} as never)
+	mockModule.createPackageAppVisitorPersonalRequest.mockClear()
 	const denied = await serve()
 	expect(denied.status).toBe(403)
+	// The first try is the profile's; the retry drops it and asks as the person.
+	expect(
+		mockModule.createPackageAppVisitorPersonalRequest.mock.calls.map(
+			([input]) =>
+				(input.visitor as { credential?: { profileId?: string } | null })
+					.credential?.profileId ?? null,
+		),
+	).toEqual(['profile-1', null])
 	expect(denied.headers.get('X-Kody-Visitor-Consent')).toBeNull()
 	expect(await denied.json()).toMatchObject({
 		error: 'app_profile_credential_required',
