@@ -52,7 +52,14 @@ const parallelValidateLegs = [
 		command: 'CI=1 KODY_VALIDATE_LOAD=1 npm run test:workers',
 		weight: 'suite',
 	},
-	{ name: 'e2e', command: 'CI=1 npm run test:e2e:run', weight: 'suite' },
+	// The desktop smoke runs after e2e (as on CI E2E shard 1) so it reuses the
+	// browser e2e installs and catches fixture drift locally.
+	{
+		name: 'e2e',
+		command:
+			'CI=1 npm run test:e2e:run && npm run test:execution-ui --workspace @kodycodes/desktop',
+		weight: 'suite',
+	},
 	{ name: 'mcp', command: 'CI=1 npm run test:mcp', weight: 'suite' },
 	{ name: 'backup-build', command: 'npm run backup:build', weight: 'build' },
 	{ name: 'status-build', command: 'npm run status:build', weight: 'build' },

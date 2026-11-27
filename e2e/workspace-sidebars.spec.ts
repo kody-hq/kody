@@ -5,7 +5,9 @@ let script: string
 const stubs: Record<string, string> = {
 	'../commands/provider.tsx': `export function CommandTrigger(){return null}`,
 	'workspace-uploads.tsx': `export function WorkspaceUploads({children}){return children}`,
-	'@tanstack/react-router': `export function useRouter(){return{options:{}}}export function useMatches(){return[{staticData:{navigation:{item:'files'}}}]}export function Outlet(){return <section data-testid="content" style={{height:'100vh',flex:1}}>Content</section>}`,
+	// Re-exports the real router so a new import in the layout still bundles;
+	// only the hooks the layout calls without a RouterProvider are faked.
+	'@tanstack/react-router': `export * from '@tanstack/react-router';export function useRouter(){return{options:{}}}export function useMatches(){return[{staticData:{navigation:{item:'files'}}}]}export function Outlet(){return <section data-testid="content" style={{height:'100vh',flex:1}}>Content</section>}`,
 	'__root.tsx': `export function useShellData(){return {session:{username:'jane',email:'jane@example.com',roles:[],organizations:[],featureFlags:{}}}}`,
 	'workspace-layout-policy.ts': `export function workspaceLayoutNavigation(){return {rail:'workspace'}}`,
 	'account-management-components.tsx': `export const noticeCardCss={};export function ShellWorkspaceSwitcher(){return <div style={{height:48,padding:'0 16px'}}><span>J</span><span data-rail-label>@jane</span></div>}export function ShellNavigation(){return <nav data-account-nav><a href="#" style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px'}}><svg data-testid="rail-icon" width="16" height="16"><path d="M0 0h16v16H0z"/></svg><span data-rail-label>Overview</span></a></nav>}`,
@@ -39,7 +41,10 @@ test.beforeAll(async () => {
 							filter:
 								/^(?:@tanstack\/react-router)$|(?:__root\.tsx|workspace-layout-policy\.ts|account-management-components\.tsx|account-management-link-nav\.tsx|workspace-uploads\.tsx|brand-context-menu\.tsx|demo-indicator\.tsx|org-switcher\.tsx|commands\/provider\.tsx|site-link\.tsx)$/,
 						},
-						(args) => ({ path: args.path, namespace: 'stub' }),
+						(args) =>
+							args.namespace === 'stub'
+								? undefined
+								: { path: args.path, namespace: 'stub' },
 					)
 					builder.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
 						loader: 'tsx',
