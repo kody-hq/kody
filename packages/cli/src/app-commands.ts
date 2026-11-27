@@ -43,7 +43,7 @@ function appAddressOrg(address: string): string | null {
 export function parseAppFetchCommand(input: {
 	positionals: ReadonlyArray<string>
 	values: Record<string, unknown>
-	/** `--org` or `KODY_ORG`, when the person set one. */
+	/** The explicit `--org` flag; the app address determines the owning org. */
 	org?: string
 }): AppFetchPlan {
 	const [app, path, ...extra] = input.positionals
@@ -118,8 +118,8 @@ export async function runAppFetchPlan(input: {
 		...(plan.headers ? { headers: plan.headers } : {}),
 		...(body === undefined ? {} : { body }),
 		...(plan.synthetic ? { synthetic: true } : {}),
-		// A body written to a file may be large; one printed to a terminal or
-		// read by an agent stays at the default cap.
+		// A body written to `--out` may be large; one printed to a terminal or
+		// read by an agent stays at the API's default cap.
 		...(plan.out ? { max_bytes: appFetchOutMaxBytes } : {}),
 	})) as AppFetchResult
 	const truncatedNote = result.truncated

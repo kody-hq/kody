@@ -4,8 +4,8 @@ title: Using apps as an agent
 summary:
   How an agent finds and calls the package apps its person can run. List them
   with appList, call one with appFetch or kody app fetch, and act as the person
-  with an optional profile label. Covers consent links, profiles, and why hosted
-  URLs never take a token.
+  with an optional profile label. Covers consent links, profiles, and using
+  hosted URLs as app addresses.
 category: platform
 audience: agents
 ---
@@ -31,7 +31,8 @@ belongs to, and apps another org shared with them.
 whether the app is public or private, and `shared: true` when it comes from an
 org your person is not a member of. Long lists page with `next_cursor`.
 
-From a terminal: `kody app list`, or `kody app list --org acme`.
+From a terminal: `kody app list` follows all the result pages. Pass `--org acme`
+to filter by the owning org, or `--json` for an object with one `apps` array.
 
 Package search (`search` with `entity` omitted or a package name) also finds
 apps, but `appList` is the answer to "which apps can I run right now".
@@ -135,14 +136,13 @@ confirm, and then the same call works. Nothing is recorded until they do.
 same org. It does not cross orgs and it is not a visit to an app. To use an app,
 call `appFetch`. To reuse its code, import it.
 
-## Hosted URLs do not take tokens
+## Pass hosted URLs as app addresses
 
 An app's hosted URL (`https://<app>--<org>.kody.run/` or a custom domain) is for
-people in a browser, where Kody signs them in. App hosts drop `Authorization`,
-cookies, and `X-Kody-*` headers before the app runs, so sending an API token to
-a hosted URL does nothing useful and exposes the token to the app's network
-path. Always go through `appFetch` or `kody app fetch`: your token goes to the
-Kody API, and Kody calls the app for you.
+people in a browser, where Kody signs them in. Pass that URL as an address to
+`appFetch` or `kody app fetch` instead of sending your API token to the app
+host. Before handing the request to app code,
+[Kody strips inbound `Authorization`, `Proxy-Authorization`, and `X-Kody-*` headers and forwards only cookies scoped to that app](../../packages/worker/src/package-runtime/package-app-serve.ts).
 
 ## Related
 
