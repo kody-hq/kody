@@ -1308,8 +1308,10 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
 	).resolves.toEqual({ value: 'granted-value' })
 	const rc = (id: string, visitor?: string) => [id, visitor, undefined]
+	// packageStorage reads also pass the visiting agent profile (none here).
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		...rc(buildPackageStorageId('package-1')),
+		undefined,
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 

@@ -6,7 +6,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import {
 	consumePackageAppOpenLinkToken,
 	packageAppOpenLinkQueryParam,
-} from '#app/package-app-open-link.ts'
+} from '#worker/app-visit/open-link.ts'
 import { AppConsentRequiredError } from '#worker/app-visit/consent-required.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import type * as AppBaseUrl from '#worker/app-base-url.ts'

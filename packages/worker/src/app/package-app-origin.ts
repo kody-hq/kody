@@ -71,7 +71,7 @@ import {
 	consumePackageAppOpenLinkToken,
 	packageAppOpenLinkQueryParam,
 	packageAppOpenLinkSessionTtlMs,
-} from '#app/package-app-open-link.ts'
+} from '#worker/app-visit/open-link.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
 import {
 	needsPackageAppRunConsentForPerson,
@@ -98,8 +98,8 @@ import {
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
-	type PackageAppSessionCredential,
 } from '#app/package-app-session.ts'
+import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 import {
 	type PackageAppPath,
 	parsePackageAppCustomHostnamePath,
@@ -547,7 +547,7 @@ export async function authorizePackageAppVisitorForOrg(input: {
 	/** Package slug so app:execute is checked on that app, not any grant. */
 	kodyId?: string
 	/** The agent credential the visit session carries, when it has one. */
-	credential?: PackageAppSessionCredential | null
+	credential?: AppVisitSessionCredential | null
 }): Promise<AuthorizedPackageAppServe> {
 	const person = await resolvePackageAppOwnerByStableUserId({
 		env: input.env,
@@ -615,7 +615,7 @@ export async function authorizePackageAppVisitorForOrg(input: {
 async function packageAppSessionCredentialIsLive(input: {
 	env: Env
 	stableUserId: string
-	credential: PackageAppSessionCredential
+	credential: AppVisitSessionCredential
 }) {
 	const { credential } = input
 	if (credential.kind !== 'api-token' || !credential.id) return true

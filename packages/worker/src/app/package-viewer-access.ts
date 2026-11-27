@@ -11,7 +11,7 @@ import {
 import { checkAppVisitAccess } from '#worker/app-visit/authorize.ts'
 import { loadOrgBindingForOrg, type OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
-import type { PackageAppSessionCredential } from '#app/package-app-session.ts'
+import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 
 /**
  * Whether a signed-in person may open the owner view of a saved package on
@@ -190,7 +190,7 @@ export async function viewerCanExecutePackageApp(input: {
 	ownerId: string
 	/** Saved package id when the concrete app is known. */
 	appId?: string | null
-	credential?: PackageAppSessionCredential | null
+	credential?: AppVisitSessionCredential | null
 }): Promise<boolean> {
 	if (!input.viewer) return false
 	const access = await checkAppVisitAccess({
@@ -216,7 +216,7 @@ export function sessionRequestFor(
  */
 export function visitSessionRequestFor(
 	viewer: Pick<McpUserContext, 'userId' | 'username'>,
-	credential: PackageAppSessionCredential | null | undefined,
+	credential: AppVisitSessionCredential | null | undefined,
 ): RequestContext {
 	const request = sessionRequestFor(viewer)
 	if (!credential) return request

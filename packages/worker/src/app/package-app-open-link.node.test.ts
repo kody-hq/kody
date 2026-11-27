@@ -10,11 +10,11 @@ import {
 	createPackageAppOpenLinkToken,
 	packageAppOpenLinkSessionTtlMs,
 	packageAppOpenLinkTtlMs,
-} from '#app/package-app-open-link.ts'
+} from '#worker/app-visit/open-link.ts'
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
-	type PackageAppSessionCredential,
+	type AppVisitSessionCredential,
 } from '#app/package-app-session.ts'
 import { silenceExpectedConsoleWarns } from '#worker/test-support/console-spies.ts'
 
@@ -36,7 +36,7 @@ function createTestEnv(input: { kv?: 'missing' | 'failing' } = {}) {
 	} as unknown as Env
 }
 
-const profileCredential: PackageAppSessionCredential = {
+const profileCredential: AppVisitSessionCredential = {
 	kind: 'api-token',
 	id: 'token-1',
 	scopes: ['app:execute', 'app:read'],

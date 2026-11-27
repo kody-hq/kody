@@ -4,8 +4,8 @@ import {
 	packageAppOpenLinkQueryParam,
 	packageAppOpenLinkSessionTtlMs,
 	packageAppOpenLinkTtlMs,
-} from '#app/package-app-open-link.ts'
-import type { PackageAppSessionCredential } from '#app/package-app-session.ts'
+} from '#worker/app-visit/open-link.ts'
+import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -127,7 +127,7 @@ export const appOpenLinkCapability = defineDomainCapability(
 
 			const { credential } = target.callerRequest
 			const profileId = credential.profileId ?? null
-			const linkCredential: PackageAppSessionCredential = {
+			const linkCredential: AppVisitSessionCredential = {
 				kind: credential.kind,
 				id: credential.id,
 				scopes: credential.scopes ? [...credential.scopes] : null,

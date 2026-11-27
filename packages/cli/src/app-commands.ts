@@ -19,7 +19,7 @@ export const appFetchUsage =
 
 export const appListUsage = 'Usage: kody app list [--org <slug>] [--json]'
 
-export const appOpenLinkUsage =
+const appOpenLinkUsage =
 	'Usage: kody app open-link <@org/app | hosted-url> [path] [--json]'
 
 export type AppFetchPlan = {

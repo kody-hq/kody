@@ -159,7 +159,7 @@ calls.
 - **Result:** `url`, `app`, `expires_at`, `expires_in_seconds` (300), and
   `session_seconds` (3600).
 - **The link** is a
-  [signed token on the app's own host](../../packages/worker/src/app/package-app-open-link.ts),
+  [signed token on the app's own host](../../packages/worker/src/app-visit/open-link.ts),
   valid for 5 minutes and for one use. It is bound to that app and that host, so
   it is refused anywhere else.
 - **Opening it** sets the app's host-only visit session cookie for 60 minutes

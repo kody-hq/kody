@@ -5,9 +5,9 @@ import {
 } from '@kody-internal/shared/base64.ts'
 import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
-	isPackageAppSessionCredential,
-	type PackageAppSessionCredential,
-} from '#app/package-app-session.ts'
+	isAppVisitSessionCredential,
+	type AppVisitSessionCredential,
+} from '#worker/app-visit/session-credential.ts'
 
 /**
  * Open links: how an agent opens a hosted package app in its own browser.
@@ -46,7 +46,7 @@ export type PackageAppOpenLinkClaims = {
 	kodyId: string
 	/** `URL.host` the link was minted for. */
 	host: string
-	credential: PackageAppSessionCredential
+	credential: AppVisitSessionCredential
 }
 
 type StoredOpenLinkPayload = {
@@ -57,7 +57,7 @@ type StoredOpenLinkPayload = {
 	host: string
 	exp: number
 	jti: string
-	cred: PackageAppSessionCredential
+	cred: AppVisitSessionCredential
 }
 
 function isStoredOpenLinkPayload(
@@ -76,7 +76,7 @@ function isStoredOpenLinkPayload(
 		typeof record.exp === 'number' &&
 		Number.isFinite(record.exp) &&
 		isText(record.jti) &&
-		isPackageAppSessionCredential(record.cred)
+		isAppVisitSessionCredential(record.cred)
 	)
 }
 

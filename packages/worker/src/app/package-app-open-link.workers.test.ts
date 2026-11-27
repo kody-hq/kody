@@ -5,9 +5,9 @@ import { setAuthSessionSecret } from '#app/auth-session.ts'
 import {
 	createPackageAppOpenLinkToken,
 	packageAppOpenLinkQueryParam,
-} from '#app/package-app-open-link.ts'
+} from '#worker/app-visit/open-link.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
-import type { PackageAppSessionCredential } from '#app/package-app-session.ts'
+import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 import {
 	silenceExpectedConsoleErrors,
 	silenceExpectedConsoleWarns,
@@ -32,7 +32,7 @@ const mutableEnv = env as unknown as Record<string, unknown>
 const { orgSlug, privateApp, publicApp } = accessFixture
 const privateOrigin = `https://${privateApp.slug}--${orgSlug}.packages.isolated.test`
 const publicOrigin = `https://${publicApp.slug}--${orgSlug}.packages.isolated.test`
-const unnarrowed: PackageAppSessionCredential = {
+const unnarrowed: AppVisitSessionCredential = {
 	kind: 'mcp-oauth',
 	id: null,
 	scopes: null,
@@ -58,7 +58,7 @@ beforeEach(async () => {
 
 async function mintLink(input: {
 	person: AccessFixturePerson
-	credential?: PackageAppSessionCredential
+	credential?: AppVisitSessionCredential
 	origin?: string
 	slug?: string
 	path?: string
@@ -216,9 +216,7 @@ test('an open link is refused when expired, tampered, or opened for another app 
 })
 
 test('the visit keeps the scopes of the credential that minted the link', async () => {
-	const scoped = (
-		scopes: Array<OrgPermission>,
-	): PackageAppSessionCredential => ({
+	const scoped = (scopes: Array<OrgPermission>): AppVisitSessionCredential => ({
 		kind: 'mcp-oauth',
 		id: null,
 		scopes,

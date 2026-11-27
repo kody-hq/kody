@@ -5,11 +5,11 @@ import {
 import { createCookie } from 'remix/cookie'
 import { isSecureRequest } from '#app/auth-session.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
+import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
-	parsePersonId,
-	type OwnerId,
-} from '@kody-internal/shared/owner-person-ids.ts'
-import type { RequestCredential } from '@kody-internal/shared/request-context.ts'
+	isAppVisitSessionCredential,
+	type AppVisitSessionCredential,
+} from '#worker/app-visit/session-credential.ts'
 
 /**
  * Host-only session for one package app on a package-app origin.
@@ -54,24 +54,11 @@ const insecurePackageAppSessionCookiePrefix = 'kody_pkg_session_'
 const packageAppSessionDefaultMaxAgeSeconds = 60 * 60 * 12
 const packageAppSessionSecretPurpose = 'kody-package-app-session:v2'
 
-/**
- * The agent credential a visit session acts as: what `appOpenLink` copied
- * from the calling token. `profileOrgId` is always set with `profileId`.
- */
-export type PackageAppSessionCredential = Pick<
-	RequestCredential,
-	'kind' | 'id' | 'scopes'
-> & {
-	profileId?: string
-	profileChain?: ReadonlyArray<string>
-	profileOrgId?: OwnerId
-}
-
 export type PackageAppSession = {
 	stableUserId: string
 	username: string
 	/** Set for an agent's visit; absent for a person's own browser session. */
-	credential?: PackageAppSessionCredential
+	credential?: AppVisitSessionCredential
 }
 
 type StoredPackageAppSession = {
@@ -82,7 +69,7 @@ type StoredPackageAppSession = {
 	app: string
 	issuedAt: number
 	expiresAt: number
-	credential?: PackageAppSessionCredential
+	credential?: AppVisitSessionCredential
 }
 
 export type ParsedPackageAppSession = {
@@ -160,29 +147,6 @@ async function getPackageAppSessionCookie(
 	)
 }
 
-const isText = (value: unknown): value is string =>
-	typeof value === 'string' && value.length > 0
-
-export function isPackageAppSessionCredential(
-	value: unknown,
-): value is PackageAppSessionCredential {
-	if (!value || typeof value !== 'object') return false
-	const record = value as Record<string, unknown>
-	const hasProfile = record.profileId !== undefined
-	return (
-		isText(record.kind) &&
-		(record.id === null || isText(record.id)) &&
-		(record.scopes === null ||
-			(Array.isArray(record.scopes) && record.scopes.every(isText))) &&
-		(hasProfile
-			? isText(record.profileId) &&
-				isText(record.profileOrgId) &&
-				Array.isArray(record.profileChain) &&
-				record.profileChain.every(isText)
-			: record.profileChain === undefined && record.profileOrgId === undefined)
-	)
-}
-
 function isStoredPackageAppSession(
 	value: unknown,
 ): value is StoredPackageAppSession {
@@ -202,7 +166,7 @@ function isStoredPackageAppSession(
 		Number.isFinite(record.expiresAt) &&
 		record.expiresAt > 0 &&
 		(record.credential === undefined ||
-			isPackageAppSessionCredential(record.credential))
+			isAppVisitSessionCredential(record.credential))
 	)
 }
 
