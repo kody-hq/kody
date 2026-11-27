@@ -43,6 +43,15 @@ export type CommunityInstallApiPayload = {
 	targetName?: string
 	agentPrompt?: string
 	failedChecks?: Array<{ kind: string; message: string }>
+	/**
+	 * Lines of the fork that still name the origin package or scope after the
+	 * fork rewrite. `agentPrompt` lists them too.
+	 */
+	leftoverOriginReferences?: Array<{
+		file: string
+		line: number
+		snippet: string
+	}>
 	/** The account already had this fork; nothing new was created. */
 	alreadyInstalled?: boolean
 	message?: string | null

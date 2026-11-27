@@ -85,6 +85,7 @@ function installed(kodyId: string, overrides: Record<string, unknown> = {}) {
 		targetKodyId: kodyId,
 		targetName: `@userb/${kodyId}`,
 		originCommit: 'commit-1',
+		leftoverOriginReferences: [],
 		...overrides,
 	}
 }
@@ -163,7 +164,9 @@ test('community install POST enforces gates and maps install outcomes', async ()
 		sourceId: 'source-1',
 		targetName: '@userb/demo',
 		agentPrompt: expect.stringContaining('@userb/demo'),
+		leftoverOriginReferences: [],
 	})
+	expect(success.payload.agentPrompt).not.toContain('still names')
 	expect(mockModule.installCommunityListing).toHaveBeenCalledWith(
 		expect.objectContaining({
 			env,
@@ -180,6 +183,13 @@ test('community install POST enforces gates and maps install outcomes', async ()
 		}),
 	)
 
+	const leftover = {
+		file: 'src/events/normalize.ts',
+		line: 12,
+		snippet: String.raw`const scope = '\u0040usera/demo'`,
+	}
+	const leftoverPromptLine =
+		'still names the package it was forked from on these lines: src/events/normalize.ts:12. Review each one and change it to "@userb/demo"'
 	mockModule.installCommunityListing.mockResolvedValue(
 		installed('demo', {
 			status: 'adaptation_required',
@@ -187,6 +197,7 @@ test('community install POST enforces gates and maps install outcomes', async ()
 			crossScopeReferences: [
 				{ file: 'src/index.ts', specifier: 'kody:@usera/' },
 			],
+			leftoverOriginReferences: [leftover],
 		}),
 	)
 	const adaptation = await post()
@@ -197,6 +208,18 @@ test('community install POST enforces gates and maps install outcomes', async ()
 		sourceId: 'source-1',
 		failedChecks: [{ kind: 'bundle', message: 'unresolved' }],
 		agentPrompt: expect.stringContaining('source-1'),
+		leftoverOriginReferences: [leftover],
+	})
+	expect(adaptation.payload.agentPrompt).toContain(leftoverPromptLine)
+
+	mockModule.installCommunityListing.mockResolvedValue(
+		installed('demo', { leftoverOriginReferences: [leftover] }),
+	)
+	const installedWithLeftover = await post()
+	expect(installedWithLeftover.payload).toMatchObject({
+		status: 'installed',
+		leftoverOriginReferences: [leftover],
+		agentPrompt: expect.stringContaining(leftoverPromptLine),
 	})
 
 	mockModule.installCommunityListing.mockRejectedValue(

@@ -176,7 +176,7 @@ test('persistForkedArtifactRepoContents syncs only changed files on production r
 	expect(mockModule.readArtifactFileAtCommit).not.toHaveBeenCalled()
 })
 
-test('persistForkedArtifactRepoContents stamps dest HEAD and rewrites only dest package.json when dest HEAD is not the listing pin', async () => {
+test('persistForkedArtifactRepoContents stamps dest HEAD and rewrites only dest package.json when dest HEAD is ahead of the pin and its tree is unreadable', async () => {
 	mockDestRemote(productionRemote, 'commit-head')
 	mockModule.readArtifactFileAtCommit.mockResolvedValue(
 		new TextEncoder().encode(
@@ -187,6 +187,10 @@ test('persistForkedArtifactRepoContents stamps dest HEAD and rewrites only dest 
 			}),
 		),
 	)
+	mockModule.readArtifactTreeAtCommit.mockRejectedValue(
+		new Error('tree unavailable'),
+	)
+	vi.spyOn(console, 'warn').mockImplementation(() => {})
 	mockModule.syncArtifactSourceSnapshot.mockResolvedValue('commit-rewritten')
 	const pinManifest = '{"name":"@jane/demo","version":"1.0.0"}'
 
@@ -264,6 +268,50 @@ test('persistForkedArtifactRepoContents renames emits topics across dest HEAD fi
 					private: true,
 				}),
 				'src/topics.ts': "export const merged = '@jane/github.pr.merged'\n",
+			},
+		}),
+	)
+})
+
+test('persistForkedArtifactRepoContents rewrites and scans dest HEAD files for the fork name when dest is ahead of the pin', async () => {
+	mockDestRemote(productionRemote, 'commit-head')
+	const headManifest = tabbedJson({ name: '@kody/github' })
+	mockModule.readArtifactFileAtCommit.mockResolvedValue(
+		new TextEncoder().encode(headManifest),
+	)
+	mockModule.readArtifactTreeAtCommit.mockResolvedValue({
+		'package.json': headManifest,
+		'src/key.ts': 'const leaf = topic.replace(/^@kody\\/github\\./, "")\n',
+		'src/odd.ts': 'const name = "\\u0040kody/github"\n',
+	})
+	mockModule.syncArtifactSourceSnapshot.mockResolvedValue('commit-rewritten')
+
+	await expect(
+		persist({
+			originCommit: 'commit-pin',
+			targetKodyId: 'github',
+			changedFiles: { 'README.md': 'rewritten from the listing pin' },
+		}),
+	).resolves.toEqual({
+		copiedOriginCommit: 'commit-head',
+		destCommit: 'commit-rewritten',
+		leftoverOriginReferences: [
+			{
+				file: 'src/odd.ts',
+				line: 1,
+				snippet: 'const name = "\\u0040kody/github"',
+			},
+		],
+	})
+	expect(mockModule.syncArtifactSourceSnapshot).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			files: {
+				'package.json': tabbedJson({
+					name: '@jane/github',
+					private: true,
+					kody: {},
+				}),
+				'src/key.ts': 'const leaf = topic.replace(/^@jane\\/github\\./, "")\n',
 			},
 		}),
 	)

@@ -94,6 +94,7 @@ function preparedFork(overrides: { crossScopeReferences?: unknown } = {}) {
 		targetName: '@userb/demo',
 		files,
 		crossScopeReferences: [],
+		leftoverOriginReferences: [],
 		...overrides,
 	}
 }
@@ -101,6 +102,7 @@ function preparedFork(overrides: { crossScopeReferences?: unknown } = {}) {
 function forkResult(
 	overrides: {
 		crossScopeReferences?: unknown
+		leftoverOriginReferences?: unknown
 		files?: Record<string, string>
 		filesCount?: number
 		originCommit?: string
@@ -109,6 +111,7 @@ function forkResult(
 	return {
 		...forkFields,
 		crossScopeReferences: [],
+		leftoverOriginReferences: [],
 		filesCount: 2,
 		files,
 		...overrides,
@@ -150,6 +153,7 @@ test('install publishes clean forks, keeps failed checks inert, and propagates e
 	await expect(install()).resolves.toEqual({
 		status: 'installed',
 		...forkFields,
+		leftoverOriginReferences: [],
 	})
 	// The user's trust/acknowledgement decision is pinned to the commit they
 	// saw, so a concurrent republish cannot swap in unreviewed content.
@@ -200,11 +204,24 @@ test('install publishes clean forks, keeps failed checks inert, and propagates e
 		expect.objectContaining({ waitUntil, sourceFiles: files }),
 	)
 
+	// A clean install still carries the leftover-origin warning.
+	const leftoverOriginReferences = [
+		{ file: 'src/index.ts', line: 3, snippet: String.raw`'\u0040usera/demo'` },
+	]
+	mockModule.persistPreparedCommunityFork.mockResolvedValue(
+		forkResult({ leftoverOriginReferences }),
+	)
+	await expect(install()).resolves.toEqual({
+		status: 'installed',
+		...forkFields,
+		leftoverOriginReferences,
+	})
+
 	mockModule.prepareCommunityFork.mockResolvedValue(
 		preparedFork({ crossScopeReferences }),
 	)
 	mockModule.persistPreparedCommunityFork.mockResolvedValue(
-		forkResult({ crossScopeReferences }),
+		forkResult({ crossScopeReferences, leftoverOriginReferences }),
 	)
 	const failedCheck = {
 		kind: 'bundle',
@@ -221,6 +238,7 @@ test('install publishes clean forks, keeps failed checks inert, and propagates e
 		...forkFields,
 		failedChecks: [failedCheck],
 		crossScopeReferences,
+		leftoverOriginReferences,
 	})
 	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
 
@@ -360,6 +378,7 @@ test('install returns the existing fork instead of forking again', async () => {
 			message: 'You already forked this listing as "@userb/demo".',
 			failedChecks: [],
 			crossScopeReferences: [],
+			leftoverOriginReferences: [],
 		})
 		// Published fork: installed under its live name.
 		mockModule.getSavedPackageById.mockResolvedValueOnce({
