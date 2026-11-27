@@ -1539,54 +1539,64 @@ async function servePackageAppRequestWithId(input: {
 				),
 				serverTiming,
 			)
+		const openRequiredNeed = async (
+			need: (typeof requiredExecutorNeeds)[number],
+			visitor: typeof needVisitor,
+		) => {
+			await openCredentialClient(
+				{
+					env,
+					callerContext,
+					// Only checks the need can open; the handle is discarded.
+					binding: newRunCredentialClientBinding(),
+					packageId: savedPackage.id,
+					runNeeds: async () =>
+						new Map(visitorNeeds.map((item) => [item.key, item])),
+					packageAppAuthority: createPackageAppCredentialAuthority({
+						env,
+						scope: {
+							orgId: owner.userId,
+							packageId: savedPackage.id,
+						},
+						grantScope: {
+							orgSlug: packagePath.username,
+							kodyId: savedPackage.kodyId,
+						},
+						visitorRequest: await createPackageAppVisitorPersonalRequest({
+							db: env.APP_DB,
+							visitor,
+						}),
+						issue: { visitorNeed: need.key },
+						waitUntil: scheduleWorkerWaitUntil,
+					}),
+				},
+				{ key: need.key },
+			)
+		}
 		for (const need of requiredExecutorNeeds) {
 			try {
-				await openCredentialClient(
-					{
-						env,
-						callerContext,
-						// Only checks the need can open; the handle is discarded.
-						binding: newRunCredentialClientBinding(),
-						packageId: savedPackage.id,
-						runNeeds: async () =>
-							new Map(visitorNeeds.map((item) => [item.key, item])),
-						packageAppAuthority: createPackageAppCredentialAuthority({
-							env,
-							scope: {
-								orgId: owner.userId,
-								packageId: savedPackage.id,
-							},
-							grantScope: {
-								orgSlug: packagePath.username,
-								kodyId: savedPackage.kodyId,
-							},
-							visitorRequest: await createPackageAppVisitorPersonalRequest({
-								db: env.APP_DB,
-								visitor: needVisitor,
-							}),
-							issue: { visitorNeed: need.key },
-							waitUntil: scheduleWorkerWaitUntil,
-						}),
-					},
-					{ key: need.key },
-				)
+				await openRequiredNeed(need, needVisitor)
 			} catch (error) {
 				if (!(error instanceof CredentialClientError)) throw error
 				if (dispatch?.agent) {
-					// The person already allowed this need, so asking again cannot
-					// help: the acting profile is what lacks the credential.
-					const consented =
+					// When the need opens for the person alone, asking them again
+					// cannot help: the acting profile is what lacks the credential.
+					const profileActs =
 						needVisitor &&
 						'credential' in needVisitor &&
-						needVisitor.credential?.profileId &&
-						(
-							await findLivePackageAppOauthGrant({
-								db: env.APP_DB,
-								personId: needVisitor.userId,
-								orgUsername: packagePath.username.toLowerCase(),
-								kodyId: savedPackage.kodyId,
-							})
-						)?.scopes.includes(`need:${need.key}`)
+						needVisitor.credential?.profileId
+					const consented =
+						profileActs &&
+						(await openRequiredNeed(need, {
+							...needVisitor,
+							credential: null,
+						}).then(
+							() => true,
+							(personError: unknown) => {
+								if (personError instanceof CredentialClientError) return false
+								throw personError
+							},
+						))
 					return consented
 						? profileCredentialRequired(need.key)
 						: visitorConsentRequired(need.key)
