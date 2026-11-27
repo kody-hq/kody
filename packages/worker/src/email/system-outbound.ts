@@ -274,7 +274,6 @@ async function sendReservedEmail(
 			html,
 			replyTo,
 			kind,
-			now,
 			onProviderCall: () => {
 				providerReached = true
 			},
@@ -334,7 +333,6 @@ async function deliverReservedEmail({
 	html,
 	replyTo,
 	kind,
-	now,
 	onProviderCall,
 	onAccepted,
 }: {
@@ -348,7 +346,6 @@ async function deliverReservedEmail({
 	html: string | null
 	replyTo: string | null
 	kind: string
-	now: Date
 	onProviderCall: () => void
 	onAccepted: (providerMessageId: string | null) => Promise<void>
 }): Promise<SystemOutboundResult> {
@@ -362,10 +359,11 @@ async function deliverReservedEmail({
 		}
 	}
 
+	const sentAt = input.now ?? new Date()
 	const consumed = await consumeSystemEmailDailySend({
 		db: input.env.APP_DB,
 		localPart,
-		now,
+		now: sentAt,
 		limit: newsletter
 			? systemEmailLimits.maxNewsletterSendsPerDay
 			: systemEmailLimits.maxSendsPerDay,
@@ -403,7 +401,7 @@ async function deliverReservedEmail({
 		await refundSystemEmailDailySend({
 			db: input.env.APP_DB,
 			localPart,
-			now,
+			now: sentAt,
 		})
 		throw error
 	}
@@ -411,7 +409,7 @@ async function deliverReservedEmail({
 		await refundSystemEmailDailySend({
 			db: input.env.APP_DB,
 			localPart,
-			now,
+			now: sentAt,
 		})
 		const rejection = cloudflareRequestRejectionMessage(result)
 		const error = rejection
@@ -441,7 +439,7 @@ async function deliverReservedEmail({
 		recipients: to,
 		sender: from,
 		kind,
-		now,
+		now: sentAt,
 	})
 	const resolvedHtml = html ?? htmlFromText(text ?? '')
 	try {
@@ -455,7 +453,7 @@ async function deliverReservedEmail({
 				html: resolvedHtml,
 				replyTo,
 				providerMessageId,
-				sentAt: now.toISOString(),
+				sentAt: sentAt.toISOString(),
 			}),
 			waitUntil: input.waitUntil,
 		})
