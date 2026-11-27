@@ -1386,6 +1386,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	expect(getStorageRunner).toHaveBeenCalledWith(...rc('package-1:facet:main'))
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		...rc('package-1:Counter:instance-a'),
+		undefined,
 	)
 
 	const outsideNamespaceError =
