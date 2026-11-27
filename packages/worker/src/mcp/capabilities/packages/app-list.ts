@@ -61,7 +61,7 @@ export const appListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
-			'List the hosted package apps you can run: apps in every org you belong to and apps other orgs shared with you. Each is one you hold app:execute on, the same check appFetch and a browser visit make; a profile token lists only the apps its profile chain was given Use on. Returns the @org/app address to pass to appFetch, the owning org, the hosted URL a person opens, and visibility. Pass owner to list one org only.',
+			'Find hosted package apps you have Use access to, including apps shared from another org. Pass the returned @org/app address to appFetch. To filter by org, call appList({ owner: "acme" }). See /docs/agent-apps for access and paging.',
 		keywords: [
 			'app',
 			'apps',

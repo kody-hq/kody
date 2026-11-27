@@ -45,8 +45,8 @@ const runtimeCallerErrorMessage =
 	'appFetch runs for a person or their agent. Call it from an interactive MCP session, execute, the Open API, or the kody CLI. Package app and job code cannot call it.'
 
 /**
- * A response over MCP always stays at the default cap: it lands in a model's
- * context. The Open API and the CLI may raise it up to the hard cap.
+ * MCP OAuth credentials use the default cap; other credentials can raise it
+ * up to the hard cap.
  */
 function responseBodyCap(
 	request: RequestContext,
@@ -301,7 +301,7 @@ export const appFetchCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
-			'Call a hosted package app you can run, as you: one HTTP request to its fetch handler, answered with status, headers, and body. Works for apps in any org you belong to and apps shared with you (appList lists them); name the app as @org/app or by its hosted URL. This is a real visit with real side effects, authorized exactly like opening the app in a browser (app:execute on that app in the org that owns it). The app sees your user id; when a profile token makes the call it also sees the profile, and the profile chain must hold Use on the app. If the app still needs your one-time "Run as me" confirmation or a credential you have not allowed, the call fails with the link to open once. Pass synthetic: true for a smoke test the app can recognize by its Kody-Synthetic header. Use this instead of fetching the hosted URL with a token: app hosts never accept bearer tokens. Websockets are not supported.',
+			'Send one HTTP request to a hosted package app as the signed-in person, e.g. appFetch({ app: "@acme/board", path: "/api/cards" }). Use appList to find an address, including apps shared from another org. Calls can have real side effects, even with synthetic: true. See /docs/agent-apps for access and consent.',
 		keywords: [
 			'app',
 			'package app',
@@ -372,7 +372,7 @@ export const appFetchCapability = defineDomainCapability(
 					.max(appFetchHardMaxBodyBytes)
 					.optional()
 					.describe(
-						'Most response body bytes to return before truncating. Defaults to 102,400. The Open API and the CLI (kody app fetch --out) may raise it to 10,485,760; over MCP the response always stays at 102,400.',
+						'Most response body bytes to return before truncating. Defaults to 102,400. The Open API and the CLI (kody app fetch --out) may raise it to 10,485,760; MCP OAuth calls stay at 102,400.',
 					),
 			})
 			.superRefine((value, ctx) => {

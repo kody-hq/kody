@@ -87,6 +87,24 @@ Execution contexts are an experiment. Turn them on at
   CLI or MCP client does not cancel the run; disconnecting before execute
   returns can.
 
+## Listing machines
+
+`executionContextList` returns one page, ordered by name (id breaks ties). Omit
+`cursor` for the first page and pass `nextCursor` as `cursor` until it is
+`null`. The default `limit` is 20; the maximum is 100.
+
+`unutilized` summarizes live contexts outside your chain that you can use or opt
+in to, across all pages. It does not check whether the machines are online. It
+returns a count and names the contexts when there are at most three.
+
+## Registration limits
+
+Registration counts unrevoked contexts owned by the org. The plan caps both each
+person's registrations and the org total. Free uses one org-wide pool; paid
+plans multiply the per-seat amount by live seats (at least one). When
+registration hits a cap, revoke an unused context with
+`kody context revoke <name>`.
+
 ## Auto-update
 
 Every `kody daemon` keeps itself current: background services, a daemon in a

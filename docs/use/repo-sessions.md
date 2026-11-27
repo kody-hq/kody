@@ -43,13 +43,17 @@ branch, checkout, fetch, pull, push, and remote operations are not available
 inside sessions. For saved packages, use `packageGetGitRemote` when you need
 full git.
 
-Merge drift from the published default branch is handled separately by
-**`repoRebaseSession`**. It commits any uncommitted edits first, then merges the
-latest source into the session branch, so your edits carry onto the new base.
-When the source and the session changed the same files in ways git cannot merge,
-the rebase fails with an error that names the files. The session keeps your
-edits, now committed on its branch at the old base; open a new session on the
-latest source and reapply them.
+Use **`repoRebaseSession`** when the published base moves. Kody commits pending
+edits before merging the latest source into the session branch. If it stops on a
+conflict, see [Rebase conflicts](#rebase-conflicts).
+
+### Rebase conflicts
+
+If the source and session edits cannot merge automatically, the session branch
+keeps your committed edits at the old base. Open a new session on the latest
+source and reapply them. If the error instead names files Git does not track
+that checkout would overwrite, move or delete those files with `repoEditFiles`
+and retry.
 
 ### Core edit and git-inspection capabilities
 

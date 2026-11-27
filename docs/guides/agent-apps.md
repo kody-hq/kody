@@ -4,37 +4,33 @@ title: Using apps as an agent
 summary:
   How an agent finds and calls the package apps its person can run. List them
   with appList, call one with appFetch or kody app fetch, and act as the person
-  with an optional profile label. Covers consent links, profiles, and why hosted
-  URLs never take a token.
+  with an optional profile label. Covers token-safe calling, consent links, and
+  profiles.
 category: platform
 audience: agents
 ---
 
 # Using apps as an agent
 
-A package app is a small web app someone published on Kody. If your person can
-open an app in a browser, you can call it for them. One path does this:
-`appFetch` (MCP, `execute`, the Open API) and `kody app fetch` (CLI). It runs
-the same access check as a browser visit, so there is nothing extra to set up.
+Use `appList` to find a hosted package app and `appFetch` or `kody app fetch` to
+call it as your person. The
+[shared visit permission check](../../packages/worker/src/app-visit/authorize.node.test.ts)
+requires `app:execute` on the app in its owning org and accounts for the
+credential you call with.
 
 ## Find an app
 
-Call `appList`. It returns every app you can run: apps in each org your person
-belongs to, and apps another org shared with them.
+Call `appList` to find apps you have Use access to in member orgs or shared from
+another org. In a terminal, use `kody app list`.
 
 ```json
 { "owner": "acme" }
 ```
 
-`owner` is optional. Each result has the address to call (`app`, such as
-`@acme/board`), the owning org, the `package_id`, the hosted URL a person opens,
-whether the app is public or private, and `shared: true` when it comes from an
-org your person is not a member of. Long lists page with `next_cursor`.
-
-From a terminal: `kody app list`, or `kody app list --org acme`.
-
-Package search (`search` with `entity` omitted or a package name) also finds
-apps, but `appList` is the answer to "which apps can I run right now".
+Use the returned `app` address (such as `@acme/board`) for your next call. For
+another page, pass `next_cursor` as `cursor`. To filter in the CLI, use
+`kody app list --org acme`. See the
+[listing reference](../use/app-fetch.md#list-apps) for limits and result fields.
 
 ## Call an app
 
@@ -49,8 +45,8 @@ apps, but `appList` is the answer to "which apps can I run right now".
 ```
 
 `app` takes the `@org/app` address or the app's hosted URL. You can pass
-`package_id` instead. The call returns `status`, `headers`, `body`, and
-`truncated`.
+`package_id` instead. See the [call reference](../use/app-fetch.md#call-shape)
+for response encoding, body limits, and supported methods.
 
 From a terminal:
 
@@ -60,19 +56,11 @@ kody app fetch @acme/board /api/cards --method POST \
 kody app fetch @acme/board /export.csv --out export.csv
 ```
 
-Things to know:
-
-- **It is a real visit.** The app's handler runs with real side effects, the
-  same as a person clicking in a browser. Pass `synthetic: true` (CLI:
-  `--synthetic`) only for a smoke test; that sets the `Kody-Synthetic: true`
-  header so an app can tell a test from a visit.
-- **Bodies are capped.** Over MCP the response body stops at 102,400 bytes and
-  `truncated` is `true`. The Open API takes `max_bytes` up to 10,485,760;
-  `kody app fetch --out <file>` uses that to write up to 10 MB to a file.
-- **Websockets are not supported.** Use plain HTTP routes.
-- **Call it from your agent session.** `appFetch` works from MCP, `execute`, the
-  Open API, and the CLI. Code running inside a package app or a job cannot call
-  it.
+**Calls can have real side effects**, even when marked as a
+[synthetic smoke test](../use/app-fetch.md#synthetic-smoke-tests). Use plain
+HTTP routes from an interactive session; the
+[`appFetch` caller check](../../packages/worker/src/mcp/capabilities/packages/app-fetch.node.test.ts)
+rejects package app and background job callers.
 
 ## Who the app sees
 
@@ -84,15 +72,15 @@ as a label: `metaGetCurrentUser()` and the `X-Kody-Visitor` header carry
 `profile: { id, name }`, and `profile` is `null` for a visit with no profile.
 The visit counts for your person in the publisher's Visitors list, and its run
 record carries the profile chain. The app's own permissions do not change: it
-still runs as its publisher's choice of person, and it reaches a visitor's
-credentials only through the needs the visitor allowed.
+still runs as its publisher's choice of person. A
+[visitor-need lookup](../../packages/worker/src/package-runtime/package-app-authority.ts)
+requires the visitor's live grant for that app and need.
 
 ## Profiles
 
-A profile reaches an app only when the profile was given Use on that app. Your
-person's access is the outer limit, each parent profile narrows it, and the
-token's scopes narrow it again. `appList` shows exactly the apps the profile can
-run.
+The [app access check](../../packages/worker/src/app-visit/authorize.ts) uses
+the person's access, each layer of the profile chain, and any token scopes
+together. `appList` applies the same permission when filtering results.
 
 To give a profile an app, including one another org shared with your person,
 grant it from the org the profile lives in:
@@ -108,41 +96,38 @@ grant it from the org the profile lives in:
 ```
 
 That is `accessGrant`. `profileCreate` and `profileHandoff` take the same grant
-in `grants[]`. The person must be able to run the app themselves, and a
-sub-profile can only get an app its parent holds. Remove the grant with
-`accessRevoke`.
+in `grants[]`. An
+[app grant to a profile](../../packages/worker/src/app-visit/authorize.node.test.ts)
+requires the person's own access and, for a sub-profile, its parent's access.
+Remove the grant with `accessRevoke`.
 
-An app can ask a visitor for a credential (a visitor need). A profile uses that
-credential only when the profile was also given Use on the credential itself.
-The person's consent to the app does not widen what a profile can reach.
+A visitor-need credential still needs
+[Use at every layer of the acting profile chain](../../packages/worker/src/credentials/personal-credential-profile.node.test.ts),
+even when the person has allowed the need.
 
 ## When the app needs your person once
 
-Some things only a person can approve, and an agent never approves them:
-
-- **Run as me.** The first visit to an app shared from another org asks the
-  person to confirm that the app's work runs for them and bills their own org.
-- **A credential the app asks for.** The person chooses whether the app may use
-  it.
-
-When either is missing, the call fails with `app_consent_required` and a
-`consent_url`. Give that link to your person. They open it once in a browser,
-confirm, and then the same call works. Nothing is recorded until they do.
+When
+[`appFetch` reports `app_consent_required`](../../packages/worker/src/mcp/capabilities/packages/app-fetch.node.test.ts),
+give its `consent_url` to your person. An outside visitor may need to confirm
+**Run as me**, or the app may need approval for a required visitor credential.
+The call reports the missing approval instead of recording it. Retry after the
+person confirms in the browser. See the
+[consent reference](../use/app-fetch.md#consent) for error details.
 
 ## Imports are not visits
 
-`import ... from 'kody:@org/package/export'` reuses a package's code inside the
-same org. It does not cross orgs and it is not a visit to an app. To use an app,
-call `appFetch`. To reuse its code, import it.
+`import ... from 'kody:@org/package/export'` reuses code
+[within the caller's org](../../packages/worker/src/package-runtime/package-import-resolution.node.test.ts);
+it is not an app visit. To use an app, call `appFetch`.
 
-## Hosted URLs do not take tokens
+## Send tokens to the Kody API
 
-An app's hosted URL (`https://<app>--<org>.kody.run/` or a custom domain) is for
-people in a browser, where Kody signs them in. App hosts drop `Authorization`,
-cookies, and `X-Kody-*` headers before the app runs, so sending an API token to
-a hosted URL does nothing useful and exposes the token to the app's network
-path. Always go through `appFetch` or `kody app fetch`: your token goes to the
-Kody API, and Kody calls the app for you.
+Use the hosted URL for browser visits or as an app address in `appFetch` or
+`kody app fetch`. Send your token to the Kody API, not the app host. Before app
+code runs,
+[hosted ingress strips platform credentials](../../packages/worker/src/package-runtime/package-app-serve.ts)
+from the forwarded request; an app may still receive its own cookies.
 
 ## Related
 

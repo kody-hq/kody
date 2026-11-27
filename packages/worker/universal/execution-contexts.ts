@@ -1,16 +1,15 @@
 import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/frames.ts'
 /**
- * Website contract for execution contexts: the list, detail and chain shapes
- * the API returns (docs/design execution-contexts-ui-plan section 12), plus the
- * pure chain helpers and labels the page uses. Kody cloud is always the last
- * chain entry; contexts are ordered above it.
+ * Website contracts and helpers for context pages and chains. If a chain
+ * includes Kody cloud, it is last.
  */
 
 export const maxChainContexts = ecpMaxChainContexts
 const unutilizedNamedMax = 3
 
-/** executionContextList page size: the default and the most one call returns. */
+/** Default `executionContextList` page size. */
 export const executionContextListDefaultLimit = 20
+/** Maximum `executionContextList` page size. */
 export const executionContextListMaxLimit = 100
 const revokedVisibleDays = 30
 
@@ -385,7 +384,7 @@ export type ExecutionContextsPageData =
 			nextCursor: string | null
 			chain: ExecutionChain
 			unutilized: ExecutionContextUnutilized | null
-			/** Chain entries that are not on this page, so the chain panel can show them. */
+			/** Resolved context details for chain entries outside this page. */
 			chainContexts: Array<ExecutionContextListItem>
 			selected: ExecutionContextListItem | null
 			selectedMissing: boolean

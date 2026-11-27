@@ -10,6 +10,7 @@ import {
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 
+/** Check whether a signed-in nonmember still needs to confirm "Run as me". */
 export async function needsPackageAppRunConsent(input: {
 	db: D1Database
 	packageId: string
@@ -99,7 +100,7 @@ export function packageAppRunConsentResponse(input: {
 	request: Request
 	baseUrl: string
 	packagePath: { username: string; kodyId: string; restPath: string }
-	/** True for an agent or smoke-test call: report, never redirect. */
+	/** Force a 403 instead of redirecting an otherwise eligible GET navigation. */
 	noRedirect?: boolean
 	fromAppHost?: boolean
 }) {

@@ -1,13 +1,7 @@
 /**
- * The one authorizer for a visit to a hosted package app.
- *
- * A browser session and an agent's `appFetch` both end here, so a person and
- * an agent acting for them are let in by the same check: `app:execute` on
- * that app, computed in the org that owns it. The caller's request decides
- * how far the person is narrowed. A browser session carries no profile and no
- * token scopes; `appFetch` passes the request it was called with, so its
- * profile chain and token scopes intersect the person's live access
- * (ADR 0062, ADR 0092).
+ * Shared access checks for signed-in hosted package app visits.
+ * See {@link checkAppVisitAccess} for permissions and
+ * {@link authorizeAppVisit} for visit resolution and caching.
  */
 import {
 	ownerIdFromStored,
@@ -81,6 +75,8 @@ export type AppVisitAccess =
 /**
  * Whether `callerRequest` may run an app owned by `ownerId`. With `appId`,
  * only access to that app counts; a grant on another app does not open it.
+ * The owning org's `app:execute` decision includes any credential scopes
+ * and profile chain on the request.
  */
 export async function checkAppVisitAccess(input: {
 	env: Env
@@ -132,7 +128,7 @@ export type AppVisitAuthorization =
 			visitor: RuntimePackageAppVisitor
 			/** The org billed for this visit's metered work (ADR 0095). */
 			billedOrgId: OwnerId
-			/** True until the person confirms "Run as me" for this app. */
+			/** Whether this outside visitor needs "Run as me" confirmation. */
 			needsRunConsent: boolean
 			/** Org `access_epoch` the decision was made at. */
 			epoch: number
