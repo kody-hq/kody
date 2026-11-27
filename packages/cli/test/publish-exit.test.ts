@@ -56,11 +56,12 @@ test('publishRefusalMessage prefers API message and summarizes checks_failed', (
 	assert.equal(
 		publishRefusalMessage({
 			status: 'held_for_approval',
+			message: 'This publish is held for approval and is not live.',
 			serving_commit: 'aaa',
 			held_commit: 'bbb',
 			approval_url: 'https://kody.codes/@me/app/approve-capabilities',
 		}),
-		'This publish is held for approval and is not live. Everyone stays on the serving commit until the owner approves the new capabilities.\nApprove: https://kody.codes/@me/app/approve-capabilities',
+		'This publish is held for approval and is not live.\nApprove: https://kody.codes/@me/app/approve-capabilities',
 	)
 	assert.equal(
 		publishRefusalMessage({

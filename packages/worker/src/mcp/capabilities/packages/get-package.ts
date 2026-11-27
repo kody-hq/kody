@@ -164,6 +164,7 @@ export const getPackageCapability = defineDomainCapability(
 				sourceId: saved.sourceId,
 				packageId: saved.id,
 				supplierSemanticsEnabled: suppliersEnabled,
+				...(held ? { source: loaded.source } : {}),
 			})
 			const publishedCommit = loaded.source.published_commit ?? null
 			const outsideBuild = showBuildOrigin

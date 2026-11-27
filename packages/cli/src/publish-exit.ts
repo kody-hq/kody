@@ -80,12 +80,6 @@ export function publishRefusalMessage(result: unknown): string {
 		const trimmed = result.message.trim()
 		if (trimmed) return withApprovalUrl(trimmed, result)
 	}
-	if (status === 'held_for_approval' && isRecord(result)) {
-		return withApprovalUrl(
-			'This publish is held for approval and is not live. Everyone stays on the serving commit until the owner approves the new capabilities.',
-			result,
-		)
-	}
 	if (status === 'checks_failed' && isRecord(result)) {
 		const details = failedCheckMessages(result)
 		if (details.length > 0) {
