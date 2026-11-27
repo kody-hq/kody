@@ -787,3 +787,45 @@ test('an unreadable 4xx rejection leaves the newsletter key retryable', async ()
 	expect(retried.providerMessageId).toBe('after-unreadable')
 	expect(calls).toBe(2)
 })
+
+test('simultaneous retries of a failed newsletter key make one provider call', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	const at = '2026-11-27T19:00:00.000Z'
+	await env.APP_DB.prepare(
+		`INSERT INTO system_email_send_keys
+			(kind, idempotency_key, recipient, state, created_at, updated_at)
+		VALUES ('whats_new', 'campaign-race:user-1', 'reader@example.com', 'failed', ?1, ?1)`,
+	)
+		.bind(at)
+		.run()
+	let calls = 0
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () => {
+				calls++
+				return HttpResponse.json({
+					success: true,
+					result: { message_id: `race-${calls}` },
+				})
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		idempotencyKey: 'campaign-race:user-1',
+		now: new Date(at),
+	}
+	const results = await Promise.allSettled([
+		sendNewsletterEmail(input),
+		sendNewsletterEmail(input),
+	])
+	expect(calls).toBe(1)
+	expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+	const refused = results.find((r) => r.status === 'rejected')
+	expect(isMcpCallerError(refused?.reason)).toBe(true)
+})
