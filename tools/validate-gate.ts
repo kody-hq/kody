@@ -150,6 +150,13 @@ const parallelValidateLegs = [
 		command: 'npm run cli:validate && npm run desktop:validate',
 		weight: 'build',
 	},
+	// CI runs this on E2E shard 1; nothing else catches fixture drift.
+	{
+		name: 'desktop-execution-ui',
+		command:
+			'npm run test:e2e:ensure && npm run test:execution-ui --workspace @kodycodes/desktop',
+		weight: 'build',
+	},
 	{
 		name: 'cli-openapi',
 		command: 'npm run cli:openapi:check && npm run state-machines:check',
