@@ -34,6 +34,7 @@ export default defineConfig({
 	reporter: [['list'], ['./e2e/ui-verify/reporter.ts']],
 	use: {
 		baseURL: e2eConfig.use?.baseURL,
+		storageState: e2eConfig.use?.storageState,
 		trace: 'off',
 		reducedMotion: 'reduce',
 		// The pinned browser reaches the host's E2E server through the client.

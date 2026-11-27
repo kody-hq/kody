@@ -25,10 +25,10 @@ import {
 } from './offer.ts'
 
 /** Full-bleed bar above the site header, for signed-out visitors. */
-export function BlackFridaySiteBar() {
+export function BlackFridaySiteBar(props: { signupHref: string }) {
 	const { blackFridayBanner } = useShellData()
 	if (blackFridayBanner?.audience !== 'signed-out') return null
-	return <Banner audience="signed-out" href="/signup" />
+	return <Banner audience="signed-out" href={props.signupHref} />
 }
 
 /**

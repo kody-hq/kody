@@ -50,6 +50,12 @@ first paint, and hides the banner for a visitor who dismissed it.
    `tsconfig-start-server-tests.json`: remove the
    `start/campaigns/black-friday-2026/` entries.
 
+8. `playwright.config.ts` and `playwright.ui-verify.config.ts`: remove the
+   `storageState` that dismisses the banner for E2E and UI verify runs.
+
+9. `e2e/workspace-sidebars.spec.ts`: remove the `useRouter` export from the
+   `@tanstack/react-router` stub.
+
 `git grep -n -i -e black-friday-2026 -e blackfriday` should then print nothing.
 
 Nothing is stored on the server for this campaign beyond the normal promo claim

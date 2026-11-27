@@ -5,7 +5,7 @@ let script: string
 const stubs: Record<string, string> = {
 	'../commands/provider.tsx': `export function CommandTrigger(){return null}`,
 	'workspace-uploads.tsx': `export function WorkspaceUploads({children}){return children}`,
-	'@tanstack/react-router': `export function useMatches(){return[{staticData:{navigation:{item:'files'}}}]}export function Outlet(){return <section data-testid="content" style={{height:'100vh',flex:1}}>Content</section>}`,
+	'@tanstack/react-router': `export function useRouter(){return{options:{}}}export function useMatches(){return[{staticData:{navigation:{item:'files'}}}]}export function Outlet(){return <section data-testid="content" style={{height:'100vh',flex:1}}>Content</section>}`,
 	'__root.tsx': `export function useShellData(){return {session:{username:'jane',email:'jane@example.com',roles:[],organizations:[],featureFlags:{}}}}`,
 	'workspace-layout-policy.ts': `export function workspaceLayoutNavigation(){return {rail:'workspace'}}`,
 	'account-management-components.tsx': `export const noticeCardCss={};export function ShellWorkspaceSwitcher(){return <div style={{height:48,padding:'0 16px'}}><span>J</span><span data-rail-label>@jane</span></div>}export function ShellNavigation(){return <nav data-account-nav><a href="#" style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px'}}><svg data-testid="rail-icon" width="16" height="16"><path d="M0 0h16v16H0z"/></svg><span data-rail-label>Overview</span></a></nav>}`,

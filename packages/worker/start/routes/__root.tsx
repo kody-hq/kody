@@ -327,7 +327,9 @@ function LoadedAppLayout() {
 					<a href="#main" css={visuallyHiddenUntilFocusedCss}>
 						Skip to content
 					</a>
-					{authShell || standalone || workspace ? null : <BlackFridaySiteBar />}
+					{authShell || standalone || workspace ? null : (
+						<BlackFridaySiteBar signupHref={signupHref} />
+					)}
 					{authShell || standalone || workspace ? null : (
 						<SiteHeader
 							focused={focused}
