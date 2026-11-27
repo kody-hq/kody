@@ -1165,6 +1165,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['package_id'],
 	},
 	{
+		operationId: 'packageSessionInsights',
+		method: 'GET',
+		pathTemplate: '/v1/packages/{package_id}/session-insights',
+		pathParamNames: ['package_id'],
+	},
+	{
 		operationId: 'packageSubscriptionsList',
 		method: 'GET',
 		pathTemplate: '/v1/package-subscriptions',
@@ -1498,6 +1504,18 @@ export const bakedOpenApiRoutes = [
 		operationId: 'secretSetMany',
 		method: 'POST',
 		pathTemplate: '/v1/secrets/batch',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'sessionInsightsDelete',
+		method: 'POST',
+		pathTemplate: '/v1/orgs/session-insights/delete',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'sessionInsightsGet',
+		method: 'GET',
+		pathTemplate: '/v1/orgs/session-insights',
 		pathParamNames: [],
 	},
 	{
