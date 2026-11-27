@@ -1037,11 +1037,12 @@ sending domain is under platform-wide pressure. The per-user
 
 Session analytics is opt-in per organization. Once a week (the first hourly
 `usage_aggregation` run of each UTC Monday) Kody merges near-duplicate category
-names and ranks where agent sessions got stuck over the last seven days. It
-dispatches both topics to packages saved by users who hold the admin role at
-delivery time. Both are metadata only: they never carry an organization, person,
-package, or session, and a stuck pattern is sent only when it covers at least 10
-sessions from at least 5 organizations.
+names and ranks where agent sessions got stuck over the seven days ending
+yesterday (a day back, so late-closing sessions are counted). It dispatches both
+topics to packages saved by users who hold the admin role at delivery time. Both
+are metadata only: they never carry an organization, person, package, or
+session, and a stuck pattern is sent only when it covers at least 10 sessions
+from at least 5 organizations.
 
 ```ts
 type SessionStuckPatternCrossedEvent = {

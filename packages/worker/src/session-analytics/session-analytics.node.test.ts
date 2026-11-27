@@ -30,7 +30,9 @@ import {
 } from './record.ts'
 import {
 	applySessionCall,
+	closeSession,
 	newOpenSession,
+	saveOpenSession,
 	sessionCountsRetentionDays,
 	sessionResult,
 	sweepSessionAnalytics,
@@ -162,6 +164,7 @@ function insertPackageCounts(
 	sqlite: DatabaseSync,
 	rows: ReadonlyArray<{
 		org: string
+		category?: string
 		outcome?: string
 		stuckKind?: string
 		sessions: number
@@ -171,11 +174,12 @@ function insertPackageCounts(
 		sqlite
 			.prepare(
 				`INSERT INTO session_analytics_package_counts (
-					package_id, org_id, user_id, day, outcome, stuck_kind, sessions
-				) VALUES ('pkg-1', ?, 'person-1', '2026-11-26', ?, ?, ?)`,
+					package_id, org_id, user_id, day, category_id, outcome, stuck_kind, sessions
+				) VALUES ('pkg-1', ?, 'person-1', '2026-11-26', ?, ?, ?, ?)`,
 			)
 			.run(
 				row.org,
+				row.category ?? '',
 				row.outcome ?? 'succeeded',
 				row.stuckKind ?? '',
 				row.sessions,
@@ -652,6 +656,9 @@ test('the weekly pass merges category names that differ only by order or endings
 	expect(categoryMergeKey('managing files')).toBe(
 		categoryMergeKey('file manage'),
 	)
+	expect(categoryMergeKey('processing data')).toBe(
+		categoryMergeKey('process data'),
+	)
 	const insert = sqlite.prepare(
 		`INSERT INTO session_analytics_categories (id, name, created_at) VALUES (?, ?, ?)`,
 	)
@@ -675,4 +682,71 @@ test('the weekly pass merges category names that differ only by order or endings
 		{ id: 'cat-2', status: 'merged', merged_into: 'cat-1' },
 		{ id: 'cat-3', status: 'active', merged_into: null },
 	])
+})
+
+test('a session that closes after the org opted out leaves no counts', async () => {
+	const { sqlite, db } = createTestDb()
+	seedOrg(sqlite, 'org-on', 'declined')
+	const session = applySessionCall(
+		newOpenSession({
+			orgId: 'org-on',
+			userId: 'person-1',
+			clientName: 'cursor',
+			surface: 'mcp',
+			now,
+		}),
+		{ tool: 'execute', stuckKind: null, publicPackageIds: ['pkg-1'] },
+		now,
+	)
+	await saveOpenSession(db, session, [{ kind: 'conversation', key: 'conv-1' }])
+	await closeSession(db, session)
+	for (const table of analyticsTables) {
+		expect(tableCount(sqlite, table), table).toBe(0)
+	}
+})
+
+test('deleting one entry keeps publisher counts of other categories', async () => {
+	const { sqlite, db } = createTestDb()
+	seedOrg(sqlite, 'org-on', 'enabled')
+	insertPackageCounts(sqlite, [
+		{ org: 'org-on', category: 'cat-a', sessions: 2 },
+		{ org: 'org-on', category: 'cat-b', sessions: 3 },
+	])
+	await deleteSessionInsights(db, {
+		owner: { orgId: 'org-on', userId: 'person-1' },
+		entry: {
+			categoryId: 'cat-a',
+			outcome: 'succeeded',
+			stuckKind: null,
+			stuckTool: null,
+		},
+	})
+	expect(
+		sqlite
+			.prepare(
+				`SELECT category_id, sessions FROM session_analytics_package_counts`,
+			)
+			.all(),
+	).toEqual([{ category_id: 'cat-b', sessions: 3 }])
+})
+
+test('a call that is still running neither ends a failure streak nor counts as recovery', () => {
+	const bad = { tool: 'execute', stuckKind: 'validation' as const }
+	let session = newOpenSession({
+		orgId: 'org-on',
+		userId: 'person-1',
+		clientName: 'cursor',
+		surface: 'mcp',
+		now,
+	})
+	session = applySessionCall(session, bad, now)
+	session = applySessionCall(session, bad, now)
+	session = applySessionCall(
+		session,
+		{ tool: 'execute', stuckKind: null, pending: true },
+		now,
+	)
+	expect(session.streakLength).toBe(2)
+	expect(session.recovered).toBe(false)
+	expect(sessionResult(session).outcome).toBe('stuck')
 })

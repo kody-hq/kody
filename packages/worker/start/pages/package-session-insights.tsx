@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { sessionStuckKindLabels } from '#universal/session-analytics.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
+import { Button } from '../components/button.tsx'
 import { packageSessionInsightsQuery } from '../package-session-insights-query.ts'
 import {
 	AccountManagementPanel,
@@ -33,6 +34,28 @@ export function PackageSessionInsights({
 		retryOnMount: false,
 	})
 	const insights = read.data
+	if (read.isError) {
+		return (
+			<AccountManagementPanel
+				title="Agent sessions"
+				description="How this package does in agent sessions in organizations that turned on session analytics."
+				testId="package-session-insights"
+			>
+				<p css={mutedCss} role="alert">
+					Could not load session numbers for this package.
+				</p>
+				<Button
+					type="button"
+					variant="secondary"
+					size="sm"
+					disabled={read.isFetching}
+					onClick={() => void read.refetch()}
+				>
+					Try again
+				</Button>
+			</AccountManagementPanel>
+		)
+	}
 	if (!insights) return null
 	return (
 		<AccountManagementPanel

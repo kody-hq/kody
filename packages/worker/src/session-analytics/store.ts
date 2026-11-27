@@ -1,4 +1,5 @@
 import type {
+	SessionAnalyticsState,
 	SessionOutcome,
 	SessionStuckKind,
 	SessionSurface,
@@ -143,6 +144,8 @@ export type SessionCall = {
 	searchTask?: string | null
 	publicPackageIds?: ReadonlyArray<string>
 	nudged?: boolean
+	/** The call is still running, so it neither fails nor ends a streak. */
+	pending?: boolean
 }
 
 /** Fold one call into the session counters. Pure. */
@@ -176,6 +179,7 @@ export function applySessionCall(
 		}
 		return next
 	}
+	if (call.pending) return next
 	next.lastCallFailed = false
 	if (session.streakLength >= 2 && session.streakTool === call.tool) {
 		next.recovered = true
@@ -273,7 +277,11 @@ function saveSessionStatements(
 					search_task, streak_kind, streak_tool, streak_length, max_streak,
 					max_streak_kind, max_streak_tool, recovered, nudged,
 					last_call_failed, package_ids
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+				WHERE EXISTS (
+					SELECT 1 FROM orgs
+					WHERE id = ? AND session_analytics = 'enabled' AND deleted_at IS NULL
+				)
 				ON CONFLICT (session_id) DO UPDATE SET
 					last_call_at = excluded.last_call_at,
 					call_count = excluded.call_count,
@@ -315,12 +323,17 @@ function saveSessionStatements(
 				session.nudged ? 1 : 0,
 				session.lastCallFailed ? 1 : 0,
 				JSON.stringify(session.packageIds),
+				session.orgId,
 			),
 		...links.map((link) =>
 			db
 				.prepare(
 					`INSERT INTO session_analytics_links (org_id, user_id, link_kind, link_key, session_id)
-					 VALUES (?, ?, ?, ?, ?)
+					 SELECT ?, ?, ?, ?, ?
+					 WHERE EXISTS (
+					 	SELECT 1 FROM orgs
+					 	WHERE id = ? AND session_analytics = 'enabled' AND deleted_at IS NULL
+					 )
 					 ON CONFLICT (org_id, user_id, link_kind, link_key)
 					 DO UPDATE SET session_id = excluded.session_id`,
 				)
@@ -330,6 +343,7 @@ function saveSessionStatements(
 					link.kind,
 					link.key,
 					session.sessionId,
+					session.orgId,
 				),
 		),
 	]
@@ -346,6 +360,8 @@ export async function saveOpenSession(
 /**
  * Close a session: add it to the count rows and delete the session row and
  * its link keys in one batch, so no per-session row outlives the session.
+ * Every write checks the org is still opted in inside the statement, so a
+ * call that raced an opt-out stores nothing.
  */
 export async function closeSession(db: D1Database, session: OpenSession) {
 	const result = sessionResult(session)
@@ -359,7 +375,11 @@ export async function closeSession(db: D1Database, session: OpenSession) {
 					org_id, user_id, day, category_id, outcome, stuck_kind, stuck_tool,
 					client_name, surface, sessions, linked_sessions, calls, errors,
 					nudged_sessions
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+				) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?
+				WHERE EXISTS (
+					SELECT 1 FROM orgs
+					WHERE id = ? AND session_analytics = 'enabled' AND deleted_at IS NULL
+				)
 				ON CONFLICT (
 					org_id, user_id, day, category_id, outcome, stuck_kind, stuck_tool,
 					client_name, surface
@@ -384,14 +404,23 @@ export async function closeSession(db: D1Database, session: OpenSession) {
 				session.callCount,
 				session.errorCount,
 				session.nudged ? 1 : 0,
+				session.orgId,
 			),
 		...session.packageIds.map((packageId) =>
 			db
 				.prepare(
 					`INSERT INTO session_analytics_package_counts (
-						package_id, org_id, user_id, day, outcome, stuck_kind, sessions
-					) VALUES (?, ?, ?, ?, ?, ?, 1)
-					ON CONFLICT (package_id, org_id, user_id, day, outcome, stuck_kind)
+						package_id, org_id, user_id, day, category_id, outcome, stuck_kind,
+						stuck_tool, sessions
+					) SELECT ?, ?, ?, ?, ?, ?, ?, ?, 1
+					WHERE EXISTS (
+						SELECT 1 FROM orgs
+						WHERE id = ? AND session_analytics = 'enabled' AND deleted_at IS NULL
+					)
+					ON CONFLICT (
+						package_id, org_id, user_id, day, category_id, outcome, stuck_kind,
+						stuck_tool
+					)
 					DO UPDATE SET sessions = sessions + 1`,
 				)
 				.bind(
@@ -399,8 +428,11 @@ export async function closeSession(db: D1Database, session: OpenSession) {
 					session.orgId,
 					session.userId,
 					day,
+					session.categoryId ?? '',
 					result.outcome,
 					stuckKind,
+					result.stuckTool ?? '',
+					session.orgId,
 				),
 		),
 		db
@@ -470,9 +502,22 @@ const orgScopedTables = [
 export function deleteOrgSessionAnalyticsStatements(
 	db: D1Database,
 	orgId: string,
+	options: { onlyWhenState?: SessionAnalyticsState } = {},
 ) {
+	const state = options.onlyWhenState
+	if (!state) {
+		return orgScopedTables.map((table) =>
+			db.prepare(`DELETE FROM ${table} WHERE org_id = ?`).bind(orgId),
+		)
+	}
 	return orgScopedTables.map((table) =>
-		db.prepare(`DELETE FROM ${table} WHERE org_id = ?`).bind(orgId),
+		db
+			.prepare(
+				`DELETE FROM ${table} WHERE org_id = ? AND EXISTS (
+					SELECT 1 FROM orgs WHERE id = ? AND session_analytics = ?
+				)`,
+			)
+			.bind(orgId, orgId, state),
 	)
 }
 

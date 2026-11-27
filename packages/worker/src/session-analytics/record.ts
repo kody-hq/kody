@@ -229,6 +229,7 @@ export async function recordSessionCall(
 	input: SessionCallInput & {
 		stuckKind: SessionStuckKind | null
 		nudged?: boolean
+		pending?: boolean
 	},
 ): Promise<void> {
 	const scope = scopeOf(input.callerContext)
@@ -264,6 +265,7 @@ export async function recordSessionCall(
 				input.packageNames ?? [],
 			),
 			nudged: input.nudged,
+			pending: input.pending,
 		},
 		now,
 	)
@@ -379,6 +381,7 @@ export async function observeSessionToolCall<T extends ToolResultLike>(input: {
 		packageNames: input.packageNames,
 		stuckKind,
 		nudged,
+		pending: result.isError !== true && structured.inProgress === true,
 	}).catch((error: unknown) => {
 		console.warn('session-analytics-record-failed', String(error))
 	})

@@ -248,8 +248,13 @@ export function SessionInsightsPage({
 	const client = useQueryClient()
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const capture = useSubmitterScope()
-	const [scope, setScope] = useState<SessionInsightsScope>('mine')
-	const [target, setTarget] = useState<DeleteTarget | null>(null)
+	const [selectedScope, setScope] = useState<SessionInsightsScope>('mine')
+	const [pendingTarget, setTarget] = useState<DeleteTarget | null>(null)
+	// Delete acts on the view that is shown: without the organization view the
+	// page shows "Mine", and a target picked on the organization tab is dropped.
+	const orgViewGone = selectedScope === 'org' && !data.organization
+	const scope: SessionInsightsScope = orgViewGone ? 'mine' : selectedScope
+	const target = orgViewGone ? null : pendingTarget
 	const [message, setMessage] = useState<{
 		text: string
 		tone: 'info' | 'error'

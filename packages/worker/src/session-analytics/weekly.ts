@@ -61,7 +61,11 @@ async function dispatch(
 export function categoryMergeKey(name: string) {
 	return name
 		.split(' ')
-		.map((word) => word.replace(/(ing|es|e|s)$/, ''))
+		.map((word) => {
+			const base = word.replace(/ing$/, '')
+			// "process" and "access" end in a double s that is not a plural.
+			return base.endsWith('ss') ? base : base.replace(/(es|e|s)$/, '')
+		})
 		.sort()
 		.join(' ')
 }
@@ -121,7 +125,7 @@ function dayKey(date: Date) {
 
 /**
  * Weekly: merge near-duplicate categories, then emit one event per stuck
- * pattern over the minimum in the last seven days.
+ * pattern over the minimum in the seven days ending yesterday.
  */
 export async function runWeeklySessionAnalytics(input: {
 	env: EventEnv
@@ -142,9 +146,13 @@ export async function runWeeklySessionAnalytics(input: {
 			merge.from.id,
 		)
 	}
-	const end = dayKey(input.now)
+	// A session is counted on the day of its last call but written when it
+	// closes, up to an idle timeout later. The window ends a day back so every
+	// day in it is final and each count row lands in exactly one weekly window.
+	const dayMs = 24 * 60 * 60 * 1000
+	const end = dayKey(new Date(input.now.getTime() - dayMs))
 	const start = dayKey(
-		new Date(input.now.getTime() - weeklyWindowDays * 24 * 60 * 60 * 1000),
+		new Date(input.now.getTime() - (weeklyWindowDays + 1) * dayMs),
 	)
 	const patterns = await loadStuckPatterns(db, { since: start, until: end })
 	for (const pattern of patterns) {

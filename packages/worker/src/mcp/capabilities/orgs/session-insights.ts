@@ -3,7 +3,12 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
-import { authorize } from '#worker/authorization/authorize.ts'
+import {
+	authorize,
+	checkPermission,
+	computeEffectivePermissions,
+	packageResource,
+} from '#worker/authorization/authorize.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { loadOrgSessionAnalyticsState } from '#worker/session-analytics/consent.ts'
 import {
@@ -238,7 +243,15 @@ export const packageSessionInsightsCapability = defineDomainCapability(
 				userId: request.org.id,
 				packageId: args.package_id,
 			})
-			if (!savedPackage) {
+			const access = savedPackage
+				? await computeEffectivePermissions({ env: ctx.env, request })
+				: null
+			if (
+				!savedPackage ||
+				!access ||
+				!checkPermission(access, 'package:read', packageResource(savedPackage))
+					.allowed
+			) {
 				throw new McpCallerError('Package was not found in this organization.')
 			}
 			const insights = await loadPackageSessionInsights(ctx.env.APP_DB, {

@@ -58,7 +58,13 @@ export async function updateOrgSessionAnalytics(
 	}
 	const previous = parseState(row.session_analytics)
 	const next: SessionAnalyticsState = input.enabled ? 'enabled' : 'declined'
-	if (previous === next) return { ok: true, state: previous, changed: false }
+	if (previous === next) {
+		// A repeated "off" still deletes, so a retry can never leave rows behind.
+		if (!input.enabled) {
+			await db.batch(deleteOrgSessionAnalyticsStatements(db, input.orgId))
+		}
+		return { ok: true, state: previous, changed: false }
+	}
 	const update = db
 		.prepare(
 			`UPDATE orgs
@@ -66,10 +72,18 @@ export async function updateOrgSessionAnalytics(
 			 WHERE id = ?${andLiveDeletedAtSql()} AND session_analytics = ?`,
 		)
 		.bind(next, new Date().toISOString(), input.orgId, previous)
+	// The deletes run in the same batch as the state change and only when the
+	// org still holds the state this change read, so losing a conflict deletes
+	// nothing and winning it leaves nothing.
+	const deletes = input.enabled
+		? []
+		: deleteOrgSessionAnalyticsStatements(db, input.orgId, {
+				onlyWhenState: previous,
+			})
 	const { changed } = await runAppDbBatchWithOrgAudit({
 		appDb: db,
 		audit: input.audit,
-		statements: [update],
+		statements: [...deletes, update],
 		onlyIfChanged: true,
 		event: {
 			orgId: input.orgId,
@@ -87,9 +101,6 @@ export async function updateOrgSessionAnalytics(
 				'Session analytics changed while you were editing. Reload and try again.',
 			code: 'conflict',
 		}
-	}
-	if (!input.enabled) {
-		await db.batch(deleteOrgSessionAnalyticsStatements(db, input.orgId))
 	}
 	return { ok: true, state: next, changed: true }
 }

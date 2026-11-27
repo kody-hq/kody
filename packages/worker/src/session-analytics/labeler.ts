@@ -200,7 +200,6 @@ export async function labelSessionCategory(input: {
 				rejected: attempt,
 			})
 			if (
-				attempt === 0 &&
 				choice.category &&
 				choice.category !== newCategoryChoice &&
 				names.includes(choice.category)

@@ -89,11 +89,16 @@ CREATE TABLE session_analytics_package_counts (
 	org_id TEXT NOT NULL,
 	user_id TEXT NOT NULL,
 	day TEXT NOT NULL,
+	category_id TEXT NOT NULL DEFAULT '',
 	outcome TEXT NOT NULL
 		CHECK (outcome IN ('succeeded', 'recovered', 'stuck', 'abandoned', 'unknown')),
 	stuck_kind TEXT NOT NULL DEFAULT '',
+	stuck_tool TEXT NOT NULL DEFAULT '',
 	sessions INTEGER NOT NULL DEFAULT 0,
-	PRIMARY KEY (package_id, org_id, user_id, day, outcome, stuck_kind)
+	PRIMARY KEY (
+		package_id, org_id, user_id, day, category_id, outcome, stuck_kind,
+		stuck_tool
+	)
 );
 CREATE INDEX session_analytics_package_counts_org
 	ON session_analytics_package_counts (org_id);

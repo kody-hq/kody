@@ -271,13 +271,13 @@ export function PrivacyRoute() {
 				<p css={descriptionCss}>
 					A session row exists only while the session is open. When it ends, or
 					after 30 minutes without a call, it is folded into daily counts and
-					deleted. The daily counts are kept for 13 months. Each member sees the
-					counts for their own sessions on the organization&apos;s Session
-					insights page, and Owners and Admins see the organization&apos;s
-					combined counts. Either can delete any entry or all of them; entries
-					cannot be edited. Turning session analytics off deletes everything it
-					stored for the organization right away, and deleting an account or
-					organization deletes its counts too.
+					deleted. The daily counts are kept for 400 days (about 13 months).
+					Each member sees the counts for their own sessions on the
+					organization&apos;s Session insights page, and Owners and Admins see
+					the organization&apos;s combined counts. Either can delete any entry
+					or all of them; entries cannot be edited. Turning session analytics
+					off deletes everything it stored for the organization right away, and
+					deleting an account or organization deletes its counts too.
 				</p>
 				<p css={descriptionCss}>
 					Kody staff, and the publishers of public packages your sessions used,

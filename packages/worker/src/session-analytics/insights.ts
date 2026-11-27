@@ -198,9 +198,16 @@ export async function deleteSessionInsights(
 		db
 			.prepare(
 				`DELETE FROM session_analytics_package_counts
-				 WHERE ${where.sql} AND outcome = ? AND stuck_kind = ?`,
+				 WHERE ${where.sql} AND category_id = ? AND outcome = ?
+				 AND stuck_kind = ? AND stuck_tool = ?`,
 			)
-			.bind(...where.binds, input.entry.outcome, stuckKind),
+			.bind(
+				...where.binds,
+				input.entry.categoryId,
+				input.entry.outcome,
+				stuckKind,
+				input.entry.stuckTool ?? '',
+			),
 	])
 	return { deletedRows: results[0]?.meta.changes ?? 0 }
 }
@@ -321,7 +328,12 @@ export async function loadStuckPatterns(
 	})
 }
 
-async function stuckSessionsBetween(
+/**
+ * Share of a category's sessions that ended stuck on one pattern in a window,
+ * merged categories included. Null when the category's window is under the
+ * cross-org minimum, so a thin window never shows a number.
+ */
+async function stuckShareBetween(
 	db: D1Database,
 	pattern: { categoryId: string; stuckKind: string; stuckTool: string },
 	since: string,
@@ -329,20 +341,25 @@ async function stuckSessionsBetween(
 ) {
 	const row = await db
 		.prepare(
-			`SELECT SUM(sessions) AS sessions, COUNT(DISTINCT org_id) AS orgs
-			 FROM session_analytics_counts
-			 WHERE category_id = ? AND stuck_kind = ? AND stuck_tool = ?
-			 AND outcome = 'stuck' AND day >= ? AND day < ?`,
+			`SELECT SUM(c.sessions) AS sessions, COUNT(DISTINCT c.org_id) AS orgs,
+				SUM(CASE WHEN c.outcome = 'stuck' AND c.stuck_kind = ? AND c.stuck_tool = ?
+					THEN c.sessions ELSE 0 END) AS stuck
+			 FROM session_analytics_counts c
+			 LEFT JOIN session_analytics_categories cat ON cat.id = c.category_id
+			 WHERE COALESCE(cat.merged_into, c.category_id) = ?
+			 AND c.day >= ? AND c.day < ?`,
 		)
 		.bind(
-			pattern.categoryId,
 			pattern.stuckKind,
 			pattern.stuckTool,
+			pattern.categoryId,
 			since,
 			until,
 		)
-		.first<{ sessions: number | null; orgs: number }>()
-	return row?.sessions ?? 0
+		.first<{ sessions: number | null; orgs: number; stuck: number | null }>()
+	const sessions = row?.sessions ?? 0
+	if (!meetsCrossOrgMinimum({ sessions, orgs: row?.orgs ?? 0 })) return null
+	return (row?.stuck ?? 0) / sessions
 }
 
 function shiftDay(day: string, days: number) {
@@ -433,20 +450,10 @@ export async function loadAdminSessionInsights(
 			...pattern,
 			fixedOn,
 			before: fixedOn
-				? await stuckSessionsBetween(
-						db,
-						pattern,
-						shiftDay(fixedOn, -14),
-						fixedOn,
-					)
+				? await stuckShareBetween(db, pattern, shiftDay(fixedOn, -14), fixedOn)
 				: null,
 			after: fixedOn
-				? await stuckSessionsBetween(
-						db,
-						pattern,
-						fixedOn,
-						shiftDay(fixedOn, 14),
-					)
+				? await stuckShareBetween(db, pattern, fixedOn, shiftDay(fixedOn, 14))
 				: null,
 		})
 	}
@@ -546,11 +553,16 @@ export async function retireSessionCategory(
 	await db.batch([
 		db
 			.prepare(
-				`UPDATE session_analytics_categories SET status = 'retired' WHERE id = ?`,
+				`UPDATE session_analytics_categories SET status = 'retired', name = 'retired ' || id WHERE id = ?`,
 			)
 			.bind(categoryId),
 		db
 			.prepare(`DELETE FROM session_analytics_counts WHERE category_id = ?`)
+			.bind(categoryId),
+		db
+			.prepare(
+				`DELETE FROM session_analytics_package_counts WHERE category_id = ?`,
+			)
 			.bind(categoryId),
 		db
 			.prepare(
