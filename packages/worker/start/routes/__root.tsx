@@ -67,6 +67,7 @@ import { verifySession } from '#start/server/shell'
 import { shellQuery, ensureShellQuery } from '../shell-query.ts'
 import { NOT_FOUND_DOCUMENT_TITLE } from '#universal/document-head.ts'
 import { SiteHeader } from '../components/site-header.tsx'
+import { BlackFridaySiteBar } from '../campaigns/black-friday-2026/banner.tsx'
 import { SiteFooter } from '../components/site-footer.tsx'
 import { visuallyHiddenUntilFocusedCss } from '#universal/styles/style-primitives.ts'
 import { PageHead } from '../components/page-head.tsx'
@@ -326,6 +327,7 @@ function LoadedAppLayout() {
 					<a href="#main" css={visuallyHiddenUntilFocusedCss}>
 						Skip to content
 					</a>
+					{authShell || standalone || workspace ? null : <BlackFridaySiteBar />}
 					{authShell || standalone || workspace ? null : (
 						<SiteHeader
 							focused={focused}

@@ -234,6 +234,32 @@ export async function reservePromoClaim(input: {
 	return (inserted.meta.changes ?? 0) > 0
 }
 
+/**
+ * Read-only twin of the {@link reservePromoClaim} check for a campaign claim
+ * key: true when the person has a claim, or a reservation that is not stale,
+ * under `claimKey`.
+ */
+export async function hasBlockingPromoClaim(input: {
+	db: D1Database
+	userId: string
+	claimKey: string
+	now: Date
+}): Promise<boolean> {
+	const staleBefore = new Date(
+		input.now.getTime() - promoReservationMaxAgeMs,
+	).toISOString()
+	const row = await input.db
+		.prepare(
+			`SELECT 1 AS blocked FROM billing_promo_claims
+			 WHERE user_id = ? AND claim_key = ?
+			   AND (status != 'reserved' OR reserved_at >= ?)
+			 LIMIT 1`,
+		)
+		.bind(input.userId, input.claimKey, staleBefore)
+		.first<{ blocked: number }>()
+	return row !== null
+}
+
 /** Tie the reservation to the Checkout Session Stripe created for it. */
 export async function attachPromoReservationSession(input: {
 	db: D1Database
