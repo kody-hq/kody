@@ -1,11 +1,11 @@
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { dispatchAdminPackageSubscriptionEvent } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import type { SessionStuckKind } from '#universal/session-analytics.ts'
+import { enqueueSessionCategoryMerged } from './category-merged-delivery.ts'
 import { loadStuckPatterns } from './insights.ts'
 import { sweepSessionAnalytics } from './store.ts'
 
 export const sessionStuckPatternCrossedTopic = 'session.stuck_pattern.crossed'
-export const sessionCategoryMergedTopic = 'session.category.merged'
 
 const sessionAnalyticsEventActorTokenId = 'internal:session-analytics-events'
 const weeklyWindowDays = 7
@@ -24,18 +24,12 @@ export type SessionStuckPatternCrossedEvent = {
 	observed_at: string
 }
 
-export type SessionCategoryMergedEvent = {
-	event: typeof sessionCategoryMergedTopic
-	from: { id: string; name: string }
-	into: { id: string; name: string }
-	observed_at: string
-}
-
-type EventEnv = Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'>
+type EventEnv = Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV' | 'APP_BASE_URL'> &
+	Partial<Pick<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'>>
 
 async function dispatch(
 	env: EventEnv,
-	event: SessionStuckPatternCrossedEvent | SessionCategoryMergedEvent,
+	event: SessionStuckPatternCrossedEvent,
 	key: string,
 ) {
 	try {
@@ -135,16 +129,15 @@ export async function runWeeklySessionAnalytics(input: {
 	const observedAt = input.now.toISOString()
 	const merges = await mergeNearDuplicateCategories(db)
 	for (const merge of merges) {
-		await dispatch(
-			input.env,
-			{
-				event: sessionCategoryMergedTopic,
+		await enqueueSessionCategoryMerged({
+			env: input.env,
+			event: {
+				event: 'session.category.merged',
 				from: merge.from,
 				into: merge.into,
 				observed_at: observedAt,
 			},
-			merge.from.id,
-		)
+		})
 	}
 	// A session is counted on the day of its last call but written when it
 	// closes, up to an idle timeout later. The window ends a day back so every
