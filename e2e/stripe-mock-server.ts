@@ -109,8 +109,9 @@ export async function startStripeMock() {
 							.replace('%7BCHECKOUT_SESSION_ID%7D', id),
 					)
 				}
+				const promotionCode = session.form.get('discounts[0][promotion_code]')
 				return html(
-					'<h1>Test checkout</h1><form method="post"><button>Complete test payment</button></form>',
+					`<h1>Test checkout</h1>${promotionCode ? `<p>Discount: ${promotionCode}</p>` : '<p>No discount</p>'}<form method="post"><button>Complete test payment</button></form>`,
 				)
 			}
 			if (url.pathname.startsWith('/portal/')) {
@@ -203,6 +204,33 @@ export async function startStripeMock() {
 							.filter(([key]) => /^metadata\[.+\]$/.test(key))
 							.map(([key, value]) => [key.slice(9, -1), value]),
 					),
+				})
+			}
+			if (request.method === 'GET' && url.pathname === '/v1/promotion_codes') {
+				// The two campaign codes exist, tagged the way the live ones are.
+				const code = (url.searchParams.get('code') ?? '').toUpperCase()
+				const interval = {
+					'BLACKFRIDAY-YEARLY': 'year',
+					'BLACKFRIDAY-MONTHLY': 'month',
+				}[code]
+				return json({
+					data: interval
+						? [
+								{
+									id: `promo_e2e_${interval}`,
+									code,
+									active: true,
+									expires_at: null,
+									max_redemptions: null,
+									times_redeemed: 0,
+									metadata: {
+										kody_interval: interval,
+										kody_claim_scope: 'campaign',
+										kody_campaign: 'blackfriday-2026',
+									},
+								},
+							]
+						: [],
 				})
 			}
 			if (request.method === 'GET' && url.pathname === '/v1/subscriptions') {

@@ -99,6 +99,7 @@ export type CommandName =
 	| 'execute'
 	| 'dev'
 	| 'app'
+	| 'billing'
 	| 'install'
 	| 'skill'
 	| 'help'
@@ -124,6 +125,7 @@ const orgScopedCommands = new Set<CommandName>([
 	'execute',
 	'dev',
 	'app',
+	'billing',
 	'auth',
 ])
 
@@ -172,6 +174,7 @@ function commandUsesStoredActiveOrg(input: {
 		case 'execute':
 		case 'dev':
 		case 'app':
+		case 'billing':
 		case 'auth':
 		case 'secret':
 		case 'run':
@@ -272,6 +275,7 @@ const cliFlagOptions = {
 	method: { type: 'string' },
 	header: { type: 'string', multiple: true },
 	synthetic: { type: 'boolean' },
+	interval: { type: 'string' },
 	body: { type: 'string' },
 	clients: { type: 'string' },
 	yes: { type: 'boolean', short: 'y' },
@@ -328,6 +332,7 @@ export function resolveCommand(argv: Array<string>): {
 		case 'execute':
 		case 'dev':
 		case 'app':
+		case 'billing':
 		case 'install':
 		case 'skill':
 		case 'help':
@@ -1637,6 +1642,48 @@ async function dispatch(
 					: {}),
 				...(org ? { org } : {}),
 			})
+		}
+		case 'billing': {
+			const {
+				billingCheckoutLinkUsage,
+				parseBillingCheckoutLinkCommand,
+				runBillingCheckoutLink,
+			} = await import('./billing-commands.js')
+			const [subcommand, ...positionals] = parsed.positionals
+			if (subcommand !== 'checkout-link') {
+				throw new Error(billingCheckoutLinkUsage)
+			}
+			const plan = parseBillingCheckoutLinkCommand({
+				positionals,
+				values: parsed.values,
+			})
+			const apiUrl = apiUrlFrom({
+				apiUrl:
+					typeof parsed.values['api-url'] === 'string'
+						? parsed.values['api-url']
+						: undefined,
+			})
+			const token = await accessTokenForOpenApi({
+				tokenValues: tokenFlagValues(parsed.values),
+				apiUrl,
+				mcpUrl,
+				org,
+			})
+			const { callOpenApiOperation } = await import('./open-api-client.js')
+			const { output, exitCode } = await runBillingCheckoutLink({
+				...plan,
+				json,
+				call: (operationId, params) =>
+					callOpenApiOperation({
+						operationId,
+						params,
+						token,
+						apiUrl,
+						...(org ? { org } : {}),
+					}),
+			})
+			write(output)
+			return exitCode
 		}
 		case 'dev': {
 			const { resolveTarget } = await import('./target.js')

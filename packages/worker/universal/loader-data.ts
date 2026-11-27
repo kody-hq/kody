@@ -3448,6 +3448,7 @@ export type AppLoaderData = {
 	accountBilling?: AccountBillingLoaderData
 	accountBillingSuccess?: AccountBillingSuccessLoaderData
 	accountBillingMovePlan?: AccountBillingMovePlanLoaderData
+	orgBillingCheckout?: OrgBillingCheckoutLoaderData
 	accountUsage?: AccountUsageLoaderData
 	orgCredits?: OrgCreditsLoaderData
 	accountWaiting?: AccountWaitingLoaderData
@@ -3736,6 +3737,17 @@ export type PlanTransferSummary = {
 	errorMessage: string | null
 	completedAt: string | null
 }
+
+/** The checkout link page: what the person is about to buy, or why not. */
+export type OrgBillingCheckoutLoaderData =
+	| {
+			ok: true
+			org: { slug: string; displayName: string | null }
+			interval: 'month' | 'year'
+			/** A running sale: its price, or why it does not apply. */
+			offer: { applies: boolean; message: string } | null
+	  }
+	| { ok: false; orgSlug: string; reason: string }
 
 export type AccountBillingMovePlanLoaderData = {
 	ok: true

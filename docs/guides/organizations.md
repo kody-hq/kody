@@ -4,7 +4,8 @@ title: Organizations
 summary:
   Personal vs team orgs, Owner/Admin/Member/Billing roles, invite links, who
   automation runs as, the org-wide execute pool, connecting one client to
-  several orgs, free-org limits, and paid seats.
+  several orgs, free-org limits, paid seats, and checkout links an agent hands a
+  person to upgrade to Pro or apply a sale price (billingCheckoutLink).
 category: platform
 audience: agents
 ---
@@ -445,6 +446,41 @@ When an org is Pro, each live Owner, Admin, and Member is a seat, and each seat
 grows the org's execute pool. Billing-only members and outside collaborators are
 not seats. See [Share a package](/docs/package-sharing) for grants vs
 membership.
+
+## Help someone check out Pro
+
+When a person asks you to upgrade an org, start checkout, or apply a coupon or
+sale price, call `billingCheckoutLink` and give them the link it returns. You
+cannot pay for them: the link opens a Kody page, and they finish on Stripe.
+
+```ts
+const result = await codemode.billingCheckoutLink({
+	org: 'acme', // optional: defaults to the org this connection works for
+	interval: 'year', // or 'month' (default)
+})
+// { ok: true, url: 'https://kody.codes/@acme/-/billing/checkout?plan=pro&interval=year',
+//   org: 'acme', plan: 'pro', interval: 'year',
+//   offer: { applies: true, message: '...' } | null, message: '...' }
+// { ok: false, reason: '@acme already has a paid plan, so there is nothing to check out. ...' }
+```
+
+In a terminal: `kody billing checkout-link --org acme --interval year`.
+
+- You need `billing:write` on the org (Owner or Billing). The org must be the
+  one your connection works for.
+- `ok: false` carries a plain `reason` to pass on: the org already has a paid
+  plan, you cannot manage its billing, the org is unknown, or the plan or
+  interval is invalid. Pro is the only plan sold at checkout.
+- `offer` describes a running sale: the price the person gets, or why it does
+  not apply to them (a sale can be claimed once per person, and only for a Free
+  org with no subscription). When it does not apply, or no sale is running, the
+  link still works at the regular price.
+- The link holds no payment session and does not expire. Whoever opens it signs
+  in, and Kody checks again that they can manage billing for the org and that it
+  has no paid plan before sending them to Stripe. A qualifying sale price is
+  applied for them there. Forwarding the link to someone without billing access
+  shows them the reason instead.
+- Package app and job code cannot call it.
 
 ## Move a Pro plan
 

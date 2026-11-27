@@ -2,6 +2,7 @@ import { defineDomain } from '#mcp/capabilities/define-domain.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { accountExportManifestCapability } from './account-export-manifest.ts'
 import { accountExportSectionCapability } from './account-export-section.ts'
+import { billingCheckoutLinkCapability } from './billing-checkout-link.ts'
 import {
 	guestClaimFinishCapability,
 	guestClaimStartCapability,
@@ -14,7 +15,7 @@ import { waitingSummaryCapability } from './waiting-summary.ts'
 export const accountDomain = defineDomain({
 	name: capabilityDomainNames.account,
 	description:
-		'Self-service account export, backup, migration, entitlement usage, daily usage trends, package credit attribution, and the current-state waiting queue (secrets never exported).',
+		'Self-service account export, backup, migration, entitlement usage, daily usage trends, package credit attribution, and the current-state waiting queue, and Pro checkout links a person opens to pay (secrets never exported).',
 	keywords: [
 		'account',
 		'export',
@@ -26,6 +27,9 @@ export const accountDomain = defineDomain({
 		'by package',
 		'attribution',
 		'quota',
+		'billing',
+		'checkout',
+		'coupon',
 		'waiting',
 		'approvals',
 		'blockers',
@@ -39,6 +43,7 @@ export const accountDomain = defineDomain({
 		usageTrendGetCapability,
 		usageByPackageGetCapability,
 		waitingSummaryCapability,
+		billingCheckoutLinkCapability,
 		guestClaimStartCapability,
 		guestClaimFinishCapability,
 	],

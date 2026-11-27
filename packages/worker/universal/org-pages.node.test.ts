@@ -200,6 +200,7 @@ test('billing paths bind to the organization in the URL', () => {
 		'/@acme/-/billing/',
 		'/@acme/-/billing/success',
 		'/@acme/-/billing/move-plan',
+		'/@acme/-/billing/checkout',
 	]) {
 		expect(parseOrgBillingPath(pathname)).toEqual({ slug: 'acme' })
 	}

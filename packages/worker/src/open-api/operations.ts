@@ -198,6 +198,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/account/usage/trend', 'usageTrendGet'],
 		['GET', '/v1/account/usage/by-package', 'usageByPackageGet'],
 		['GET', '/v1/account/waiting', 'waitingSummary'],
+		['POST', '/v1/billing/checkout-link', 'billingCheckoutLink'],
 		['GET', '/v1/account/export', 'accountExportManifest'],
 		['GET', '/v1/account/export/{section}', 'accountExportSection'],
 		['GET', '/v1/account/feedback', 'metaPlatformFeedbackList'],
