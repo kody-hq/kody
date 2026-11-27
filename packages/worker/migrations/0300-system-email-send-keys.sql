@@ -17,5 +17,5 @@ CREATE TABLE system_email_send_keys (
 	PRIMARY KEY (kind, idempotency_key)
 );
 
-CREATE INDEX idx_system_email_send_keys_created_at
-	ON system_email_send_keys(created_at);
+CREATE INDEX idx_system_email_send_keys_updated_at
+	ON system_email_send_keys(updated_at);

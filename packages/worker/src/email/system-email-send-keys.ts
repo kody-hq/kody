@@ -119,8 +119,8 @@ export async function pruneSystemEmailSendKeys(input: {
 			`DELETE FROM system_email_send_keys
 			WHERE rowid IN (
 				SELECT rowid FROM system_email_send_keys
-				WHERE created_at < ?
-				ORDER BY created_at ASC
+				WHERE updated_at < ?
+				ORDER BY updated_at ASC
 				LIMIT ?
 			)`,
 		)
