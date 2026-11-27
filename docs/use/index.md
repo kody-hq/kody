@@ -49,7 +49,9 @@ per-person Access), [Triggers](../guides/triggers.md) next to
 [Move a Pro plan](../guides/organizations.md#move-a-pro-plan)
 (`/-/billing/move-plan`), and
 [Help someone check out Pro](../guides/organizations.md#help-someone-check-out-pro)
-(`billingCheckoutLink`, `kody billing checkout-link`, `/-/billing/checkout`).
+(`billingCheckoutLink`, `kody billing checkout-link`, `/-/billing/checkout`;
+`billingManageLink`, `kody billing manage-link` for an org that already has a
+paid plan).
 
 ## Field reference
 

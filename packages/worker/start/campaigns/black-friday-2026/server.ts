@@ -195,6 +195,37 @@ export async function loadBlackFridayCheckoutOffer(input: {
 }
 
 /**
+ * The billing interval a campaign code stands for, when someone names the
+ * code instead of an interval. Null when it is not one of this campaign's
+ * codes, the sale is over, or Stripe no longer has it active. The code is
+ * checked the same way checkout checks it.
+ */
+export async function resolveBlackFridayCodeInterval(input: {
+	env: StripeEnv
+	code: string
+	now: Date
+}): Promise<BillingInterval | null> {
+	if (!isBlackFridayActive(input.now.getTime())) return null
+	const code = input.code.trim().toUpperCase()
+	const interval = (['month', 'year'] as const).find(
+		(candidate) => promotionCodes[candidate] === code,
+	)
+	if (!interval) return null
+	try {
+		const resolved = await resolveCheckoutPromotionCode(input.env, {
+			code,
+			interval,
+			now: input.now,
+		})
+		return resolved.ok ? interval : null
+	} catch (error) {
+		if (!(error instanceof StripeApiError)) throw error
+		console.error('black_friday_code_interval_lookup_failed', error)
+		return null
+	}
+}
+
+/**
  * The promotion code checkout applies when the person typed none. Null means
  * "no campaign discount": checkout continues at full price. The code goes
  * through the same validation as a typed code.

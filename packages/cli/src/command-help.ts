@@ -544,18 +544,32 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				name: 'checkout-link',
 				summary: 'Print a kody.codes link that starts Pro checkout',
 				usage: [
-					'kody billing checkout-link [--org <slug>] [--interval month|year] [--json]',
+					'kody billing checkout-link [--org <slug>] [--interval month|year] [--promo-code <code>] [--json]',
 				],
 				notes: [
 					'Prints a link, not a payment page. Whoever opens it signs in, needs to be an owner or billing admin of the org, and pays on Stripe. Nothing is charged until they finish.',
 					'A running sale price is applied for people who qualify. Otherwise checkout is at the regular price.',
-					'When checkout does not apply (the org already has a paid plan, or you cannot manage its billing), prints the reason and exits 1.',
+					'When checkout does not apply (the org already has a paid plan, or you cannot manage its billing), prints the reason and exits 1. For an org with a paid plan, use `kody billing manage-link`.',
 				],
 				flags: [
 					orgFlag,
 					['--interval month|year', 'Billing interval (default month)'],
+					[
+						'--promo-code <code>',
+						'Optional sale code. It picks the interval the code is for. A code that cannot be used is left out and checkout stays at the regular price',
+					],
 					jsonFlag,
 				],
+			},
+			{
+				name: 'manage-link',
+				summary: "Print the link to an org's billing page",
+				usage: ['kody billing manage-link [--org <slug>] [--json]'],
+				notes: [
+					'For an org that already has a paid plan: the person changes or cancels it on that page, including switching from an older plan to current Pro. It starts no checkout and applies no promo.',
+					"When you cannot manage the org's billing, prints the reason and exits 1.",
+				],
+				flags: [orgFlag, jsonFlag],
 			},
 		],
 	},

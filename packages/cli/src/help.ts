@@ -100,7 +100,8 @@ Usage:
   kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--org <slug>] [--json]
   kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"] [--body <text | @file>] [--out <file>] [--synthetic] [--json]
   kody app list [--org <slug>] [--json]
-  kody billing checkout-link [--org <slug>] [--interval month|year] [--json]
+  kody billing checkout-link [--org <slug>] [--interval month|year] [--promo-code <code>] [--json]
+  kody billing manage-link [--org <slug>] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
@@ -501,7 +502,14 @@ ${orgBlock}
              (\`billingCheckoutLink\`). Whoever opens it signs in, needs to
              be an owner or billing admin, and pays on Stripe; a running sale
              price is applied for people who qualify. Prints the reason and
-             exits 1 when checkout does not apply.
+             exits 1 when checkout does not apply. \`--promo-code <code>\` is
+             optional: a sale code picks its own billing interval, and a code
+             that cannot be used is left out.
+
+  kody billing manage-link
+             Print the link to an org's billing page (\`billingManageLink\`),
+             where a person changes or cancels a paid plan or switches from
+             an older plan to current Pro. No checkout, no promo.
 
 Environment:
   KODY_MCP_URL        Override the default MCP URL (${defaultMcpUrl})

@@ -37,6 +37,8 @@ vi.mock('#worker/billing/stripe-client.ts', async (importOriginal) => {
 const { startWebsiteCheckout } = await import('#app/handlers/org-billing.ts')
 const { billingCheckoutLinkCapability } =
 	await import('#mcp/capabilities/account/billing-checkout-link.ts')
+const { billingManageLinkCapability } =
+	await import('#mcp/capabilities/account/billing-manage-link.ts')
 const { evaluateCheckoutLinkForSession } = await import('./checkout-link.ts')
 
 const duringSale = new Date('2026-12-01T09:00:00-08:00')
@@ -145,31 +147,60 @@ function mcpUserFor(person: Person) {
 	}
 }
 
+type Caller = {
+	executionOrigin?: 'interactive' | 'background'
+	scopes?: Array<'billing:read'>
+}
+type BoundOrg = { id: string; slug: string; role: 'owner' | 'member' }
+
+function callerContextFor(person: Person, boundTo: BoundOrg, caller: Caller) {
+	return createMcpCallerContext({
+		source: caller.scopes
+			? { kind: 'api-token', tokenId: 'token-1' }
+			: { kind: 'mcp-oauth' },
+		baseUrl: 'https://kody.codes',
+		executionOrigin: caller.executionOrigin ?? 'interactive',
+		user: mcpUserFor(person),
+		orgBinding: {
+			org: { id: ownerIdFromStored(boundTo.id), slug: boundTo.slug },
+			role: boundTo.role,
+		},
+		...(caller.scopes ? { scopes: caller.scopes } : {}),
+	})
+}
+
+/** What an agent connected to `boundTo` gets from `billingManageLink`. */
+async function manageLink(
+	person: Person,
+	boundTo: BoundOrg,
+	args: { org?: string } = {},
+	caller: Caller = {},
+) {
+	const result = await billingManageLinkCapability.handler(args, {
+		env,
+		callerContext: callerContextFor(person, boundTo, caller),
+	})
+	expect(mocks.createCheckoutSession).not.toHaveBeenCalled()
+	expect(mocks.listSubscriptions).not.toHaveBeenCalled()
+	expect(mocks.findActivePromotionCode).not.toHaveBeenCalled()
+	return result
+}
+
 /** What an agent connected to `boundTo` gets from `billingCheckoutLink`. */
 async function link(
 	person: Person,
-	boundTo: { id: string; slug: string; role: 'owner' | 'member' },
-	args: { org?: string; plan?: string; interval?: string } = {},
-	caller: {
-		executionOrigin?: 'interactive' | 'background'
-		scopes?: Array<'billing:read'>
+	boundTo: BoundOrg,
+	args: {
+		org?: string
+		plan?: string
+		interval?: string
+		promoCode?: string
 	} = {},
+	caller: Caller = {},
 ) {
 	const result = await billingCheckoutLinkCapability.handler(args, {
 		env,
-		callerContext: createMcpCallerContext({
-			source: caller.scopes
-				? { kind: 'api-token', tokenId: 'token-1' }
-				: { kind: 'mcp-oauth' },
-			baseUrl: 'https://kody.codes',
-			executionOrigin: caller.executionOrigin ?? 'interactive',
-			user: mcpUserFor(person),
-			orgBinding: {
-				org: { id: ownerIdFromStored(boundTo.id), slug: boundTo.slug },
-				role: boundTo.role,
-			},
-			...(caller.scopes ? { scopes: caller.scopes } : {}),
-		}),
+		callerContext: callerContextFor(person, boundTo, caller),
 	})
 	// No call to the capability ever reaches Stripe Checkout.
 	expect(mocks.createCheckoutSession).not.toHaveBeenCalled()
@@ -192,6 +223,7 @@ function openLink(
 		org: orgSlug,
 		plan: query.plan ?? 'pro',
 		interval: query.interval ?? 'month',
+		baseUrl: 'https://kody.codes',
 		now,
 	})
 }
@@ -332,8 +364,16 @@ test('each refusal is a plain reason, not a link', async () => {
 	expect(await link('ada', acmeAsOwner)).toEqual({
 		ok: false,
 		reason:
-			"@acme already has a paid plan, so there is nothing to check out. Change or cancel it on the organization's billing page.",
+			'@acme already has a paid plan, so there is nothing to check out. Change or cancel it at https://kody.codes/@acme/-/billing Use billingManageLink when the person needs that page.',
 	})
+	// A code does not get a paid org past the refusal, and is never looked up.
+	expect(
+		await link('ada', acmeAsOwner, { promoCode: 'BLACKFRIDAY-YEARLY' }),
+	).toMatchObject({
+		ok: false,
+		reason: expect.stringContaining('https://kody.codes/@acme/-/billing'),
+	})
+	expect(mocks.findActivePromotionCode).not.toHaveBeenCalled()
 	// A manual Max grant has no subscription but is not Free.
 	sqlite
 		.prepare(
@@ -377,7 +417,7 @@ test('confirming monthly applies the monthly campaign code', async () => {
 test('a link issued while eligible is refused once the org has a subscription', async () => {
 	expect(await link('ada', acmeAsOwner)).toMatchObject({ ok: true })
 	const reason =
-		"@acme already has a paid plan, so there is nothing to check out. Change or cancel it on the organization's billing page."
+		'@acme already has a paid plan, so there is nothing to check out. Change or cancel it at https://kody.codes/@acme/-/billing'
 
 	// Stripe has a subscription the stored plan does not show yet: the page
 	// still loads, and the confirm is refused without a Checkout Session.
@@ -406,7 +446,11 @@ test('a link issued while eligible is refused once the org has a subscription', 
 	sqlite
 		.prepare(`UPDATE orgs SET stripe_plan = 'pro' WHERE id = 'org-acme'`)
 		.run()
-	expect(await openLink('ada', 'acme')).toEqual({ ok: false, reason })
+	expect(await openLink('ada', 'acme')).toEqual({
+		ok: false,
+		reason,
+		paidPlan: true,
+	})
 })
 
 test('a forwarded link is checked against whoever opens it', async () => {
@@ -501,4 +545,166 @@ test('a campaign code Stripe no longer has falls back to the regular price', asy
 		promotionCodeId: undefined,
 	})
 	expect(JSON.stringify(result.data)).not.toMatch(/BLACKFRIDAY/i)
+})
+
+const yearLink =
+	'https://kody.codes/@acme/-/billing/checkout?plan=pro&interval=year'
+const monthLink =
+	'https://kody.codes/@acme/-/billing/checkout?plan=pro&interval=month'
+
+test('a campaign code picks its billing interval, as promoCode or as interval', async () => {
+	const results = [
+		await link('ada', acmeAsOwner, { interval: 'BLACKFRIDAY-YEARLY' }),
+		await link('ada', acmeAsOwner, { promoCode: 'BLACKFRIDAY-YEARLY' }),
+		// The code's interval wins over a valid interval.
+		await link('ada', acmeAsOwner, {
+			interval: 'month',
+			promoCode: 'blackfriday-yearly',
+		}),
+		await link('ada', acmeAsOwner, { interval: 'BLACKFRIDAY-MONTHLY' }),
+		await link('ada', acmeAsOwner, {
+			interval: 'year',
+			promoCode: 'BLACKFRIDAY-MONTHLY',
+		}),
+	]
+	expect(results.map((result) => (result.ok ? result.url : result))).toEqual([
+		yearLink,
+		yearLink,
+		yearLink,
+		monthLink,
+		monthLink,
+	])
+	for (const result of results) {
+		expect(result).toMatchObject({ ok: true, offer: { applies: true } })
+		expect(result).not.toHaveProperty('note')
+		expect(JSON.stringify(result)).not.toMatch(/stripe\.com|cs_|BLACKFRIDAY/i)
+	}
+	// The link carries only the interval: confirming applies the code the
+	// same way as a link asked for by interval.
+	expect(await confirm('ada', 'acme', 'year')).toMatchObject({
+		priceId: 'price_pro_yearly',
+		promotionCodeId: 'promo_year',
+	})
+})
+
+test('a code that cannot be used still gets a regular checkout link and a note', async () => {
+	const note =
+		'That promo code could not be applied, so it is left out of this checkout.'
+	// Unknown code where the interval goes: monthly.
+	expect(await link('ada', acmeAsOwner, { interval: 'SPRING-SALE' })).toEqual({
+		ok: true,
+		url: monthLink,
+		org: 'acme',
+		plan: 'pro',
+		interval: 'month',
+		offer: { applies: true, message: expect.any(String) },
+		note,
+		message: expect.stringContaining(note),
+	})
+	// Unknown code beside a valid interval: that interval is kept.
+	expect(
+		await link('ada', acmeAsOwner, { interval: 'year', promoCode: 'NOPE2026' }),
+	).toMatchObject({ ok: true, url: yearLink, note })
+	// Stripe no longer has the campaign code active.
+	mocks.findActivePromotionCode.mockResolvedValue(null)
+	expect(
+		await link('ada', acmeAsOwner, { interval: 'BLACKFRIDAY-YEARLY' }),
+	).toMatchObject({ ok: true, url: monthLink, note })
+	// Stripe has it, but it expired.
+	mocks.findActivePromotionCode.mockResolvedValue({
+		id: 'promo_year',
+		active: true,
+		expires_at: Math.floor(duringSale.getTime() / 1000) - 60,
+		metadata: {
+			kody_interval: 'year',
+			kody_claim_scope: 'campaign',
+			kody_campaign: 'blackfriday-2026',
+		},
+	})
+	expect(
+		await link('ada', acmeAsOwner, {
+			interval: 'year',
+			promoCode: 'BLACKFRIDAY-MONTHLY',
+		}),
+	).toMatchObject({ ok: true, url: yearLink, note })
+	// After the sale the campaign code is one more unknown code.
+	vi.setSystemTime(afterSale)
+	expect(
+		await link('ada', acmeAsOwner, { promoCode: 'BLACKFRIDAY-YEARLY' }),
+	).toMatchObject({ ok: true, url: monthLink, offer: null, note })
+	// A mistyped interval is still refused, with or without a code.
+	expect(
+		await link('ada', acmeAsOwner, {
+			interval: 'weekly',
+			promoCode: 'BLACKFRIDAY-YEARLY',
+		}),
+	).toEqual({
+		ok: false,
+		reason: 'Choose monthly or annual billing: interval "month" or "year".',
+	})
+})
+
+test('a code does not bring the sale price back once the campaign is claimed', async () => {
+	expect(await confirm('ada', 'acme', 'year')).toMatchObject({
+		promotionCodeId: 'promo_year',
+	})
+	mocks.createCheckoutSession.mockClear()
+	const personal = { id: 'person-ada', slug: 'ada', role: 'owner' } as const
+	const result = await link('ada', personal, {
+		promoCode: 'BLACKFRIDAY-YEARLY',
+	})
+	expect(result).toMatchObject({
+		ok: true,
+		url: 'https://kody.codes/@ada/-/billing/checkout?plan=pro&interval=year',
+		offer: {
+			applies: false,
+			message:
+				'You have already claimed this promotion. It can be claimed once per person, across all of your organizations.',
+		},
+	})
+	expect(await confirm('ada', 'ada', 'year')).toMatchObject({
+		status: 200,
+		priceId: 'price_pro_yearly',
+		promotionCodeId: undefined,
+	})
+})
+
+test('billingManageLink returns the billing page, or the same plain reasons', async () => {
+	sqlite
+		.prepare(`UPDATE orgs SET stripe_plan = 'standard' WHERE id = 'org-acme'`)
+		.run()
+	expect(await manageLink('ada', acmeAsOwner)).toEqual({
+		ok: true,
+		url: 'https://kody.codes/@acme/-/billing',
+		org: 'acme',
+		message:
+			'Open this link to manage billing for @acme. To move from an older plan, switch to current Pro there.',
+	})
+	expect(await manageLink('ada', acmeAsOwner, { org: '@nope' })).toEqual({
+		ok: false,
+		reason:
+			'There is no organization @nope that you belong to. Check the handle.',
+	})
+	expect(await manageLink('ada', acmeAsOwner, { org: 'ada' })).toEqual({
+		ok: false,
+		reason:
+			'This connection works for a different organization than @ada. Connect to @ada to start its checkout, or open its billing page.',
+	})
+	expect(await manageLink('bob', acmeAsMember)).toEqual({
+		ok: false,
+		reason:
+			'Only owners and billing admins can manage billing for @acme. Ask one of them to open this link.',
+	})
+	expect(
+		await manageLink('ada', acmeAsOwner, {}, { scopes: ['billing:read'] }),
+	).toEqual({
+		ok: false,
+		reason:
+			'This connection is not allowed to manage billing for @acme. An owner or billing admin can start checkout on the billing page instead.',
+	})
+	await expect(
+		manageLink('ada', acmeAsOwner, {}, { executionOrigin: 'background' }),
+	).rejects.toThrow(
+		'billingManageLink runs for a person or their agent. Call it from an interactive MCP session, execute, the Open API, or the kody CLI. Package app and job code cannot call it.',
+	)
 })

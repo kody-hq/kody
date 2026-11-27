@@ -36,7 +36,10 @@ import {
 	selectKodyPlanRetainingSubscriptions,
 	subscriptionHasPrice,
 } from '#worker/billing/billing-config.ts'
-import { checkoutLinkReasons } from '#worker/billing/checkout-link.ts'
+import {
+	checkoutLinkReasons,
+	orgBillingPageUrl,
+} from '#worker/billing/checkout-link.ts'
 import {
 	attachPromoReservationSession,
 	existingSubscriptionPromoRejection,
@@ -468,7 +471,10 @@ export async function startWebsiteCheckout(input: {
 				return operationResult(
 					{
 						ok: false,
-						error: checkoutLinkReasons.alreadySubscribed(org.slug),
+						error: checkoutLinkReasons.alreadySubscribed(
+							org.slug,
+							orgBillingPageUrl(org.slug, input.request.url),
+						),
 					},
 					409,
 				)
