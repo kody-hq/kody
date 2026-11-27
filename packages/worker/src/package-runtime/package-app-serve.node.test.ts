@@ -410,7 +410,9 @@ async function serveHelloWorld(input?: {
 	kodyId?: string
 	restPath?: string
 	init?: RequestInit
-	dispatch?: { synthetic: true }
+	dispatch?: { synthetic: true } | { agent: true }
+	/** Serve an agent's visit acting as one of the owner's profiles. */
+	profileId?: string
 	mount?: 'username-path' | 'user-subdomain'
 	externalVisitor?: { db: D1Database }
 	/** Serve as an internet-visible outsider instead of the owner. */
@@ -460,6 +462,16 @@ async function serveHelloWorld(input?: {
 						userId: personIdFromStored('user-1'),
 						username: 'demo-user',
 						role: 'owner',
+						...(input?.profileId
+							? {
+									credential: {
+										scopes: null,
+										profileId: input.profileId,
+										profileChain: [input.profileId],
+										profileOrgId: ownerIdFromStored('user-1'),
+									},
+								}
+							: {}),
 					},
 		...(input?.outsider
 			? {
@@ -719,6 +731,53 @@ test('a signed-out visitor with optional-only executor needs is served without c
 	const response = await serveHelloWorld({ outsider: {} })
 	expect(response.status).toBe(200)
 	expect(appRequests).toHaveLength(1)
+})
+
+test('an agent visit gets the consent link, or a profile grant error when the need opens for the person alone', async () => {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+	const unbound = new CredentialClientError({
+		code: 'credential_unbound',
+		message: 'No credential is mapped.',
+		retryWith: [],
+	})
+	const serve = async () =>
+		await serveHelloWorld({ dispatch: { agent: true }, profileId: 'profile-1' })
+
+	// Nothing usable is mapped even for the person: they must consent again.
+	mockModule.openCredentialClient.mockRejectedValue(unbound)
+	const consent = await serve()
+	expect(consent.status).toBe(403)
+	expect(consent.headers.get('X-Kody-Visitor-Consent')).toBe('required')
+	expect(await consent.json()).toMatchObject({
+		error: 'app_visitor_consent_required',
+		need: 'calendar',
+		consent_url: expect.stringContaining('/-/auth/login'),
+	})
+
+	// The need opens for the person, so only the profile lacks the credential.
+	mockModule.openCredentialClient.mockReset()
+	mockModule.openCredentialClient.mockRejectedValueOnce(unbound)
+	mockModule.openCredentialClient.mockResolvedValue({} as never)
+	const denied = await serve()
+	expect(denied.status).toBe(403)
+	expect(denied.headers.get('X-Kody-Visitor-Consent')).toBeNull()
+	expect(await denied.json()).toMatchObject({
+		error: 'app_profile_credential_required',
+		need: 'calendar',
+	})
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
 })
 
 test('required executor credential failures do not redirect non-GET requests', async () => {
