@@ -778,9 +778,9 @@ background run also re-checks the role against D1 for the person it acts for and
 audits the call (see
 [Site-admin capabilities from triggered runs](#site-admin-capabilities-from-triggered-runs)).
 Other interactive-only gates exist on a few specific non-admin capabilities (for
-example `communityForkAdopt`, `packageAppFetch`, `packageSubscriptionDispatch`,
-and platform-feedback submit); they are per-capability contracts, not part of
-role evaluation.
+example `communityForkAdopt`, `appFetch`, `packageSubscriptionDispatch`, and
+platform-feedback submit); they are per-capability contracts, not part of role
+evaluation.
 
 Package app HTTP handlers and realtime hooks call capabilities through the
 package-app runtime bridge

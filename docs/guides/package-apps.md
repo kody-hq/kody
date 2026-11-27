@@ -7,8 +7,8 @@ summary:
   platform-built browser client (`kody.app.client`) and static assets directory
   (`kody.app.assets`), session handoff, optional CLI local testing with `kody
   dev` when available, MCP-only validate via `repoRunChecks`, smoke tests with
-  packageAppFetch, a Remix recipe (Example A), the same-origin proxy, lean
-  forks, compiled clients, and listing verification.
+  appFetch, a Remix recipe (Example A), the same-origin proxy, lean forks,
+  compiled clients, and listing verification.
 category: platform
 ---
 
@@ -552,11 +552,11 @@ event, recorded per app in `package_app_authority_rejections`. The
 lists published apps that still call undeclared capabilities or read email
 without consent.
 
-`packageAppFetch` exercises the fetch handler without that browser session. Use
-it for handler smoke tests after publish. When the host can run the CLI, prefer
+`appFetch` exercises the fetch handler without that browser session. Use it for
+handler smoke tests after publish. When the host can run the CLI, prefer
 [Local testing with `kody dev`](#local-testing-with-kody-dev) while the package
 is still unpublished. MCP-only agents (no shell) validate with `repoRunChecks`,
-publish, then smoke with `packageAppFetch`. Use the handed-off or OAuth URL for
+publish, then smoke with `appFetch`. Use the handed-off or OAuth URL for
 cookies, layout, redirects, and websocket facets.
 
 ## Local testing with `kody dev`
@@ -566,8 +566,8 @@ unpublished apps. From the package directory the CLI serves `kody.app.entry` on
 localhost via workerd with hot reload, at the root of its own `*.localhost`
 origin like the hosted app; `packageContext.hostedUrl` is that local origin.
 Bundling reuses the same esbuild path as publish. If the agent cannot run a
-local CLI, skip this section and use `repoRunChecks` + post-publish
-`packageAppFetch` instead.
+local CLI, skip this section and use `repoRunChecks` + post-publish `appFetch`
+instead.
 
 ```bash
 cd ./my-package
@@ -748,7 +748,7 @@ Do this instead:
 - Use `--target mock`. `kody dev` runs the hosted storage, email, events and
   packages code against local state, with
   [mock package secrets](#mock-package-secrets).
-- Publish, then call the published app with `packageAppFetch`.
+- Publish, then call the published app with `appFetch`.
 
 There are no open gaps left on the `kody dev` allowlist. CI still fails when a
 working-tree export is nulled or refused without being listed as an open gap or
@@ -851,7 +851,7 @@ start `kody dev --json --ready-file .kody-dev.json`. It prints one JSON event
 per line (`ready`, `rebuild_start`, `rebuild_ok`, `build_error`,
 `runtime_error`, `log`), and `GET /__kody/dev/status` returns the current build
 id and last error. After local mock and prod both look right, publish, then use
-`packageAppFetch` and the handed-off URL for the hosted proof.
+`appFetch` and the handed-off URL for the hosted proof.
 
 ### Check app quality with `kody app check`
 
@@ -918,19 +918,29 @@ rewrite pass.
   `{{secret:name}}`.
   [Asset path resolver](../../packages/worker/src/package-runtime/package-app-assets-directory.ts).
 
-## Smoke with packageAppFetch
+## Smoke with appFetch
 
-After publish, call `packageAppFetch` with the path, method, and body the
-handler needs. Confirm `{ status, headers, body, truncated }` and any
-`packageStorage()` side effects. Read
-[Package app fetch](../use/package-app-fetch.md) for the call shape.
+After publish, call `appFetch` with the path, method, and body the handler
+needs. Confirm `{ status, headers, body, truncated }` and any `packageStorage()`
+side effects. Pass `synthetic: true` for a smoke test: it sets the
+`Kody-Synthetic: true` header so the app can tell a test from a visit. Without
+it the call is a real visit. Read [App fetch](../use/app-fetch.md) for the call
+shape.
+
+`appFetch` is also how an agent uses an app it can run, including one shared
+from another org: same access check as a browser visit, the person's `user_id`,
+and a `profile` label when a profile token calls. See
+[Using apps as an agent](./agent-apps.md). To use an app, call `appFetch`; to
+reuse its code inside the same org, import it. Hosted URLs are for browsers and
+never take an API token.
 
 Typical first probe:
 
 ```json
 {
 	"package_id": "550e8400-e29b-41d4-a716-446655440000",
-	"path": "/"
+	"path": "/",
+	"synthetic": true
 }
 ```
 
@@ -956,16 +966,16 @@ local harness that serves the **same** published client and assets:
 3. Confirm layout, redirects, and any websocket facet on that same client.
 4. Then ping the owner.
 
-`packageAppFetch` stays the handler smoke. Interactive QA is the handed-off
-browser or that local harness.
+`appFetch` stays the handler smoke. Interactive QA is the handed-off browser or
+that local harness.
 
 ## Large binaries
 
-`packageAppFetch` is the lightweight smoke: status, headers, and a small body
-sample. For a large download (WASM, WAD, video, zip), use a full download path —
-`curl` against the handed-off or local harness URL, or the streamed app route
-that serves those bytes — and confirm length, content-type, and that the file
-opens in the client.
+`appFetch` is the lightweight smoke: status, headers, and a small body sample.
+For a large download (WASM, WAD, video, zip), use a full download path — `curl`
+against the handed-off or local harness URL, or the streamed app route that
+serves those bytes — and confirm length, content-type, and that the file opens
+in the client.
 
 Treat `truncated: true` as “the handler answered,” then finish the proof on the
 full stream.
@@ -2178,7 +2188,7 @@ old caches on activate.
 - **Publish fails with "imports the browser client entry"** — the Worker graph
   reaches `kody.app.client`. Move the shared code into a helper both sides
   import and keep the client entry out of `src/app.ts`.
-- **`packageAppFetch` returns HTTP 500 `"Package app could not be prepared"`** —
+- **`appFetch` returns HTTP 500 `"Package app could not be prepared"`** —
   host-setup failed before package code ran (manifest load, worker build, or
   asset prep). The JSON body includes `cause` on synthetic fetches. Publish
   rejects `kody.app.runtime`; published snapshots that still contain the field

@@ -79,8 +79,8 @@ The pages below are the MCP-level field contracts those guides link into.
   destinations, notify-self sends, and replies
 - [Inbound webhooks](./webhooks.md) — user-owned HTTPS endpoints that dispatch
   provider POSTs to a saved-package export
-- [Package app fetch](./package-app-fetch.md) — platform-marked real-surface
-  `app_fetch` smoke tests after publish
+- [App fetch](./app-fetch.md) — call a package app you can run, as you, from an
+  agent or the CLI (`appFetch`, `appList`, `kody app fetch`)
 - [Synthetic event dispatch](./synthetic-event-dispatch.md) — interactive MCP
   post-publish smoke test for one subscription handler; webhook sibling is
   `webhookSyntheticDispatch` on

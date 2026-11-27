@@ -37,7 +37,7 @@ export async function refusePackageAppWriteOverRateLimit(input: {
 	request: Request
 	env: object
 	packageId: string
-	/** Platform smoke fetches (packageAppFetch) are not visitor traffic. */
+	/** Smoke tests (`appFetch` with `synthetic: true`) are not visitor traffic. */
 	synthetic: boolean
 }): Promise<Response | null> {
 	const { request } = input

@@ -3,6 +3,8 @@
 exports[`contextRuns allow list snapshot 1`] = `
 [
   "accessList",
+  "appFetch",
+  "appList",
   "approvalPendingList",
   "automationExecutionGet",
   "codingGuideGet",
@@ -95,7 +97,6 @@ exports[`contextRuns allow list snapshot 1`] = `
   "orgMemberList",
   "packageAppConnectedPeopleList",
   "packageAppCustomHostnameList",
-  "packageAppFetch",
   "packageAppRunsAsGet",
   "packageCheck",
   "packageCheckUploadCreate",

@@ -66,6 +66,12 @@ export type RequestCredential = {
 	/** That profile's chain at authentication: ids, root first (attribution). */
 	profileChain?: ReadonlyArray<string> | null
 	/**
+	 * The org the profile lives in, when it is not the request's org: a visit
+	 * to an app another org shared with the person. The chain is read there;
+	 * its grants are read in the request's org. Absent means the request's org.
+	 */
+	profileOrgId?: OwnerId | null
+	/**
 	 * Execution-context runs only: true when the requester operates the
 	 * context, so the run has the Kody access the same run has in Kody cloud.
 	 */

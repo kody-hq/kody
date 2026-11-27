@@ -95,6 +95,8 @@ export function createMcpCallerContext(
 		source: RequestSource
 		/** API-token scopes; null/omitted does not narrow the actor. */
 		scopes?: ReadonlyArray<OrgPermission> | null
+		/** The profile's home org when it is not the bound org (a shared-app visit). */
+		profileOrgId?: Parameters<typeof deriveRequestContext>[0]['profileOrgId']
 		/** Execution-context runs: the requester operates the context. */
 		contextRunByOperator?: boolean
 	},
@@ -111,6 +113,7 @@ export function createMcpCallerContext(
 					oauthClientId: wire.oauthClientId ?? null,
 					orgBinding: wire.orgBinding ?? undefined,
 					scopes: input.scopes ?? null,
+					profileOrgId: input.profileOrgId ?? null,
 					contextRunByOperator: input.contextRunByOperator === true,
 				})
 			: null,

@@ -283,10 +283,9 @@ Every authoring lane must validate before publish. The gate depends on the
 | **CLI extras** (Node ≥22.19 + `@kodycodes/cli`) | Optional unpublished surface tests below (`kody dev`, `.kody/mocks.ts`, `execute --local` / `--target mock`) on top of the lane gate above.                                                                  |
 
 Do **not** assume every agent can run the CLI. Mobile MCP-only agents stop at
-`repoRunChecks`, then publish, then use post-publish smoke surfaces
-(`packageAppFetch`, `packageSubscriptionDispatch`, webhook synthetic dispatch,
-or a static `kody:@…` import from `execute` when that tool is available on the
-session).
+`repoRunChecks`, then publish, then use post-publish smoke surfaces (`appFetch`,
+`packageSubscriptionDispatch`, webhook synthetic dispatch, or a static `kody:@…`
+import from `execute` when that tool is available on the session).
 
 ### Local CLI testing (when the host can run code)
 

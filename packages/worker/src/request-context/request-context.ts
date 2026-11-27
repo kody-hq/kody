@@ -123,6 +123,7 @@ function credentialFor(input: {
 	org: RequestOrg
 	profileId?: string | null
 	profileChain?: ReadonlyArray<string> | null
+	profileOrgId?: RequestCredential['profileOrgId']
 	scopes?: RequestCredential['scopes']
 	contextRunByOperator?: boolean
 }): RequestCredential {
@@ -134,6 +135,11 @@ function credentialFor(input: {
 		...(input.profileId ? { profileId: input.profileId } : {}),
 		...(input.profileId && input.profileChain?.length
 			? { profileChain: [...input.profileChain] }
+			: {}),
+		...(input.profileId &&
+		input.profileOrgId &&
+		input.profileOrgId !== input.org.id
+			? { profileOrgId: input.profileOrgId }
 			: {}),
 		...(input.contextRunByOperator ? { contextRunByOperator: true } : {}),
 	}
@@ -233,6 +239,8 @@ export function deriveRequestContext(input: {
 	/** Profile (ADR 0092) the credential is bound to; null is the live mirror. */
 	profileId?: string | null
 	profileChain?: ReadonlyArray<string> | null
+	/** The profile's home org when it is not the bound org (a shared-app visit). */
+	profileOrgId?: RequestCredential['profileOrgId']
 	/** OAuth client of an `mcp-oauth` / `cli` bearer grant; the credential id. */
 	oauthClientId?: string | null
 	/** When set (DB-backed session paths), overrides {@link resolveOrgBinding}. */
@@ -264,6 +272,7 @@ export function deriveRequestContext(input: {
 					org: binding.org,
 					profileId,
 					profileChain: input.profileChain ?? null,
+					profileOrgId: input.profileOrgId ?? null,
 					scopes: input.scopes ?? null,
 					contextRunByOperator:
 						source.kind === 'execution-context-run' &&
@@ -581,9 +590,10 @@ export function parseRequestLineage(value: unknown): RequestLineage | null {
 /** Profile binding and its frozen chain survive a durable boundary. */
 function parseProfileFields(
 	credential: Record<string, unknown>,
-): Pick<RequestCredential, 'profileId' | 'profileChain'> {
+): Pick<RequestCredential, 'profileId' | 'profileChain' | 'profileOrgId'> {
 	const profileId = readNullableString(credential.profileId)
 	if (!profileId) return {}
+	const profileOrgId = readNullableString(credential.profileOrgId)
 	const chain = Array.isArray(credential.profileChain)
 		? credential.profileChain.filter(
 				(id): id is string => typeof id === 'string' && id.trim() !== '',
@@ -592,6 +602,7 @@ function parseProfileFields(
 	return {
 		profileId,
 		...(chain.at(-1) === profileId ? { profileChain: chain } : {}),
+		...(profileOrgId ? { profileOrgId: ownerIdFromStored(profileOrgId) } : {}),
 	}
 }
 

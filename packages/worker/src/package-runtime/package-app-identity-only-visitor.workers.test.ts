@@ -87,6 +87,7 @@ test(
 			userId: t.ownerId,
 			username: t.username,
 			role: 'owner',
+			profile: null,
 			scopes: ['profile'],
 		})
 		expect(body.cookie).toBeNull()
@@ -109,6 +110,7 @@ test(
 			email: '',
 			display_name: 'outside-visitor',
 			org: { slug: t.username },
+			profile: null,
 			scopes: ['profile'],
 		})
 		expect(body.scopes).toEqual({
@@ -121,6 +123,7 @@ test(
 			userId: outsiderId,
 			username: 'outside-visitor',
 			role: null,
+			profile: null,
 			scopes: ['profile'],
 		})
 		// No new access: undeclared calls never run as the publisher, and the
@@ -209,6 +212,7 @@ test(
 			userId: t.ownerId,
 			username: t.username,
 			role: 'owner',
+			profile: null,
 			scopes: ['profile'],
 		})
 	},

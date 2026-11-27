@@ -14,6 +14,8 @@ import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { GrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import { ProfileError } from './errors.ts'
 import { isProfilesEnabledFor } from './flag.ts'
+import { checkAppVisitAccess } from '#worker/app-visit/authorize.ts'
+import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { grantResourceToProfile, removeProfileGrant } from './package-grants.ts'
 import {
 	canActOnProfile,
@@ -261,6 +263,58 @@ function chainGrantCap(
 	return cap ?? new Map<string, Set<OrgPermission>>()
 }
 
+/**
+ * Apps another org shared with the person, among `grants`, keyed like a
+ * grant cap (`app:<id>`). A profile may be given Use on one when the caller
+ * can run it right now: the same check a visit makes, in the org that owns
+ * the app, so a caller acting as a profile needs its own chain to hold it.
+ * The grant is stored against that org. Any other resource stays in the
+ * profile's org.
+ */
+async function loadSharedAppGrantTargets(
+	caller: ProfilesCaller,
+	grants: ReadonlyArray<RequestedProfileGrant>,
+) {
+	const targets = new Map<
+		string,
+		{ orgId: string; holds: (permission: OrgPermission) => boolean }
+	>()
+	for (const grant of grants) {
+		const key = `app:${grant.resourceId}`
+		if (grant.resourceType !== 'app' || targets.has(key)) continue
+		const app = await getSavedPackageByIdInAnyOrg(
+			caller.env.APP_DB,
+			grant.resourceId,
+		)
+		if (!app || app.userId === caller.orgId) continue
+		const access = await checkAppVisitAccess({
+			env: caller.env,
+			callerRequest: caller.request,
+			ownerId: app.userId,
+			appId: app.id,
+		})
+		targets.set(key, {
+			orgId: app.userId,
+			holds: (permission) => access.allowed && access.holds(permission),
+		})
+	}
+	return targets
+}
+
+function callerHoldsWithSharedApps(
+	caller: ProfilesCaller,
+	sharedApps: ReadonlyMap<
+		string,
+		{ holds: (permission: OrgPermission) => boolean }
+	>,
+): ProfilesCaller['holds'] {
+	return (resourceType, resourceId, permission) => {
+		const shared = sharedApps.get(`${resourceType}:${resourceId}`)
+		if (!shared) return caller.holds(resourceType, resourceId, permission)
+		return shared.holds(permission)
+	}
+}
+
 function profileGrantRefusalError(refusal: ProfileGrantRefusal) {
 	const target = `${refusal.grant.resourceType} ${refusal.grant.resourceId}`
 	return new ProfileError({
@@ -368,18 +422,21 @@ export async function createProfile(
 			message: `You already have a profile named "${name}" here. Names are unique under the same parent.`,
 		})
 	}
-	const grantsByProfile = parentChain.length
-		? await loadProfileGrants(db, {
-				orgId: caller.orgId,
-				profileIds: parentChain.map((row) => row.id),
-			})
-		: new Map<string, Array<ProfileGrantRow>>()
+	const [grantsByProfile, sharedApps] = await Promise.all([
+		parentChain.length
+			? loadProfileGrants(db, {
+					orgId: null,
+					profileIds: parentChain.map((row) => row.id),
+				})
+			: new Map<string, Array<ProfileGrantRow>>(),
+		loadSharedAppGrantTargets(caller, grants),
+	])
 	const refusal = checkProfileGrants({
 		grants,
 		parentGrants: parentChain.length
 			? chainGrantCap(parentChain, grantsByProfile)
 			: null,
-		callerHolds: caller.holds,
+		callerHolds: callerHoldsWithSharedApps(caller, sharedApps),
 		orgId: caller.orgId,
 	})
 	if (refusal) throw profileGrantRefusalError(refusal)
@@ -400,7 +457,14 @@ export async function createProfile(
 		updated_at: now,
 	}
 	try {
-		await insertProfile(db, { row, grants })
+		await insertProfile(db, {
+			row,
+			grants: grants.map((grant) => ({
+				...grant,
+				orgId: sharedApps.get(`${grant.resourceType}:${grant.resourceId}`)
+					?.orgId,
+			})),
+		})
 	} catch (error) {
 		if (String(error).includes('UNIQUE constraint failed')) {
 			throw new ProfileError({
@@ -420,7 +484,7 @@ export async function getProfile(
 ): Promise<ProfileView> {
 	const chain = await loadAuthorizedChain(caller, profileId, 'read')
 	const grants = await loadProfileGrants(caller.env.APP_DB, {
-		orgId: caller.orgId,
+		orgId: null,
 		profileIds: [profileId],
 	})
 	return view(chain, grants.get(profileId) ?? [], new Date().toISOString())
@@ -469,7 +533,7 @@ export async function listProfiles(
 					}),
 		)
 	const grants = await loadProfileGrants(caller.env.APP_DB, {
-		orgId: caller.orgId,
+		orgId: null,
 		profileIds: visible.map((chain) => chain.at(-1)!.id),
 	})
 	const now = new Date().toISOString()
@@ -564,7 +628,7 @@ export async function revokeProfile(
 		profileId: input.profileId,
 	})
 	const grants = await loadProfileGrants(caller.env.APP_DB, {
-		orgId: caller.orgId,
+		orgId: null,
 		profileIds: [input.profileId],
 	})
 	return view(
@@ -590,16 +654,19 @@ export async function grantToProfile(
 ): Promise<{ grantId: string; profile: ProfileView }> {
 	const chain = await loadAuthorizedChain(caller, input.profileId, 'edit')
 	const ancestors = chain.slice(0, -1)
-	const grantsByProfile = await loadProfileGrants(caller.env.APP_DB, {
-		orgId: caller.orgId,
-		profileIds: ancestors.map((row) => row.id),
-	})
+	const [grantsByProfile, sharedApps] = await Promise.all([
+		loadProfileGrants(caller.env.APP_DB, {
+			orgId: null,
+			profileIds: ancestors.map((row) => row.id),
+		}),
+		loadSharedAppGrantTargets(caller, [input.grant]),
+	])
 	const refusal = checkProfileGrants({
 		grants: [input.grant],
 		parentGrants: ancestors.length
 			? chainGrantCap(ancestors, grantsByProfile)
 			: null,
-		callerHolds: caller.holds,
+		callerHolds: callerHoldsWithSharedApps(caller, sharedApps),
 		orgId: caller.orgId,
 	})
 	if (refusal) throw profileGrantRefusalError(refusal)
@@ -611,6 +678,9 @@ export async function grantToProfile(
 			type: input.grant.resourceType,
 			id: input.grant.resourceId,
 			label: input.label,
+			orgId: sharedApps.get(
+				`${input.grant.resourceType}:${input.grant.resourceId}`,
+			)?.orgId,
 		},
 		preset: input.preset,
 		permissions: input.grant.permissions,
@@ -625,12 +695,12 @@ export async function grantToProfile(
  */
 export async function revokeProfileGrant(
 	caller: ProfilesCaller,
-	grant: { grantId: string; profileId: string },
+	grant: { grantId: string; profileId: string; orgId: string },
 ) {
 	await loadAuthorizedChain(caller, grant.profileId, 'edit')
 	await removeProfileGrant({
 		db: caller.env.APP_DB,
-		orgId: caller.orgId,
+		orgId: grant.orgId,
 		grantId: grant.grantId,
 	})
 }

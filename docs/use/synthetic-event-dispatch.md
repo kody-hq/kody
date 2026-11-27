@@ -30,8 +30,7 @@ deliberately visible irreversible-side-effect guard says otherwise.
   package declares subscriptions and `test_hints` includes topic snippets
 - To debug that same package's handler logic with a minimal fixture payload
 - To replay a stored inbound message with `email_message_id`
-- Together with [Package app fetch](./package-app-fetch.md) as part of
-  post-publish verification
+- Together with [App fetch](./app-fetch.md) as part of post-publish verification
 
 For inbound webhooks, use `webhookSyntheticDispatch` after mint (see
 [Inbound webhooks — Synthetic smoke test](./webhooks.md#synthetic-smoke-test)).
@@ -248,7 +247,7 @@ surface) for run records; the run record includes `synthetic: true` (and
 
 - [Packages](./packages.md) — subscription manifest shape and
   [package reuse](./packages.md#package-reuse)
-- [Package app fetch](./package-app-fetch.md) — app handler smoke tests
+- [App fetch](./app-fetch.md) — app handler smoke tests
 - [Package subscriptions guide](../guides/package-subscriptions.md) — topic
   payloads and production delivery semantics
 - [Package authoring guide](../guides/package-authoring.md#verify-your-publish)

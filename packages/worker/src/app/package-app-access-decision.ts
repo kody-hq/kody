@@ -7,7 +7,9 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
  * KV cache of package-app access decisions, consulted when a visitor's access
  * ticket expires (`package-app-ticket.ts`).
  *
- * A decision is keyed by org, org `access_epoch`, visitor, and app. Every
+ * A decision is keyed by org, org `access_epoch`, visitor, app, and the
+ * acting profile, so a profile's decision can never be read as the person's.
+ * Every
  * membership, team, grant, and app visibility write bumps the epoch in the
  * same D1 batch (`access-epoch-write-guard.ts`), so a bump makes every older
  * decision for the org unreachable without deleting anything. The current
@@ -17,7 +19,7 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
  * once per visitor, app, and epoch.
  */
 
-const decisionKeyPrefix = 'package-app-access:v1'
+const decisionKeyPrefix = 'package-app-access:v2'
 const decisionTtlSeconds = 24 * 60 * 60
 /** Fraction of ticket-authorized requests that log an allow line. */
 export const packageAppAllowLogSampleRate = 0.01
@@ -43,8 +45,9 @@ function decisionKey(input: {
 	epoch: number
 	visitorId: string
 	appId: string | null
+	profileId: string | null
 }) {
-	return `${decisionKeyPrefix}:${input.orgId}:${input.epoch}:${input.visitorId}:${input.appId ?? '-'}`
+	return `${decisionKeyPrefix}:${input.orgId}:${input.epoch}:${input.visitorId}:${input.appId ?? '-'}:${input.profileId ?? '-'}`
 }
 
 /** Live org `access_epoch`, or null when the org is gone. */
@@ -69,6 +72,7 @@ export async function readCachedPackageAppAccessDecision(input: {
 	epoch: number
 	visitorId: string
 	appId: string | null
+	profileId: string | null
 }): Promise<PackageAppAccessDecision | null> {
 	try {
 		const stored = await input.env.BUNDLE_ARTIFACTS_KV.get(
@@ -88,6 +92,7 @@ export function cachePackageAppAccessDecision(input: {
 	epoch: number
 	visitorId: string
 	appId: string | null
+	profileId: string | null
 	decision: PackageAppAccessDecision
 }) {
 	void deferWork('package-app-access-decision-write-failed', () =>

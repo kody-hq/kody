@@ -70,9 +70,9 @@ import {
 import { createHealthHandler } from '#app/handlers/health.ts'
 import {
 	needsPackageAppRunConsentForPerson,
-	packageAppRunConsentRequiredHeader,
 	packageAppRunConsentResponse,
 } from '#app/package-app-run-consent.ts'
+import { packageAppRunConsentRequiredHeader } from '#worker/app-visit/run-consent-url.ts'
 import {
 	findLivePackageAppOauthGrant,
 	notePackageAppOauthGrantUse,
@@ -85,7 +85,11 @@ import {
 	resolvePackageAppOrgOwnerByHandle,
 	resolvePackageAppOwnerByStableUserId,
 } from '#app/package-app-owner.ts'
-import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
+import { authorizeAppVisit } from '#worker/app-visit/authorize.ts'
+import {
+	sessionRequestFor,
+	viewerCanExecutePackageApp,
+} from '#app/package-viewer-access.ts'
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
@@ -104,11 +108,8 @@ import {
 	readPackageAppTicket,
 } from '#app/package-app-ticket.ts'
 import {
-	cachePackageAppAccessDecision,
 	logPackageAppAccessEvent,
 	logSampledPackageAppTicketAllow,
-	readCachedPackageAppAccessDecision,
-	readOrgAccessEpoch,
 } from '#app/package-app-access-decision.ts'
 import {
 	maybeHandleLegacyPackageAppSubdomainMount,
@@ -122,7 +123,6 @@ import {
 	type ServerTimingEntry,
 	unaccountedServerTimingMs,
 } from '#worker/server-timing.ts'
-import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
 	getRequestContext,
 	runWithRequestContext,
@@ -465,14 +465,10 @@ export type AuthorizedPackageAppServe =
 	  }
 
 /**
- * Resolve the org named in the host/path, confirm the session person is still
- * live, and authorize `app:execute` in that org. The visitor keeps their live
- * org role; the owner is the org, not the visitor's personal account.
- *
- * The decision is cached in KV per org `access_epoch`
- * (`package-app-access-decision.ts`): the epoch is read first, so a decision
- * computed concurrently with an access write is stored under the epoch it
- * may already be stale for, never under the new one.
+ * Confirm the session person is still live, then authorize the visit with
+ * {@link authorizeAppVisit}, the check `appFetch` also uses. A browser session
+ * carries no profile and no token scopes. The visitor keeps their live org
+ * role; the owner is the org, not the visitor's personal account.
  */
 export async function authorizePackageAppVisitorForOrg(input: {
 	env: Env
@@ -482,64 +478,25 @@ export async function authorizePackageAppVisitorForOrg(input: {
 	/** Package slug so app:execute is checked on that app, not any grant. */
 	kodyId?: string
 }): Promise<AuthorizedPackageAppServe> {
-	// Independent reads run together; outcomes are taken in the original
-	// order, so a failure or a miss resolves exactly as the sequential reads did.
-	const [personRead, orgRead] = await Promise.allSettled([
-		resolvePackageAppOwnerByStableUserId({
-			env: input.env,
-			stableUserId: input.stableUserId,
-			issuedAt: input.issuedAt,
-		}),
-		resolvePackageAppOrgOwnerByHandle({
-			env: input.env,
-			handle: input.handle,
-		}),
-	])
-	const person = settledValue(personRead)
-	const org = settledValue(orgRead)
-	if (!person || !org) return { kind: 'session-required' }
+	const person = await resolvePackageAppOwnerByStableUserId({
+		env: input.env,
+		stableUserId: input.stableUserId,
+		issuedAt: input.issuedAt,
+	})
+	if (!person) return { kind: 'session-required' }
 
 	const viewer = {
 		userId: personIdFromStored(input.stableUserId),
 		username: person.username,
 	}
-	const kodyId = input.kodyId?.trim()
-	const [lookupRead, epochRead] = await Promise.allSettled([
-		kodyId
-			? resolveSavedPackageForPackageAppSlug({
-					db: input.env.APP_DB,
-					userId: org.userId,
-					slug: kodyId,
-				})
-			: null,
-		readOrgAccessEpoch(input.env.APP_DB, org.userId),
-	])
-	const appId = settledValue(lookupRead)?.savedPackage.id ?? null
-	const epoch = settledValue(epochRead)
-	if (epoch === null) return { kind: 'session-required' }
-	const decisionScope = {
+	const visit = await authorizeAppVisit({
 		env: input.env,
-		orgId: org.userId,
-		epoch,
-		visitorId: viewer.userId,
-		appId,
-	}
-	let decision = await readCachedPackageAppAccessDecision(decisionScope)
-	if (!decision) {
-		const canExecute = await viewerCanExecutePackageApp({
-			env: input.env,
-			viewer,
-			ownerId: org.userId,
-			appId,
-		})
-		// Memoized per request: viewerCanExecutePackageApp loaded the same binding.
-		const binding = canExecute
-			? await loadOrgBindingForOrg(input.env.APP_DB, viewer.userId, org.userId)
-			: null
-		decision = { allowed: canExecute, role: binding?.role ?? null }
-		cachePackageAppAccessDecision({ ...decisionScope, decision })
-	}
-	if (!decision.allowed) {
+		callerRequest: sessionRequestFor(viewer),
+		ownerHandle: input.handle,
+		appSlug: input.kodyId,
+	})
+	if (visit.kind === 'not-found') return { kind: 'session-required' }
+	if (visit.kind === 'forbidden') {
 		return {
 			kind: 'forbidden',
 			visitorEmail: person.email,
@@ -549,21 +506,18 @@ export async function authorizePackageAppVisitorForOrg(input: {
 
 	// Team org entitlements resolve by org id alone. Pairing the visitor's
 	// email with the team org id would miss the users row and fall to Free.
-	const ownerEmail = org.userId === person.personalOrgId ? person.email : ''
+	const ownerEmail =
+		visit.owner.userId === person.personalOrgId ? person.email : ''
 	return {
 		kind: 'ok',
 		owner: {
-			userId: org.userId,
-			username: org.username,
+			userId: visit.owner.userId,
+			username: visit.owner.username,
 			email: ownerEmail,
-			displayName: org.displayName,
+			displayName: visit.owner.displayName,
 		},
-		visitor: {
-			userId: viewer.userId,
-			username: person.username,
-			role: decision.role,
-		},
-		epoch,
+		visitor: visit.visitor,
+		epoch: visit.epoch,
 		visitorEmail: person.email,
 		sessionIssuedAt: input.issuedAt,
 	}

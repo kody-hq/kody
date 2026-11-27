@@ -73,7 +73,7 @@ export function buildPackageTestHints(input: {
 	return {
 		...(input.hasApp
 			? {
-					app: `packageAppFetch({ ${packageIdentity} })`,
+					app: `appFetch({ ${packageIdentity}, synthetic: true })`,
 				}
 			: {}),
 		...(subscriptions.length > 0 ? { subscriptions } : {}),

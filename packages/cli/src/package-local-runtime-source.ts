@@ -41,12 +41,12 @@ const prodTargetWontDoDocsUrl =
 
 const prodPackageStorageUnsupportedMessage =
 	'packageStorage() is intentionally unsupported on --target prod: the working tree is unpublished, so hosted storage cannot trust it. ' +
-	'Use `--target mock` for scratch storage, or publish and use packageAppFetch. ' +
+	'Use `--target mock` for scratch storage, or publish and use appFetch. ' +
 	`See ${prodTargetWontDoDocsUrl}`
 
 const prodPackageSecretsUnsupportedMessage =
 	'packageSecrets is intentionally unsupported on --target prod: the working tree is unpublished, so hosted secrets cannot trust it. ' +
-	'Use `kody dev --target mock` for placeholder secrets, or publish and use packageAppFetch. ' +
+	'Use `kody dev --target mock` for placeholder secrets, or publish and use appFetch. ' +
 	`See ${prodTargetWontDoDocsUrl}`
 
 /**

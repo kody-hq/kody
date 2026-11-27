@@ -1,24 +1,14 @@
-import {
-	buildPackageAppOpenPath,
-	packageAppHostEntryQueryParam,
-} from '@kody-internal/shared/public-urls.ts'
 import type {
 	OwnerId,
 	PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import type { RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
-import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
+import {
+	packageAppRunConsentRequiredHeader,
+	packageAppRunConsentUrl,
+} from '#worker/app-visit/run-consent-url.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
-
-export const packageAppRunConsentPath = '/oauth/package-app/run-as-me'
-export const packageAppRunConsentRequiredHeader = 'X-Kody-Run-As-Me'
-
-export function buildPackageAppRunConsentUrl(baseUrl: string, entry: URL) {
-	const location = new URL(packageAppRunConsentPath, baseUrl)
-	location.searchParams.set('returnTo', `${entry.pathname}${entry.search}`)
-	return location
-}
 
 export async function needsPackageAppRunConsent(input: {
 	db: D1Database
@@ -109,7 +99,8 @@ export function packageAppRunConsentResponse(input: {
 	request: Request
 	baseUrl: string
 	packagePath: { username: string; kodyId: string; restPath: string }
-	synthetic?: boolean
+	/** True for an agent or smoke-test call: report, never redirect. */
+	noRedirect?: boolean
 	fromAppHost?: boolean
 }) {
 	const { request, baseUrl, packagePath } = input
@@ -123,23 +114,17 @@ export function packageAppRunConsentResponse(input: {
 			? request.headers.get('Accept')?.includes('text/html')
 			: fetchMode === 'navigate'
 	if (
-		!input.synthetic &&
+		!input.noRedirect &&
 		request.method === 'GET' &&
 		navigation &&
 		!request.headers.has('Upgrade')
 	) {
-		const entry = new URL(
-			buildPackageAppOpenPath({
-				...packagePath,
-				restPath: packagePath.restPath === '/' ? null : packagePath.restPath,
-			}),
+		const location = packageAppRunConsentUrl({
 			baseUrl,
-		)
-		entry.search = new URL(request.url).search
-		entry.searchParams.delete(packageAppHandoffQueryParam)
-		if (input.fromAppHost)
-			entry.searchParams.set(packageAppHostEntryQueryParam, '1')
-		const location = buildPackageAppRunConsentUrl(baseUrl, entry)
+			packagePath,
+			search: new URL(request.url).search,
+			fromAppHost: input.fromAppHost,
+		})
 		return new Response(null, {
 			status: 302,
 			headers: {

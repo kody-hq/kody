@@ -68,7 +68,7 @@ function buildPackageFiles(username: string) {
 		{
 			path: 'AGENTS.md',
 			content:
-				'# Agents\n\nImport the app-storage smoke export and call packageAppFetch.\n',
+				'# Agents\n\nImport the app-storage smoke export and call appFetch.\n',
 		},
 		{
 			path: 'src/index.ts',

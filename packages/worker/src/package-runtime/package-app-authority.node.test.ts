@@ -9,7 +9,9 @@ import {
 	revokePackageAppOauthGrantsForPersonApp,
 	upsertPackageAppOauthGrant,
 } from '#app/package-app-oauth-grants.ts'
+import { authorize } from '#worker/authorization/authorize.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
+import { createProfile, type ProfilesCaller } from '#worker/profiles/service.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -556,4 +558,86 @@ test('runs-as credential handles resolve as the live runs-as person, and stop wh
 		.run(now, t.orgId, t.member)
 	forgetPackageAppRunsAs(t.scope)
 	expect(await authority.runsAsRequest()).toBeNull()
+})
+
+test('credential gap: a profile visitor only reaches a visitor-need credential its profile was granted', async () => {
+	const t = await setup()
+	const personalOrg = personalOrgId(personIdFromStored(t.outsider))
+	const credentialId = 'cred_github'
+	const credential = {
+		type: 'credential' as const,
+		id: credentialId,
+		orgId: personalOrg,
+	}
+	// The person consented to the app's github need in a browser.
+	await upsertPackageAppOauthGrant({
+		db: t.db,
+		personId: t.outsider,
+		orgUsername: 'acme',
+		kodyId: 'board',
+		scopes: ['profile', 'need:github'],
+	})
+	const me = {
+		env: t.env,
+		orgId: personalOrg,
+		actor: { userId: t.outsider, profileId: null, isOwner: true },
+		holds: () => true,
+	} as unknown as ProfilesCaller
+	const granted = await createProfile(me, {
+		name: 'with-github',
+		grants: [
+			{
+				resourceType: 'credential',
+				resourceId: credentialId,
+				permissions: ['secret:use'],
+			},
+		],
+	})
+	const ungranted = await createProfile(me, { name: 'app-only' })
+
+	async function visitorNeedRequestFor(profileId: string | null) {
+		const visitorRequest = await createPackageAppVisitorPersonalRequest({
+			db: t.db,
+			visitor: {
+				userId: personIdFromStored(t.outsider),
+				username: 'outsider',
+				credential: profileId
+					? {
+							scopes: null,
+							profileId,
+							profileChain: [profileId],
+							profileOrgId: personalOrg,
+						}
+					: null,
+			},
+		})
+		const authority = createPackageAppCredentialAuthority({
+			env: t.env,
+			scope: t.scope,
+			grantScope: { orgSlug: 'acme', kodyId: 'board' },
+			visitorRequest,
+			issue: { visitorNeed: 'github' },
+		})
+		return await authority.visitorNeedRequest('github')
+	}
+	const use = async (profileId: string | null) =>
+		await authorize(
+			{ env: t.env, request: await visitorNeedRequestFor(profileId) },
+			'secret:use',
+			credential,
+		)
+
+	// The person, and a profile granted the credential, resolve the need.
+	await expect(use(null)).resolves.toBeUndefined()
+	await expect(use(granted.id)).resolves.toBeUndefined()
+	// The live consent grant covers the need, yet the profile was never
+	// granted the credential, so the visit cannot use it.
+	const request = await visitorNeedRequestFor(ungranted.id)
+	expect(request).toMatchObject({
+		actor: { userId: t.outsider },
+		credential: { profileId: ungranted.id },
+	})
+	await expect(use(ungranted.id)).rejects.toMatchObject({
+		code: 'profile_grant',
+	})
 })

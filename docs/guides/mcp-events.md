@@ -179,8 +179,7 @@ accounts.
    OAuth. Its `server/discover` includes `events: {}`, and `events/list` returns
    `@you/ping.ready`.
 4. Ask the host to monitor `@you/ping.ready` and say what to do when it fires.
-5. Trigger the app route. From `execute`, call `packageAppFetch` with the
-   package id:
+5. Trigger the app route. From `execute`, call `appFetch` with the package id:
 
    ```json
    {

@@ -135,9 +135,8 @@ Before publish (`guide:package_lifecycle`): session lane — `repoRunChecks` the
 `packagePublishExternalPush` (sessions refuse unpublished HEAD). After publish,
 when Node ≥22.19 and the CLI are available, prefer local CLI execute
 (`guide:local_execute`). MCP-only hosts smoke with the matching post-publish
-surface (`packageAppFetch`, `packageSubscriptionDispatch`, webhook synthetic
-dispatch) or a static `kody:@…` import from `execute` when that tool is on the
-session.
+surface (`appFetch`, `packageSubscriptionDispatch`, webhook synthetic dispatch)
+or a static `kody:@…` import from `execute` when that tool is on the session.
 
 ## Edge cases
 
@@ -420,11 +419,10 @@ irreversible-side-effect guard when a smoke test should stay safe.
    `kody:@scope/package/export` from `execute` against a read-only export or
    package-supported dry-run input that exercises approved secrets (see
    [Secret-using packages](#secret-using-packages) above).
-3. **Package apps** — `packageAppFetch` with the scoped name or `package_id`
-   when the name is not known, plus the path, method, and body your handler
-   needs. Confirm `{ status, headers, body, truncated }` and any
-   `packageStorage()` side effects. See
-   [Package app fetch](../use/package-app-fetch.md) and the
+3. **Package apps** — `appFetch` with `app: "@org/app"` (or `package_id`),
+   `synthetic: true`, plus the path, method, and body your handler needs.
+   Confirm `{ status, headers, body, truncated }` and any `packageStorage()`
+   side effects. See [App fetch](../use/app-fetch.md) and the
    [Package apps](./package-apps.md) playbook (`guide:package_apps`).
 4. **Subscriptions** — from interactive MCP, `packageSubscriptionDispatch` with
    the scoped name (or `package_id` when the name is not known), `topic`, and

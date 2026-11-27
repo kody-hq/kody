@@ -107,6 +107,7 @@ import {
 	isPackageAppSyntheticRequest,
 	packageAppSyntheticHeaderName,
 	packageAppSyntheticHeaderValue,
+	packageAppVisitorConsentRequiredHeader,
 	type PackageAppTrustedDispatch,
 } from '#worker/package-runtime/package-app-synthetic.ts'
 import { resolvePackageAppBilling } from '#worker/package-runtime/package-app-billing.ts'
@@ -962,7 +963,7 @@ async function servePackageAppRequestWithId(input: {
 	// Slim origin (production-worker / preview) does not export
 	// PackageAppRuntimeBridge (ADR 0034). HTTP package-app routes are already
 	// forwarded wholesale via isRuntimeWorkerOwnedRequest; this gate covers the
-	// remaining in-process path (stateless MCP packageAppFetch → serve).
+	// remaining in-process path (stateless MCP appFetch → serve).
 	// One contract: local bridge, or RUNTIME_WORKER RPC — never construct here
 	// without either.
 	if (!hasLocalPackageAppRuntimeBridge()) {
@@ -1111,7 +1112,7 @@ async function servePackageAppRequestWithId(input: {
 				request,
 				baseUrl,
 				packagePath,
-				synthetic: dispatch?.synthetic === true,
+				noRedirect: dispatch !== undefined,
 				fromAppHost:
 					productHost?.kind === 'app-subdomain' ||
 					(productHost?.kind === 'user-subdomain' &&
@@ -1468,7 +1469,7 @@ async function servePackageAppRequestWithId(input: {
 					}
 				: null
 		const needVisitor = visitor ?? executorVisit?.visitor ?? null
-		const consentRedirect = () => {
+		const consentUrl = () => {
 			const loginUrl = buildPackageAppLoginUrl({
 				requestUrl: request.url,
 				appLeaf: getPackageNameLeaf(savedPackage.name),
@@ -1492,50 +1493,114 @@ async function servePackageAppRequestWithId(input: {
 				'return_to',
 				`${requestUrl.pathname}${requestUrl.search}`,
 			)
-			return attachPackageAppServerTiming(
+			return loginUrl
+		}
+		const consentRedirect = () =>
+			attachPackageAppServerTiming(
 				new Response(null, {
 					status: 302,
 					headers: {
-						Location: loginUrl.toString(),
+						Location: consentUrl().toString(),
 						'Cache-Control': 'no-store',
 					},
 				}),
 				serverTiming,
 			)
+		// An agent never approves a visitor need. It gets the link the person
+		// opens once, on every method.
+		const visitorConsentRequired = (needKey: string) =>
+			attachPackageAppServerTiming(
+				Response.json(
+					{
+						error: 'app_visitor_consent_required',
+						message: `This app needs the person to allow "${needKey}" before it can run for them.`,
+						need: needKey,
+						consent_url: consentUrl().toString(),
+					},
+					{
+						status: 403,
+						headers: {
+							'Cache-Control': 'private, no-store',
+							[packageAppVisitorConsentRequiredHeader]: 'required',
+						},
+					},
+				),
+				serverTiming,
+			)
+		const profileCredentialRequired = (needKey: string) =>
+			attachPackageAppServerTiming(
+				Response.json(
+					{
+						error: 'app_profile_credential_required',
+						message: `The person allowed "${needKey}" for this app, but the acting profile has no Use on the credential it maps to. Grant the profile Use on that credential (accessGrant on the credential), or call as the person.`,
+						need: needKey,
+					},
+					{ status: 403, headers: { 'Cache-Control': 'private, no-store' } },
+				),
+				serverTiming,
+			)
+		const openRequiredNeed = async (
+			need: (typeof requiredExecutorNeeds)[number],
+			visitor: typeof needVisitor,
+		) => {
+			await openCredentialClient(
+				{
+					env,
+					callerContext,
+					// Only checks the need can open; the handle is discarded.
+					binding: newRunCredentialClientBinding(),
+					packageId: savedPackage.id,
+					runNeeds: async () =>
+						new Map(visitorNeeds.map((item) => [item.key, item])),
+					packageAppAuthority: createPackageAppCredentialAuthority({
+						env,
+						scope: {
+							orgId: owner.userId,
+							packageId: savedPackage.id,
+						},
+						grantScope: {
+							orgSlug: packagePath.username,
+							kodyId: savedPackage.kodyId,
+						},
+						visitorRequest: await createPackageAppVisitorPersonalRequest({
+							db: env.APP_DB,
+							visitor,
+						}),
+						issue: { visitorNeed: need.key },
+						waitUntil: scheduleWorkerWaitUntil,
+					}),
+				},
+				{ key: need.key },
+			)
 		}
 		for (const need of requiredExecutorNeeds) {
 			try {
-				await openCredentialClient(
-					{
-						env,
-						callerContext,
-						// Only checks the need can open; the handle is discarded.
-						binding: newRunCredentialClientBinding(),
-						packageId: savedPackage.id,
-						runNeeds: async () =>
-							new Map(visitorNeeds.map((item) => [item.key, item])),
-						packageAppAuthority: createPackageAppCredentialAuthority({
-							env,
-							scope: {
-								orgId: owner.userId,
-								packageId: savedPackage.id,
-							},
-							grantScope: {
-								orgSlug: packagePath.username,
-								kodyId: savedPackage.kodyId,
-							},
-							visitorRequest: await createPackageAppVisitorPersonalRequest({
-								db: env.APP_DB,
-								visitor: needVisitor,
-							}),
-							issue: { visitorNeed: need.key },
-							waitUntil: scheduleWorkerWaitUntil,
-						}),
-					},
-					{ key: need.key },
-				)
+				await openRequiredNeed(need, needVisitor)
 			} catch (error) {
 				if (!(error instanceof CredentialClientError)) throw error
+				if (dispatch?.agent) {
+					// When the need opens for the person alone, asking them again
+					// cannot help: the acting profile is what lacks the credential.
+					const profileActs =
+						needVisitor &&
+						'credential' in needVisitor &&
+						needVisitor.credential?.profileId
+					const consented =
+						profileActs &&
+						(await openRequiredNeed(need, {
+							...needVisitor,
+							credential: null,
+						}).then(
+							() => true,
+							(personError: unknown) => {
+								if (personError instanceof CredentialClientError) return false
+								throw personError
+							},
+						))
+					return consented
+						? profileCredentialRequired(need.key)
+						: visitorConsentRequired(need.key)
+				}
 				if (request.method !== 'GET' && request.method !== 'HEAD') {
 					throw error
 				}
@@ -1547,6 +1612,8 @@ async function servePackageAppRequestWithId(input: {
 		// that declined every optional need) serves the app after that.
 		if (
 			consentPerson &&
+			// An agent cannot give consent, and an optional need never blocks.
+			!dispatch?.agent &&
 			(request.method === 'GET' || request.method === 'HEAD') &&
 			executorNeeds.some((need) => need.required === false) &&
 			!executorGrant &&

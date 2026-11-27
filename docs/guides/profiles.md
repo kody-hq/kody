@@ -141,6 +141,12 @@ returns `{ profile, token }`; give the sub-agent `token.token` as its
   without one they are refused or skipped (`profile_grant`).
 - Host commands on a context need `execution_context:command` in every layer of
   the profile chain, even on a machine you operate.
+- A profile uses a package app through `appFetch` or `kody app fetch` when it
+  was given Use on that app. The app sees you, with the profile as a label. You
+  can give a profile an app another org shared with you: grant it from your own
+  org with `accessGrant` (`resource_type: "app"`, the `package_id` from
+  `appList`, `subject_type: "profile"`). See
+  [Using apps as an agent](/docs/agent-apps).
 - Jobs, triggers, and app visits that a profile turns on keep running as that
   profile. When it or a parent is revoked or expires, they pause with
   `paused_reason: "profile_inactive"` and stay paused until an active credential

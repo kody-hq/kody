@@ -120,7 +120,7 @@ export function parseAuthoredPackageJson(input: {
 	 * `authoring` (default) is write/publish: leftover `kody.app.runtime` is
 	 * rejected so kits cannot hide a removed mode. `published` is snapshot
 	 * load: the field is inert (every entry is a fetch handler) and must not
-	 * brick host-setup / packageAppFetch.
+	 * brick host-setup / appFetch.
 	 */
 	mode?: PackageManifestParseMode
 }): AuthoredPackageJson {

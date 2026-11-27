@@ -19,7 +19,26 @@ test('package app visitor header carries trusted consent scopes', () => {
 		userId: personIdFromStored('visitor-1'),
 		username: 'visitor',
 		role: 'member',
+		profile: null,
 		scopes: ['profile', 'email', 'need:calendar'],
+	})
+})
+
+test('package app visitor header labels the profile acting for the person', () => {
+	const header = packageAppVisitorHeaderValue({
+		visitor: {
+			userId: personIdFromStored('visitor-1'),
+			username: 'visitor',
+			role: null,
+			profile: { id: 'prf_1', name: 'release-bot' },
+		},
+	})
+	expect(JSON.parse(header ?? 'null')).toEqual({
+		userId: personIdFromStored('visitor-1'),
+		username: 'visitor',
+		role: null,
+		profile: { id: 'prf_1', name: 'release-bot' },
+		scopes: ['profile'],
 	})
 })
 

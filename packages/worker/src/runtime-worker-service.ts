@@ -15,7 +15,7 @@ export const packageAppRuntimeForwardUnavailableMessage =
  * HTTP package-app traffic is already runtime-owned via
  * `isRuntimeWorkerOwnedRequest` + wholesale `RUNTIME_WORKER.fetch`. This
  * helper is for the remaining in-process hole (stateless MCP
- * `packageAppFetch` → `servePackageAppRequest` on slim origin).
+ * `appFetch` → `servePackageAppRequest` on slim origin).
  */
 export function hasLocalPackageAppRuntimeBridge() {
 	return typeof workerExports.PackageAppRuntimeBridge === 'function'

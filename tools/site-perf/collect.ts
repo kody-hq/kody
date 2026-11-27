@@ -30,7 +30,7 @@ export type SitePerfPageProbe = {
 /**
  * A hello-world package app: every request returns `ok`, so its timing is
  * Kody's platform overhead on the package-app serve path. With
- * `KODY_API_TOKEN` the probe calls Open API `packageAppFetch` (no internet
+ * `KODY_API_TOKEN` the probe calls Open API `appFetch` (no internet
  * visibility needed); without one it fetches the internet-visible hosted URL
  * anonymously. Requests run back to back; the first may be cold, later ones
  * show the warm path. `ttfbMs` is the round trip; `serverTiming` is the app
@@ -51,8 +51,7 @@ export type SitePerfPackageAppProbe = {
 /** `@kentcdodds/perf-hello`. */
 export const defaultPackageAppProbePackageId =
 	'87aebd1f-9589-4c5a-b34e-40f191413564'
-export const defaultPackageAppFetchUrl =
-	'https://api.kody.codes/v1/packages/app-fetch'
+export const defaultAppFetchUrl = 'https://api.kody.codes/v1/apps/fetch'
 /** Anonymous hosted URL for `@kentcdodds/perf-hello` (internet-visible). */
 export const defaultPackageAppHostedUrl =
 	'https://kentcdodds.kody.run/perf-hello/'
@@ -245,7 +244,7 @@ async function probePage(url: string): Promise<SitePerfPageProbe | null> {
 	}
 }
 
-type PackageAppFetchResult = {
+type AppFetchResult = {
 	status?: number
 	headers?: Record<string, string>
 }
@@ -293,7 +292,7 @@ async function probePackageApp(input: {
 	apiToken: string
 	url?: string
 }): Promise<SitePerfPackageAppProbe | null> {
-	const url = input.url ?? defaultPackageAppFetchUrl
+	const url = input.url ?? defaultAppFetchUrl
 	const samples: SitePerfPackageAppProbe['samples'] = []
 	try {
 		for (let index = 0; index < packageAppProbeSamples; index += 1) {
@@ -304,17 +303,21 @@ async function probePackageApp(input: {
 					Authorization: `Bearer ${input.apiToken}`,
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({ package_id: input.packageId, path: '/' }),
+				body: JSON.stringify({
+					package_id: input.packageId,
+					path: '/',
+					synthetic: true,
+				}),
 				signal: AbortSignal.timeout(packageAppProbeTimeoutMs),
 			})
 			const ttfbMs = Math.round(performance.now() - startedAt)
 			const text = await response.text()
 			if (!response.ok) {
 				throw new Error(
-					`packageAppFetch HTTP ${response.status}: ${text.slice(0, 200)}`,
+					`appFetch HTTP ${response.status}: ${text.slice(0, 200)}`,
 				)
 			}
-			const result = JSON.parse(text) as PackageAppFetchResult
+			const result = JSON.parse(text) as AppFetchResult
 			samples.push({
 				status: result.status ?? 0,
 				ttfbMs,
@@ -341,7 +344,7 @@ export async function collectSitePerf(input: {
 	now?: Date
 	/** Hello-world package app id to probe; null skips it. */
 	packageAppId?: string | null
-	/** Open API token for `packageAppFetch`; without one the probe is anonymous. */
+	/** Open API token for `appFetch`; without one the probe is anonymous. */
 	apiToken?: string | null
 	/** Anonymous fallback URL; only used for the default package app. */
 	packageAppHostedUrl?: string | null

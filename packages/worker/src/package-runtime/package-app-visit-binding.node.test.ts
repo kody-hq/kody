@@ -247,6 +247,7 @@ test('an executor-only ticket answers identity only and acts as no visitor elsew
 		email: '',
 		display_name: 'outsider',
 		org: { slug: 'org' },
+		profile: null,
 		scopes: ['profile', 'need:github'],
 	})
 })

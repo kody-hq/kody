@@ -322,7 +322,7 @@ export default {
 
 // Mirrors PackageApp Entrypoint.fetch: createRuntime → ALS.run → import user →
 // user.fetch. Entry load happens before ALS (Worker evaluates mainModule first).
-async function runPackageAppFetchPath(input: {
+async function runAppFetchPath(input: {
 	writeTempFiles: (
 		files: Record<string, string>,
 	) => Promise<Record<string, string>>
@@ -347,7 +347,7 @@ test('hosted package-app fetch path: entry that pre-imports runtime freezes cred
 	await withRuntimeIsolationCleanup(
 		async ({ writeTempFiles, installSharedStorage }) => {
 			await expect(
-				runPackageAppFetchPath({
+				runAppFetchPath({
 					writeTempFiles,
 					installSharedStorage,
 					entrySource: `
@@ -370,7 +370,7 @@ export async function simulateFetch(runtime) {
 test('hosted package-app fetch path: deferred runtime import keeps credential callable', async () => {
 	await withRuntimeIsolationCleanup(
 		async ({ writeTempFiles, installSharedStorage }) => {
-			const result = await runPackageAppFetchPath({
+			const result = await runAppFetchPath({
 				writeTempFiles,
 				installSharedStorage,
 				entrySource: `

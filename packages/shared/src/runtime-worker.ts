@@ -17,7 +17,7 @@
 
 import type { OwnerId, PersonId } from './owner-person-ids.ts'
 import type { PackageAppMount } from './public-urls.ts'
-import type { OrgRole } from './request-context.ts'
+import type { OrgRole, RequestCredential } from './request-context.ts'
 
 /** Healthcheck endpoint served by the runtime Worker. */
 export const runtimeWorkerHealthPath = '/__runtime/health'
@@ -59,7 +59,25 @@ export type RuntimePackageAppVisitor = {
 	userId: PersonId
 	username: string
 	role: OrgRole | null
+	/**
+	 * The agent profile making the visit for the person (`appFetch`). The app
+	 * sees the same `userId` with this label added. Absent for the person
+	 * themselves.
+	 */
+	profile?: RuntimePackageAppVisitorProfile | null
+	/**
+	 * What the visiting credential narrows the person to: its token scopes and
+	 * profile chain. Absent for a browser session, which does not narrow.
+	 */
+	credential?: RuntimePackageAppVisitorCredential | null
 }
+
+export type RuntimePackageAppVisitorProfile = { id: string; name: string }
+
+export type RuntimePackageAppVisitorCredential = Pick<
+	RequestCredential,
+	'scopes' | 'profileId' | 'profileChain' | 'profileOrgId'
+>
 
 /**
  * A signed-in person who cannot run the app (no `app:execute` in the owning
@@ -107,7 +125,8 @@ export type RuntimePackageAppServeInput = {
 	 */
 	approvedPublishedCommit?: string | null
 	packagePath: RuntimePackageAppPath
-	dispatch?: { readonly synthetic: true }
+	/** `appFetch` only: an agent visit, and its explicit smoke-test opt-in. */
+	dispatch?: { readonly agent?: true; readonly synthetic?: boolean }
 }
 
 /**

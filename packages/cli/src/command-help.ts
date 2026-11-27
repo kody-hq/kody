@@ -537,7 +537,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 	},
 	{
 		name: 'app',
-		summary: 'Check a package app in a real browser',
+		summary: 'Call, list, and check package apps',
 		usage: ['kody app <command> [flags]'],
 		subcommands: [
 			{
@@ -560,6 +560,40 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					orgFlag,
 					jsonFlag,
 				],
+			},
+			{
+				name: 'fetch',
+				summary: 'Call a hosted package app you can run, as you',
+				usage: [
+					'kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"] [--body <text | @file>] [--out <file>] [--synthetic] [--json]',
+				],
+				notes: [
+					'A real visit with real side effects, authorized like opening the app in a browser: you need Use on the app. Works for apps in your orgs and apps shared with you (kody app list).',
+					'The request goes to the Kody API (appFetch), which calls the app for you. Your token is never sent to the app or its hosted URL.',
+					'With a profile token (KODY_API_TOKEN) the app sees you plus the profile, and the profile needs Use on the app.',
+					'If the app needs your one-time confirmation, the error gives the link to open in a browser. Open it once, then run the command again.',
+					'The body prints to stdout, up to 102400 bytes. --out <file> writes it to a file instead, up to 10 MB.',
+				],
+				flags: [
+					['--method <verb>', 'HTTP method (default GET)'],
+					['--header "Name: value"', 'Extra request header; repeatable'],
+					['--body <text | @file>', 'Request body text, or @file to read it'],
+					['--out <file>', 'Write the response body here (up to 10 MB)'],
+					[
+						'--synthetic',
+						'Mark the request as a smoke test (Kody-Synthetic: true)',
+					],
+					jsonFlag,
+				],
+			},
+			{
+				name: 'list',
+				summary: 'List the package apps you can run',
+				usage: ['kody app list [--org <slug>] [--json]'],
+				notes: [
+					'Lists apps in every org you belong to and apps shared with you. A profile token lists only the apps its profile can run.',
+				],
+				flags: [['--org <slug>', 'List one org only'], jsonFlag],
 			},
 		],
 	},

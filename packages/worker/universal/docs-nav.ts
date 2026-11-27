@@ -95,6 +95,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			{ slug: 'local-execute', label: 'Local CLI execute' },
 			{ slug: 'execution-contexts', label: 'Execution contexts' },
 			{ slug: 'profiles', label: 'Profiles' },
+			{ slug: 'agent-apps', label: 'Using apps as an agent' },
 			{ slug: 'auth-setup-git', label: 'Git credential helper' },
 			{ slug: 'open-api', label: 'Kody Open API' },
 			{ slug: 'api-tokens', label: 'API tokens (API keys)' },

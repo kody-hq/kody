@@ -158,8 +158,11 @@ async function loadProfileChainAccess(
 ): Promise<{ chain: ProfileChainAccess; validUntil: string | null } | null> {
 	const profileId = request.credential.profileId
 	if (!profileId) return null
+	// The chain is read in the profile's own org; its grants below are read in
+	// the request's org, so a visit to an app shared from another org counts
+	// only the grants written against that app's org.
 	const rows = await loadProfileChain(env.APP_DB, {
-		orgId: request.org.id,
+		orgId: request.credential.profileOrgId ?? request.org.id,
 		profileId,
 	})
 	const tip = rows.at(-1)

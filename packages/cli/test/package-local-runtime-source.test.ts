@@ -139,7 +139,7 @@ function assertProdUnsupported(error: unknown, exportName: string) {
 		new RegExp(`${exportName} is intentionally unsupported on --target prod`),
 	)
 	assert.match(error.message, /--target mock/)
-	assert.match(error.message, /publish and use packageAppFetch/)
+	assert.match(error.message, /publish and use appFetch/)
 	assert.match(
 		error.message,
 		/https:\/\/kody\.codes\/docs\/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod/,

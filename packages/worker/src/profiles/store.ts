@@ -110,42 +110,58 @@ export async function profileNameTaken(
 
 export type ProfileGrantRow = {
 	grantId: string
+	/** The org that owns the resource; another org for a shared app. */
+	orgId: string
 	resourceType: string
 	resourceId: string
 	permissions: Array<OrgPermission>
 }
 
-/** One live profile grant by id, or null. */
+/**
+ * One live grant by id on a profile that lives in `orgId`, or null. The grant
+ * itself sits in the org that owns its resource, which is another org for an
+ * app shared with the person.
+ */
 export async function findLiveProfileGrant(
 	db: D1Database,
 	input: { orgId: string; grantId: string },
-): Promise<{ grantId: string; profileId: string } | null> {
+): Promise<{ grantId: string; profileId: string; orgId: string } | null> {
 	const row = await db
 		.prepare(
-			`SELECT id, subject_id FROM grants
-			 WHERE org_id = ? AND id = ? AND subject_type = 'profile'
-			   AND deleted_at IS NULL`,
+			`SELECT g.id, g.subject_id, g.org_id FROM grants g
+			 JOIN profiles p ON p.id = g.subject_id
+			 WHERE p.org_id = ? AND g.id = ? AND g.subject_type = 'profile'
+			   AND g.deleted_at IS NULL`,
 		)
 		.bind(input.orgId, input.grantId)
-		.first<{ id: string; subject_id: string }>()
-	return row ? { grantId: row.id, profileId: row.subject_id } : null
+		.first<{ id: string; subject_id: string; org_id: string }>()
+	return row
+		? { grantId: row.id, profileId: row.subject_id, orgId: row.org_id }
+		: null
 }
 
-/** Live profile grants keyed by profile id. */
+/**
+ * Live profile grants keyed by profile id. `orgId` keeps only the grants
+ * written against that org's resources, which is what an access check reads;
+ * null reads every grant the profiles hold, shared apps in other orgs
+ * included.
+ */
 export async function loadProfileGrants(
 	db: D1Database,
-	input: { orgId: string; profileIds: ReadonlyArray<string> },
+	input: { orgId: string | null; profileIds: ReadonlyArray<string> },
 ): Promise<Map<string, Array<ProfileGrantRow>>> {
 	const byProfile = new Map<string, Array<ProfileGrantRow>>()
 	if (input.profileIds.length === 0) return byProfile
 	type Row = {
 		grant_id: string
+		org_id: string
 		subject_id: string
 		resource_type: string
 		resource_id: string
 		permission: OrgPermission
 	}
 	const now = new Date().toISOString()
+	const { orgId } = input
 	// D1 binds at most 100 parameters; two are fixed.
 	const rows: Array<Row> = []
 	for (let i = 0; i < input.profileIds.length; i += 90) {
@@ -153,16 +169,18 @@ export async function loadProfileGrants(
 		const placeholders = batch.map(() => '?').join(', ')
 		const result = await db
 			.prepare(
-				`SELECT g.id AS grant_id, g.subject_id, g.resource_type, g.resource_id,
+				`SELECT g.id AS grant_id, g.org_id, g.subject_id, g.resource_type,
+					g.resource_id,
 					gp.permission
 				 FROM grants g JOIN grant_permissions gp ON gp.grant_id = g.id
-				 WHERE g.org_id = ? AND g.subject_type = 'profile'
+				 WHERE g.subject_type = 'profile'
+				   ${orgId === null ? '' : 'AND g.org_id = ?'}
 				   AND g.deleted_at IS NULL
 				   AND (g.expires_at IS NULL OR g.expires_at > ?)
 				   AND g.subject_id IN (${placeholders})
 				 ORDER BY g.created_at ASC, g.id ASC, gp.permission ASC`,
 			)
-			.bind(input.orgId, now, ...batch)
+			.bind(...(orgId === null ? [] : [orgId]), now, ...batch)
 			.all<Row>()
 		rows.push(...result.results)
 	}
@@ -172,6 +190,7 @@ export async function loadProfileGrants(
 		if (!grant) {
 			grant = {
 				grantId: row.grant_id,
+				orgId: row.org_id,
 				resourceType: row.resource_type,
 				resourceId: row.resource_id,
 				permissions: [],
@@ -191,7 +210,8 @@ export async function insertProfile(
 	db: D1Database,
 	input: {
 		row: ProfileRow
-		grants: ReadonlyArray<RequestedProfileGrant>
+		/** `orgId` is the org that owns the resource; the profile's org when absent. */
+		grants: ReadonlyArray<RequestedProfileGrant & { orgId?: string }>
 	},
 ) {
 	const { row } = input
@@ -230,7 +250,7 @@ export async function insertProfile(
 				)
 				.bind(
 					grantId,
-					row.org_id,
+					grant.orgId ?? row.org_id,
 					grant.resourceType,
 					grant.resourceId,
 					row.id,
