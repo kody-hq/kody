@@ -432,7 +432,6 @@ async function deliverReservedEmail({
 		throw mayHaveSent ? error : new ProviderRejection(error)
 	}
 	const providerMessageId = result.messageId ?? null
-	await onAccepted(providerMessageId)
 	await recordSystemEmailSends({
 		db: input.env.APP_DB,
 		providerMessageId,
@@ -441,6 +440,7 @@ async function deliverReservedEmail({
 		kind,
 		now: sentAt,
 	})
+	await onAccepted(providerMessageId)
 	const resolvedHtml = html ?? htmlFromText(text ?? '')
 	try {
 		await dispatchSystemEmailSentSubscriptionEvent({
