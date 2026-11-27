@@ -479,8 +479,9 @@ In a terminal: `kody billing checkout-link --org acme --interval year`.
   interval, even when you also pass `interval`. With no code, the running sale
   is still applied by interval.
 - A code that is unknown, expired, or no longer active does not fail the call.
-  You get the link at the regular price plus a `note` saying the code could not
-  be applied. A bad code passed as `interval` gives a monthly link.
+  You still get the link, plus a `note` saying the code could not be applied.
+  The code picks no interval, so a bad code passed as `interval` gives a monthly
+  link. A running sale the person qualifies for is still applied by interval.
 - `ok: false` carries a plain `reason` to pass on: the org already has a paid
   plan, you cannot manage its billing, the org is unknown, or the plan or
   interval is invalid. Pro is the only plan sold at checkout.

@@ -219,7 +219,8 @@ export async function resolveBlackFridayCodeInterval(input: {
 		})
 		return resolved.ok ? interval : null
 	} catch (error) {
-		if (!(error instanceof StripeApiError)) throw error
+		// Stripe errors, timeouts, and network failures alike: the code is left
+		// out and the person still gets a checkout link.
 		console.error('black_friday_code_interval_lookup_failed', error)
 		return null
 	}

@@ -63,7 +63,7 @@ export const billingCheckoutLinkCapability = defineDomainCapability(
 				.string()
 				.optional()
 				.describe(
-					'Optional. A sale code the person has. It picks the billing interval that code is for. The sale price applies with or without it, and a code that cannot be used is left out: checkout still works at the regular price.',
+					'Optional. A sale code the person has. It picks the billing interval that code is for. A running sale price applies with or without it. A code that cannot be used is left out and picks no interval: the link still works.',
 				),
 		}),
 		outputSchema: z.discriminatedUnion('ok', [

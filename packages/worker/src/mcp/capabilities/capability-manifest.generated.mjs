@@ -3766,7 +3766,7 @@ export const capabilityManifest = {
 								"type": "string"
 							},
 							"promoCode": {
-								"description": "Optional. A sale code the person has. It picks the billing interval that code is for. The sale price applies with or without it, and a code that cannot be used is left out: checkout still works at the regular price.",
+								"description": "Optional. A sale code the person has. It picks the billing interval that code is for. A running sale price applies with or without it. A code that cannot be used is left out and picks no interval: the link still works.",
 								"type": "string"
 							}
 						},
@@ -3865,7 +3865,7 @@ export const capabilityManifest = {
 							}
 						]
 					},
-					"inputTypeDefinition": "type BillingCheckoutLinkInput = {\n\t/** Handle of the organization to upgrade, with or without @. Defaults to the organization this connection works for, and must be that organization. */\n\torg?: string\n\t/** The plan to buy. Only \"pro\" is sold at checkout (default). */\n\tplan?: string\n\t/** \"month\" (default) or \"year\". A promo code passed here is treated as `promoCode`. */\n\tinterval?: string\n\t/** Optional. A sale code the person has. It picks the billing interval that code is for. The sale price applies with or without it, and a code that cannot be used is left out: checkout still works at the regular price. */\n\tpromoCode?: string\n}",
+					"inputTypeDefinition": "type BillingCheckoutLinkInput = {\n\t/** Handle of the organization to upgrade, with or without @. Defaults to the organization this connection works for, and must be that organization. */\n\torg?: string\n\t/** The plan to buy. Only \"pro\" is sold at checkout (default). */\n\tplan?: string\n\t/** \"month\" (default) or \"year\". A promo code passed here is treated as `promoCode`. */\n\tinterval?: string\n\t/** Optional. A sale code the person has. It picks the billing interval that code is for. A running sale price applies with or without it. A code that cannot be used is left out and picks no interval: the link still works. */\n\tpromoCode?: string\n}",
 					"outputTypeDefinition": "type BillingCheckoutLinkOutput = {\n\tok: true\n\t/** The kody.codes link to give the person. It does not expire and is safe to forward: every check runs again for whoever opens it. */\n\turl: string\n\torg: string\n\tplan: \"pro\"\n\tinterval: \"month\" | \"year\"\n\t/** A running sale, or null when there is none. */\n\toffer: {\n\tapplies: boolean\n\t/** The sale price the person will get, or why the sale price will not apply to them. */\n\tmessage: string\n} | null\n\t/** Present when the promo code you passed could not be applied. The link still works. */\n\tnote?: string\n\t/** What to tell the person. */\n\tmessage: string\n} | {\n\tok: false\n\t/** Why checkout does not apply, in plain words. */\n\treason: string\n}"
 				},
 				{

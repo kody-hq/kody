@@ -6,6 +6,7 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import type * as StripeClient from '#worker/billing/stripe-client.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
@@ -610,6 +611,16 @@ test('a code that cannot be used still gets a regular checkout link and a note',
 	expect(
 		await link('ada', acmeAsOwner, { interval: 'BLACKFRIDAY-YEARLY' }),
 	).toMatchObject({ ok: true, url: monthLink, note })
+	// Stripe cannot be reached.
+	consoleError.mockImplementation(() => {})
+	mocks.findActivePromotionCode.mockRejectedValue(new TypeError('fetch failed'))
+	expect(
+		await link('ada', acmeAsOwner, { promoCode: 'BLACKFRIDAY-YEARLY' }),
+	).toMatchObject({ ok: true, url: monthLink, note })
+	expect(consoleError).toHaveBeenCalledWith(
+		'black_friday_code_interval_lookup_failed',
+		expect.any(TypeError),
+	)
 	// Stripe has it, but it expired.
 	mocks.findActivePromotionCode.mockResolvedValue({
 		id: 'promo_year',

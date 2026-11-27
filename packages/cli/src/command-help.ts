@@ -556,7 +556,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					['--interval month|year', 'Billing interval (default month)'],
 					[
 						'--promo-code <code>',
-						'Optional sale code. It picks the interval the code is for. A code that cannot be used is left out and checkout stays at the regular price',
+						'Optional sale code. It picks the interval the code is for. A code that cannot be used is left out and the link still works',
 					],
 					jsonFlag,
 				],
