@@ -682,10 +682,12 @@ see the kody.codes session cookie. Package author JavaScript cannot use the
 first-party `kody_session` cookie or call authenticated Kody pages as the
 signed-in user.
 
-Package app URLs follow the mount contract: Kody strips the mount
-(`/<package-name>` on a subdomain) before forwarding, so every entry sees
-`/<path>` and root-relative links such as `/audio/123` escape the app. Build
-in-app links, redirects, shared links, email links, and OAuth callbacks against
+Package app URLs follow the mount contract: when an app is served under a mount
+(`/<package-name>` on a shared user subdomain), Kody strips it before
+forwarding, so every entry sees `/<path>` and root-relative links such as
+`/audio/123` escape the app. A dedicated app host or verified custom domain
+serves the app at the root (`appBasePath` is empty). Build in-app links,
+redirects, shared links, email links, and OAuth callbacks against
 `packageContext.hostedUrl` and `packageContext.appBasePath`. Code outside a
 request (execute imports, jobs, webhooks, package invocations, workflows) reads
 the same two fields, so links it builds match the app; they are `null` only when
