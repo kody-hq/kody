@@ -1527,6 +1527,18 @@ async function servePackageAppRequestWithId(input: {
 				),
 				serverTiming,
 			)
+		const profileCredentialRequired = (needKey: string) =>
+			attachPackageAppServerTiming(
+				Response.json(
+					{
+						error: 'app_profile_credential_required',
+						message: `The person allowed "${needKey}" for this app, but the acting profile has no Use on the credential it maps to. Grant the profile Use on that credential (accessGrant on the credential), or call as the person.`,
+						need: needKey,
+					},
+					{ status: 403, headers: { 'Cache-Control': 'private, no-store' } },
+				),
+				serverTiming,
+			)
 		for (const need of requiredExecutorNeeds) {
 			try {
 				await openCredentialClient(
@@ -1560,7 +1572,25 @@ async function servePackageAppRequestWithId(input: {
 				)
 			} catch (error) {
 				if (!(error instanceof CredentialClientError)) throw error
-				if (dispatch?.agent) return visitorConsentRequired(need.key)
+				if (dispatch?.agent) {
+					// The person already allowed this need, so asking again cannot
+					// help: the acting profile is what lacks the credential.
+					const consented =
+						needVisitor &&
+						'credential' in needVisitor &&
+						needVisitor.credential?.profileId &&
+						(
+							await findLivePackageAppOauthGrant({
+								db: env.APP_DB,
+								personId: needVisitor.userId,
+								orgUsername: packagePath.username.toLowerCase(),
+								kodyId: savedPackage.kodyId,
+							})
+						)?.scopes.includes(`need:${need.key}`)
+					return consented
+						? profileCredentialRequired(need.key)
+						: visitorConsentRequired(need.key)
+				}
 				if (request.method !== 'GET' && request.method !== 'HEAD') {
 					throw error
 				}
