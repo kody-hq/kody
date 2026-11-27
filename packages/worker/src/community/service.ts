@@ -1703,6 +1703,8 @@ export async function persistPreparedCommunityFork(
 					serverTiming,
 				})
 				originCommit = persisted.copiedOriginCommit
+				leftoverOriginReferences =
+					persisted.leftoverOriginReferences ?? leftoverOriginReferences
 			} catch (error) {
 				// Storage-layer fork can leave a dest whose git clone fails with
 				// persistent Artifacts HTTP 5xx / corrupt pack even when origin

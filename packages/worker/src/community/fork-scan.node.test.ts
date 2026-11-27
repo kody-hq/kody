@@ -474,3 +474,37 @@ test('scanLeftoverOriginReferences is empty for an unchanged name and same-scope
 		}),
 	).toEqual([])
 })
+
+test('fork rewrite leaves a dotted sibling name alone in plain and escaped spellings', () => {
+	const files = {
+		'src/internal.ts':
+			"import '@kody/github._internal'\nconst re = /@kody\\/github\\._internal/\n",
+	}
+	const { files: rewritten } = forkGithub(files)
+	expect(rewritten['src/internal.ts']).toBe(files['src/internal.ts'])
+})
+
+test('scanLeftoverOriginReferences finds a scope whose punctuation is escaped, and stays fast on long backslash runs', () => {
+	const names = {
+		originPackageName: '@my-org/github',
+		nextPackageName: '@alice/github',
+	}
+	const files = rewriteForkedPackageSelfReferences({
+		files: {
+			'src/match.ts': 'const re = /@my\\-org\\/github/\n',
+			'src/noise.ts': `// ${'\\'.repeat(200_000)}\n`,
+		},
+		...names,
+		topicRenames: {},
+	})
+	const started = performance.now()
+	const leftovers = scanLeftoverOriginReferences({ files, ...names })
+	expect(performance.now() - started).toBeLessThan(2_000)
+	expect(leftovers).toEqual([
+		{
+			file: 'src/match.ts',
+			line: 1,
+			snippet: 'const re = /@my\\-org\\/github/',
+		},
+	])
+})

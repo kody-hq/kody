@@ -3,7 +3,9 @@ import {
 	collectChangedForkFiles,
 	rewriteForkedPackageSelfReferences,
 	rewritePackageManifestForFork,
+	scanLeftoverOriginReferences,
 } from '#worker/community/fork-scan.ts'
+import type { LeftoverOriginReference } from '#worker/community/types.ts'
 import { writePublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import {
 	readArtifactFileAtCommit,
@@ -49,6 +51,11 @@ export async function forkArtifactRepo(input: {
 export type PersistForkedArtifactRepoResult = {
 	copiedOriginCommit: string
 	destCommit: string | null
+	/**
+	 * Leftover origin references in the tree persist rewrote from dest HEAD.
+	 * Absent when persist wrote the prepared tree, whose scan still holds.
+	 */
+	leftoverOriginReferences?: Array<LeftoverOriginReference>
 }
 
 /**
@@ -66,7 +73,7 @@ export type PersistForkedArtifactRepoResult = {
  * session path and `publishSession({ force: true })`, which the overwrite
  * gate correctly rejects for a brand-new fork. When dest HEAD matches the
  * listing pin used in prepare, `changedFiles` apply. When dest HEAD is
- * ahead of that pin, only dest HEAD's `package.json` is rewritten so
+ * ahead of that pin, the rewrite is derived again from dest HEAD's tree so
  * pin-relative edits cannot revert later origin commits.
  */
 export async function persistForkedArtifactRepoContents(input: {
@@ -133,16 +140,20 @@ export async function persistForkedArtifactRepoContents(input: {
 		)
 	}
 
-	const filesToSync =
+	const destHeadRewrite =
 		destHead.commit === input.originCommit
-			? input.changedFiles
-			: await buildDestHeadRewriteFiles({
+			? null
+			: await buildDestHeadRewrite({
 					env: input.env,
 					repoId: input.source.repo_id,
 					destHead: destHead.commit,
 					expectedPackageScope: input.expectedPackageScope,
 					targetKodyId: input.targetKodyId,
 				})
+	const filesToSync = destHeadRewrite?.files ?? input.changedFiles
+	const leftovers = destHeadRewrite?.leftoverOriginReferences
+		? { leftoverOriginReferences: destHeadRewrite.leftoverOriginReferences }
+		: {}
 	if (Object.keys(filesToSync).length === 0) {
 		// No rewrite diff means dest HEAD already has the forked tree, but
 		// published_commit must still have a matching KV snapshot. Writing
@@ -181,6 +192,7 @@ export async function persistForkedArtifactRepoContents(input: {
 		return {
 			copiedOriginCommit: destHead.commit,
 			destCommit: destHead.commit,
+			...leftovers,
 		}
 	}
 	const destCommit = await syncArtifactSourceSnapshot({
@@ -199,16 +211,21 @@ export async function persistForkedArtifactRepoContents(input: {
 	return {
 		copiedOriginCommit: destHead.commit,
 		destCommit,
+		...leftovers,
 	}
 }
 
-async function buildDestHeadRewriteFiles(input: {
+async function buildDestHeadRewrite(input: {
 	env: Env
 	repoId: string
 	destHead: string
 	expectedPackageScope: string
 	targetKodyId: string
-}): Promise<Record<string, string>> {
+}): Promise<{
+	files: Record<string, string>
+	/** Null when dest HEAD's tree could not be read, so nothing was scanned. */
+	leftoverOriginReferences: Array<LeftoverOriginReference> | null
+}> {
 	const bytes = await readArtifactFileAtCommit({
 		env: input.env,
 		repoId: input.repoId,
@@ -226,44 +243,66 @@ async function buildDestHeadRewriteFiles(input: {
 		expectedPackageScope: input.expectedPackageScope,
 		targetKodyId: input.targetKodyId,
 	})
-	if (Object.keys(rewritten.topicRenames).length > 0) {
-		// Renamed emits topics must follow into emit calls and subscriptions,
-		// or the fork fails its own typecheck. Re-derive from dest HEAD's tree
-		// so later origin commits are kept.
-		const tree = await readArtifactTreeAtCommit({
+	const originPackageName = rewritten.originName ?? ''
+	if (originPackageName !== rewritten.targetName) {
+		// The fork's own name and renamed emits topics must follow into source
+		// files, or the fork keeps matching the origin. Re-derive from dest
+		// HEAD's tree so later origin commits are kept.
+		const tree = await readDestHeadTree(input)
+		if (tree) {
+			const originFiles = { ...tree, 'package.json': manifestContent }
+			const rewrittenFiles = rewriteForkedPackageSelfReferences({
+				files: { ...originFiles, 'package.json': rewritten.content },
+				originPackageName,
+				nextPackageName: rewritten.targetName,
+				topicRenames: rewritten.topicRenames,
+			})
+			return {
+				files: collectChangedForkFiles({ originFiles, rewrittenFiles }),
+				leftoverOriginReferences: scanLeftoverOriginReferences({
+					files: rewrittenFiles,
+					originPackageName,
+					nextPackageName: rewritten.targetName,
+				}),
+			}
+		}
+	}
+	return {
+		files:
+			rewritten.content === manifestContent
+				? {}
+				: { 'package.json': rewritten.content },
+		leftoverOriginReferences:
+			originPackageName === rewritten.targetName ? [] : null,
+	}
+}
+
+async function readDestHeadTree(input: {
+	env: Env
+	repoId: string
+	destHead: string
+}) {
+	try {
+		return await readArtifactTreeAtCommit({
 			env: input.env,
 			repoId: input.repoId,
 			commit: input.destHead,
-		}).catch((error: unknown) => {
-			// Permanent: an unreadable tree must not fail the fork. The user
-			// loses the source-side topic rewrite and fixes those emit calls
-			// before the fork's first publish.
-			console.warn(
-				JSON.stringify({
-					message: 'fork dest head tree unreadable',
-					repoId: input.repoId,
-					destHead: input.destHead,
-					impact: 'kody.emits renames applied to package.json only',
-					error: error instanceof Error ? error.message : String(error),
-				}),
-			)
-			return null
 		})
-		if (tree) {
-			const originFiles = { ...tree, 'package.json': manifestContent }
-			return collectChangedForkFiles({
-				originFiles,
-				rewrittenFiles: rewriteForkedPackageSelfReferences({
-					files: { ...originFiles, 'package.json': rewritten.content },
-					originPackageName: rewritten.originName ?? '',
-					nextPackageName: rewritten.targetName,
-					topicRenames: rewritten.topicRenames,
-				}),
-			})
-		}
+	} catch (error) {
+		// Permanent: an unreadable tree must not fail the fork. The user loses
+		// the source-side rewrite and fixes those references before the fork's
+		// first publish.
+		console.warn(
+			JSON.stringify({
+				message: 'fork dest head tree unreadable',
+				repoId: input.repoId,
+				destHead: input.destHead,
+				impact: 'fork rewrite applied to package.json only',
+				error: error instanceof Error ? error.message : String(error),
+			}),
+		)
+		return null
 	}
-	if (rewritten.content === manifestContent) return {}
-	return { 'package.json': rewritten.content }
 }
 
 export function shouldFallbackFromArtifactFork(error: unknown) {

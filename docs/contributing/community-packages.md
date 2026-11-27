@@ -265,6 +265,13 @@ ordinary dependency and belongs to the cross-scope scan. The result is
 sentence in `agentPrompt` on the one-click install response. It never fails the
 fork.
 
+The list always describes the tree the fork wrote. When the storage-layer copy
+lands on a dest HEAD that is ahead of the listing pin,
+`persistForkedArtifactRepoContents` rewrites and scans dest HEAD's tree and that
+scan replaces the one from preparation. If that tree cannot be read, only
+`package.json` is rewritten and the preparation scan is kept as the best
+estimate.
+
 `forkCommunityListing` reads the KV snapshot for rewrite/scan (Worker), then
 copies the origin Artifacts repo with `POST .../repos/{source}/fork` so the tree
 never enters a RepoSession isolate as `Record<path, string>` edits. When the

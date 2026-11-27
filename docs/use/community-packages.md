@@ -179,13 +179,17 @@ the published revision, or the listing pin if there is no published revision.
   a string that builds a regex (`@kody\\/github`), and URL-encoded (`%40` for
   `@`, `%2F` or `%2f` for `/`). A longer name such as `@kody/github-foo` or
   `@kody/github2` is a different package and is left alone.
-- `leftover_origin_references` in the fork result lists each line that still
-  names the origin package after the rewrite (`file`, `line`, `snippet`), for
-  example a `\u0040` escape or a name joined from parts that the scan can still
-  see. It also lists escaped or encoded references to the origin scope. The fork
-  still succeeds. Review each line and change it where it should follow your
-  fork. The list is empty when nothing is left and holds at most 50 entries.
-  One-click install adds the same lines to the prompt it gives you.
+- `leftover_origin_references` in the fork result lists lines that still name
+  the origin package after the rewrite (`file`, `line`, `snippet`). The scan
+  recognizes the spellings above plus any number of backslashes and `\u0040`,
+  `\x40`, `\u002f`, and `\x2f` escapes. It also lists escaped or encoded
+  references to the origin scope when the fork changes scope. It is a text scan,
+  not a complete one: it does not see HTML entities, double URL encoding, or a
+  name built from parts at run time. The fork still succeeds. Review each line
+  and change it where it should follow your fork. The list is empty when nothing
+  is found and holds at most 50 entries. The one-click install prompt names the
+  first 10 as `file:line` and says how many more there are; the response carries
+  the full list.
 - **No saved package row is created**, so nothing runs yet — no imports, jobs,
   subscriptions, or package app. Lookups that need a saved package
   (`packageGet`, `packageGetGitRemote`) name the pending fork and point at

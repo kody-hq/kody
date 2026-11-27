@@ -91,10 +91,11 @@ const rewrittenSlashForms = String.raw`\\{0,2}/|%2[Ff]`
 /**
  * A whole `@scope/name` ends where the next character cannot continue the
  * name: not a name character, an escaped hyphen, or a dot that starts a
- * topic body or a longer name (`@kody/github.issue`, `@kody\/github\.issue`).
+ * topic body or a longer name (`@kody/github.issue`, `@kody\/github\.issue`,
+ * `@kody/github._internal`).
  * A sentence-ending `.` and a regex `\.` before a delimiter still end it.
  */
-const scopedNameEnd = String.raw`(?![A-Za-z0-9_-]|\\+-|\.[a-z0-9*]|\\+\.\\*[a-z0-9])`
+const scopedNameEnd = String.raw`(?![A-Za-z0-9_-]|\\+-|\.[a-z0-9*_-]|\\+\.\\*[a-z0-9*_-])`
 
 /**
  * The topic body is lower-dot-case, so a reference ends where the next
@@ -321,9 +322,10 @@ export function rewriteScopedReferences(input: {
 /**
  * Looser spellings the leftover scan recognizes but the rewrite leaves
  * alone: any number of backslashes, and `\u0040` / `\x40` / `\u002f` /
- * `\x2f` escapes.
+ * `\x2f` escapes. A backslash run is matched from its first backslash only,
+ * so a long run costs one pass.
  */
-const leftoverAtForms = String.raw`(?:\\*@|%40|\\+u0040|\\+x40)`
+const leftoverAtForms = String.raw`(?:(?<!\\)\\*@|%40|(?<!\\)\\+u0040|(?<!\\)\\+x40)`
 const leftoverSlashForms = String.raw`(?:\\*/|%2[Ff]|\\+u002[Ff]|\\+x2[Ff])`
 const leftoverNameEnd = String.raw`(?![A-Za-z0-9_-]|\\+-)`
 const maxLeftoverOriginReferences = 50
@@ -382,7 +384,6 @@ export function scanLeftoverOriginReferences(input: {
 	for (const file of paths) {
 		const content = input.files[file]!
 		if (isByteSnapshotFile(file, content)) continue
-		if (!content.includes(originScope)) continue
 		let line = 1
 		let scanned = 0
 		let lastReportedLine = 0
