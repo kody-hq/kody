@@ -30003,7 +30003,7 @@ export const capabilityManifest = {
 				{
 					"name": "adminWhatsNewEmailSend",
 					"domain": "admin",
-					"description": "Send one What's New in Kody email from news@. Site admins only; the package manages consent and signed unsubscribe links.",
+					"description": "Send one What's New in Kody email from news@. Site admins only; the package manages consent and signed unsubscribe links. Pass idempotency_key (stable per campaign and recipient) so a retry after a lost response returns the original result instead of sending again.",
 					"keywords": [],
 					"readOnly": false,
 					"idempotent": false,
@@ -30043,6 +30043,12 @@ export const capabilityManifest = {
 								"additionalProperties": {
 									"type": "string"
 								}
+							},
+							"idempotency_key": {
+								"description": "Stable per campaign and recipient. Reserved before the daily counter or Cloudflare is touched. A retry of a sent key returns the stored result with replayed true and sends nothing. A retry of an attempt that never finished is refused as outcome unknown and sends nothing. A key that failed before reaching Cloudflare can be retried. Reusing a key for another recipient is refused. Keys expire after 90 days.",
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200
 							}
 						},
 						"required": [
@@ -30076,18 +30082,23 @@ export const capabilityManifest = {
 									"string",
 									"null"
 								]
+							},
+							"replayed": {
+								"type": "boolean",
+								"description": "True when idempotency_key matched an earlier finished send; nothing was sent by this call."
 							}
 						},
 						"required": [
 							"from",
 							"to",
 							"provider_message_id",
-							"send_id"
+							"send_id",
+							"replayed"
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type AdminWhatsNewEmailSendInput = {\n\tto: string\n\tsubject: string\n\thtml?: string\n\ttext?: string\n\t/** Custom headers Cloudflare Email Sending accepts, such as List-Unsubscribe or X-*. Headers with their own field (Reply-To, From, To, Cc, Bcc, Subject) or that Cloudflare generates (Message-ID, Date) are rejected. */\n\theaders?: Record<string, string>\n}",
-					"outputTypeDefinition": "type AdminWhatsNewEmailSendOutput = {\n\tfrom: string\n\tto: Array<string>\n\tprovider_message_id: string | null\n\t/** The system_email_sends composite key encoded as JSON [provider_message_id, recipient]; null if the provider returned no message ID. */\n\tsend_id: string | null\n}"
+					"inputTypeDefinition": "type AdminWhatsNewEmailSendInput = {\n\tto: string\n\tsubject: string\n\thtml?: string\n\ttext?: string\n\t/** Custom headers Cloudflare Email Sending accepts, such as List-Unsubscribe or X-*. Headers with their own field (Reply-To, From, To, Cc, Bcc, Subject) or that Cloudflare generates (Message-ID, Date) are rejected. */\n\theaders?: Record<string, string>\n\t/** Stable per campaign and recipient. Reserved before the daily counter or Cloudflare is touched. A retry of a sent key returns the stored result with replayed true and sends nothing. A retry of an attempt that never finished is refused as outcome unknown and sends nothing. A key that failed before reaching Cloudflare can be retried. Reusing a key for another recipient is refused. Keys expire after 90 days. */\n\tidempotency_key?: string\n}",
+					"outputTypeDefinition": "type AdminWhatsNewEmailSendOutput = {\n\tfrom: string\n\tto: Array<string>\n\tprovider_message_id: string | null\n\t/** The system_email_sends composite key encoded as JSON [provider_message_id, recipient]; null if the provider returned no message ID. */\n\tsend_id: string | null\n\t/** True when idempotency_key matched an earlier finished send; nothing was sent by this call. */\n\treplayed: boolean\n}"
 				},
 				{
 					"name": "adminWhatsNewDeliveryEventList",

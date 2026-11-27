@@ -158,7 +158,7 @@ export const adminWhatsNewEmailSendCapability = defineDomainCapability(
 		name: 'adminWhatsNewEmailSend',
 		contextRuns: 'deny',
 		description:
-			"Send one What's New in Kody email from news@. Site admins only; the package manages consent and signed unsubscribe links.",
+			"Send one What's New in Kody email from news@. Site admins only; the package manages consent and signed unsubscribe links. Pass idempotency_key (stable per campaign and recipient) so a retry after a lost response returns the original result instead of sending again.",
 		inputSchema: z
 			.object({
 				to: z.email(),
@@ -170,6 +170,15 @@ export const adminWhatsNewEmailSendCapability = defineDomainCapability(
 					.optional()
 					.describe(
 						'Custom headers Cloudflare Email Sending accepts, such as List-Unsubscribe or X-*. Headers with their own field (Reply-To, From, To, Cc, Bcc, Subject) or that Cloudflare generates (Message-ID, Date) are rejected.',
+					),
+				idempotency_key: z
+					.string()
+					.trim()
+					.min(1)
+					.max(200)
+					.optional()
+					.describe(
+						'Stable per campaign and recipient. Reserved before the daily counter or Cloudflare is touched. A retry of a sent key returns the stored result with replayed true and sends nothing. A retry of an attempt that never finished is refused as outcome unknown and sends nothing. A key that failed before reaching Cloudflare can be retried. Reusing a key for another recipient is refused. Keys expire after 90 days.',
 					),
 			})
 			.refine((value) => value.html || value.text, {
@@ -186,15 +195,22 @@ export const adminWhatsNewEmailSendCapability = defineDomainCapability(
 				.describe(
 					'The system_email_sends composite key encoded as JSON [provider_message_id, recipient]; null if the provider returned no message ID.',
 				),
+			replayed: z
+				.boolean()
+				.describe(
+					'True when idempotency_key matched an earlier finished send; nothing was sent by this call.',
+				),
 		}),
 		async handler(args, ctx) {
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminWhatsNewEmailSend',
 				async () => {
+					const { idempotency_key, ...message } = args
 					const result = await sendNewsletterEmail({
 						env: ctx.env,
-						...args,
+						...message,
+						...(idempotency_key ? { idempotencyKey: idempotency_key } : {}),
 						waitUntil: ctx.waitUntil,
 					})
 					return {
@@ -204,11 +220,12 @@ export const adminWhatsNewEmailSendCapability = defineDomainCapability(
 						send_id: result.providerMessageId
 							? JSON.stringify([result.providerMessageId, result.to[0]])
 							: null,
+						replayed: result.replayed === true,
 					}
 				},
 				{
 					successReason: (result) =>
-						`to=${result.to.map(redactEmailRecipient).join(',')}`,
+						`to=${result.to.map(redactEmailRecipient).join(',')}${result.replayed ? ' replayed' : ''}`,
 				},
 			)
 		},
