@@ -682,27 +682,21 @@ see the kody.codes session cookie. Package author JavaScript cannot use the
 first-party `kody_session` cookie or call authenticated Kody pages as the
 signed-in user.
 
-Package app URLs follow the mount contract: on a subdomain the public path is
-`/<package-name>/<path>` (the username lives in the hostname; the segment is the
-package name leaf). Kody strips that mount before forwarding, so every entry
-sees `/<path>` and root-relative links such as `/audio/123` escape the app;
-build in-app links, redirects, shared links, email links, and OAuth callbacks
-against `packageContext.hostedUrl` and `packageContext.appBasePath` (derived
-from the serving username and package name leaf — `/<package-name>` on a
-subdomain, `/@username/packages/<package-name>` when served inline in
-non-production). A Remix recipe that prefixes its route contract remounts the
-Request in the entry. See
+Package app URLs follow the mount contract: when an app is served under a mount
+(`/<package-name>` on a shared user subdomain), Kody strips it before
+forwarding, so every entry sees `/<path>` and root-relative links such as
+`/audio/123` escape the app. A dedicated app host or verified custom domain
+serves the app at the root (`appBasePath` is empty). Build in-app links,
+redirects, shared links, email links, and OAuth callbacks against
+`packageContext.hostedUrl` and `packageContext.appBasePath`. Code outside a
+request (execute imports, jobs, webhooks, package invocations, workflows) reads
+the same two fields, so links it builds match the app; they are `null` only when
+the package has no app. An export imported from another package reads that
+package's own URL. See
 [Package app routing](../guides/package-authoring.md#package-app-routing) for
-the authoring example, and [Package apps](../guides/package-apps.md)
+the authoring example and [Package apps](../guides/package-apps.md)
 (`guide:package_apps`) for the fetch contract, Remix recipe, session handoff,
-`appFetch`, asset URLs, and lean forks. Outside a request (execute imports,
-jobs, webhooks, package invocations, workflows) the package's code still reads
-`packageContext.hostedUrl` and `appBasePath`: the canonical URL its app is
-served at (verified custom hostname, else its `kody.run` host or subdomain
-mount), so links it builds there match the app. They are `null` only when the
-package has no app. Exports a package app imports from another package read that
-package's own URL the same way. Request-only fields such as `cookiePrefix` and
-`clientModuleUrl` stay app-only.
+`appFetch`, asset URLs, and lean forks.
 
 Use the package app model when the package needs:
 

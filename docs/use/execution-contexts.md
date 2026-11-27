@@ -58,6 +58,14 @@ Execution contexts are an experiment. Turn them on at
   same with example commands. List those packages for the shell, or define the
   programs as named commands on the machine. See
   [Shared-box best practices](../guides/execution-contexts.md#shared-box-best-practices).
+- `executionContextList` is ordered by name and paged: `limit` (default 20, at
+  most 100) and `cursor`; pass `nextCursor` back until it is null.
+- Registration limits: one person may own 10 live contexts in an org on Free, 20
+  on Standard and Pro, and 50 on Max. A paid org's total is that number times
+  its seats; a Free org's total is 10. Revoked contexts and contexts attached
+  from another org do not count. Over a limit, registration fails with 429
+  `entitlement_limit` (`details.resource` is `execution_contexts_per_seat` or
+  `execution_contexts_per_org`); revoke an unused context or upgrade.
 - Token scopes: reads (`executionContextList`, `executionContextGet`, sharing
   and run lists, `executionChainGet`) need `execution_context:read`. Sharing
   changes (`executionContextShareSet`, `executionContextShareRemove`,
