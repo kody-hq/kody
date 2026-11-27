@@ -512,15 +512,36 @@ at run time. Helpers that resolve outside the gateway (`packageSecrets`,
 `credential()` can resolve (a slot with no kind takes only secret, oauth, or
 login credentials), and the source cannot say which kind a key takes.
 
+For a package that builds a name or key at run time, the codemod declares a
+`"prefix": true` slot (the key, or the key plus `-suffix`; ADR 0068 amendment
+2026-11-27) for each default name or prefix the source states:
+
+- a string built as `P-` plus a run-time part, or `.startsWith('P-')`, when `P`
+  is also a whole string in the package (`'google'` and
+  `` `google-${purpose}` ``);
+- `X + '-'` where `X` walks a module-level array of string literals
+  (`PREFIXES.some((item) => name.startsWith(item + '-'))`), for each element;
+- the literal default behind the name a gateway call or placeholder uses
+  (`createAuthenticatedFetch(name ?? 'slack')`, a parameter default, a `const`
+  initializer, or a same-module function's return).
+
+An already declared slot keeps its fields and gains `prefix`, unless its kind
+cannot take one. A package with a prefix slot, declared or inferred, is not
+reported for computed names, and literal names and `credential()` keys the
+prefix covers need no slot. A run-time name outside the prefix fails once
+enforcement is on.
+
 The codemod adds no slot and reports `needs_manual` for an undeclared
-`credential()` key, a computed name or key, a vault ref, a name that is not a
-valid slot key, a declared slot whose kind cannot fill the use, and `credential`
-passed around instead of called. A package whose `package.json` does not parse
-is reported too. For a nested package it reads the manifest at the entity
-source's `manifest_path` and only the files under its `source_root`. It uses
-`applyMode: 'published-only'`, so drifted and locked packages are updated
-without moving default-branch HEAD. Publishing stores the new needs closure with
-the approval pause skipped, as for every codemod.
+`credential()` key, a computed name or key with no stated default or prefix, a
+vault ref, a name that is not a valid slot key, a declared slot whose kind
+cannot fill the use, and `credential` passed around instead of called. A
+`typeof credential` in a type or as a run-time `typeof` operand is not passing
+it around. A package whose `package.json` does not parse is reported too. For a
+nested package it reads the manifest at the entity source's `manifest_path` and
+only the files under its `source_root`. It uses `applyMode: 'published-only'`,
+so drifted and locked packages are updated without moving default-branch HEAD.
+Publishing stores the new needs closure with the approval pause skipped, as for
+every codemod.
 
 Run it with `filters.scope: 'credential-need-enforcement'`. A rescan with the
 same filter must come back clean before the enforcement flag is turned on.

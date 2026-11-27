@@ -8,13 +8,22 @@ import {
 	resolveStringExpression,
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
-import { packageCredentialSlotNamePattern } from '#worker/package-registry/types.ts'
+import {
+	isErasedTypePosition,
+	isRuntimeTypeofOperand,
+} from '#worker/credentials/credential-stamp.ts'
+import {
+	packageCredentialSlotCoversName,
+	packageCredentialSlotNamePattern,
+	packageCredentialSlotPrefixMinLength,
+} from '#worker/package-registry/types.ts'
 import type {
 	PackageCodemod,
 	PackageCodemodContext,
 	PackageCodemodFinding,
 	PackageCodemodTransformResult,
 } from '../types.ts'
+import { inferCredentialPrefixes } from './0013-infer-credential-prefixes.ts'
 import {
 	type CredentialReferenceVia,
 	scanModuleCredentialReferences,
@@ -28,6 +37,13 @@ const packageManifestPath = 'package.json'
 export const declaredCredentialSlotDescription =
 	'Used by this package by name. Declared automatically from its source; describe what it is for.'
 
+/** Written into each `prefix: true` slot the codemod adds. */
+export const declaredCredentialPrefixSlotDescription =
+	'Used by this package by name, or by this name, a hyphen, and an account suffix chosen at run time. Declared automatically from its source; describe what it is for.'
+
+/** Slot kinds a `prefix: true` slot the codemod writes may already have. */
+const prefixableSlotKinds = new Set(['secret', 'oauth', 'login'])
+
 /**
  * Fixed messages only: findings reach the fleet operator, so they never
  * carry a credential name, file contents, or manifest values.
@@ -35,8 +51,10 @@ export const declaredCredentialSlotDescription =
 export const declareCredentialNeedsMessages = {
 	declare:
 		'Uses credentials by name that kody.credentials does not declare. Add a kody.credentials slot for each.',
+	declarePrefix:
+		'Builds credential names at run time from a prefix its source states. Add a kody.credentials slot with "prefix": true for each prefix.',
 	computed:
-		'Builds a credential name or credential() key at run time. Declare each credential it can use as a kody.credentials slot by hand.',
+		'Builds a credential name or credential() key at run time, and its source states no default name or prefix. Declare each credential it can use as a kody.credentials slot by hand (a slot with "prefix": true also covers its key plus "-suffix" names).',
 	vault:
 		'Uses a vault ref ({{secret/provider:ref}}). Declare a kody.credentials slot keyed by the provider by hand.',
 	invalidKey:
@@ -73,6 +91,8 @@ const fillingSlotKinds: Record<NameKind, ReadonlySet<string>> = {
 
 type Plan = {
 	add: Array<string>
+	/** Keys to declare with `prefix: true`, new or already declared. */
+	prefix: Array<string>
 	manual: Array<PackageCodemodFinding>
 	manifestPath: string
 	manifest: Record<string, unknown> | null
@@ -241,6 +261,10 @@ function scanParsedCredentialKeys(
 		const parent = ancestors.at(-1)
 		if (!parent || parent.type.startsWith('Import')) return
 		if (isNonReferenceName(node, parent)) return
+		// `typeof credential` in a type, or as a runtime string, hands the
+		// function to nothing.
+		if (isRuntimeTypeofOperand(node, parent)) return
+		if (isErasedTypePosition(ancestors)) return
 		const isCallee =
 			(parent.type === 'CallExpression' ||
 				parent.type === 'OptionalCallExpression') &&
@@ -286,6 +310,7 @@ async function planDeclarations(
 	) {
 		return {
 			add: [],
+			prefix: [],
 			manual: [
 				{
 					path: manifestKey,
@@ -320,6 +345,7 @@ async function planDeclarations(
 		paths.add(path)
 		pathsByName.set(name, paths)
 	}
+	const credentialKeys: Array<{ path: string; key: string }> = []
 	await scanModuleCredentialReferences(files, (path, parsed) => ({
 		add: () => {},
 		named: (name, kind, via) => {
@@ -340,9 +366,8 @@ async function planDeclarations(
 		// fetch-capable only), and source cannot say which kind a key takes.
 		const scan: KeyScan = {
 			key: (key) => {
-				if (!Object.hasOwn(declaredSlots, key)) {
-					flag(path, 'undeclaredCredentialKey')
-				}
+				if (!Object.hasOwn(declaredSlots, key))
+					credentialKeys.push({ path, key })
 			},
 			computed: () => flag(path, 'computed'),
 			indirect: () => flag(path, 'indirectCredential'),
@@ -350,6 +375,39 @@ async function planDeclarations(
 		if (parsed) scanParsedCredentialKeys(parsed, constants, scan)
 		else scanUnparsedCredentialKeys(files[path]!, scan)
 	})
+	const declaredPrefixes = Object.entries(declaredSlots)
+		.filter(
+			([key, slot]) =>
+				isPlainObject(slot) &&
+				slot.prefix === true &&
+				key.length >= packageCredentialSlotPrefixMinLength,
+		)
+		.map(([key]) => key)
+	const buildsNames = [...manual.values()].some((messages) =>
+		messages.has('computed'),
+	)
+	// Read conventions only for a package that builds a name at run time.
+	const prefix = buildsNames
+		? (await inferCredentialPrefixes(files)).filter((key) => {
+				if (declaredPrefixes.includes(key)) return false
+				const slot = declaredSlots[key]
+				if (slot === undefined) return true
+				if (!isPlainObject(slot)) return false
+				return slot.kind == null || prefixableSlotKinds.has(String(slot.kind))
+			})
+		: []
+	const prefixes = [...declaredPrefixes, ...prefix]
+	const coveredByPrefix = (name: string) =>
+		prefixes.some((key) =>
+			packageCredentialSlotCoversName({ key, prefix: true }, name),
+		)
+	if (prefixes.length > 0) {
+		// The prefix slots state which names the package can build.
+		for (const messages of manual.values()) messages.delete('computed')
+	}
+	for (const { path, key } of credentialKeys) {
+		if (!coveredByPrefix(key)) flag(path, 'undeclaredCredentialKey')
+	}
 	const add: Array<string> = []
 	for (const [name, kinds] of [...uses].sort(([left], [right]) =>
 		left.localeCompare(right),
@@ -369,10 +427,12 @@ async function planDeclarations(
 			for (const path of paths) flag(path, 'invalidKey')
 			continue
 		}
+		if (coveredByPrefix(name)) continue
 		add.push(name)
 	}
 	return {
 		add,
+		prefix,
 		manual: [...manual]
 			.sort(([left], [right]) => left.localeCompare(right))
 			.flatMap(([path, messages]) =>
@@ -406,6 +466,14 @@ async function detectDeclareCredentialNeeds(
 					},
 				]
 			: []),
+		...(plan.prefix.length > 0
+			? [
+					{
+						path: plan.manifestPath,
+						message: declareCredentialNeedsMessages.declarePrefix,
+					},
+				]
+			: []),
 		...plan.manual,
 	]
 }
@@ -415,7 +483,11 @@ async function transformDeclareCredentialNeeds(
 	context: PackageCodemodContext,
 ): Promise<PackageCodemodTransformResult> {
 	const plan = await planDeclarations(files, context)
-	if (plan.add.length === 0 || plan.manifest == null || plan.source == null) {
+	if (
+		(plan.add.length === 0 && plan.prefix.length === 0) ||
+		plan.manifest == null ||
+		plan.source == null
+	) {
 		return {
 			files: { ...files },
 			changed: false,
@@ -432,6 +504,20 @@ async function transformDeclareCredentialNeeds(
 				name,
 				{ description: declaredCredentialSlotDescription },
 			]),
+		),
+		...Object.fromEntries(
+			plan.prefix.map((name) => {
+				const declared = existing[name]
+				return [
+					name,
+					isPlainObject(declared)
+						? { ...declared, prefix: true }
+						: {
+								prefix: true,
+								description: declaredCredentialPrefixSlotDescription,
+							},
+				]
+			}),
 		),
 	}
 	const nextSource = `${JSON.stringify(
@@ -460,7 +546,7 @@ async function transformDeclareCredentialNeeds(
 export const declareCredentialNeedsCodemod: PackageCodemod = {
 	id: declareCredentialNeedsCodemodId,
 	description:
-		'Declare a kody.credentials slot for each credential a package fills through the fetch gateway by literal name (placeholders, createAuthenticatedFetch, secretHeaders.basic, oauthClientCredentials); flag undeclared credential() keys and computed names for manual review.',
+		'Declare a kody.credentials slot for each credential a package fills through the fetch gateway by literal name (placeholders, createAuthenticatedFetch, secretHeaders.basic, oauthClientCredentials), and a "prefix": true slot for each default name or prefix its source states for names built at run time; flag undeclared credential() keys and names with no stated default or prefix for manual review.',
 	applyMode: 'published-only',
 	detect: detectDeclareCredentialNeeds,
 	transform: transformDeclareCredentialNeeds,

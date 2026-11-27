@@ -37,7 +37,7 @@ const messages = {
 	declare:
 		'Uses credentials by name that kody.credentials does not declare. Add a kody.credentials slot for each.',
 	computed:
-		'Builds a credential name or credential() key at run time. Declare each credential it can use as a kody.credentials slot by hand.',
+		'Builds a credential name or credential() key at run time, and its source states no default name or prefix. Declare each credential it can use as a kody.credentials slot by hand (a slot with "prefix": true also covers its key plus "-suffix" names).',
 	vault:
 		'Uses a vault ref ({{secret/provider:ref}}). Declare a kody.credentials slot keyed by the provider by hand.',
 	invalidKey:
@@ -329,4 +329,155 @@ test('0013 findings never carry credential names', async () => {
 	for (const finding of findings) {
 		expect(finding.message).not.toContain('SECRET_NAME_123')
 	}
+})
+
+const prefixSlot = {
+	prefix: true,
+	description:
+		'Used by this package by name, or by this name, a hyphen, and an account suffix chosen at run time. Declared automatically from its source; describe what it is for.',
+}
+
+test('0013 does not read a type-position credential as passing it around', async () => {
+	const result = await transform(
+		[
+			"import { credential, credentials } from 'kody:runtime'",
+			'type GithubCredentialClient = Awaited<ReturnType<typeof credential>>',
+			'type Many = ReturnType<typeof credentials>',
+			'let cached: typeof credential | undefined',
+			"export const isFunction = typeof credential === 'function'",
+			'export async function client(): Promise<GithubCredentialClient> {',
+			"\treturn await credential('github')",
+			'}',
+		].join('\n'),
+		{ credentials: { github: { kind: 'oauth', description: 'GitHub.' } } },
+	)
+	expect(result.changed).toBe(false)
+	expect(result.needsManual).toEqual([])
+	const passed = await transform(
+		[
+			"import { credential } from 'kody:runtime'",
+			'export const open = credential as typeof credential',
+		].join('\n'),
+	)
+	expect(passed.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.indirectCredential },
+	])
+})
+
+test('0013 declares a prefix slot for a name built from a stated prefix', async () => {
+	const result = await transform(
+		[
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"export const DEFAULT_GOOGLE_INTEGRATION = 'google'",
+			'function resolve(account?: string) {',
+			'\tif (!account) return DEFAULT_GOOGLE_INTEGRATION',
+			"\tif (account.startsWith('google-')) return account",
+			'\treturn `${DEFAULT_GOOGLE_INTEGRATION}-${account}`',
+			'}',
+			'export function client(account?: string) {',
+			'\treturn createAuthenticatedFetch(resolve(account))',
+			'}',
+			"export const work = createAuthenticatedFetch('google-work')",
+		].join('\n'),
+	)
+	expect(declaredSlots(result)).toEqual({ google: prefixSlot })
+	expect(result.needsManual).toEqual([])
+	const again = await declareCredentialNeedsCodemod.transform(
+		result.files,
+		packageContext,
+	)
+	expect(again.changed).toBe(false)
+	expect(again.needsManual).toEqual([])
+})
+
+test('0013 declares a prefix slot for each name in a closed prefix list', async () => {
+	const result = await transform(
+		[
+			"const SECRET_PREFIXES = ['openaiApiKey', 'groqApiKey'] as const",
+			'export function secretNameFor(prefix: string, account?: string, override?: string) {',
+			'\tif (override) {',
+			"\t\tif (!SECRET_PREFIXES.some((item) => override === item || override.startsWith(item + '-'))) throw new Error('no')",
+			'\t\treturn override',
+			'\t}',
+			"\treturn account ? prefix + '-' + account : prefix",
+			'}',
+			'export function header(name: string) {',
+			"\treturn 'Bearer {{secret:' + name + '}}'",
+			'}',
+		].join('\n'),
+		{ credentials: { openaiApiKey: { kind: 'secret', description: 'Mine.' } } },
+	)
+	expect(declaredSlots(result)).toEqual({
+		openaiApiKey: { kind: 'secret', description: 'Mine.', prefix: true },
+		groqApiKey: prefixSlot,
+	})
+	expect(result.needsManual).toEqual([])
+})
+
+test('0013 declares a prefix slot for the default behind a run-time name', async () => {
+	const result = await transform(
+		[
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"const DEFAULT_SECRET = 'cloudflareApiToken'",
+			'export function slack(input: { integration?: string }) {',
+			"\treturn createAuthenticatedFetch(input.integration ?? 'slack')",
+			'}',
+			'export function run({ apiTokenSecret = DEFAULT_SECRET }: { apiTokenSecret?: string }) {',
+			'\treturn `Bearer {{secret:${apiTokenSecret}}}`',
+			'}',
+		].join('\n'),
+	)
+	expect(declaredSlots(result)).toEqual({
+		cloudflareApiToken: prefixSlot,
+		slack: prefixSlot,
+	})
+	expect(result.needsManual).toEqual([])
+})
+
+test('0013 leaves a run-time name with no stated default or prefix for the owner', async () => {
+	const result = await transform(
+		[
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"const label = 'user'",
+			'export function tag(id: string) {',
+			'\treturn `${label}:${id}` + `item-${id}`',
+			'}',
+			'export function client(name: string) {',
+			'\treturn createAuthenticatedFetch(name)',
+			'}',
+		].join('\n'),
+	)
+	expect(result.changed).toBe(false)
+	expect(result.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
+	const kindBound = await transform(
+		[
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			'export function client(name?: string) {',
+			"\treturn createAuthenticatedFetch(name ?? 'linear')",
+			'}',
+		].join('\n'),
+		{ credentials: { linear: { kind: 'mcp', description: 'Linear.' } } },
+	)
+	expect(kindBound.changed).toBe(false)
+	expect(kindBound.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
+})
+
+test('0013 reads a declared prefix slot as covering built and literal names', async () => {
+	const result = await transform(
+		[
+			"import { createAuthenticatedFetch, credential } from 'kody:runtime'",
+			'export function client(name: string) {',
+			'\treturn createAuthenticatedFetch(name)',
+			'}',
+			"export const work = createAuthenticatedFetch('google-work')",
+			"export const other = credential('google-other')",
+		].join('\n'),
+		{ credentials: { google: { prefix: true, description: 'Google.' } } },
+	)
+	expect(result.changed).toBe(false)
+	expect(result.needsManual).toEqual([])
 })

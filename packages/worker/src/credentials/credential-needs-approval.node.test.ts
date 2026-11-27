@@ -820,3 +820,21 @@ test('flipping an executor need between optional and required reshapes it', () =
 		diffCredentialNeeds([required], [need('GITHUB', { supplier: 'executor' })]),
 	).toEqual([])
 })
+
+test('turning a prefix on reshapes a need; turning it off does not', () => {
+	const prefixed = need('MAIL', { prefix: true })
+	expect(diffCredentialNeeds([need('MAIL')], [prefixed])).toEqual([
+		{
+			key: 'MAIL',
+			change: 'changed',
+			before: { kind: 'secret', provider: 'resend', multiple: false },
+			after: {
+				kind: 'secret',
+				provider: 'resend',
+				multiple: false,
+				prefix: true,
+			},
+		},
+	])
+	expect(diffCredentialNeeds([prefixed], [need('MAIL')])).toEqual([])
+})

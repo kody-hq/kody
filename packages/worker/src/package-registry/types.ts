@@ -327,6 +327,28 @@ export function isFetchCapableCredentialKind(
 	)
 }
 
+/** Shortest key a `prefix: true` slot may have. */
+export const packageCredentialSlotPrefixMinLength = 3
+
+/**
+ * Whether a slot keyed `slotKey` covers `name`: the key itself, or with
+ * `prefix`, the key, a hyphen, and a non-empty suffix that keeps the whole
+ * name a valid slot name.
+ */
+export function packageCredentialSlotCoversName(
+	slot: { key: string; prefix?: boolean | undefined },
+	name: string,
+) {
+	if (slot.key === name) return true
+	return (
+		slot.prefix === true &&
+		slot.key.length >= packageCredentialSlotPrefixMinLength &&
+		name.length > slot.key.length + 1 &&
+		name.startsWith(`${slot.key}-`) &&
+		packageCredentialSlotNamePattern.test(name)
+	)
+}
+
 export const packageCredentialSlotSchema = z.strictObject({
 	/**
 	 * Optional. Omit for any fetch-capable credential for the provider
@@ -347,6 +369,12 @@ export const packageCredentialSlotSchema = z.strictObject({
 	package: z.string().trim().min(1).max(165).optional(),
 	/** `credentials(key)` returns the caller's picks as an array. */
 	multiple: z.boolean().optional(),
+	/**
+	 * `true` lets the package also use names that are this key, a hyphen,
+	 * and a suffix (`google` covers `google-work`), for packages that pick
+	 * an account at run time. Nothing else is covered.
+	 */
+	prefix: z.literal(true).optional(),
 	/** Shown to callers choosing a credential for this need. */
 	description: z.string().trim().min(1).max(500),
 	/**
@@ -393,6 +421,22 @@ export const packageCredentialsSchema = z
 					message: `kody.credentials.${name}.package is only valid with kind: "secret-provider".`,
 				})
 			}
+			if (slot.prefix === true) {
+				if (name.length < packageCredentialSlotPrefixMinLength) {
+					ctx.addIssue({
+						code: 'custom',
+						path: [name, 'prefix'],
+						message: `kody.credentials.${name}.prefix needs a key of at least ${packageCredentialSlotPrefixMinLength} characters.`,
+					})
+				}
+				if (slot.kind === 'mcp' || slot.kind === 'url') {
+					ctx.addIssue({
+						code: 'custom',
+						path: [name, 'prefix'],
+						message: `kody.credentials.${name}.prefix is not valid with kind: "${slot.kind}".`,
+					})
+				}
+			}
 			if (slot.required !== undefined && slot.supplier !== 'executor') {
 				ctx.addIssue({
 					code: 'custom',
@@ -419,6 +463,7 @@ export const secretProviderSlotPackagePattern =
 
 const secretProviderSlotOnlyFields = [
 	'provider',
+	'prefix',
 	'multiple',
 	'ownerCredentialForVisitors',
 	'supplier',
