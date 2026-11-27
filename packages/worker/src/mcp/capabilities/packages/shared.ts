@@ -399,7 +399,7 @@ export const packageDetailSchema =
 			.string()
 			.nullable()
 			.describe(
-				'A commit that is built but held for capability approval. It serves nobody until the owner approves it at approval_url. Null when nothing is held, and for callers who cannot publish this package.',
+				'A commit that is built but held for capability approval. It serves nobody until the owner approves it at approval_url. Null when nothing is held, and for callers who cannot edit this package.',
 			),
 		approval_url: z
 			.string()

@@ -1134,7 +1134,7 @@ needs), while a held publish is already built and only waits to go live.
 
 `packageGet` keeps the two commits apart. `serving_commit` is the commit that is
 live, `held_commit` is the commit that waits (null when nothing is held, and for
-callers who cannot publish the package), and `approval_url` approves it.
+callers who cannot edit the package), and `approval_url` approves it.
 `published_commit` is the latest publish that was not held, so it never names
 the held commit, and the rest of the record (exports, credential needs)
 describes the serving commit. After approval `held_commit` is null again and
