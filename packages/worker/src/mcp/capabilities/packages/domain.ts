@@ -16,6 +16,7 @@ import { listPackagesCapability } from './list-packages.ts'
 import { listPackageSubscriptionsCapability } from './list-package-subscriptions.ts'
 import { appFetchCapability } from './app-fetch.ts'
 import { appListCapability } from './app-list.ts'
+import { appOpenLinkCapability } from './app-open-link.ts'
 import {
 	packageCheckCapability,
 	packageCheckUploadCreateCapability,
@@ -62,6 +63,7 @@ export const packagesDomain = defineDomain({
 		listPackageSubscriptionsCapability,
 		appFetchCapability,
 		appListCapability,
+		appOpenLinkCapability,
 		packageSubscriptionDispatchCapability,
 		packageUpdateCapability,
 		publishExternalPushCapability,

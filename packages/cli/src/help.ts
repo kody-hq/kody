@@ -100,6 +100,7 @@ Usage:
   kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--org <slug>] [--json]
   kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"] [--body <text | @file>] [--out <file>] [--synthetic] [--json]
   kody app list [--org <slug>] [--json]
+  kody app open-link <@org/app | hosted-url> [path] [--json]
   kody billing checkout-link [--org <slug>] [--interval month|year] [--promo-code <code>] [--json]
   kody billing manage-link [--org <slug>] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
@@ -499,6 +500,14 @@ ${orgBlock}
   kody app list
              List the package apps you can run, across your orgs and apps
              shared with you. \`--org <slug>\` lists one org only.
+
+  kody app open-link
+             Print a one-time link that opens a hosted package app in a
+             browser as you (\`appOpenLink\`), for an agent that needs the
+             app in its own browser. The link works once, within 5 minutes,
+             and signs that browser in to that one app for 60 minutes with
+             the same access as \`kody app fetch\`. It is not a Kody
+             sign-in, and your token never goes to the app's hosted URL.
 
   kody billing checkout-link
              Print a kody.codes link that starts Pro checkout for an org

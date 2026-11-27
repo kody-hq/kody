@@ -35,6 +35,8 @@ type PendingDurableObjectUsage = {
 	/** Package id when known; empty string coalesces with unset (Ad hoc). */
 	packageId: string
 	packageAppVisitorUserId?: string
+	/** The agent profile behind the visit, when one acted for the visitor. */
+	packageAppVisitorProfileId?: string
 	/** The app's owning org when `userId` is a visiting org (ADR 0095). */
 	packageAppOwnerOrgId?: string
 	/** First queued event in this bucket; the flush writes this timestamp. */
@@ -157,6 +159,8 @@ export function queueDurableObjectRowsRead(input: {
 	outcome?: UsageOutcome
 	packageId?: string | null
 	packageAppVisitorUserId?: string
+	/** The agent profile behind the visit, when one acted for the visitor. */
+	packageAppVisitorProfileId?: string
 	packageAppOwnerOrgId?: string
 }): void {
 	try {
@@ -166,6 +170,8 @@ export function queueDurableObjectRowsRead(input: {
 		const outcome = input.outcome ?? 'success'
 		const packageId = input.packageId?.trim() || ''
 		const packageAppVisitorUserId = input.packageAppVisitorUserId
+		const packageAppVisitorProfileId =
+			input.packageAppVisitorProfileId?.trim() || undefined
 		if (!input.env.USAGE_EVENTS) {
 			recordUsage(input.env, {
 				userId: input.userId,
@@ -177,6 +183,7 @@ export function queueDurableObjectRowsRead(input: {
 				...(packageAppVisitorUserId !== undefined
 					? { packageAppVisitorUserId }
 					: {}),
+				...(packageAppVisitorProfileId ? { packageAppVisitorProfileId } : {}),
 				...(input.packageAppOwnerOrgId
 					? { packageAppOwnerOrgId: input.packageAppOwnerOrgId }
 					: {}),
@@ -195,6 +202,7 @@ export function queueDurableObjectRowsRead(input: {
 			units: rowsRead,
 			packageId,
 			packageAppVisitorUserId,
+			packageAppVisitorProfileId,
 			packageAppOwnerOrgId: input.packageAppOwnerOrgId,
 		})
 	} catch (error) {
@@ -212,6 +220,8 @@ function queueDurableObjectUsage(input: {
 	units: number
 	packageId?: string
 	packageAppVisitorUserId?: string
+	/** The agent profile behind the visit, when one acted for the visitor. */
+	packageAppVisitorProfileId?: string
 	packageAppOwnerOrgId?: string
 }) {
 	const timestamp = new Date().toISOString()
@@ -220,10 +230,12 @@ function queueDurableObjectUsage(input: {
 	const month = timestamp.slice(0, 'YYYY-MM'.length)
 	const packageId = input.packageId?.trim() || ''
 	const packageAppVisitorUserId = input.packageAppVisitorUserId
+	const packageAppVisitorProfileId =
+		input.packageAppVisitorProfileId?.trim() || undefined
 	const visitorKey =
 		packageAppVisitorUserId === undefined
 			? ''
-			: `visitor:${packageAppVisitorUserId}`
+			: `visitor:${packageAppVisitorUserId}\0${packageAppVisitorProfileId ?? ''}`
 	const ownerOrgId = input.packageAppOwnerOrgId?.trim() || ''
 	const key = `${input.eventType}\0${input.userId}\0${input.doClass}\0${input.outcome}\0${month}\0${packageId}\0${visitorKey}\0${ownerOrgId}`
 	const existing = pendingByKey.get(key)
@@ -243,6 +255,7 @@ function queueDurableObjectUsage(input: {
 			...(packageAppVisitorUserId !== undefined
 				? { packageAppVisitorUserId }
 				: {}),
+			...(packageAppVisitorProfileId ? { packageAppVisitorProfileId } : {}),
 			...(ownerOrgId ? { packageAppOwnerOrgId: ownerOrgId } : {}),
 			timestamp,
 		})
@@ -312,6 +325,9 @@ async function flushQueuedDurableObjectUsage() {
 				...(bucket.packageId ? { packageId: bucket.packageId } : {}),
 				...(bucket.packageAppVisitorUserId !== undefined
 					? { packageAppVisitorUserId: bucket.packageAppVisitorUserId }
+					: {}),
+				...(bucket.packageAppVisitorProfileId
+					? { packageAppVisitorProfileId: bucket.packageAppVisitorProfileId }
 					: {}),
 				...(bucket.packageAppOwnerOrgId
 					? { packageAppOwnerOrgId: bucket.packageAppOwnerOrgId }

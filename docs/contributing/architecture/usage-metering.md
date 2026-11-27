@@ -444,6 +444,13 @@ quota, package export, static calls, email sends), and storage events also set
 under the owning org with `billed_org_id`. `dynamic_worker_day` always stays on
 the owning org.
 
+An agent profile's visit (`appFetch`, or a browser session opened with
+`appOpenLink`) sets `packageAppVisitorProfileId` (Analytics Engine `blob17`) on
+package-app units next to the person's `packageAppVisitorUserId`. Visitor
+attribution keeps the row under that person with `visitor_profile_id`, so the
+publisher's Visitors view counts one visitor and names the profiles that acted
+for them.
+
 APP_LOADER package-app isolates record UWD (`dynamic_worker_day`) when the
 worker id is stable (`app_fetch` / `app_realtime`). They do not emit
 `dynamic_worker_invoke`. One-off `APP_LOADER.load()` without a hashed id has no

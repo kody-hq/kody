@@ -561,28 +561,35 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 		app?.orgUsername ?? parsedSession.session.username
 	).toLowerCase()
 
-	const grant = await findLivePackageAppOauthGrant({
-		db: input.env.APP_DB,
-		personId: parsedSession.session.stableUserId,
-		orgUsername: handle,
-		kodyId: slug,
-	})
+	// An agent's visit session answers only while its credential can run the
+	// app: neither the person's sign-in grant nor a ticket stands in for that.
+	const sessionCredential = parsedSession.session.credential ?? null
+	const grant = sessionCredential
+		? null
+		: await findLivePackageAppOauthGrant({
+				db: input.env.APP_DB,
+				personId: parsedSession.session.stableUserId,
+				orgUsername: handle,
+				kodyId: slug,
+			})
 	if (grant) {
 		await notePackageAppOauthGrantUse({ db: input.env.APP_DB, grant })
 	}
 
 	let role: string | null = null
-	const ticket = await readPackageAppTicket({
-		request: input.request,
-		env: input.env,
-		host: input.url.host,
-		slug,
-		session: {
-			stableUserId: parsedSession.session.stableUserId,
-			issuedAt: parsedSession.issuedAt,
-		},
-		secure: isSecureRequest(input.request),
-	})
+	const ticket = sessionCredential
+		? null
+		: await readPackageAppTicket({
+				request: input.request,
+				env: input.env,
+				host: input.url.host,
+				slug,
+				session: {
+					stableUserId: parsedSession.session.stableUserId,
+					issuedAt: parsedSession.issuedAt,
+				},
+				secure: isSecureRequest(input.request),
+			})
 	if (ticket) {
 		role = ticket.visitor.role
 	} else if (!grant) {
@@ -611,6 +618,7 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 			},
 			ownerId: org.userId,
 			appId: lookup?.savedPackage.id ?? null,
+			credential: sessionCredential,
 		})
 		if (!canExecute) {
 			return Response.json(

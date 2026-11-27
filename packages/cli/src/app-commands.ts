@@ -1,8 +1,8 @@
 /**
- * `kody app fetch` and `kody app list`: thin wrappers for the Open API
- * `appFetch` and `appList` operations. The CLI token goes to the Kody API
- * only; the app's hosted URL is an address here, never a place a request or
- * a token is sent.
+ * `kody app fetch`, `kody app list`, and `kody app open-link`: thin wrappers
+ * for the Open API `appFetch`, `appList`, and `appOpenLink` operations. The
+ * CLI token goes to the Kody API only; the app's hosted URL is an address
+ * here, never a place a request or a token is sent.
  */
 import { readFile, writeFile } from 'node:fs/promises'
 
@@ -18,6 +18,9 @@ export const appFetchUsage =
 	'Usage: kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"]... [--body <text | @file>] [--out <file>] [--synthetic] [--json]'
 
 export const appListUsage = 'Usage: kody app list [--org <slug>] [--json]'
+
+export const appOpenLinkUsage =
+	'Usage: kody app open-link <@org/app | hosted-url> [path] [--json]'
 
 export type AppFetchPlan = {
 	app: string
@@ -40,14 +43,17 @@ function appAddressOrg(address: string): string | null {
 	return match?.[1] ? normalizeOrgSlug(match[1]) : null
 }
 
-export function parseAppFetchCommand(input: {
-	positionals: ReadonlyArray<string>
-	values: Record<string, unknown>
-	/** The explicit `--org` flag; the app address determines the owning org. */
-	org?: string
-}): AppFetchPlan {
+/** The app address and optional path every app command takes. */
+function parseAppTarget(
+	input: {
+		positionals: ReadonlyArray<string>
+		/** The explicit `--org` flag; the app address determines the owning org. */
+		org?: string
+	},
+	usage: string,
+) {
 	const [app, path, ...extra] = input.positionals
-	if (!app || extra.length > 0) throw new Error(appFetchUsage)
+	if (!app || extra.length > 0) throw new Error(usage)
 	const addressOrg = appAddressOrg(app)
 	if (input.org && addressOrg !== normalizeOrgSlug(input.org)) {
 		throw new Error(
@@ -56,6 +62,16 @@ export function parseAppFetchCommand(input: {
 				: 'A hosted URL already names the app and its org. Drop --org.',
 		)
 	}
+	return { app, path }
+}
+
+export function parseAppFetchCommand(input: {
+	positionals: ReadonlyArray<string>
+	values: Record<string, unknown>
+	/** The explicit `--org` flag; the app address determines the owning org. */
+	org?: string
+}): AppFetchPlan {
+	const { app, path } = parseAppTarget(input, appFetchUsage)
 	const headers: Record<string, string> = {}
 	const rawHeaders = Array.isArray(input.values.header)
 		? (input.values.header as Array<string>)
@@ -195,4 +211,48 @@ export async function runAppList(input: {
 				`${app.app}  ${app.hosted_url}  ${app.visibility}${app.shared ? ', shared with you' : ''}`,
 		)
 		.join('\n')}\n`
+}
+
+export type AppOpenLinkPlan = { app: string; path?: string }
+
+export function parseAppOpenLinkCommand(input: {
+	positionals: ReadonlyArray<string>
+	org?: string
+}): AppOpenLinkPlan {
+	const { app, path } = parseAppTarget(input, appOpenLinkUsage)
+	return { app, ...(path ? { path } : {}) }
+}
+
+type AppOpenLinkResult = {
+	url: string
+	app: string
+	expires_at: string
+	expires_in_seconds: number
+	session_seconds: number
+}
+
+/**
+ * Print a one-time link that signs a browser in to one app as the caller.
+ * Only the link goes to stdout, so `$(kody app open-link ...)` is the URL.
+ */
+export async function runAppOpenLinkPlan(input: {
+	plan: AppOpenLinkPlan
+	call: CallOperation
+	json: boolean
+	stdout: (text: string) => void
+	stderr: (text: string) => void
+}): Promise<number> {
+	const result = (await input.call('appOpenLink', {
+		app: input.plan.app,
+		...(input.plan.path ? { path: input.plan.path } : {}),
+	})) as AppOpenLinkResult
+	if (input.json) {
+		input.stdout(`${JSON.stringify(result, null, 2)}\n`)
+		return 0
+	}
+	input.stderr(
+		`Open this link in a browser within ${Math.round(result.expires_in_seconds / 60)} minutes. It works once and signs that browser in to ${result.app} for ${Math.round(result.session_seconds / 60)} minutes. Treat it like a password until then.\n`,
+	)
+	input.stdout(`${result.url}\n`)
+	return 0
 }

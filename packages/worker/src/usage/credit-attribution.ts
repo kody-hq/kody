@@ -44,10 +44,11 @@ ON CONFLICT (user_id, day, package_id, meter) DO UPDATE SET
 const visitorAttributionUpsertStatement = `
 INSERT INTO package_app_visitor_attribution_daily (
 	user_id, day, package_id, visitor_user_id, meter, units, updated_at,
-	billed_org_id
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+	billed_org_id, visitor_profile_id
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
 ON CONFLICT (
-	user_id, day, package_id, visitor_user_id, billed_org_id, meter
+	user_id, day, package_id, visitor_user_id, visitor_profile_id,
+	billed_org_id, meter
 ) DO UPDATE SET
 	units = excluded.units,
 	updated_at = excluded.updated_at
@@ -92,6 +93,8 @@ FORMAT JSON
  * Visitor attribution stays under the app's owning org. `blob16` is that org
  * when a visiting org was billed (`blob1`, ADR 0095); then `billed_org_id`
  * names the visiting org. Empty `billed_org_id` means the owner paid.
+ * `blob17` is the agent profile that visited for the person; empty means the
+ * person visited themselves.
  */
 export function buildPackageAppVisitorAttributionDailyQuery(
 	dataset: string,
@@ -107,6 +110,7 @@ SELECT
 	toDate(timestamp) AS day,
 	blob9 AS package_id,
 	blob14 AS visitor_user_id,
+	blob17 AS visitor_profile_id,
 	blob2 AS event_type,
 	sum(
 		if(blob2 = 'durable_object_rows_read' AND double3 > 0, double3, 1.0) * _sample_interval
@@ -117,7 +121,7 @@ WHERE timestamp >= toDateTime('${bounds.monthStart}')
 	AND blob15 = 'package-app'
 	AND blob2 IN (${billable})
 	AND blob9 != ''
-GROUP BY user_id, billed_org_id, day, package_id, visitor_user_id, event_type
+GROUP BY user_id, billed_org_id, day, package_id, visitor_user_id, visitor_profile_id, event_type
 FORMAT JSON
 `.trim()
 }
@@ -147,6 +151,7 @@ type AttributionAnalyticsRow = {
 
 type VisitorAttributionAnalyticsRow = AttributionAnalyticsRow & {
 	visitor_user_id?: string | null
+	visitor_profile_id?: string | null
 	billed_org_id?: string | null
 }
 
@@ -256,11 +261,12 @@ export async function aggregateCreditAttributionDaily(
 		if (!day.startsWith(month)) continue
 		const packageId = (row.package_id ?? '').trim()
 		const visitorUserId = row.visitor_user_id ?? ''
+		const visitorProfileId = (row.visitor_profile_id ?? '').trim()
 		const billedOrgId = (row.billed_org_id ?? '').trim()
 		const units = Number(row.units)
 		if (!packageId || !Number.isFinite(units) || units <= 0) continue
 		presentVisitorKeys.add(
-			`${row.user_id}\0${day}\0${packageId}\0${visitorUserId}\0${billedOrgId}\0${meter}`,
+			`${row.user_id}\0${day}\0${packageId}\0${visitorUserId}\0${visitorProfileId}\0${billedOrgId}\0${meter}`,
 		)
 		visitorUpsertStatements.push(
 			env.APP_DB.prepare(visitorAttributionUpsertStatement).bind(
@@ -272,6 +278,7 @@ export async function aggregateCreditAttributionDaily(
 				units,
 				updatedAt,
 				billedOrgId,
+				visitorProfileId,
 			),
 		)
 	}
@@ -349,7 +356,8 @@ export async function aggregateCreditAttributionDaily(
 	let visitorDeleteStatements: Array<D1PreparedStatement> = []
 	if (visitorAnalyticsRows.length > 0) {
 		const existingVisitorRows = await env.APP_DB.prepare(
-			`SELECT user_id, day, package_id, visitor_user_id, billed_org_id, meter
+			`SELECT user_id, day, package_id, visitor_user_id, visitor_profile_id,
+				billed_org_id, meter
 			 FROM package_app_visitor_attribution_daily
 			 WHERE day >= ? AND day < ?`,
 		)
@@ -362,23 +370,26 @@ export async function aggregateCreditAttributionDaily(
 				day: string
 				package_id: string
 				visitor_user_id: string
+				visitor_profile_id: string
 				billed_org_id: string
 				meter: string
 			}>()
 		visitorDeleteStatements = []
 		for (const row of existingVisitorRows.results ?? []) {
-			const key = `${row.user_id}\0${row.day}\0${row.package_id}\0${row.visitor_user_id}\0${row.billed_org_id}\0${row.meter}`
+			const key = `${row.user_id}\0${row.day}\0${row.package_id}\0${row.visitor_user_id}\0${row.visitor_profile_id}\0${row.billed_org_id}\0${row.meter}`
 			if (presentVisitorKeys.has(key)) continue
 			visitorDeleteStatements.push(
 				env.APP_DB.prepare(
 					`DELETE FROM package_app_visitor_attribution_daily
 					 WHERE user_id = ? AND day = ? AND package_id = ?
-						AND visitor_user_id = ? AND billed_org_id = ? AND meter = ?`,
+						AND visitor_user_id = ? AND visitor_profile_id = ?
+						AND billed_org_id = ? AND meter = ?`,
 				).bind(
 					row.user_id,
 					row.day,
 					row.package_id,
 					row.visitor_user_id,
+					row.visitor_profile_id,
 					row.billed_org_id,
 					row.meter,
 				),
@@ -611,7 +622,8 @@ export async function loadPackageAppVisitorAttribution(input: {
 	const nextMonth = nextUtcMonthKey(input.month)
 	const result = await input.db
 		.prepare(
-			`SELECT day, package_id, visitor_user_id, billed_org_id, meter, units
+			`SELECT day, package_id, visitor_user_id, visitor_profile_id,
+				billed_org_id, meter, units
 			 FROM package_app_visitor_attribution_daily
 			 WHERE user_id = ? AND day >= ? AND day < ?`,
 		)
@@ -620,6 +632,7 @@ export async function loadPackageAppVisitorAttribution(input: {
 			day: string
 			package_id: string
 			visitor_user_id: string
+			visitor_profile_id?: string | null
 			billed_org_id?: string | null
 			meter: string
 			units: number
@@ -681,6 +694,8 @@ export async function loadPackageAppVisitorAttribution(input: {
 				units: Map<CreditAttributionMeter, number>
 				credits: Map<CreditAttributionMeter, number>
 				visitorOrgUnits: Map<CreditAttributionMeter, number>
+				/** Agent profiles that visited for this person. */
+				profileIds: Set<string>
 			}
 		>
 	>()
@@ -693,8 +708,11 @@ export async function loadPackageAppVisitorAttribution(input: {
 			units: new Map<CreditAttributionMeter, number>(),
 			credits: new Map<CreditAttributionMeter, number>(),
 			visitorOrgUnits: new Map<CreditAttributionMeter, number>(),
+			profileIds: new Set<string>(),
 		}
 		if (row.day > visitor.lastDay) visitor.lastDay = row.day
+		const profileId = row.visitor_profile_id?.trim()
+		if (profileId) visitor.profileIds.add(profileId)
 		const units = Number(row.units)
 		if (row.billed_org_id?.trim()) {
 			// The visitor's own org paid (ADR 0095): show the units, but none of
@@ -731,11 +749,14 @@ export async function loadPackageAppVisitorAttribution(input: {
 				units: Map<CreditAttributionMeter, number>
 				credits: Map<CreditAttributionMeter, number>
 				visitorOrgUnits: Map<CreditAttributionMeter, number>
+				/** Agent profiles that visited for this person. */
+				profileIds: Set<string>
 			}
 			creditsMicroUsd: number
 		}>
 	>()
 	const retainedIds = new Set<string>()
+	const retainedProfileIds = new Set<string>()
 	for (const [packageId, visitors] of visitorsByPackage) {
 		const ranked = [...visitors.entries()].map(([visitorId, visitor]) => ({
 			visitorId,
@@ -749,8 +770,11 @@ export async function loadPackageAppVisitorAttribution(input: {
 			selectPackageAppVisitorIds(ranked, maxPackageAppVisitorRows),
 		)
 		const selected = ranked.filter(({ visitorId }) => retained.has(visitorId))
-		for (const { visitorId } of selected) {
+		for (const { visitorId, visitor } of selected) {
 			if (visitorId) retainedIds.add(visitorId)
+			for (const profileId of visitor.profileIds) {
+				retainedProfileIds.add(profileId)
+			}
 		}
 		rankedByPackage.set(packageId, selected)
 	}
@@ -787,6 +811,27 @@ export async function loadPackageAppVisitorAttribution(input: {
 			},
 		),
 	)
+
+	// A profile's name is the label the app already sees on each visit.
+	const profileNames = new Map<string, string>()
+	const profileIds = [...retainedProfileIds]
+	for (
+		let index = 0;
+		index < profileIds.length;
+		index += visitorUsernameChunkSize
+	) {
+		const chunk = profileIds.slice(index, index + visitorUsernameChunkSize)
+		const profiles = await input.db
+			.prepare(
+				`SELECT id, name FROM profiles
+				 WHERE id IN (${chunk.map(() => '?').join(', ')})`,
+			)
+			.bind(...chunk)
+			.all<{ id: string; name: string }>()
+		for (const profile of profiles.results ?? []) {
+			profileNames.set(profile.id, profile.name)
+		}
+	}
 
 	const byPackage = new Map<
 		string,
@@ -828,6 +873,16 @@ export async function loadPackageAppVisitorAttribution(input: {
 						0,
 					),
 					lastDay: visitor.lastDay,
+					...(visitor.profileIds.size > 0
+						? {
+								agentProfiles: [...visitor.profileIds]
+									.map(
+										(profileId: string) =>
+											profileNames.get(profileId) ?? 'Deleted profile',
+									)
+									.sort((left, right) => left.localeCompare(right)),
+							}
+						: {}),
 					...(billedToVisitorOrg ? { billedToVisitorOrg } : {}),
 					meters,
 				},

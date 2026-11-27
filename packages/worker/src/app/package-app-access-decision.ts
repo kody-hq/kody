@@ -108,7 +108,7 @@ export function cachePackageAppAccessDecision(input: {
 export function logPackageAppAccessEvent(input: {
 	env: Env
 	request: Request
-	outcome: 'ticket-minted' | 'denied'
+	outcome: 'ticket-minted' | 'open-link-exchanged' | 'denied'
 	visitorEmail: string
 	orgHandle: string
 	appSlug: string
@@ -121,8 +121,10 @@ export function logPackageAppAccessEvent(input: {
 			action:
 				input.outcome === 'ticket-minted'
 					? 'package_app_ticket_mint'
-					: 'package_app_access_denied',
-			result: input.outcome === 'ticket-minted' ? 'success' : 'failure',
+					: input.outcome === 'open-link-exchanged'
+						? 'package_app_open_link_exchange'
+						: 'package_app_access_denied',
+			result: input.outcome === 'denied' ? 'failure' : 'success',
 			email: input.visitorEmail,
 			path: new URL(input.request.url).pathname,
 			reason: `${input.orgHandle}/${input.appSlug}: ${input.reason}`,

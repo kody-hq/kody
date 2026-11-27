@@ -357,6 +357,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 	...capabilityRoutes('packages', [
 		['GET', '/v1/apps', 'appList'],
 		['POST', '/v1/apps/fetch', 'appFetch'],
+		['POST', '/v1/apps/open-link', 'appOpenLink'],
 		['GET', '/v1/packages', 'packageList'],
 		['POST', '/v1/packages', 'packageSave'],
 		['POST', '/v1/packages/check', 'packageCheck'],

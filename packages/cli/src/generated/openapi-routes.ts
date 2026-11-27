@@ -43,6 +43,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'appOpenLink',
+		method: 'POST',
+		pathTemplate: '/v1/apps/open-link',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'approvalBundleCreate',
 		method: 'POST',
 		pathTemplate: '/v1/approval-bundles',

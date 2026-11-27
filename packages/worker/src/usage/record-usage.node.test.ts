@@ -145,6 +145,7 @@ test('usageEventBlobs default actor to org billing id and map automation sources
 		'',
 		'',
 		'',
+		'',
 	])
 	expect(
 		usageEventBlobs(
@@ -283,5 +284,39 @@ test('usageEventBlobs keep the owning org of a cross-org package-app event in bl
 			{ ...base, userId: ownerIdFromStored('org-publisher') },
 			ts,
 		),
-	).toHaveLength(16)
+	).toHaveLength(17)
+})
+
+test('usageEventBlobs name the agent profile behind a package-app visit in blob17', () => {
+	const ts = '2026-11-27T00:00:00.000Z'
+	const base = {
+		userId: ownerIdFromStored('org-publisher'),
+		eventType: 'durable_object_rows_read' as const,
+		outcome: 'success' as const,
+		packageId: 'pkg-1',
+	}
+	const profileOf = (event: Parameters<typeof usageEventBlobs>[0]) =>
+		usageEventBlobs(event, ts)[usageEventBlobIndexes.packageAppVisitorProfileId]
+	expect(usageEventBlobIndexes.packageAppVisitorProfileId).toBe(16)
+	expect(
+		profileOf({
+			...base,
+			packageAppVisitorUserId: 'person-visitor',
+			packageAppVisitorProfileId: 'prf_research',
+		}),
+	).toBe('prf_research')
+	// The person visiting themselves, and units with no known visitor.
+	expect(
+		profileOf({ ...base, packageAppVisitorUserId: 'person-visitor' }),
+	).toBe('')
+	expect(
+		profileOf({
+			...base,
+			packageAppVisitorUserId: '',
+			packageAppVisitorProfileId: 'prf_research',
+		}),
+	).toBe('')
+	expect(
+		profileOf({ ...base, packageAppVisitorProfileId: 'prf_research' }),
+	).toBe('')
 })

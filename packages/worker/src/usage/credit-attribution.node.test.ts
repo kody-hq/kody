@@ -18,6 +18,7 @@ vi.mock('./aggregate-rollups.ts', async (importOriginal) => {
 
 const {
 	aggregateCreditAttributionDaily,
+	buildPackageAppVisitorAttributionDailyQuery,
 	loadPackageAppVisitorAttribution,
 	selectPackageAppVisitorIds,
 } = await import('./credit-attribution.ts')
@@ -435,4 +436,147 @@ test('another org app shows up in the visiting org usage named as shared by its 
 		'@publisher/tracker (app shared by @publisher)',
 	)
 	expect(labels.hrefs.get('pkg-shared')).toContain('publisher')
+})
+
+test("an agent profile's visits stay under the person in Visitors and name the profile", async () => {
+	const { sqlite, db } = createMigratedDb()
+	const ownerId = ownerIdFromStored(
+		testStableUserIdFromEmail('profile-owner@example.com'),
+	)
+	const visitorId = ownerIdFromStored(
+		testStableUserIdFromEmail('profile-visitor@example.com'),
+	)
+	const createdAt = '2026-10-01T00:00:00.000Z'
+	for (const [id, name] of [
+		[ownerId, 'profileowner'],
+		[visitorId, 'profilevisitor'],
+	] as const) {
+		sqlite
+			.prepare(
+				`INSERT INTO users (username, email, password_hash, stable_user_id, created_at, updated_at)
+				 VALUES (?, ?, 'hash', ?, ?, ?)`,
+			)
+			.run(name, `${name}@example.com`, id, createdAt, createdAt)
+		sqlite
+			.prepare(
+				`INSERT INTO orgs (id, slug, plan, created_at, updated_at)
+				 VALUES (?, ?, 'free', ?, ?)`,
+			)
+			.run(id, name, createdAt, createdAt)
+	}
+	// The profile lives in the visitor's org, not the publisher's.
+	sqlite
+		.prepare(
+			`INSERT INTO profiles (
+				id, org_id, acting_user_id, name, depth, created_by_user_id,
+				created_at, updated_at
+			) VALUES ('prf_research', ?, ?, 'Research bot', 1, ?, ?, ?)`,
+		)
+		.run(visitorId, visitorId, visitorId, createdAt, createdAt)
+	const visitorRow = {
+		user_id: ownerId,
+		billed_org_id: '',
+		day: '2026-10-15',
+		package_id: 'pkg-1',
+		visitor_user_id: visitorId,
+		event_type: 'dynamic_worker_day',
+	}
+	const analytics = (profileUnits: number) => {
+		queryAnalyticsEngineSql
+			.mockResolvedValueOnce([
+				{
+					user_id: ownerId,
+					day: '2026-10-15',
+					package_id: 'pkg-1',
+					event_type: 'dynamic_worker_day',
+					actor_user_id: visitorId,
+					automation_source: '',
+					units: 1 + profileUnits,
+				},
+			])
+			.mockResolvedValueOnce([
+				{ ...visitorRow, visitor_profile_id: '', units: 1 },
+				...(profileUnits
+					? [
+							{
+								...visitorRow,
+								visitor_profile_id: 'prf_research',
+								units: profileUnits,
+							},
+							{
+								...visitorRow,
+								visitor_profile_id: 'prf_gone',
+								units: profileUnits,
+							},
+						]
+					: []),
+			])
+	}
+	const env = {
+		APP_DB: db,
+		USAGE_EVENTS: {} as AnalyticsEngineDataset,
+		CLOUDFLARE_ACCOUNT_ID: 'account',
+		CLOUDFLARE_API_TOKEN: 'token',
+	}
+	const storedRows = () =>
+		sqlite
+			.prepare(
+				`SELECT visitor_user_id, visitor_profile_id, units
+				 FROM package_app_visitor_attribution_daily
+				 ORDER BY visitor_profile_id`,
+			)
+			.all()
+	analytics(2)
+	await aggregateCreditAttributionDaily(env, now)
+	const query = buildPackageAppVisitorAttributionDailyQuery('usage', {
+		monthStart: '2026-10-01 00:00:00',
+		nextMonthStart: '2026-11-01 00:00:00',
+	})
+	expect(query).toContain('blob17 AS visitor_profile_id')
+	expect(query).toContain('visitor_user_id, visitor_profile_id, event_type')
+	// One row per person and profile, all under the same person.
+	expect(storedRows()).toEqual([
+		{ visitor_user_id: visitorId, visitor_profile_id: '', units: 1 },
+		{ visitor_user_id: visitorId, visitor_profile_id: 'prf_gone', units: 2 },
+		{
+			visitor_user_id: visitorId,
+			visitor_profile_id: 'prf_research',
+			units: 2,
+		},
+	])
+
+	const visitors = await loadPackageAppVisitorAttribution({
+		db,
+		stableUserId: ownerId,
+		month: '2026-10',
+		dailyUnits: [
+			{
+				packageId: 'pkg-1',
+				day: '2026-10-15',
+				meter: 'unique_worker_days',
+				units: 5,
+			},
+		],
+		includes: [
+			{ meter: 'unique_worker_days', include: 0 },
+			{ meter: 'durable_object_rows_read', include: 0 },
+		],
+	})
+	// Still one visitor: the person, with the profiles that acted for them.
+	expect(visitors.get('pkg-1')).toMatchObject({ total: 1 })
+	const [visitor] = visitors.get('pkg-1')?.rows ?? []
+	expect(visitor).toMatchObject({
+		displayName: 'profilevisitor',
+		agentProfiles: ['Deleted profile', 'Research bot'],
+	})
+	expect(visitor?.meters).toEqual([
+		expect.objectContaining({ meter: 'unique_worker_days', units: 5 }),
+	])
+
+	// A later recompute without the profile's units drops only those rows.
+	analytics(0)
+	await aggregateCreditAttributionDaily(env, now)
+	expect(storedRows()).toEqual([
+		{ visitor_user_id: visitorId, visitor_profile_id: '', units: 1 },
+	])
 })

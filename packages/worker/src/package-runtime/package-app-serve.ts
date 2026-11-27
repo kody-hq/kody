@@ -1136,6 +1136,7 @@ async function servePackageAppRequestWithId(input: {
 						userId: visitor.userId,
 						username: visitor.username,
 						role: visitor.role,
+						...(visitor.profile ? { profile: visitor.profile } : {}),
 					},
 				}
 			} else {
@@ -1625,6 +1626,15 @@ async function servePackageAppRequestWithId(input: {
 			}))
 		) {
 			return consentRedirect()
+		}
+		if (dispatch?.preflight) {
+			return attachPackageAppServerTiming(
+				new Response(null, {
+					status: 204,
+					headers: { 'Cache-Control': 'private, no-store' },
+				}),
+				serverTiming,
+			)
 		}
 		servedPublishedCommit = packageManifest.source.published_commit
 		servedRepoId = packageManifest.source.repo_id

@@ -1560,13 +1560,19 @@ async function dispatch(
 		}
 		case 'app': {
 			const [subcommand, packageDir, ...extra] = parsed.positionals
-			if (subcommand === 'fetch' || subcommand === 'list') {
+			if (
+				subcommand === 'fetch' ||
+				subcommand === 'list' ||
+				subcommand === 'open-link'
+			) {
 				const {
 					appFetchUsage,
 					appListUsage,
 					parseAppFetchCommand,
+					parseAppOpenLinkCommand,
 					runAppFetchPlan,
 					runAppList,
+					runAppOpenLinkPlan,
 				} = await import('./app-commands.js')
 				if (subcommand === 'list' && parsed.positionals.length > 1) {
 					throw new Error(appListUsage)
@@ -1582,6 +1588,13 @@ async function dispatch(
 							})
 						: null
 				if (subcommand === 'fetch' && !plan) throw new Error(appFetchUsage)
+				const openLinkPlan =
+					subcommand === 'open-link'
+						? parseAppOpenLinkCommand({
+								positionals: parsed.positionals.slice(1),
+								...(orgFlagOnly ? { org: orgFlagOnly } : {}),
+							})
+						: null
 				const apiUrl = apiUrlFrom({
 					apiUrl:
 						typeof parsed.values['api-url'] === 'string'
@@ -1594,13 +1607,22 @@ async function dispatch(
 					mcpUrl,
 				})
 				const { callOpenApiOperation } = await import('./open-api-client.js')
-				// Both operations look across orgs, so the request is not bound
+				// These operations look across orgs, so the request is not bound
 				// to one: the token reaches the Kody API only.
 				const call = (operationId: string, params: Record<string, unknown>) =>
 					callOpenApiOperation({ operationId, params, token, apiUrl })
 				if (plan) {
 					return await runAppFetchPlan({
 						plan,
+						call,
+						json,
+						stdout: write,
+						stderr: writeErr,
+					})
+				}
+				if (openLinkPlan) {
+					return await runAppOpenLinkPlan({
+						plan: openLinkPlan,
 						call,
 						json,
 						stdout: write,
@@ -1618,7 +1640,7 @@ async function dispatch(
 			}
 			if (subcommand !== 'check' || extra.length > 0) {
 				throw new Error(
-					'Usage: kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--json]\n       kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"] [--body <text | @file>] [--out <file>] [--json]\n       kody app list [--org <slug>] [--json]',
+					'Usage: kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--json]\n       kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"] [--body <text | @file>] [--out <file>] [--json]\n       kody app list [--org <slug>] [--json]\n       kody app open-link <@org/app | hosted-url> [path] [--json]',
 				)
 			}
 			assertNodeEngine(appCheckNodeEngine)
