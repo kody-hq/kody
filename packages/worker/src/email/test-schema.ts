@@ -398,6 +398,17 @@ ON email_mx_lookup_cache(expires_at);`,
 	hard_bounced_at TEXT,
 	PRIMARY KEY (provider_message_id, recipient)
 );`,
+		`CREATE TABLE IF NOT EXISTS system_email_send_keys (
+	kind TEXT NOT NULL,
+	idempotency_key TEXT NOT NULL,
+	recipient TEXT NOT NULL,
+	state TEXT NOT NULL CHECK (state IN ('pending', 'sent', 'failed', 'unknown')),
+	sender TEXT,
+	provider_message_id TEXT,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (kind, idempotency_key)
+);`,
 		`CREATE TABLE IF NOT EXISTS email_recipient_suppressions (
 	recipient TEXT PRIMARY KEY NOT NULL,
 	hard_bounce_count INTEGER NOT NULL DEFAULT 0,

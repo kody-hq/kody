@@ -627,3 +627,245 @@ test('sendSystemEmail records each recipient for delivery reports and refuses su
 	expect(sends).toBe(1)
 	expect(await readSendCounter('kody', now)).toBe(before)
 })
+
+test('a newsletter idempotency key replays a finished send and never sends twice', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-27T18:00:00.000Z')
+	let status = 200
+	const payloads: Array<unknown> = []
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, async ({ request }) => {
+				payloads.push(await request.json())
+				return status === 200
+					? HttpResponse.json({
+							success: true,
+							result: { message_id: `keyed-${payloads.length}` },
+						})
+					: HttpResponse.json(
+							{
+								success: false,
+								errors: [
+									{ code: 10202, message: 'email.sending.error.email.invalid' },
+								],
+							},
+							{ status },
+						)
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		idempotencyKey: 'campaign-a:user-1',
+		now,
+	}
+	expect(await sendNewsletterEmail(input)).toEqual({
+		from: 'news@kody.example.com',
+		to: ['reader@example.com'],
+		providerMessageId: 'keyed-1',
+	})
+	expect(await sendNewsletterEmail(input)).toEqual({
+		from: 'news@kody.example.com',
+		to: ['reader@example.com'],
+		providerMessageId: 'keyed-1',
+		replayed: true,
+	})
+	expect(payloads).toHaveLength(1)
+	expect(await readSendCounter('news', now)).toBe(1)
+	await expect(
+		sendNewsletterEmail({ ...input, to: 'other@example.com' }),
+	).rejects.toThrow('different recipient')
+
+	// A definite rejection never reached a mailbox, so the key may be retried.
+	status = 400
+	const rejectedKey = { ...input, idempotencyKey: 'campaign-a:user-2' }
+	await expect(sendNewsletterEmail(rejectedKey)).rejects.toThrow(
+		'email.sending.error.email.invalid',
+	)
+	status = 200
+	expect(await sendNewsletterEmail(rejectedKey)).toMatchObject({
+		providerMessageId: 'keyed-3',
+	})
+	expect(payloads).toHaveLength(3)
+
+	// The daily limit refuses before Cloudflare, so the key may be retried.
+	const cappedKey = { ...input, idempotencyKey: 'campaign-a:user-3' }
+	await env.APP_DB.prepare(
+		`UPDATE system_email_daily_counters SET count = ? WHERE local_part = 'send:news' AND day = ?`,
+	)
+		.bind(systemEmailLimits.maxNewsletterSendsPerDay, systemEmailDayKey(now))
+		.run()
+	await expect(sendNewsletterEmail(cappedKey)).rejects.toThrow(
+		'newsletter send limit',
+	)
+	await env.APP_DB.prepare(
+		`UPDATE system_email_daily_counters SET count = 0 WHERE local_part = 'send:news' AND day = ?`,
+	)
+		.bind(systemEmailDayKey(now))
+		.run()
+	expect(await sendNewsletterEmail(cappedKey)).toMatchObject({
+		providerMessageId: 'keyed-4',
+	})
+	expect(payloads).toHaveLength(4)
+})
+
+test('a newsletter key whose attempt never finished is refused as outcome unknown', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-27T18:05:00.000Z')
+	const lost = Object.assign(new Error('Network connection lost.'), {
+		retryable: true,
+	})
+	const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(lost)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		idempotencyKey: 'campaign-b:user-1',
+		now,
+	}
+	try {
+		await expect(sendNewsletterEmail(input)).rejects.toThrow(
+			'Network connection lost.',
+		)
+		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		const unknown = await sendNewsletterEmail(input).catch(
+			(caught: unknown) => caught,
+		)
+		expect(isMcpCallerError(unknown)).toBe(true)
+		expect(String(unknown)).toContain('Outcome unknown')
+		// A caller cut off mid-call leaves the key pending; retries are refused too.
+		await env.APP_DB.prepare(
+			`INSERT INTO system_email_send_keys (kind, idempotency_key, recipient, state, created_at, updated_at)
+			VALUES ('whats_new', 'campaign-b:user-2', 'reader@example.com', 'pending', ?1, ?1)`,
+		)
+			.bind(now.toISOString())
+			.run()
+		await expect(
+			sendNewsletterEmail({ ...input, idempotencyKey: 'campaign-b:user-2' }),
+		).rejects.toThrow('Outcome unknown')
+		expect(fetchSpy).toHaveBeenCalledTimes(1)
+	} finally {
+		fetchSpy.mockRestore()
+	}
+})
+
+test('an unreadable 4xx rejection leaves the newsletter key retryable', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	let calls = 0
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () => {
+				calls++
+				return calls === 1
+					? new HttpResponse('<html>Bad Request</html>', { status: 400 })
+					: HttpResponse.json({
+							success: true,
+							result: { message_id: 'after-unreadable' },
+						})
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		idempotencyKey: 'campaign-unreadable:user-1',
+		now: new Date('2026-11-27T18:30:00.000Z'),
+	}
+	await expect(sendNewsletterEmail(input)).rejects.toThrow()
+	const retried = await sendNewsletterEmail(input)
+	expect(retried.providerMessageId).toBe('after-unreadable')
+	expect(calls).toBe(2)
+})
+
+test('simultaneous retries of a failed newsletter key make one provider call', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	const at = '2026-11-27T19:00:00.000Z'
+	await env.APP_DB.prepare(
+		`INSERT INTO system_email_send_keys
+			(kind, idempotency_key, recipient, state, created_at, updated_at)
+		VALUES ('whats_new', 'campaign-race:user-1', 'reader@example.com', 'failed', ?1, ?1)`,
+	)
+		.bind(at)
+		.run()
+	let calls = 0
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () => {
+				calls++
+				return HttpResponse.json({
+					success: true,
+					result: { message_id: `race-${calls}` },
+				})
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		idempotencyKey: 'campaign-race:user-1',
+		now: new Date(at),
+	}
+	const results = await Promise.allSettled([
+		sendNewsletterEmail(input),
+		sendNewsletterEmail(input),
+	])
+	// The loser is refused while the winner is pending, or replays it after.
+	expect(calls).toBe(1)
+	for (const result of results) {
+		if (result.status === 'fulfilled') {
+			expect(result.value.providerMessageId).toBe('race-1')
+		} else {
+			expect(isMcpCallerError(result.reason)).toBe(true)
+		}
+	}
+	const fulfilled = results.flatMap((r) =>
+		r.status === 'fulfilled' ? [r.value] : [],
+	)
+	expect(fulfilled.length).toBeGreaterThan(0)
+	expect(fulfilled.filter((r) => !r.replayed)).toHaveLength(1)
+})
+
+test('a 2xx without success or an error code leaves the newsletter key outcome unknown', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	let calls = 0
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () => {
+				calls++
+				return HttpResponse.json({ result: {} })
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		idempotencyKey: 'campaign-ambiguous:user-1',
+		now: new Date('2026-11-27T20:00:00.000Z'),
+	}
+	await expect(sendNewsletterEmail(input)).rejects.toThrow()
+	const retry = await sendNewsletterEmail(input).catch(
+		(caught: unknown) => caught,
+	)
+	expect(isMcpCallerError(retry)).toBe(true)
+	expect((retry as Error).message).toContain('Outcome unknown')
+	expect(calls).toBe(1)
+})

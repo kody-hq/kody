@@ -2,6 +2,7 @@ import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 import { maxRawMimeBytes } from './parser.ts'
 import { pruneRecipientSuppressionTracking } from './recipient-suppression.ts'
+import { pruneSystemEmailSendKeys } from './system-email-send-keys.ts'
 import { pruneSystemEmailSends } from './system-email-sends.ts'
 import { buildPlatformEmailAddress } from './platform-address.ts'
 import {
@@ -499,6 +500,8 @@ export type SystemEmailRetentionResult = {
 	deletedThreads: number
 	/** `system_email_sends` rows past their retention window. */
 	deletedSendRecords: number
+	/** `system_email_send_keys` idempotency keys past the same window. */
+	deletedSendKeys: number
 	/** Unsuppressed below-threshold `email_recipient_suppressions` rows. */
 	deletedSuppressionTracking: number
 	deletedRawMimeBlobs: number
@@ -530,6 +533,7 @@ export async function pruneSystemEmailRetention(input: {
 		deletedCounters: 0,
 		deletedThreads: 0,
 		deletedSendRecords: 0,
+		deletedSendKeys: 0,
 		deletedSuppressionTracking: 0,
 		deletedRawMimeBlobs: 0,
 		deletedAttachmentBlobs: 0,
@@ -640,6 +644,17 @@ export async function pruneSystemEmailRetention(input: {
 			limit: systemEmailLimits.pruneBatchSize,
 		})
 		result.deletedSendRecords += deletedInBatch
+	} while (
+		deletedInBatch >= systemEmailLimits.pruneBatchSize &&
+		Date.now() < deadlineMs
+	)
+	do {
+		deletedInBatch = await pruneSystemEmailSendKeys({
+			db: input.db,
+			now,
+			limit: systemEmailLimits.pruneBatchSize,
+		})
+		result.deletedSendKeys += deletedInBatch
 	} while (
 		deletedInBatch >= systemEmailLimits.pruneBatchSize &&
 		Date.now() < deadlineMs

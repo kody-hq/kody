@@ -136,13 +136,24 @@ async function sendViaCloudflareApi(
 		}
 	}
 
-	const payload = (await response.json()) as CloudflareApiEnvelope
+	// A 2xx must parse: it may have queued mail. An unreadable error body is
+	// still a definite rejection with its status.
+	let bodyError: string | undefined
+	const payload = (
+		response.ok
+			? await response.json()
+			: await response.json().catch((error: unknown) => {
+					bodyError = error instanceof Error ? error.message : String(error)
+					return null
+				})
+	) as CloudflareApiEnvelope | null
 	if (!response.ok || payload?.success !== true) {
 		console.warn(
 			'cloudflare-email-api-failed',
 			JSON.stringify({
 				status: response.status,
 				body: payload,
+				...(bodyError ? { bodyError } : {}),
 				to: redactRecipients(message.to),
 				from: message.from,
 			}),
