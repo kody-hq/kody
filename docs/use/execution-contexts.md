@@ -95,7 +95,8 @@ Execution contexts are an experiment. Turn them on at
 
 `unutilized` summarizes live contexts outside your chain that you can use or opt
 in to, across all pages. It does not check whether the machines are online. It
-returns a count and names the contexts when there are at most three.
+returns a count and names the contexts when there are at most three. It is
+omitted when there are none.
 
 ## Registration limits
 

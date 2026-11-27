@@ -7,9 +7,7 @@ import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-pro
 export const maxChainContexts = ecpMaxChainContexts
 const unutilizedNamedMax = 3
 
-/** Default `executionContextList` page size. */
 export const executionContextListDefaultLimit = 20
-/** Maximum `executionContextList` page size. */
 export const executionContextListMaxLimit = 100
 const revokedVisibleDays = 30
 

@@ -133,8 +133,9 @@ required visitor credential as:
 `consent` is `run_as_me` or `visitor_need` (with `need`). Give `consent_url` to
 the person to approve in a browser, then retry. The call itself does not record
 approval. If the person has consented but the acting profile lacks Use on the
-credential, the response is a 403 with `app_profile_credential_required`
-instead.
+credential, the result has `status: 403` with `app_profile_credential_required`
+in `body` instead. The HTTP call itself still succeeds, so check the result's
+`status`.
 
 ## Synthetic smoke tests
 
