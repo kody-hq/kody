@@ -537,7 +537,7 @@ export async function startWebsiteCheckout(input: {
 		let promoClaim: { promotionCodeId: string; claimKey: string } | undefined
 		// A code the person did not type must never fail their checkout.
 		// Remove when: the Black Friday 2026 campaign folder is deleted (any
-		// time after 2026-11-30); see its README.
+		// time after 2026-12-04); see its README.
 		let promoIsOptional = false
 		if (promo.code) {
 			const resolved = await resolveCheckoutPromotionCode(env, {

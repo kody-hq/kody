@@ -45,10 +45,10 @@ vi.mock('#worker/billing/stripe-client.ts', async (importOriginal) => {
 const { startWebsiteCheckout } = await import('#app/handlers/org-billing.ts')
 const { loadBlackFridayBanner } = await import('./server.ts')
 
-const duringSale = new Date('2026-11-27T09:00:00-07:00')
+const duringSale = new Date('2026-12-01T09:00:00-08:00')
 const saleEnd = new Date(blackFridayEndsAtMs)
 const seededAt = '2026-01-01T00:00:00.000Z'
-const stripeExpiresAt = 1_796_108_399
+const stripeExpiresAt = 1_796_457_599
 
 /** Ada owns her personal org and `acme`; Bob is a plain member of `acme`. */
 const people = {
@@ -223,12 +223,12 @@ function claimRows() {
 test('the banner copy states the prices the two Stripe coupons produce', () => {
 	expect(blackFridayCopy['signed-out']).toEqual({
 		body: 'Annual Pro is $90 for the first year, normally $120. Or start monthly at $6 for two months, then $12.',
-		meta: 'Ends Nov 30, 11:59 PM MT.',
+		meta: 'Ends Dec 4, 11:59 PM PT.',
 		cta: 'Create an account',
 	})
 	expect(blackFridayCopy.free).toEqual({
 		body: 'Upgrade to annual Pro for $90 the first year, normally $120. Or start monthly at $6 for two months, then $12.',
-		meta: "We'll apply the code at checkout. Ends Nov 30, 11:59 PM MT.",
+		meta: "We'll apply the code at checkout. Ends Dec 4, 11:59 PM PT.",
 		cta: 'Upgrade to Pro',
 	})
 	// The sale ends the second the Stripe promotion codes expire.
@@ -289,6 +289,9 @@ test('the pre-paint script fills the countdown, and hides the banner once dismis
 		text: '4d 4h 37m left.',
 		hidden: [],
 	})
+	expect(run({ now: Date.parse('2026-11-27T05:00:00Z') }).text).toBe(
+		'8d 2h 59m left.',
+	)
 	expect(run({ now: fourDaysOut, dismissed: true })).toEqual({
 		text: '',
 		hidden: [blackFridayHiddenAttribute],

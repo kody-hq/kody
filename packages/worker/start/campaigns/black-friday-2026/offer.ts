@@ -7,13 +7,13 @@
 export const blackFridayCampaignId = 'blackfriday-2026'
 
 /**
- * Must match `expires_at` (1796108399) on both Stripe promotion codes.
+ * Must match `expires_at` (1796457599) on both Stripe promotion codes.
  * If they ever differ, checkout still asks Stripe, finds the code expired or
  * inactive, and continues at full price.
  */
-export const blackFridayEndsAtMs = Date.parse('2026-11-30T23:59:59-07:00')
+export const blackFridayEndsAtMs = Date.parse('2026-12-04T23:59:59-08:00')
 
-const endsLabel = 'Ends Nov 30, 11:59 PM MT.'
+const endsLabel = 'Ends Dec 4, 11:59 PM PT.'
 
 /** Pro list prices and the two coupon percents. Must match Stripe. */
 const offer = {
