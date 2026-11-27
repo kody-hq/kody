@@ -7,9 +7,11 @@ import type {
  * Verified visitor identity on the request package code receives. The
  * platform sets it after authenticating the visitor's session, and only after
  * `createPackageCodeRequest` has stripped every inbound `X-Kody-*` header, so
- * a browser or upstream cannot forge it. It carries `userId`, `username`, and
+ * a browser or upstream cannot forge it. It carries `userId`, `username`,
  * `role` (the visitor's role in the owning org, null for anyone who is not a
- * member) and a snapshot of the live consent scopes. It grants no authority:
+ * member), `profile` (the agent profile acting for that person through
+ * `appFetch`, null for the person themselves), and a snapshot of the live
+ * consent scopes. It grants no authority:
  * credential consumers recheck the current grant before use.
  */
 export const packageAppVisitorHeaderName = 'X-Kody-Visitor'
@@ -18,6 +20,7 @@ export type PackageAppVisitorHeaderValue = {
 	userId: string
 	username: string
 	role: string | null
+	profile: { id: string; name: string } | null
 	scopes: ReadonlyArray<string>
 }
 
@@ -31,6 +34,9 @@ export function packageAppVisitorHeaderValue(input: {
 				userId: input.visitor.userId,
 				username: input.visitor.username,
 				role: input.visitor.role,
+				profile: input.visitor.profile
+					? { id: input.visitor.profile.id, name: input.visitor.profile.name }
+					: null,
 				scopes: [...(input.scopes ?? ['profile'])],
 			}
 		: input.identity
@@ -38,6 +44,7 @@ export function packageAppVisitorHeaderValue(input: {
 					userId: input.identity.userId,
 					username: input.identity.username,
 					role: null,
+					profile: null,
 					scopes: [...(input.scopes ?? ['profile'])],
 				}
 			: null

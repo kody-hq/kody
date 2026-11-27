@@ -270,6 +270,8 @@ const cliFlagOptions = {
 	out: { type: 'string' },
 	'no-attach': { type: 'boolean' },
 	method: { type: 'string' },
+	header: { type: 'string', multiple: true },
+	synthetic: { type: 'boolean' },
 	body: { type: 'string' },
 	clients: { type: 'string' },
 	yes: { type: 'boolean', short: 'y' },
@@ -1552,9 +1554,65 @@ async function dispatch(
 		}
 		case 'app': {
 			const [subcommand, packageDir, ...extra] = parsed.positionals
+			if (subcommand === 'fetch' || subcommand === 'list') {
+				const {
+					appFetchUsage,
+					appListUsage,
+					parseAppFetchCommand,
+					runAppFetchPlan,
+					runAppList,
+				} = await import('./app-commands.js')
+				if (subcommand === 'list' && parsed.positionals.length > 1) {
+					throw new Error(appListUsage)
+				}
+				// The app address names the org, so only an --org the person typed
+				// counts here; KODY_ORG and the stored active org never apply.
+				const plan =
+					subcommand === 'fetch'
+						? parseAppFetchCommand({
+								positionals: parsed.positionals.slice(1),
+								values: parsed.values,
+								...(orgFlagOnly ? { org: orgFlagOnly } : {}),
+							})
+						: null
+				if (subcommand === 'fetch' && !plan) throw new Error(appFetchUsage)
+				const apiUrl = apiUrlFrom({
+					apiUrl:
+						typeof parsed.values['api-url'] === 'string'
+							? parsed.values['api-url']
+							: undefined,
+				})
+				const token = await accessTokenForOpenApi({
+					tokenValues: tokenFlagValues(parsed.values),
+					apiUrl,
+					mcpUrl,
+				})
+				const { callOpenApiOperation } = await import('./open-api-client.js')
+				// Both operations look across orgs, so the request is not bound
+				// to one: the token reaches the Kody API only.
+				const call = (operationId: string, params: Record<string, unknown>) =>
+					callOpenApiOperation({ operationId, params, token, apiUrl })
+				if (plan) {
+					return await runAppFetchPlan({
+						plan,
+						call,
+						json,
+						stdout: write,
+						stderr: writeErr,
+					})
+				}
+				write(
+					await runAppList({
+						call,
+						json,
+						...(orgFlagOnly ? { org: orgFlagOnly } : {}),
+					}),
+				)
+				return 0
+			}
 			if (subcommand !== 'check' || extra.length > 0) {
 				throw new Error(
-					'Usage: kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--json]',
+					'Usage: kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--json]\n       kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"] [--body <text | @file>] [--out <file>] [--json]\n       kody app list [--org <slug>] [--json]',
 				)
 			}
 			assertNodeEngine(appCheckNodeEngine)

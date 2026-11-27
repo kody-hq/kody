@@ -12,7 +12,7 @@ export const loadPackageAppRunConsent = createServerFn({ method: 'GET' })
 		const [{ loadPackageAppRunConsentView }, { packageAppRunConsentPath }] =
 			await Promise.all([
 				import('./package-app-run-consent-protocol.ts'),
-				import('../../src/app/package-app-run-consent.ts'),
+				import('../../src/app-visit/run-consent-url.ts'),
 			])
 		const request = getRequest()
 		const url = new URL(packageAppRunConsentPath, request.url)

@@ -351,6 +351,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['DELETE', '/v1/profiles/{profile_id}', 'profileRevoke'],
 	]),
 	...capabilityRoutes('packages', [
+		['GET', '/v1/apps', 'appList'],
+		['POST', '/v1/apps/fetch', 'appFetch'],
 		['GET', '/v1/packages', 'packageList'],
 		['POST', '/v1/packages', 'packageSave'],
 		['POST', '/v1/packages/check', 'packageCheck'],
@@ -384,8 +386,6 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'packageAppConnectedPersonRevoke',
 		],
 		['PATCH', '/v1/packages/{package_id}', 'packageUpdate'],
-		// Body-only so `kody_id` works as well as `package_id`.
-		['POST', '/v1/packages/app-fetch', 'packageAppFetch'],
 		['GET', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsGet'],
 		['PUT', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsSet'],
 		['DELETE', '/v1/packages/{package_id}', 'packageDelete'],

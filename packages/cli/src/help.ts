@@ -98,6 +98,8 @@ Usage:
   kody dev emit <event> --body <event.json> [--target prod|mock] [--dry-run] [--json]
   kody dev check [--target prod|mock] [--build local] [--offline] [--debug] [--json]
   kody app check [<package-dir>] [--out <dir>] [--target prod|mock] [--org <slug>] [--json]
+  kody app fetch <@org/app | hosted-url> [path] [--method <verb>] [--header "Name: value"] [--body <text | @file>] [--out <file>] [--synthetic] [--json]
+  kody app list [--org <slug>] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
@@ -477,6 +479,21 @@ ${orgBlock}
              Playwright, axe-core, Lighthouse, and Chromium into the Kody
              cache (\`KODY_CACHE_DIR\`) and reuses them after that. Run it
              during development and fix what it shows.
+
+  kody app fetch
+             Call a hosted package app you can run, as you: one HTTP request
+             through the Kody API (\`appFetch\`), answered with the app's
+             status and body. Name the app as \`@org/app\` or by its hosted
+             URL; apps shared with you from other orgs work too. This is a
+             real visit with real side effects. Your token goes to the Kody
+             API only, never to the app's hosted URL. If the app needs your
+             one-time confirmation, the error gives the link to open. The
+             body prints to stdout (up to 102400 bytes); \`--out <file>\`
+             writes up to 10 MB to a file.
+
+  kody app list
+             List the package apps you can run, across your orgs and apps
+             shared with you. \`--org <slug>\` lists one org only.
 
 Environment:
   KODY_MCP_URL        Override the default MCP URL (${defaultMcpUrl})

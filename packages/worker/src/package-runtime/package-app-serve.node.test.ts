@@ -1877,7 +1877,7 @@ function seedPublishedAppAheadOfServing(kodyId: string) {
 }
 
 const servedCommitWithoutAppNotFoundBody =
-	'Saved package app not found. Declare package.json#kody.app and publish, then smoke-test the fetch handler with packageAppFetch.'
+	'Saved package app not found. Declare package.json#kody.app and publish, then call the fetch handler with appFetch.'
 
 test('a served commit without kody.app is the normal 404 while hasApp already projects the next publish', async () => {
 	const kodyId = 'app-pending-serve'

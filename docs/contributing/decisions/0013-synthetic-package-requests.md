@@ -38,8 +38,9 @@ strips caller-supplied `Kody-Synthetic` from requests; real event dispatch
 strips caller-supplied `synthetic` and `replay_of` from handler envelopes.
 Synthetic MCP calls set the markers; callers cannot forge them.
 
-- **`packageAppFetch`** — invoke a published package app's fetch handler with
-  method, path, headers, and body. The platform sets request header
+- **`appFetch`** (at first every call was synthetic) — invoke a published
+  package app's fetch handler with method, path, headers, and body. A call is a
+  real visit by default; with `synthetic: true` the platform sets request header
   `Kody-Synthetic: true` before the handler runs. Returns exactly
   `{ status, headers, body, truncated }`; binary response bodies are base64.
   Rejects websocket upgrade requests.

@@ -33,13 +33,12 @@ the landing entry). The collector then classifies against
 
 It also runs the hello-world package app `@kentcdodds/perf-hello` (package id
 `87aebd1f-9589-4c5a-b34e-40f191413564`, whose `fetch` returns `ok`) three times
-back to back through Open API `packageAppFetch`
-(`POST https://api.kody.codes/v1/packages/app-fetch`) and records
-`packageApp.samples` (status, API round trip as `ttfbMs`, and the app's
-`Server-Timing` serve phases such as `manifest`, `usageGate`, `appLoader`, and
-`entrypoint`). The first sample may be cold; later ones show the warm path. The
-serve phases are Kody's platform overhead on package-app requests (budget: tens
-of ms, see
+back to back through Open API `appFetch`
+(`POST https://api.kody.codes/v1/apps/fetch`) and records `packageApp.samples`
+(status, API round trip as `ttfbMs`, and the app's `Server-Timing` serve phases
+such as `manifest`, `usageGate`, `appLoader`, and `entrypoint`). The first
+sample may be cold; later ones show the warm path. The serve phases are Kody's
+platform overhead on package-app requests (budget: tens of ms, see
 [invocation overhead guardrails](./architecture/invocation-overhead-guardrails.md)).
 With `KODY_API_TOKEN` the call authenticates, so the app does not need to be
 internet-visible; it measures the signed-in serve path, without the hosted-host
@@ -56,7 +55,7 @@ The workflow reads the optional token from the repository secret
 `["app:execute", "package:read"]`, `idle_ttl_seconds: 1209600`,
 `max_lifetime_seconds: 7776000`; 90 days is the maximum), then set the GitHub
 secret. Rotate it with `tokenRotate` before it expires; an expired token shows
-up as a `packageAppFetch HTTP 401` in `packageApp.error`.
+up as an `appFetch HTTP 401` in `packageApp.error`.
 
 [`.github/workflows/weekly-site-perf.yml`](../../.github/workflows/weekly-site-perf.yml)
 runs that collector on Mondays at 14:17 UTC and on `workflow_dispatch`.

@@ -63,6 +63,11 @@ export async function grantResourceToProfile(input: {
 		type: ProfileGrantResourceType
 		id: string
 		label: string
+		/**
+		 * The org that owns the resource when it is not the request's org: an
+		 * app another org shared with the person. The grant is stored there.
+		 */
+		orgId?: string
 	}
 	preset: GrantPreset | null
 	permissions: ReadonlyArray<OrgPermission>
@@ -108,9 +113,10 @@ export async function grantResourceToProfile(input: {
 		)
 	}
 	const grants = await loadProfileGrants(db, {
-		orgId,
+		orgId: null,
 		profileIds: chain.map((row) => row.id),
 	})
+	const resourceOrgId = resource.orgId ?? orgId
 	for (const ancestor of ancestors.toReversed()) {
 		const held = new Set(
 			(grants.get(ancestor.id) ?? [])
@@ -141,7 +147,7 @@ export async function grantResourceToProfile(input: {
 				   AND resource_type = ? AND resource_id = ?
 				   AND deleted_at IS NULL`,
 			)
-			.bind(now, now, orgId, self.id, resource.type, resource.id),
+			.bind(now, now, resourceOrgId, self.id, resource.type, resource.id),
 		db
 			.prepare(
 				`INSERT INTO grants (
@@ -151,7 +157,7 @@ export async function grantResourceToProfile(input: {
 			)
 			.bind(
 				grantId,
-				orgId,
+				resourceOrgId,
 				resource.type,
 				resource.id,
 				self.id,

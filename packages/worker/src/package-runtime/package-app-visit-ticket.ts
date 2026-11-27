@@ -100,6 +100,8 @@ export type PackageAppVisitClaims = {
 	credentialProfileId?: string | null
 	/** That profile's chain at mint: ids, root first (attribution). */
 	credentialProfileChain?: ReadonlyArray<string> | null
+	/** The org that profile lives in, when it is not the owning org. */
+	credentialProfileOrgId?: OwnerId | null
 	/**
 	 * A visitor from outside the owning org: the ticket only opens the
 	 * executor credentials they approved. Every other path treats the request
@@ -161,6 +163,10 @@ type StoredVisitTicket = {
 	cs?: Array<string> | null
 	cpi?: string | null
 	cpc?: Array<string> | null
+	/** Profile home org, when it is not the owner. */
+	cpo?: string
+	/** Profile name, the label the app sees. */
+	cpn?: string
 	xo?: true
 	/** Billed org id when it is not the owner (ADR 0095). */
 	bo?: string
@@ -298,6 +304,8 @@ function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 		(record.cpc === undefined ||
 			record.cpc === null ||
 			(Array.isArray(record.cpc) && record.cpc.every(isNonEmptyText))) &&
+		(record.cpo === undefined || isNonEmptyText(record.cpo)) &&
+		(record.cpn === undefined || isNonEmptyText(record.cpn)) &&
 		(record.xo === undefined || record.xo === true) &&
 		(record.bo === undefined || isNonEmptyText(record.bo))
 	)
@@ -309,6 +317,25 @@ function claimsFromStored(stored: StoredVisitTicket): PackageAppVisitClaims {
 			userId: personIdFromStored(stored.sub),
 			username: stored.vu,
 			role: stored.role,
+			...(stored.cpi && stored.cpn
+				? { profile: { id: stored.cpi, name: stored.cpn } }
+				: {}),
+			...(stored.cs || stored.cpi
+				? {
+						credential: {
+							scopes: (stored.cs as Array<OrgPermission> | undefined) ?? null,
+							...(stored.cpi
+								? {
+										profileId: stored.cpi,
+										...(stored.cpc?.at(-1) === stored.cpi
+											? { profileChain: stored.cpc }
+											: {}),
+										profileOrgId: ownerIdFromStored(stored.cpo ?? stored.oid),
+									}
+								: {}),
+						},
+					}
+				: {}),
 		},
 		owner: {
 			userId: ownerIdFromStored(stored.oid),
@@ -331,6 +358,9 @@ function claimsFromStored(stored: StoredVisitTicket): PackageAppVisitClaims {
 		credentialProfileId: stored.cpi ?? null,
 		...(stored.cpi && stored.cpc?.at(-1) === stored.cpi
 			? { credentialProfileChain: stored.cpc }
+			: {}),
+		...(stored.cpi && stored.cpo
+			? { credentialProfileOrgId: ownerIdFromStored(stored.cpo) }
 			: {}),
 		...(stored.xo ? { executorOnly: true } : {}),
 		...(stored.bo ? { billing: { orgId: ownerIdFromStored(stored.bo) } } : {}),
@@ -481,7 +511,7 @@ export async function mintPackageAppVisitTicket(input: {
 	scopes?: ReadonlyArray<string>
 	credential?: Pick<
 		RequestCredential,
-		'scopes' | 'profileId' | 'profileChain'
+		'scopes' | 'profileId' | 'profileChain' | 'profileOrgId'
 	> | null
 	executorOnly?: boolean
 	billing?: RequestBilling | null
@@ -521,6 +551,13 @@ export async function mintPackageAppVisitTicket(input: {
 						cpi: input.credential.profileId,
 						...(input.credential.profileChain?.length
 							? { cpc: [...input.credential.profileChain] }
+							: {}),
+						...(input.credential.profileOrgId &&
+						input.credential.profileOrgId !== input.owner.userId
+							? { cpo: input.credential.profileOrgId }
+							: {}),
+						...(input.visitor.profile?.id === input.credential.profileId
+							? { cpn: input.visitor.profile.name }
 							: {}),
 					}
 				: {}),
@@ -687,6 +724,9 @@ export function requestContextFromVisitClaims(
 						...(claims.credentialProfileChain?.length
 							? { profileChain: [...claims.credentialProfileChain] }
 							: {}),
+						...(claims.credentialProfileOrgId
+							? { profileOrgId: claims.credentialProfileOrgId }
+							: {}),
 					}
 				: {}),
 		},
@@ -788,6 +828,9 @@ export async function createPackageAppRequestVisit(input: {
 		credentialScopes: input.request.credential.scopes,
 		credentialProfileId: input.request.credential.profileId ?? null,
 		credentialProfileChain: input.request.credential.profileChain ?? null,
+		...(input.request.credential.profileOrgId
+			? { credentialProfileOrgId: input.request.credential.profileOrgId }
+			: {}),
 		...(billing ? { billing } : {}),
 		exp: minted.exp,
 	}

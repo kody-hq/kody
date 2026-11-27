@@ -18,7 +18,10 @@ export async function loadRunningProfile(
 ): Promise<RunningProfile | null> {
 	const profileId = request.credential.profileId
 	if (!profileId) return null
-	const rows = await loadProfileChain(db, { orgId: request.org.id, profileId })
+	const rows = await loadProfileChain(db, {
+		orgId: request.credential.profileOrgId ?? request.org.id,
+		profileId,
+	})
 	const tip = rows.at(-1)
 	if (!tip || tip.id !== profileId) return null
 	return {

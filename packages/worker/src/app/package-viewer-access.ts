@@ -7,6 +7,7 @@ import {
 	type EffectivePermissions,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
+import { checkAppVisitAccess } from '#worker/app-visit/authorize.ts'
 import { loadOrgBindingForOrg, type OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 
@@ -175,10 +176,12 @@ export async function viewerIsSavedPackageOrgOwner(input: {
 }
 
 /**
- * Whether a signed-in person may run a hosted package app owned by this org.
+ * Whether a signed-in person may run a hosted package app owned by this org,
+ * asked as the person themselves (a session: no profile, no token scopes).
+ * The decision is {@link checkAppVisitAccess}, the check every visit uses.
  * Owners always hold `app:execute`. Members and outside collaborators need a
  * grant that includes it (team member defaults do not, until that ships).
- * When `appId` is set, the check is for that app resource only — a grant on
+ * When `appId` is set, the check is for that app resource only: a grant on
  * another app does not open this one.
  */
 export async function viewerCanExecutePackageApp(input: {
@@ -188,8 +191,19 @@ export async function viewerCanExecutePackageApp(input: {
 	/** Saved package id when the concrete app is known. */
 	appId?: string | null
 }): Promise<boolean> {
-	return savedPackageViewerMayRunApp(
-		await loadSavedPackageViewerAccess(input),
-		input,
-	)
+	if (!input.viewer) return false
+	const access = await checkAppVisitAccess({
+		env: input.env,
+		callerRequest: sessionRequestFor(input.viewer),
+		ownerId: input.ownerId,
+		appId: input.appId,
+	})
+	return access.allowed
+}
+
+/** A signed-in person's own request: a session narrows nothing. */
+export function sessionRequestFor(
+	viewer: Pick<McpUserContext, 'userId' | 'username'>,
+) {
+	return deriveRequestContext({ user: viewer, source: { kind: 'session' } })
 }

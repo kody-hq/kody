@@ -11,7 +11,7 @@ Worker startup. Hunches in the request (OAuth `iss`, `secretLock` vs grants, DO
 rows-read, focus/loading UX) were checked against code and tests.
 
 **Fix shipped in the same change.** Finding H1 (`communityForkAdopt` from
-package runtimes) has an obvious, low-risk gate matching `packageAppFetch` /
+package runtimes) has an obvious, low-risk gate matching `appFetch` /
 platform-feedback submit. Other findings stay recommendations.
 
 ## Severity at a glance
@@ -63,7 +63,7 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
   Implicit read/use is “no `community_forks` row, or `adopted_at` set.”
   `communityForkAdopt` only required a 10-character `review_summary` and the
   caller `userId`. It did not check `executionOrigin` or empty `storageContext`,
-  unlike `packageAppFetch`, `packageSubscriptionDispatch`, and platform-feedback
+  unlike `appFetch`, `packageSubscriptionDispatch`, and platform-feedback
   submit. Package apps expose the full capability map through `callCapability`.
   Jobs, webhooks, and package-export runs build a background caller with
   `packageId` set
@@ -73,7 +73,7 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
 - **Impact:** Installing an unadopted community fork is supposed to deny
   user-secret read until a website Allow or a reviewed adopt. The fork could
   adopt itself, then read every user secret and exfiltrate them.
-- **Fix in this change:** Same gate as `packageAppFetch`:
+- **Fix in this change:** Same gate as `appFetch`:
   `executionOrigin === 'interactive'` and empty package/app/storage context.
   Missing origin fails closed. Capability copy and usage docs now say package
   runtimes cannot adopt. Security invariant 15 records it.
@@ -147,12 +147,11 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
   `packageDelete`, `packageShareInvite`, `packageUpdate`, and most other
   unguarded capabilities
 - **Evidence:** Registry filtering is role / permission / feature-flag only.
-  Interactive-only gates exist on `packageAppFetch`,
-  `packageSubscriptionDispatch`, platform-feedback submit, external-publish
-  escalation, and (after H1) `communityForkAdopt`. `packageDelete` is
-  prompt-gated (`confirm_name` must match) but a package that knows its own or a
-  sibling’s name can pass that. `communityPublish` can list and publish another
-  owned private package.
+  Interactive-only gates exist on `appFetch`, `packageSubscriptionDispatch`,
+  platform-feedback submit, external-publish escalation, and (after H1)
+  `communityForkAdopt`. `packageDelete` is prompt-gated (`confirm_name` must
+  match) but a package that knows its own or a sibling’s name can pass that.
+  `communityPublish` can list and publish another owned private package.
 - **Impact:** A running community fork can mutate the owner’s account surface
   (publish, delete, share) even when secret read is denied. This may be
   intentional “packages act as the user” for some tools; it is inconsistent with

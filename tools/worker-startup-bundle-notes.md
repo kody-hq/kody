@@ -20,8 +20,8 @@ MCP Durable Object. UserMeter schema v12 inbound MCP last-used RPCs add a few KB
 (CI dry-run 4_992_191). Keep last-used on this class; do not add a second DO.
 
 - Package-app `kody.app.client` browser bundling and `/_assets/*` serving
-  (publish rebuild and packageAppFetch both run here) add ~12 KB on top: local
-  dry-run 5_004_707 bytes.
+  (publish rebuild and appFetch both run here) add ~12 KB on top: local dry-run
+  5_004_707 bytes.
 - emailDestination list/add/set-default/remove plus emailSend destination
   resolution add ~23 KB: local dry-run 5_028_263 bytes.
 - MCP OAuth token-recovery persist/stamp on McpClientHub (refresh before wipe,

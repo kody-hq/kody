@@ -31,10 +31,8 @@ import {
 	type PackageAppOauthScope,
 } from '#app/package-app-oauth-scopes.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
-import {
-	buildPackageAppRunConsentUrl,
-	needsPackageAppRunConsentForPerson,
-} from '#app/package-app-run-consent.ts'
+import { needsPackageAppRunConsentForPerson } from '#app/package-app-run-consent.ts'
+import { buildPackageAppRunConsentUrl } from '#worker/app-visit/run-consent-url.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import {
 	redirectToLogin,

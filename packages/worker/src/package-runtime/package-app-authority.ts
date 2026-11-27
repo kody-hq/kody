@@ -546,17 +546,32 @@ export function createPackageAppCredentialAuthority(input: {
 	}
 }
 
+/**
+ * The visitor's request in their own personal org, where the credentials they
+ * supply live. It keeps what the visiting credential narrows them to: an agent
+ * profile's chain and token scopes ride along from the visit, so a profile
+ * reaches only the personal credentials every layer of its chain was granted
+ * use on, whatever the person consented to in a browser.
+ */
 export async function createPackageAppVisitorPersonalRequest(input: {
 	db: D1Database
-	visitor: Pick<RuntimePackageAppVisitor, 'userId' | 'username'> | null
+	visitor: Pick<
+		RuntimePackageAppVisitor,
+		'userId' | 'username' | 'credential'
+	> | null
 }) {
 	const visitor = input.visitor
 	if (!visitor) return null
 	const orgBinding = await loadOrgBindingForPerson(input.db, visitor.userId)
+	const narrowing = visitor.credential ?? null
 	return deriveRequestContext({
 		user: { userId: visitor.userId, username: visitor.username },
 		source: { kind: 'package-app' },
 		orgBinding,
+		scopes: narrowing?.scopes ?? null,
+		profileId: narrowing?.profileId ?? null,
+		profileChain: narrowing?.profileChain ?? null,
+		profileOrgId: narrowing?.profileOrgId ?? null,
 	})
 }
 
@@ -564,7 +579,10 @@ export async function createPackageAppVisitorCredentialRequest(input: {
 	db: D1Database
 	orgId: OwnerId
 	callerRequest: RequestContext | null
-	visitor: Pick<RuntimePackageAppVisitor, 'userId' | 'username'> | null
+	visitor: Pick<
+		RuntimePackageAppVisitor,
+		'userId' | 'username' | 'credential'
+	> | null
 }) {
 	const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
 		db: input.db,

@@ -445,6 +445,15 @@ function __kodyReadIdentityOnlyVisitor(request) {
 			email: '',
 			display_name: parsed.username,
 			org: __kodyObjectFreezeCaptured({ slug: __kodyIdentityOnlyOrgSlug }),
+			profile:
+				parsed.profile &&
+				typeof parsed.profile.id === 'string' &&
+				typeof parsed.profile.name === 'string'
+					? __kodyObjectFreezeCaptured({
+							id: parsed.profile.id,
+							name: parsed.profile.name,
+						})
+					: null,
 			scopes: Array.isArray(parsed.scopes)
 				? parsed.scopes.filter((scope) => typeof scope === 'string')
 				: [],
@@ -479,6 +488,9 @@ function __kodyIdentityOnlyAnswer(identity, name) {
 		email: identity.email,
 		display_name: identity.display_name,
 		org: { slug: identity.org.slug },
+		profile: identity.profile
+			? { id: identity.profile.id, name: identity.profile.name }
+			: null,
 		scopes: identity.scopes,
 	};
 }
@@ -1961,7 +1973,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				? {
 						profileId: visit.credentialProfileId,
 						profileChain: visit.credentialProfileChain ?? null,
+						profileOrgId: visit.credentialProfileOrgId ?? null,
 					}
+				: {}),
+			...(visit && 'credentialScopes' in visit && visit.credentialScopes
+				? { scopes: visit.credentialScopes }
 				: {}),
 			storageContext: {
 				sessionId: null,
@@ -2494,6 +2510,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				email: '',
 				display_name: visit.visitor.username,
 				org: { slug: this.ctx.props.orgSlug ?? '' },
+				profile: visit.visitor.profile
+					? { id: visit.visitor.profile.id, name: visit.visitor.profile.name }
+					: null,
 				scopes: [...visit.scopes],
 			}
 		}
@@ -2521,6 +2540,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			email: shared ? (person?.email ?? '') : '',
 			display_name: person?.displayName ?? visitor.username,
 			role: visitor.role,
+			profile: visitor.profile
+				? { id: visitor.profile.id, name: visitor.profile.name }
+				: null,
 		}
 	}
 
@@ -4784,6 +4806,18 @@ export async function createPackageAppCallerContext(input: {
 					role: visitor.role,
 				}
 			: undefined,
+		// An agent's visit stays narrowed to its token scopes and profile chain
+		// for everything the app does as the visitor.
+		...(visitor?.credential?.profileId
+			? {
+					profileId: visitor.credential.profileId,
+					profileChain: visitor.credential.profileChain ?? null,
+					profileOrgId: visitor.credential.profileOrgId ?? null,
+				}
+			: {}),
+		...(visitor?.credential?.scopes
+			? { scopes: visitor.credential.scopes }
+			: {}),
 		storageContext: {
 			sessionId: null,
 			appId: input.packageId,

@@ -31,6 +31,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['section'],
 	},
 	{
+		operationId: 'appFetch',
+		method: 'POST',
+		pathTemplate: '/v1/apps/fetch',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'appList',
+		method: 'GET',
+		pathTemplate: '/v1/apps',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'approvalBundleCreate',
 		method: 'POST',
 		pathTemplate: '/v1/approval-bundles',
@@ -1025,12 +1037,6 @@ export const bakedOpenApiRoutes = [
 		method: 'POST',
 		pathTemplate: '/v1/orgs/package-app-custom-hostnames/{id}/sync',
 		pathParamNames: ['id'],
-	},
-	{
-		operationId: 'packageAppFetch',
-		method: 'POST',
-		pathTemplate: '/v1/packages/app-fetch',
-		pathParamNames: [],
 	},
 	{
 		operationId: 'packageAppRunsAsGet',

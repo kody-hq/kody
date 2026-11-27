@@ -17,6 +17,7 @@ import {
 	isExecutionContextError,
 } from '#worker/execution-contexts/errors.ts'
 import { EncodedPlaceholderError } from '#mcp/secrets/encoded-placeholder.ts'
+import { AppConsentRequiredError } from '#worker/app-visit/consent-required.ts'
 import {
 	AuthorizationError,
 	LivePersonRequiredError,
@@ -109,6 +110,7 @@ const platformApiErrorCodes = [
 	'insufficient_scope',
 	'profile_grant',
 	'profile_inactive',
+	'app_consent_required',
 	'email_verification_required',
 	'account_suspended',
 	'guest_not_allowed',
@@ -290,6 +292,19 @@ export function toApiError(
 			},
 			headers: {
 				'WWW-Authenticate': `Bearer error="insufficient_scope", scope="${error.permission}"`,
+			},
+			cause: error,
+		})
+	}
+	if (error instanceof AppConsentRequiredError) {
+		return new ApiError({
+			status: 403,
+			code: error.code,
+			message: error.message,
+			details: {
+				consent: error.consent,
+				consent_url: error.consentUrl,
+				...(error.need ? { need: error.need } : {}),
 			},
 			cause: error,
 		})
