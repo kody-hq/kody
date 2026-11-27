@@ -136,14 +136,14 @@ export function PackagePublishingPanel(input: {
 									packageDetail.heldForApproval.servingCommit,
 								)}
 							</code>
-							{'. Published commit '}
+							{'. Held for approval: commit '}
 							<code
 								data-testid="package-held-commit"
 								title={packageDetail.heldForApproval.heldCommit}
 							>
 								{shortCommunityCommit(packageDetail.heldForApproval.heldCommit)}
 							</code>
-							{' is waiting for you to approve its new capabilities.'}
+							{' is built but not live until you approve its new capabilities.'}
 						</>
 					) : packageDetail.publishedCommit ? (
 						<>

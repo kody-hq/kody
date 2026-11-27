@@ -86,6 +86,17 @@ export async function advancePackageServingCommit(
 			commit: input.commit,
 		})
 		if (held) {
+			// One notice per held commit: a republish of the same commit holds
+			// it again without telling the owners twice.
+			if (!decision.alreadyHeld) {
+				const { notifyOwnersOfHeldPublish } =
+					await import('./held-for-approval-notice.ts')
+				await notifyOwnersOfHeldPublish({
+					env: input.env,
+					ownerUserId: input.userId,
+					packageId: decision.packageId,
+				})
+			}
 			return { advanced: false, heldPackageId: decision.packageId }
 		}
 		// An approval or visibility change landed while deciding: decide again.
@@ -231,7 +242,12 @@ async function settleProjection(
 }
 
 type ServingAdvanceDecision =
-	| { hold: true; packageId: string }
+	| {
+			hold: true
+			packageId: string
+			/** `commit` was already recorded as held before this decision. */
+			alreadyHeld: boolean
+	  }
 	| {
 			hold: false
 			/** The package app whose approvals for `commit` are marked served. */
@@ -247,6 +263,7 @@ async function decideServingAdvance(input: {
 }): Promise<ServingAdvanceDecision | null> {
 	const db = input.env.APP_DB
 	let appPackageId: string | null = null
+	let alreadyHeld = false
 	try {
 		const source = await getEntitySourceById(db, input.sourceId)
 		if (
@@ -258,6 +275,7 @@ async function decideServingAdvance(input: {
 		) {
 			return null
 		}
+		alreadyHeld = source.held_commit === input.commit
 		const savedPackage = await getSavedPackageById(db, {
 			userId: input.userId,
 			packageId: source.entity_id,
@@ -286,8 +304,9 @@ async function decideServingAdvance(input: {
 		) {
 			return advance
 		}
-		if (source.held_commit === input.commit)
-			return { hold: true, packageId: savedPackage.id }
+		if (alreadyHeld) {
+			return { hold: true, packageId: savedPackage.id, alreadyHeld }
+		}
 		const computed = await computePackageCapabilitySet({
 			env: input.env,
 			ownerUserId: savedPackage.userId,
@@ -298,7 +317,7 @@ async function decideServingAdvance(input: {
 			publishedCommit: input.commit,
 		})
 		if (!capabilitySetWithinApproval(computed.capabilitySet, served)) {
-			return { hold: true, packageId: savedPackage.id }
+			return { hold: true, packageId: savedPackage.id, alreadyHeld }
 		}
 		return {
 			...advance,
@@ -325,7 +344,9 @@ async function decideServingAdvance(input: {
 			commit: input.commit,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return appPackageId ? { hold: true, packageId: appPackageId } : null
+		return appPackageId
+			? { hold: true, packageId: appPackageId, alreadyHeld }
+			: null
 	}
 }
 

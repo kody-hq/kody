@@ -1,6 +1,8 @@
 /**
- * Exit codes for `kody package publish` — npm-like: success (0) only for a
- * completed publish or true no-op tip; refusals/rejections exit 1.
+ * Exit codes for `kody package publish`, npm-like: success (0) only for a
+ * completed publish or true no-op tip; refusals/rejections exit 1. A publish
+ * held for capability approval (`held_for_approval`) exits 1 too: its commit
+ * is built but not live until the owner approves it.
  *
  * Statuses come from `packagePublishExternalPush` /
  * `RepoExternalPublishResult` (worker repo types + publish-external-push).
@@ -58,6 +60,13 @@ function failedCheckMessages(result: Record<string, unknown>): Array<string> {
 	return messages
 }
 
+/** Statuses that wait on an owner click at `approval_url`. */
+function withApprovalUrl(message: string, result: Record<string, unknown>) {
+	const url =
+		typeof result.approval_url === 'string' ? result.approval_url.trim() : ''
+	return url && !message.includes(url) ? `${message}\nApprove: ${url}` : message
+}
+
 /**
  * Human error line(s) for stderr on refusal. Prefer the API `message` when
  * present; for `checks_failed`, summarize failed_checks.
@@ -69,7 +78,7 @@ export function publishRefusalMessage(result: unknown): string {
 	}
 	if (isRecord(result) && typeof result.message === 'string') {
 		const trimmed = result.message.trim()
-		if (trimmed) return trimmed
+		if (trimmed) return withApprovalUrl(trimmed, result)
 	}
 	if (status === 'checks_failed' && isRecord(result)) {
 		const details = failedCheckMessages(result)

@@ -15,7 +15,7 @@ export function PackageHeldForApprovalCallout(props: {
 			aria-labelledby="package-held-for-approval-heading"
 		>
 			<h3 id="package-held-for-approval-heading">
-				Everyone is still on the previous version
+				Held for approval: your latest publish is not live
 			</h3>
 			<p>
 				Your latest publish (<code>{props.held.heldCommit.slice(0, 7)}</code>)

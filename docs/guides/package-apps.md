@@ -111,6 +111,19 @@ A one-file fetch handler is a complete app (see
 [Fetch handlers](#fetch-handlers)). Framework folder layouts belong in a recipe;
 [Remix](#remix-recipe) is Example A.
 
+## Publishes held for approval
+
+When you republish an approved internet-visible app and the new version asks for
+more capabilities than the approved one, the publish is held. The new commit is
+built but not live, and everyone, you included, stays on the approved commit
+until an owner approves it. A held publish reports the status
+`held_for_approval`, not `published`, with `serving_commit` (still live),
+`held_commit` (waiting), and `approval_url`, and `kody package publish` exits 1.
+`packageGet` returns the same `serving_commit`, `held_commit`, and
+`approval_url`. The account owners get an email and a **Waiting** item with the
+approval link, including when someone else or an automatic republish caused the
+publish.
+
 ## Session handoff
 
 Production-hosted apps open at `https://{package-name}--{username}.kody.run/…`

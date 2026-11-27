@@ -1117,17 +1117,43 @@ new version asks for the same capabilities or fewer, its approval carries
 forward and everyone switches to it right away. If it asks for more, everyone,
 including you and other members of the account, stays on the approved version
 until you approve the new capability set; members and public visitors never run
-different versions. While they wait, the package page shows **Everyone is still
-on the previous version** with an **Approve to update everyone** link, and the
-publish response includes `held_for_approval` with the commit everyone still
-runs (`serving_commit`), the new commit (`held_commit`), and `approval_url`.
-Approving moves everyone to the new version. Jobs, subscriptions, webhooks,
-events, and skills stay on the approved version too: a job the new version
-removes keeps running as it was, a job it adds starts only after you approve
-(enabled as you), and no job runs the new code until then. The **Public
-release** panel shows the commit everyone is on and the published commit that
-waits for approval. To try the new version before you approve it, use local dev
-or a dev check.
+different versions.
+
+A publish in that state is held, not published. Every publish surface reports it
+with the status `held_for_approval` instead of `published`: `repoPublishSession`
+and `packageSave` in their own result, and `packagePublishExternalPush` in the
+result of its durable run. That call answers `dispatched` first; poll
+`packageRunResult`, whose run ends errored with the reason in `last_error` and
+whose `result` is the `held_for_approval` result. The result carries the commit
+everyone still runs (`serving_commit`), the commit that waits (`held_commit`),
+`approval_url`, and a `message`. `kody package publish` follows the run, prints
+the message and the approval link on stderr, and exits 1. `held_for_approval` is
+not `locked` or `approval_required`. Those two pause a publish before it starts
+(`locked` for a locked package, `approval_required` for changed credential
+needs), while a held publish is already built and only waits to go live.
+
+`packageGet` keeps the two commits apart. `serving_commit` is the commit that is
+live, `held_commit` is the commit that waits (null when nothing is held, and for
+callers who cannot edit the package), and `approval_url` approves it.
+`published_commit` is the latest publish that was not held, so it never names
+the held commit, and the rest of the record (exports, credential needs)
+describes the serving commit. After approval `held_commit` is null again and
+`serving_commit` is the commit that was held.
+
+Kody tells the account owners when a publish is held, whoever caused it: a
+direct publish, an agent, a teammate, or an automatic republish. Kody sends each
+owner one email per held commit with the serving commit, the held commit, and
+the approval link, and the package appears on **Waiting** (and in
+`waitingSummary`) until it is approved. The email is sent once and is not
+retried, so Waiting is the list to trust if a message does not arrive. The
+package page shows **Held for approval: your latest publish is not live** with
+an **Approve to update everyone** link. Approving moves everyone to the new
+version. Jobs, subscriptions, webhooks, events, and skills stay on the approved
+version too: a job the new version removes keeps running as it was, a job it
+adds starts only after you approve (enabled as you), and no job runs the new
+code until then. The **Public release** panel shows the commit everyone is on
+and the held commit that waits for approval. To try the new version before you
+approve it, use local dev or a dev check.
 
 Apps that are not internet-visible switch to each new version as soon as it
 finishes building.

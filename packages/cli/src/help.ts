@@ -252,7 +252,10 @@ ${orgBlock}
              run that failed, and for refusal/rejection
              statuses (\`checks_failed\`, \`locked\`, \`approval_required\`,
              \`not_fast_forward\`) — the API \`message\` (or a checks summary)
-             goes to stderr, like npm. Auth / permission / network failures
+             goes to stderr, like npm. Exit 1 for \`held_for_approval\` too:
+             the commit is built but not live until the owner approves its
+             new capabilities at \`approval_url\` (also printed to stderr);
+             \`serving_commit\` is what still runs. Auth / permission / network failures
              also exit 1; with \`--json\`, stdout also gets
              \`{ error, message, sent }\` where \`sent\` is \`false\` (connect
              phase — request not sent) or \`"unknown"\` (may have reached the

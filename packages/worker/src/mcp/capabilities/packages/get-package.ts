@@ -23,13 +23,24 @@ import { packageMachineNeedsFor } from '#worker/package-registry/types.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import { getSavedPackageWithCommunityProvenanceById } from '#worker/package-registry/repo.ts'
-import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import {
+	loadPackageSourceBySourceId,
+	loadServingPackageSourceBySourceId,
+} from '#worker/package-registry/source.ts'
+import { buildPackageCapabilityApprovalUrl } from '#worker/package-capabilities/capability-approval-url.ts'
+import { heldForApprovalFromSource } from '#worker/package-capabilities/held-for-approval.ts'
+import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { servingCommitForSource } from '#worker/repo/serving-commit.ts'
 import { listPublishedBundleArtifactProvenance } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import {
 	buildPlainRepoPromotionErrorMessage,
 	findPlainRepoPromotionHint,
 } from '#worker/repo/user-repos.ts'
-import { authorize, packageResource } from '#worker/authorization/authorize.ts'
+import {
+	AuthorizationError,
+	authorize,
+	packageResource,
+} from '#worker/authorization/authorize.ts'
 import { packageDetailSchema } from './shared.ts'
 
 export const getPackageCapability = defineDomainCapability(
@@ -39,7 +50,7 @@ export const getPackageCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
-			'Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), its credential needs with how each resolves for you (`credentials.needs`), and the machine access it declares (`machine.needs`). For a single export contract, prefer search({ entity: "package:{kodyId}#{subpath}" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.',
+			'Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), its credential needs with how each resolves for you (`credentials.needs`), and the machine access it declares (`machine.needs`). `serving_commit` is the commit that is live; when a publish is held for capability approval the record describes the serving commit, and `held_commit` plus `approval_url` name the commit that waits (shown to people who can publish the package). For a single export contract, prefer search({ entity: "package:{kodyId}#{subpath}" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.',
 		keywords: ['package', 'get', 'read', 'metadata', 'exports', 'imports'],
 		readOnly: true,
 		idempotent: true,
@@ -100,12 +111,38 @@ export const getPackageCapability = defineDomainCapability(
 				'package:read',
 				packageResource(saved),
 			)
-			const loaded = await loadPackageSourceBySourceId({
+			// A held publish is not live, so the record describes the serving
+			// commit and names the held one beside it.
+			const held =
+				saved.hasApp && saved.isInternetVisible
+					? heldForApprovalFromSource(
+							await getEntitySourceById(ctx.env.APP_DB, saved.sourceId),
+						)
+					: null
+			const loaded = await (
+				held ? loadServingPackageSourceBySourceId : loadPackageSourceBySourceId
+			)({
 				env: ctx.env,
 				baseUrl: ctx.callerContext.baseUrl,
 				userId: owner.ownerUserId,
 				sourceId: saved.sourceId,
 			})
+			// An approval can land between the two reads: trust the loaded row.
+			const servingCommit = servingCommitForSource(loaded.source)
+			const showHeld =
+				held !== null &&
+				servingCommit === held.servingCommit &&
+				(await authorize(
+					{ env: ctx.env, request },
+					'package:write',
+					packageResource(saved),
+				).then(
+					() => true,
+					(error: unknown) => {
+						if (error instanceof AuthorizationError) return false
+						throw error
+					},
+				))
 			const projection = buildPackageSearchProjection(loaded.manifest, {
 				files: loaded.files,
 				parser: await loadModuleSourceParser(),
@@ -130,6 +167,7 @@ export const getPackageCapability = defineDomainCapability(
 				sourceId: saved.sourceId,
 				packageId: saved.id,
 				supplierSemanticsEnabled: suppliersEnabled,
+				...(held ? { source: loaded.source } : {}),
 			})
 			const publishedCommit = loaded.source.published_commit ?? null
 			const outsideBuild = showBuildOrigin
@@ -185,7 +223,17 @@ export const getPackageCapability = defineDomainCapability(
 				internet_visible: saved.isInternetVisible,
 				locked_at: saved.lockedAt ?? null,
 				source_id: saved.sourceId,
-				published_commit: loaded.source.published_commit ?? null,
+				published_commit: publishedCommit,
+				serving_commit: servingCommit,
+				held_commit: held && showHeld ? held.heldCommit : null,
+				approval_url:
+					held && showHeld
+						? buildPackageCapabilityApprovalUrl({
+								baseUrl: ctx.callerContext.baseUrl,
+								username: owner.ownerScope,
+								kodyId: saved.kodyId,
+							})
+						: null,
 				source_listing_id: saved.sourceListingId,
 				listing_current: saved.listingCurrent,
 				listing_kody_id: saved.listingKodyId,

@@ -490,7 +490,7 @@ test('publishExternalPush includes listing hint when the public catalog pin lags
 	})
 })
 
-test('publishExternalPush tells agents when everyone stays on the previous version', async () => {
+test('a publish held for capability approval reports held_for_approval, never published', async () => {
 	setupDefaultMocks({ hasApp: true, publish: publishedResult() })
 	const servingCommit = 'approved0deadbeef'
 	const heldCommit = 'heldnew1cafebabe'
@@ -499,14 +499,14 @@ test('publishExternalPush tells agents when everyone stays on the previous versi
 		heldCommit,
 	})
 
-	const published = await publish()
-	if (published.status !== 'published') throw new Error('expected published')
-	const notice = published.held_for_approval
+	const notice = await publish()
+	expect(notice.status).toBe('held_for_approval')
+	if (notice.status !== 'held_for_approval') throw new Error('expected held')
 	expect(notice).toMatchObject({
 		serving_commit: servingCommit,
 		held_commit: heldCommit,
 	})
-	if (!notice) throw new Error('expected held_for_approval')
+	expect(notice).not.toHaveProperty('published_commit')
 	const approval = new URL(notice.approval_url)
 	expect(approval.origin).toBe('https://kody.test')
 	expect(approval.pathname).toBe('/@user/demo-package/approve-capabilities')
@@ -518,6 +518,27 @@ test('publishExternalPush tells agents when everyone stays on the previous versi
 		packageId: 'package-1',
 		ownerUserId: ownerIdFromStored('user-1'),
 	})
+})
+
+test('publishing a commit that is already held again still reports held_for_approval', async () => {
+	setupDefaultMocks({
+		head: 'commit-old',
+		hasApp: true,
+		publish: { status: 'already_published', published_commit: 'commit-old' },
+	})
+	mockModule.loadHeldForApproval.mockResolvedValue({
+		servingCommit: 'commit-approved',
+		heldCommit: 'commit-old',
+	})
+
+	const result = await publish()
+	expect(result).toMatchObject({
+		status: 'held_for_approval',
+		serving_commit: 'commit-approved',
+		held_commit: 'commit-old',
+		approval_url: 'https://kody.test/@user/demo-package/approve-capabilities',
+	})
+	expect(result).not.toHaveProperty('published_commit')
 })
 
 test('publishExternalPush handles already_published branches, stale dependents, and rebuild failures', async () => {
@@ -1305,6 +1326,28 @@ test('a durable publish run fails for any outcome that did not publish', async (
 		}),
 	).toBe(
 		'packagePublishExternalPush returned not_fast_forward: not a descendant',
+	)
+	// A held publish is built but not live, so its run does not end a success.
+	expect(
+		durablePublishRefusalReason({
+			status: 'held_for_approval',
+			serving_commit: 'a',
+			held_commit: 'b',
+			approval_url: 'https://kody.test/@user/demo/approve-capabilities',
+			message:
+				'This publish is held for approval and is not live. The owner approves it here: https://kody.test/@user/demo/approve-capabilities',
+		}),
+	).toBe(
+		'packagePublishExternalPush returned held_for_approval: This publish is held for approval and is not live. The owner approves it here: https://kody.test/@user/demo/approve-capabilities',
+	)
+	// A locked package pauses before publish starts: a different status.
+	expect(
+		durablePublishRefusalReason({
+			status: 'approval_required',
+			message: 'Owner approval required.',
+		}),
+	).toBe(
+		'packagePublishExternalPush returned approval_required: Owner approval required.',
 	)
 	expect(durablePublishRefusalReason(null)).toBe(
 		'packagePublishExternalPush returned null',
