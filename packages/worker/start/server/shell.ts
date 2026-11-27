@@ -136,7 +136,6 @@ export const loadShell = createServerFn({ method: 'GET' })
 				env,
 				user: session ? resolvedAuth.user : null,
 				organizations: session?.organizations ?? null,
-				pathname: data.pathname,
 				now: new Date(),
 			}),
 			canonicalOrigin: getCanonicalAppBaseUrl({

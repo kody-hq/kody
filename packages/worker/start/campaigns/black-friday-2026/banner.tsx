@@ -33,16 +33,15 @@ export function BlackFridaySiteBar() {
 
 /**
  * Card at the top of the workspace main column, for eligible Free orgs.
- * `orgSlug` is the workspace the rail shows (null for the personal one); the
- * card stays out of a workspace the shell data was not loaded for.
+ * `orgSlug` is the workspace the rail shows; null means the personal one.
  */
 export function BlackFridayWorkspaceCard(props: { orgSlug: string | null }) {
-	const { blackFridayBanner } = useShellData()
+	const { blackFridayBanner, session } = useShellData()
 	if (blackFridayBanner?.audience !== 'free') return null
-	if (props.orgSlug && props.orgSlug !== blackFridayBanner.orgSlug) return null
-	return (
-		<Banner audience="free" href={orgBillingPath(blackFridayBanner.orgSlug)} />
-	)
+	const orgSlug =
+		props.orgSlug ?? session?.organizations.find((org) => org.personal)?.slug
+	if (!orgSlug || !blackFridayBanner.orgSlugs.includes(orgSlug)) return null
+	return <Banner audience="free" href={orgBillingPath(orgSlug)} />
 }
 
 function Banner(props: { audience: BlackFridayAudience; href: string }) {

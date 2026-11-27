@@ -175,23 +175,15 @@ async function userFor(person: Person, orgSlug: string) {
 	} satisfies AuthenticatedAppUser
 }
 
-async function banner(
-	person: Person | null,
-	pathname = '/',
-	now: Date = duringSale,
-) {
-	return loadBlackFridayBanner({
+/** The org slugs the signed-in person is offered the sale for. */
+async function offeredOrgs(person: Person | null, now: Date = duringSale) {
+	const banner = await loadBlackFridayBanner({
 		env,
 		user: person ? await userFor(person, person) : null,
-		organizations: person
-			? [
-					{ slug: person, personal: true },
-					{ slug: 'acme', personal: false },
-				]
-			: null,
-		pathname,
+		organizations: person ? [{ slug: person }, { slug: 'acme' }] : null,
 		now,
 	})
+	return banner?.audience === 'free' ? banner.orgSlugs.toSorted() : banner
 }
 
 async function checkout(
@@ -308,41 +300,37 @@ test('the pre-paint script fills the countdown, and hides the banner once dismis
 })
 
 test('signed-out visitors get the bar until the sale ends', async () => {
-	expect(await banner(null)).toEqual({ audience: 'signed-out' })
-	expect(await banner(null, '/', new Date(saleEnd.getTime() - 1))).toEqual({
+	expect(await offeredOrgs(null)).toEqual({ audience: 'signed-out' })
+	expect(await offeredOrgs(null, new Date(saleEnd.getTime() - 1))).toEqual({
 		audience: 'signed-out',
 	})
-	expect(await banner(null, '/', saleEnd)).toBeNull()
+	expect(await offeredOrgs(null, saleEnd)).toBeNull()
 })
 
-test('the card shows only for a Free org the viewer can bill, with no subscription and no claim', async () => {
-	expect(await banner('ada')).toEqual({ audience: 'free', orgSlug: 'ada' })
-	expect(await banner('ada', '/@acme')).toEqual({
-		audience: 'free',
-		orgSlug: 'acme',
-	})
-	// Bob is a member of acme without billing:write, and not in Ada's org.
-	expect(await banner('bob', '/@acme')).toBeNull()
-	expect(await banner('bob', '/@ada')).toBeNull()
-	expect(await banner('ada', '/', saleEnd)).toBeNull()
+test('the card is offered only for Free orgs the viewer can bill, with no subscription', async () => {
+	expect(await offeredOrgs('ada')).toEqual(['acme', 'ada'])
+	// Bob is a member of acme without billing:write.
+	expect(await offeredOrgs('bob')).toEqual(['bob'])
+	expect(await offeredOrgs('ada', saleEnd)).toBeNull()
 
 	// Any plan-retaining Stripe subscription, whatever its plan or interval.
-	sqlite
-		.prepare(`UPDATE orgs SET stripe_plan = 'pro' WHERE id = 'org-acme'`)
-		.run()
-	expect(await banner('ada', '/@acme')).toBeNull()
-	sqlite
-		.prepare(`UPDATE orgs SET stripe_plan = 'standard' WHERE id = 'org-acme'`)
-		.run()
-	expect(await banner('ada', '/@acme')).toBeNull()
+	for (const stripePlan of ['pro', 'standard']) {
+		sqlite
+			.prepare(`UPDATE orgs SET stripe_plan = ? WHERE id = 'org-acme'`)
+			.run(stripePlan)
+		expect(await offeredOrgs('ada')).toEqual(['ada'])
+	}
 	// A manual Max grant has no subscription but is not Free.
 	sqlite
 		.prepare(
 			`UPDATE orgs SET stripe_plan = NULL, plan = 'max' WHERE id = 'org-acme'`,
 		)
 		.run()
-	expect(await banner('ada', '/@acme')).toBeNull()
-	expect(await banner('ada')).toEqual({ audience: 'free', orgSlug: 'ada' })
+	expect(await offeredOrgs('ada')).toEqual(['ada'])
+	sqlite
+		.prepare(`UPDATE orgs SET stripe_plan = 'pro' WHERE id = 'person-ada'`)
+		.run()
+	expect(await offeredOrgs('ada')).toBeNull()
 })
 
 test('checkout applies the campaign code for the chosen interval and the claim hides the banner everywhere', async () => {
@@ -363,8 +351,7 @@ test('checkout applies the campaign code for the chosen interval and the claim h
 	])
 	// One claim per person: no banner for any of Ada's orgs, and a second
 	// checkout goes through at full price instead of failing.
-	expect(await banner('ada')).toBeNull()
-	expect(await banner('ada', '/@acme')).toBeNull()
+	expect(await offeredOrgs('ada')).toBeNull()
 	expect(await checkout('ada', 'ada', { interval: 'month' })).toMatchObject({
 		status: 200,
 		priceId: 'price_pro',
@@ -416,10 +403,18 @@ test('checkout goes ahead at full price whenever the campaign code cannot be app
 	expect(stripeDown).toMatchObject(fullPrice)
 	expect(stripeDown.promotionCodeId).toBeUndefined()
 
+	// A lookup that times out throws a plain error, not a StripeApiError.
+	consoleError.mockImplementation(() => {})
+	mocks.findActivePromotionCode.mockRejectedValue(
+		new DOMException('The operation timed out.', 'TimeoutError'),
+	)
+	const timedOut = await checkout('ada', 'ada', { interval: 'year' })
+	expect(timedOut).toMatchObject(fullPrice)
+	expect(timedOut.promotionCodeId).toBeUndefined()
+
 	// Stripe's own coupon rule refuses the session: retry without the code
 	// and release the reservation so the person keeps their one claim.
 	stripeCodes()
-	consoleError.mockImplementation(() => {})
 	mocks.createCheckoutSession.mockRejectedValueOnce(
 		new StripeApiError('This coupon cannot be applied', { status: 400 }),
 	)
@@ -430,7 +425,7 @@ test('checkout goes ahead at full price whenever the campaign code cannot be app
 		promotionCodeId: 'promo_yearly',
 	})
 	expect(claimRows()).toEqual([])
-	for (const result of [inactive, mistagged, stripeDown, refused]) {
+	for (const result of [inactive, mistagged, stripeDown, timedOut, refused]) {
 		expect(JSON.stringify(result.data)).not.toMatch(/BLACKFRIDAY|promo/i)
 	}
 

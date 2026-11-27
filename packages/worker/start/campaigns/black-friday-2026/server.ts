@@ -22,7 +22,7 @@ import {
 	userEntitlementColumnsSql,
 	type UserEntitlementRow,
 } from '#worker/entitlements/service.ts'
-import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import { loadOrgBindingsForSlugs } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { blackFridayCampaignId, isBlackFridayActive } from './offer.ts'
 
@@ -35,86 +35,117 @@ const promotionCodes: Record<BillingInterval, string> = {
 /** Both codes carry `kody_campaign=blackfriday-2026`: one claim per person. */
 const claimKey = `campaign:${blackFridayCampaignId}`
 
+/** Keeps the org lookup inside one D1 statement for people in many orgs. */
+const maxOrgsChecked = 50
+
 export type BlackFridayBanner =
 	| { audience: 'signed-out' }
-	| { audience: 'free'; orgSlug: string }
+	| { audience: 'free'; orgSlugs: Array<string> }
 	| null
 
 /**
- * The one eligibility rule, shared by the banner and by checkout: the sale is
- * running, the org is on Free with no plan-retaining Stripe subscription
- * (`orgs.stripe_plan` is the stored result of the same subscription filter
- * checkout runs live), and the person has no claim or live reservation for
- * this campaign.
+ * The one eligibility rule, shared by the banner and by checkout. Returns the
+ * ids among `orgIds` that can take the offer: the sale is running, the person
+ * has no claim or live reservation for this campaign, and the org is on Free
+ * with no plan-retaining Stripe subscription (`orgs.stripe_plan` is the
+ * stored result of the same subscription filter checkout runs live).
  */
-async function blackFridayOfferAvailable(input: {
+async function blackFridayOfferOrgIds(input: {
 	db: D1Database
 	userId: string
-	orgId: string
+	orgIds: ReadonlyArray<string>
 	now: Date
-}): Promise<boolean> {
-	if (!isBlackFridayActive(input.now.getTime())) return false
-	const row = await input.db
-		.prepare(
-			`SELECT ${userEntitlementColumnsSql()} FROM orgs WHERE id = ? AND deleted_at IS NULL`,
-		)
-		.bind(input.orgId)
-		.first<UserEntitlementRow>()
-	if (!row || row.stripe_plan) return false
-	if (resolveUserPlanFromRow(row, input.now).plan !== 'free') return false
-	return !(await hasBlockingPromoClaim({
-		db: input.db,
-		userId: input.userId,
-		claimKey,
-		now: input.now,
-	}))
+}): Promise<Set<string>> {
+	const eligible = new Set<string>()
+	if (!isBlackFridayActive(input.now.getTime())) return eligible
+	const orgIds = input.orgIds.slice(0, maxOrgsChecked)
+	if (orgIds.length === 0) return eligible
+	const [claimed, rows] = await Promise.all([
+		hasBlockingPromoClaim({
+			db: input.db,
+			userId: input.userId,
+			claimKey,
+			now: input.now,
+		}),
+		input.db
+			.prepare(
+				`SELECT id, ${userEntitlementColumnsSql()} FROM orgs
+				 WHERE id IN (${orgIds.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
+			)
+			.bind(...orgIds)
+			.all<UserEntitlementRow & { id: string }>(),
+	])
+	if (claimed) return eligible
+	for (const row of rows.results ?? []) {
+		if (row.stripe_plan) continue
+		if (resolveUserPlanFromRow(row, input.now).plan !== 'free') continue
+		eligible.add(row.id)
+	}
+	return eligible
 }
 
-/** What the shell shows this viewer, if anything. */
+/**
+ * What the shell shows this viewer, if anything: for a signed-in person, the
+ * slugs of their organizations that can take the offer and that they hold
+ * `billing:write` in. A failure here must not take the page down with it.
+ */
 export async function loadBlackFridayBanner(input: {
 	env: Env
 	user: Pick<AuthenticatedAppUser, 'mcpUser'> | null
 	/** Organizations of the signed-in session; null when signed out. */
-	organizations: ReadonlyArray<{ slug: string; personal: boolean }> | null
-	/** Shell path: `/@slug` for an org page, `/` otherwise. */
-	pathname: string
+	organizations: ReadonlyArray<{ slug: string }> | null
 	now: Date
 }): Promise<BlackFridayBanner> {
 	if (!isBlackFridayActive(input.now.getTime())) return null
-	if (!input.user || !input.organizations) return { audience: 'signed-out' }
-	const scoped = /^\/@([^/]+)/.exec(input.pathname)?.[1]
-	const orgSlug = scoped
-		? decodeURIComponent(scoped)
-		: input.organizations.find((org) => org.personal)?.slug
-	if (!orgSlug) return null
-	const userId = input.user.mcpUser.userId
-	const binding = await loadOrgBindingForSlug(input.env.APP_DB, userId, orgSlug)
-	if (!binding || binding.role == null) return null
+	const { user, organizations } = input
+	if (!user || !organizations) return { audience: 'signed-out' }
 	try {
-		await authorize(
-			{
-				env: input.env,
-				request: deriveRequestContext({
-					user: input.user.mcpUser,
-					source: { kind: 'session' },
-					orgBinding: binding,
-				}),
-			},
-			'billing:write',
-		)
+		const userId = user.mcpUser.userId
+		const bindings = [
+			...(
+				await loadOrgBindingsForSlugs(
+					input.env.APP_DB,
+					userId,
+					organizations.map((org) => org.slug),
+				)
+			).entries(),
+		].filter(([, binding]) => binding.role != null)
+		const eligible = await blackFridayOfferOrgIds({
+			db: input.env.APP_DB,
+			userId,
+			orgIds: bindings.map(([, binding]) => binding.org.id),
+			now: input.now,
+		})
+		const orgSlugs = (
+			await Promise.all(
+				bindings
+					.filter(([, binding]) => eligible.has(binding.org.id))
+					.map(async ([slug, orgBinding]) => {
+						try {
+							await authorize(
+								{
+									env: input.env,
+									request: deriveRequestContext({
+										user: user.mcpUser,
+										source: { kind: 'session' },
+										orgBinding,
+									}),
+								},
+								'billing:write',
+							)
+							return slug
+						} catch (error) {
+							if (error instanceof AuthorizationError) return null
+							throw error
+						}
+					}),
+			)
+		).filter((slug) => slug !== null)
+		return orgSlugs.length > 0 ? { audience: 'free', orgSlugs } : null
 	} catch (error) {
-		if (error instanceof AuthorizationError) return null
-		throw error
+		console.error('black_friday_banner_load_failed', error)
+		return null
 	}
-	const available = await blackFridayOfferAvailable({
-		db: input.env.APP_DB,
-		userId,
-		orgId: binding.org.id,
-		now: input.now,
-	})
-	return available
-		? { audience: 'free', orgSlug: binding.org.slug ?? orgSlug }
-		: null
 }
 
 /**
@@ -129,13 +160,13 @@ export async function resolveBlackFridayCheckoutPromo(input: {
 	interval: BillingInterval
 	now: Date
 }): Promise<{ promotionCodeId: string; claimKey: string } | null> {
-	const available = await blackFridayOfferAvailable({
+	const eligible = await blackFridayOfferOrgIds({
 		db: input.env.APP_DB,
 		userId: input.userId,
-		orgId: input.orgId,
+		orgIds: [input.orgId],
 		now: input.now,
 	})
-	if (!available) return null
+	if (!eligible.has(input.orgId)) return null
 	try {
 		const resolved = await resolveCheckoutPromotionCode(input.env, {
 			code: promotionCodes[input.interval],
@@ -151,11 +182,13 @@ export async function resolveBlackFridayCheckoutPromo(input: {
 			reason: resolved.ok ? 'claim key mismatch' : resolved.error,
 		})
 	} catch (error) {
-		if (!(error instanceof StripeApiError)) throw error
-		console.info('billing_checkout_campaign_promo_unavailable', {
+		// Stripe errors, timeouts, and network failures alike: no discount, but
+		// the person still reaches checkout.
+		const log = error instanceof StripeApiError ? console.info : console.error
+		log('billing_checkout_campaign_promo_unavailable', {
 			campaign: blackFridayCampaignId,
 			interval: input.interval,
-			reason: error.message,
+			reason: error instanceof Error ? error.message : String(error),
 		})
 	}
 	return null
