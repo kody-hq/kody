@@ -556,14 +556,24 @@ export async function retireSessionCategory(
 				`UPDATE session_analytics_categories SET status = 'retired', name = 'retired ' || id WHERE id = ?`,
 			)
 			.bind(categoryId),
-		db
-			.prepare(`DELETE FROM session_analytics_counts WHERE category_id = ?`)
-			.bind(categoryId),
+		// Counts of names merged into this one keep their own category id, so
+		// they are deleted with it.
 		db
 			.prepare(
-				`DELETE FROM session_analytics_package_counts WHERE category_id = ?`,
+				`DELETE FROM session_analytics_counts
+				 WHERE category_id = ? OR category_id IN (
+					SELECT id FROM session_analytics_categories WHERE merged_into = ?
+				 )`,
 			)
-			.bind(categoryId),
+			.bind(categoryId, categoryId),
+		db
+			.prepare(
+				`DELETE FROM session_analytics_package_counts
+				 WHERE category_id = ? OR category_id IN (
+					SELECT id FROM session_analytics_categories WHERE merged_into = ?
+				 )`,
+			)
+			.bind(categoryId, categoryId),
 		db
 			.prepare(
 				`UPDATE session_analytics_open_sessions SET category_id = NULL WHERE category_id = ?`,

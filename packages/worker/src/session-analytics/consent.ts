@@ -60,8 +60,14 @@ export async function updateOrgSessionAnalytics(
 	const next: SessionAnalyticsState = input.enabled ? 'enabled' : 'declined'
 	if (previous === next) {
 		// A repeated "off" still deletes, so a retry can never leave rows behind.
+		// It deletes only while the org is still off, so it cannot remove rows
+		// collected after a concurrent opt-in.
 		if (!input.enabled) {
-			await db.batch(deleteOrgSessionAnalyticsStatements(db, input.orgId))
+			await db.batch(
+				deleteOrgSessionAnalyticsStatements(db, input.orgId, {
+					onlyWhenState: previous,
+				}),
+			)
 		}
 		return { ok: true, state: previous, changed: false }
 	}

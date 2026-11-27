@@ -14,6 +14,7 @@ import {
 	loadPackageSessionInsights,
 	loadSessionInsights,
 	loadStuckPatterns,
+	retireSessionCategory,
 } from './insights.ts'
 import {
 	categoryNamePassesPrecheck,
@@ -749,4 +750,40 @@ test('a call that is still running neither ends a failure streak nor counts as r
 	expect(session.streakLength).toBe(2)
 	expect(session.recovered).toBe(false)
 	expect(sessionResult(session).outcome).toBe('stuck')
+})
+
+test('retiring a category removes its name and the counts of names merged into it', async () => {
+	const { sqlite, db } = createTestDb()
+	seedOrg(sqlite, 'org-on', 'enabled')
+	const insert = sqlite.prepare(
+		`INSERT INTO session_analytics_categories (id, name, status, merged_into, created_at)
+		 VALUES (?, ?, ?, ?, '2026-11-01T00:00:00.000Z')`,
+	)
+	insert.run('cat-1', 'manage files', 'active', null)
+	insert.run('cat-2', 'managing file', 'merged', 'cat-1')
+	insert.run('cat-3', 'send email', 'active', null)
+	const rows = [
+		{ org: 'org-on', category: 'cat-1', sessions: 2 },
+		{ org: 'org-on', category: 'cat-2', sessions: 3 },
+		{ org: 'org-on', category: 'cat-3', sessions: 4 },
+	]
+	insertCounts(sqlite, rows)
+	insertPackageCounts(sqlite, rows)
+	await retireSessionCategory(db, 'cat-1')
+	for (const table of [
+		'session_analytics_counts',
+		'session_analytics_package_counts',
+	]) {
+		expect(
+			sqlite.prepare(`SELECT category_id FROM ${table}`).all(),
+			table,
+		).toEqual([{ category_id: 'cat-3' }])
+	}
+	expect(
+		sqlite
+			.prepare(
+				`SELECT status, name FROM session_analytics_categories WHERE id = 'cat-1'`,
+			)
+			.get(),
+	).toEqual({ status: 'retired', name: 'retired cat-1' })
 })

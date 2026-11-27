@@ -125,7 +125,7 @@ function dayKey(date: Date) {
 
 /**
  * Weekly: merge near-duplicate categories, then emit one event per stuck
- * pattern over the minimum in the seven days ending yesterday.
+ * pattern over the minimum in the seven days ending the day before yesterday.
  */
 export async function runWeeklySessionAnalytics(input: {
 	env: EventEnv
