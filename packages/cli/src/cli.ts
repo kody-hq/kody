@@ -1657,12 +1657,7 @@ async function dispatch(
 				positionals,
 				values: parsed.values,
 			})
-			const apiUrl = apiUrlFrom({
-				apiUrl:
-					typeof parsed.values['api-url'] === 'string'
-						? parsed.values['api-url']
-						: undefined,
-			})
+			const apiUrl = earlyApiUrl
 			const token = await accessTokenForOpenApi({
 				tokenValues: tokenFlagValues(parsed.values),
 				apiUrl,

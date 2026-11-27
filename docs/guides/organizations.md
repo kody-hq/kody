@@ -449,9 +449,11 @@ membership.
 
 ## Help someone check out Pro
 
-When a person asks you to upgrade an org, start checkout, or apply a coupon or
-sale price, call `billingCheckoutLink` and give them the link it returns. You
-cannot pay for them: the link opens a Kody page, and they finish on Stripe.
+When a person asks you to upgrade an org, start checkout, or get a sale price,
+call `billingCheckoutLink` and give them the link it returns. You cannot pay for
+them: the link opens a Kody page, and they finish on Stripe. The link applies a
+running sale on its own and takes no coupon code. Someone with a code to type
+enters it in **Promo code** on the org's billing page (`/@<slug>/-/billing`).
 
 ```ts
 const result = await codemode.billingCheckoutLink({
