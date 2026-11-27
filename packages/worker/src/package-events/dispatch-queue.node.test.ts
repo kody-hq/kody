@@ -1,3 +1,4 @@
+import type * as categoryMergedDelivery from '#worker/session-analytics/category-merged-delivery.ts'
 import {
 	ownerIdFromStored,
 	type OwnerId,
@@ -13,6 +14,8 @@ const mocks = vi.hoisted(() => ({
 			(input: Record<string, unknown>) => Promise<Record<string, unknown>>
 		>(),
 	processInboundDeliveryEffects:
+		vi.fn<(input: Record<string, unknown>) => Promise<unknown>>(),
+	deliverSessionCategoryMerged:
 		vi.fn<(input: Record<string, unknown>) => Promise<unknown>>(),
 	claimPackageEventSlot: vi.fn<
 		(input: { id: string }) => Promise<{ claimed: boolean; inFlight: number }>
@@ -34,6 +37,14 @@ vi.mock('#worker/email/inbound-effects.ts', () => ({
 vi.mock('#worker/package-invocations/service.ts', () => ({
 	deliverPackageEvent: mocks.deliverPackageEvent,
 }))
+
+vi.mock(
+	'#worker/session-analytics/category-merged-delivery.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<typeof categoryMergedDelivery>()),
+		deliverSessionCategoryMerged: mocks.deliverSessionCategoryMerged,
+	}),
+)
 
 vi.mock('#worker/app-base-url.ts', () => ({
 	getAppBaseUrl: () => 'https://kody.dev',
@@ -334,4 +345,42 @@ test('a capped event that already failed keeps its failure count when it is put 
 	expect(spent.ack).not.toHaveBeenCalled()
 	expect(mocks.claimPackageEventSlot).toHaveBeenCalledTimes(1)
 	expect(mocks.deliverPackageEvent).not.toHaveBeenCalled()
+})
+
+test('a failed session.category.merged delivery is retried after 30 seconds and a delivered one is acked', async () => {
+	consoleError.mockImplementation(() => {})
+	const event = {
+		event: 'session.category.merged',
+		from: { id: 'cat-2', name: 'managing file' },
+		into: { id: 'cat-1', name: 'manage files' },
+		observed_at: '2026-11-30T00:00:00.000Z',
+	}
+	const body = { kind: 'session-category-merged', event }
+	const delivered = createQueueMessage('merge-delivered', body)
+	const failed = createQueueMessage('merge-failed', body, 2)
+	const invalid = createQueueMessage('merge-invalid', {
+		kind: 'session-category-merged',
+	})
+	mocks.deliverSessionCategoryMerged
+		.mockResolvedValueOnce([])
+		.mockRejectedValueOnce(
+			new Error('Admin package subscription discovery failed.'),
+		)
+
+	await handlePackageEventsDispatchQueue(
+		createBatch([delivered, failed, invalid]),
+		{ APP_DB: {} } as Env,
+		{
+			waitUntil: vi.fn<(promise: Promise<unknown>) => void>(),
+		} as unknown as ExecutionContext,
+	)
+
+	expect(mocks.deliverSessionCategoryMerged).toHaveBeenCalledTimes(2)
+	expect(mocks.deliverSessionCategoryMerged).toHaveBeenCalledWith(
+		expect.objectContaining({ event }),
+	)
+	expect(delivered.ack).toHaveBeenCalledTimes(1)
+	expect(invalid.ack).toHaveBeenCalledTimes(1)
+	expect(failed.ack).not.toHaveBeenCalled()
+	expect(failed.retry).toHaveBeenCalledWith({ delaySeconds: 30 })
 })

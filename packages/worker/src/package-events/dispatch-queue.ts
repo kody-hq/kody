@@ -11,6 +11,11 @@ import {
 	parseWhatsNewConsentOutboxQueueMessage,
 } from '#worker/newsletter/consent-outbox.ts'
 import {
+	deliverSessionCategoryMerged,
+	isSessionCategoryMergedQueueBody,
+	parseSessionCategoryMergedQueueMessage,
+} from '#worker/session-analytics/category-merged-delivery.ts'
+import {
 	claimPackageEventSlot,
 	releasePackageEventSlot,
 } from '#worker/run-records/service.ts'
@@ -40,12 +45,15 @@ export async function handlePackageEventsDispatchQueue(
 ) {
 	const inboundEffects: Array<Message<unknown>> = []
 	const consentOutbox: Array<Message<unknown>> = []
+	const categoryMerges: Array<Message<unknown>> = []
 	const packageEvents: Array<Message<unknown>> = []
 	for (const queueMessage of batch.messages) {
 		if (isInboundDeliveryEffectsQueueBody(queueMessage.body)) {
 			inboundEffects.push(queueMessage)
 		} else if (isWhatsNewConsentOutboxQueueBody(queueMessage.body)) {
 			consentOutbox.push(queueMessage)
+		} else if (isSessionCategoryMergedQueueBody(queueMessage.body)) {
+			categoryMerges.push(queueMessage)
 		} else {
 			packageEvents.push(queueMessage)
 		}
@@ -65,6 +73,7 @@ export async function handlePackageEventsDispatchQueue(
 			),
 		),
 		handleWhatsNewConsentOutboxQueueMessages(consentOutbox, env, ctx),
+		handleSessionCategoryMergedQueueMessages(categoryMerges, env, ctx),
 		handlePackageEventsQueueMessages(packageEvents, env, ctx),
 	])
 }
@@ -96,6 +105,44 @@ async function handleWhatsNewConsentOutboxQueueMessages(
 			console.error('whats-new-consent-outbox-queue-processing-failed', {
 				queueMessageId: queueMessage.id,
 				outboxId: message.outboxId,
+				error,
+			})
+			queueMessage.retry({
+				delaySeconds: packageEventsDispatchRetryDelaySeconds,
+			})
+		}
+	}
+}
+
+/**
+ * A failed delivery is retried after `packageEventsDispatchRetryDelaySeconds`
+ * until this consumer's `max_retries`, then the Queue dead-letters it.
+ */
+async function handleSessionCategoryMergedQueueMessages(
+	messages: Array<Message<unknown>>,
+	env: Env,
+	ctx: ExecutionContext,
+) {
+	for (const queueMessage of messages) {
+		const message = parseSessionCategoryMergedQueueMessage(queueMessage.body)
+		if (!message) {
+			console.error('session-category-merged-message-invalid', {
+				queueMessageId: queueMessage.id,
+			})
+			queueMessage.ack()
+			continue
+		}
+		try {
+			await deliverSessionCategoryMerged({
+				env,
+				event: message.event,
+				waitUntil: (promise) => ctx.waitUntil(promise),
+			})
+			queueMessage.ack()
+		} catch (error) {
+			console.error('session-category-merged-queue-processing-failed', {
+				queueMessageId: queueMessage.id,
+				categoryId: message.event.from.id,
 				error,
 			})
 			queueMessage.retry({

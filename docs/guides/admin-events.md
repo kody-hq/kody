@@ -1078,4 +1078,10 @@ type SessionCategoryMergedEvent = {
 
 A pattern that stays over the minimum is sent again each week, with an
 idempotency key of the week's end day, category, error kind, and tool, so a
-subscriber can track it over time. A merge is sent once.
+subscriber can track it over time.
+
+A merge is sent once. It goes through the package events Queue: if finding
+subscribers or starting a subscriber fails, Kody tries again 30 seconds later,
+up to 3 retries (4 attempts in total), and then dead-letters the message. Every
+attempt uses the same idempotency key (the merged category and the package), so
+a subscriber that already handled the merge is not run again.
