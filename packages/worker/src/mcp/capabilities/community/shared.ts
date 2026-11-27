@@ -152,6 +152,22 @@ export const crossScopeReferenceSchema = z.object({
 	specifier: z.string(),
 })
 
+export const leftoverOriginReferencesSchema = z
+	.array(
+		z.object({
+			file: z.string().describe('Path in the fork.'),
+			line: z.number().int().positive().describe('1-based line number.'),
+			snippet: z
+				.string()
+				.describe(
+					'The line, or the part around the reference when the line is long.',
+				),
+		}),
+	)
+	.describe(
+		'Lines in the fork that still name the origin package or scope after the fork rewrite, usually an escaped or encoded spelling the rewrite does not follow. Review each one and point it at the fork name where it should follow the fork. Empty when nothing is left. At most 50 entries.',
+	)
+
 export function toCommunityListingAggregatesOutput(
 	listing: CommunityListingAggregates,
 ) {

@@ -1,5 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -17,7 +20,11 @@ import {
 } from './capability-set.ts'
 import { insertPackageCapabilityApproval } from './capability-approvals-repo.ts'
 import { emptyDependencySnapshot } from './dependency-snapshot.ts'
-import { loadHeldForApproval } from './held-for-approval.ts'
+import {
+	heldForApprovalFromSource,
+	listHeldForApprovalPackages,
+	loadHeldForApproval,
+} from './held-for-approval.ts'
 import { approvePackageCapabilitySet } from './capability-approval-service.ts'
 import {
 	advanceServingCommit,
@@ -35,6 +42,15 @@ const jobs = vi.hoisted(() => ({
 }))
 
 vi.mock('#worker/jobs/service.ts', () => jobs)
+
+const ownerNotice = vi.hoisted(() => ({
+	notifyOwnersOfHeldPublish: vi.fn(async (_input: unknown) => ({
+		recipients: 1,
+		delivered: 1,
+	})),
+}))
+
+vi.mock('./held-for-approval-notice.ts', () => ownerNotice)
 
 const compute = vi.hoisted(() => ({
 	entriesByCommit: new Map<string, Array<unknown>>(),
@@ -99,6 +115,7 @@ beforeEach(() => {
 	compute.entriesByCommit.clear()
 	compute.onCompute = undefined
 	projection.refreshSavedPackageProjection.mockClear()
+	ownerNotice.notifyOwnersOfHeldPublish.mockClear()
 	jobs.syncPublishedPackageJobs.mockReset()
 	jobs.syncPublishedPackageJobs.mockResolvedValue(false)
 	approvedCommitCache.delete(packageId)
@@ -738,4 +755,128 @@ test('the owner is told everyone is held only while a wider republish waits', as
 
 	await wider.approveLive()
 	await expect(held(wider.env)).resolves.toBe(null)
+})
+
+test('the owners are told once when a commit is held, whoever caused the publish', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	const advance = (commit: string) =>
+		advanceServingCommit({
+			env: site.env,
+			sourceId,
+			userId: ownerId,
+			commit,
+			// An automatic republish or a teammate, not the package owner.
+			actor: { userId: personIdFromStored('person-someone-else') },
+		})
+
+	// A republish that serves right away notifies nobody.
+	compute.entriesByCommit.set('commit-b', [storage])
+	await site.publish('commit-b')
+	await advance('commit-b')
+	expect(ownerNotice.notifyOwnersOfHeldPublish).not.toHaveBeenCalled()
+
+	compute.entriesByCommit.set('commit-c', [storage, mailCredential])
+	await site.publish('commit-c')
+	await advance('commit-c')
+	expect(ownerNotice.notifyOwnersOfHeldPublish).toHaveBeenCalledTimes(1)
+	expect(ownerNotice.notifyOwnersOfHeldPublish).toHaveBeenCalledWith({
+		env: site.env,
+		ownerUserId: ownerId,
+		packageId,
+	})
+
+	// Rebuilding the same held commit does not send a second notice.
+	await advance('commit-c')
+	expect(ownerNotice.notifyOwnersOfHeldPublish).toHaveBeenCalledTimes(1)
+
+	// A newer commit that is held too is a new thing to approve.
+	compute.entriesByCommit.set('commit-d', [storage, mailCredential])
+	await site.publish('commit-d')
+	await advance('commit-d')
+	expect(ownerNotice.notifyOwnersOfHeldPublish).toHaveBeenCalledTimes(2)
+})
+
+test('the held list names the serving and held commits until approval clears it', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	const packages = [
+		{
+			id: packageId,
+			name: '@owner/site',
+			kodyId: 'site',
+			sourceId,
+			hasApp: true,
+			isInternetVisible: true,
+		},
+	]
+	await expect(listHeldForApprovalPackages(site.db, packages)).resolves.toEqual(
+		[],
+	)
+
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await site.publish('commit-b')
+	await advanceServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-b',
+	})
+	await expect(listHeldForApprovalPackages(site.db, packages)).resolves.toEqual(
+		[
+			{
+				packageId,
+				name: '@owner/site',
+				kodyId: 'site',
+				servingCommit: 'commit-a',
+				heldCommit: 'commit-b',
+			},
+		],
+	)
+	// Only internet-visible apps hold a commit.
+	await expect(
+		listHeldForApprovalPackages(
+			site.db,
+			packages.map((pkg) => ({ ...pkg, isInternetVisible: false })),
+		),
+	).resolves.toEqual([])
+
+	await site.approveLive()
+	await expect(listHeldForApprovalPackages(site.db, packages)).resolves.toEqual(
+		[],
+	)
+	await site.expectEveryoneOn('commit-b')
+})
+
+test('a source is held only while its held commit is the latest publish and not serving', () => {
+	expect(
+		heldForApprovalFromSource({
+			published_commit: 'b',
+			serving_commit: 'a',
+			held_commit: 'b',
+		}),
+	).toEqual({ servingCommit: 'a', heldCommit: 'b' })
+	// A live publish reports no held commit.
+	expect(
+		heldForApprovalFromSource({
+			published_commit: 'b',
+			serving_commit: 'b',
+			held_commit: null,
+		}),
+	).toBeNull()
+	// A newer publish replaced the held commit.
+	expect(
+		heldForApprovalFromSource({
+			published_commit: 'c',
+			serving_commit: 'a',
+			held_commit: 'b',
+		}),
+	).toBeNull()
+	// Nothing served before, so there is nothing to stay on.
+	expect(
+		heldForApprovalFromSource({
+			published_commit: 'b',
+			serving_commit: null,
+			held_commit: 'b',
+		}),
+	).toBeNull()
+	expect(heldForApprovalFromSource(null)).toBeNull()
 })

@@ -24,6 +24,7 @@ import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { readEntitlementUsageSnapshot } from '#worker/entitlements/usage-snapshot.ts'
 import { getUserEntitlement } from '#worker/entitlements/service.ts'
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
+import { listHeldForApprovalPackages } from '#worker/package-capabilities/held-for-approval.ts'
 import { listJoinedIntegrations } from '#worker/integrations/service.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { listEnablementsForOrg } from '#worker/enablements/repo.ts'
@@ -141,6 +142,11 @@ export async function collectWaitingSignals(input: {
 	const now = input.now ?? new Date()
 	const { env, user } = input
 
+	const packagesRead = probe(() =>
+		listSavedPackagesByUserId(env.APP_DB, {
+			userId: user.stableUserId,
+		}),
+	)
 	const [
 		onboardingDismissed,
 		hasMcpClient,
@@ -157,6 +163,7 @@ export async function collectWaitingSignals(input: {
 		discordJoined,
 		enablementsProbe,
 		contextNoticesProbe,
+		heldPublishesProbe,
 		sessionAnalyticsChoice,
 	] = await Promise.all([
 		readOnboardingChecklistDismissed({
@@ -173,11 +180,7 @@ export async function collectWaitingSignals(input: {
 				scope: 'user',
 			}),
 		),
-		probe(() =>
-			listSavedPackagesByUserId(env.APP_DB, {
-				userId: user.stableUserId,
-			}),
-		),
+		packagesRead,
 		collectPendingEmailChange(env, user.userId, now),
 		collectErrorRate(env, user.stableUserId, now),
 		collectEntitlementCaps(env, user, now),
@@ -204,6 +207,14 @@ export async function collectWaitingSignals(input: {
 				userId: user.actorStableUserId ?? user.stableUserId,
 				orgId: user.stableUserId,
 			}),
+		),
+		packagesRead.then((packages) =>
+			probe(() =>
+				listHeldForApprovalPackages(
+					env.APP_DB,
+					packages.ok ? packages.value : [],
+				),
+			),
 		),
 		collectSessionAnalyticsChoice(env.APP_DB, user),
 	])
@@ -253,6 +264,15 @@ export async function collectWaitingSignals(input: {
 			: [],
 		lockedPackages: packagesProbe.ok
 			? lockedSavedPackages(packagesProbe.value)
+			: [],
+		heldPublishes: heldPublishesProbe.ok
+			? heldPublishesProbe.value.map((held) => ({
+					id: held.packageId,
+					name: held.name,
+					kodyId: held.kodyId,
+					servingCommit: held.servingCommit,
+					heldCommit: held.heldCommit,
+				}))
 			: [],
 		pendingEmailChange,
 		errorRate,

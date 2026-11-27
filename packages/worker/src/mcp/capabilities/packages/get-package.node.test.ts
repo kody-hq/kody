@@ -9,6 +9,8 @@ import type * as SecretsService from '#mcp/secrets/service.ts'
 const mockModule = vi.hoisted(() => ({
 	getSavedPackageWithCommunityProvenanceById: vi.fn(),
 	loadPackageSourceBySourceId: vi.fn(),
+	loadServingPackageSourceBySourceId: vi.fn(),
+	getEntitySourceById: vi.fn(),
 	resolvePackageOwnerContext: vi.fn(),
 	listPackageSecretsByPackageIds: vi.fn<
 		typeof SecretsService.listPackageSecretsByPackageIds
@@ -32,7 +34,12 @@ vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageSourceBySourceId(...args),
 	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
-		mockModule.loadPackageSourceBySourceId(...args),
+		mockModule.loadServingPackageSourceBySourceId(...args),
+}))
+
+vi.mock('#worker/repo/entity-sources.ts', () => ({
+	getEntitySourceById: (...args: Array<unknown>) =>
+		mockModule.getEntitySourceById(...args),
 }))
 
 vi.mock('#worker/package-registry/package-owner.ts', () => ({
@@ -93,6 +100,7 @@ function stubSavedPackage(input?: {
 	name?: string
 	kodyId?: string
 	hasApp?: boolean
+	isInternetVisible?: boolean
 	sourceListingId?: null
 	originCommit?: string
 	listingPinnedCommit?: string
@@ -111,7 +119,7 @@ function stubSavedPackage(input?: {
 		hasApp: input?.hasApp ?? true,
 		hidden: false,
 		isPrivate: false,
-		isInternetVisible: false,
+		isInternetVisible: input?.isInternetVisible ?? false,
 		lockedAt: null,
 		sourceListingId: forked ? 'listing-1' : null,
 		listingCurrent: forked ? true : null,
@@ -428,4 +436,66 @@ export default function calendar() {
 			...emptyContract,
 		}),
 	])
+})
+
+test('packageGet reports the serving commit apart from a commit held for approval', async () => {
+	const manifest = {
+		name: '@kody/site',
+		exports: {},
+		kody: { id: 'site', description: 'Site' },
+	}
+	stubSavedPackage({
+		name: '@kody/site',
+		kodyId: 'site',
+		isInternetVisible: true,
+	})
+	// The raw row: the tip is the held commit, the approved one still serves.
+	mockModule.getEntitySourceById.mockResolvedValue({
+		id: 'source-1',
+		published_commit: 'commit-held',
+		serving_commit: 'commit-live',
+		held_commit: 'commit-held',
+	})
+	mockModule.loadServingPackageSourceBySourceId.mockResolvedValue({
+		source: {
+			id: 'source-1',
+			published_commit: 'commit-live',
+			serving_commit: 'commit-live',
+			held_commit: 'commit-held',
+		},
+		manifest,
+		files: {},
+	})
+
+	const held = await getPackage()
+	expect(held).toMatchObject({
+		published_commit: 'commit-live',
+		serving_commit: 'commit-live',
+		held_commit: 'commit-held',
+		approval_url: 'https://heykody.dev/@kody/site/approve-capabilities',
+	})
+
+	// After approval the row serves the commit that was held.
+	mockModule.getEntitySourceById.mockResolvedValue({
+		id: 'source-1',
+		published_commit: 'commit-held',
+		serving_commit: 'commit-held',
+		held_commit: null,
+	})
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
+		source: {
+			id: 'source-1',
+			published_commit: 'commit-held',
+			serving_commit: 'commit-held',
+			held_commit: null,
+		},
+		manifest,
+		files: {},
+	})
+	expect(await getPackage()).toMatchObject({
+		published_commit: 'commit-held',
+		serving_commit: 'commit-held',
+		held_commit: null,
+		approval_url: null,
+	})
 })

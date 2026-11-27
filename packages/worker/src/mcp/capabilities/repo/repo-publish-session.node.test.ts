@@ -8,7 +8,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import { buildPublishedPublishChecksKvKey } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as EntitySourcesModule from '#worker/repo/entity-sources.ts'
-import type * as HeldForApprovalNoticeModule from '#mcp/capabilities/packages/held-for-approval-publish-notice.ts'
+import type * as HeldForApprovalNoticeModule from '#mcp/capabilities/packages/held-for-approval-publish-status.ts'
 import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
@@ -22,7 +22,7 @@ const mockModule = vi.hoisted(() => ({
 	absorbCommunityForkUpstream: vi.fn(),
 	getSavedPackageById: vi.fn(),
 	refreshSavedPackageProjection: vi.fn(),
-	buildHeldForApprovalPublishNotice: vi.fn(),
+	loadHeldForApprovalPublishStatus: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/service.ts', () => ({
@@ -67,11 +67,11 @@ vi.mock('#worker/community/service.ts', () => ({
 }))
 
 vi.mock(
-	'#mcp/capabilities/packages/held-for-approval-publish-notice.ts',
+	'#mcp/capabilities/packages/held-for-approval-publish-status.ts',
 	async (importOriginal) => ({
 		...(await importOriginal<typeof HeldForApprovalNoticeModule>()),
-		buildHeldForApprovalPublishNotice: (...args: Array<unknown>) =>
-			mockModule.buildHeldForApprovalPublishNotice(...args),
+		loadHeldForApprovalPublishStatus: (...args: Array<unknown>) =>
+			mockModule.loadHeldForApprovalPublishStatus(...args),
 	}),
 )
 
@@ -120,7 +120,7 @@ function resetMocks() {
 		id: 'package-1',
 		kodyId: 'demo',
 	})
-	mockModule.buildHeldForApprovalPublishNotice.mockResolvedValue(null)
+	mockModule.loadHeldForApprovalPublishStatus.mockResolvedValue(null)
 	mockModule.repoSessionRpc.mockReturnValue({
 		getSessionInfo: vi.fn(async () => ({
 			entity_type: 'package',
@@ -178,16 +178,15 @@ test('repoPublishSession keeps a successful publish when fork absorb fails and s
 	}
 })
 
-test('repoPublishSession tells the agent when everyone stays on the previous approved version', async () => {
+test('repoPublishSession reports a held publish as held_for_approval, not ok', async () => {
 	resetMocks()
 	const held = {
 		serving_commit: 'approved-commit',
 		held_commit: 'commit-1',
 		approval_url: 'https://kody.test/@user/demo/approve-capabilities',
-		message:
-			'Everyone is still on the previous version (approved) until you approve the new capabilities that commit-1 asks for.',
+		message: 'This publish is held for approval and is not live.',
 	}
-	mockModule.buildHeldForApprovalPublishNotice.mockResolvedValue(held)
+	mockModule.loadHeldForApprovalPublishStatus.mockResolvedValue(held)
 	mockModule.getEntitySourceByIdForUser.mockResolvedValue({
 		id: 'source-1',
 		user_id: ownerIdFromStored('user-1'),
@@ -204,35 +203,28 @@ test('repoPublishSession tells the agent when everyone stays on the previous app
 	)
 
 	expect(result).toEqual({
-		status: 'ok',
+		status: 'held_for_approval',
 		session_id: 'session-1',
-		published_commit: 'commit-1',
-		message: 'Published session to repo-artifacts-1.',
-		held_for_approval: held,
+		published_commit: null,
+		...held,
 	})
-	expect(mockModule.buildHeldForApprovalPublishNotice).toHaveBeenCalledWith(
+	expect(mockModule.loadHeldForApprovalPublishStatus).toHaveBeenCalledWith(
 		expect.objectContaining({ packageId: 'package-1', kodyId: 'demo' }),
 	)
 })
 
-test('repoPublishSession still reports a completed publish when the held-for-approval lookup rejects', async () => {
+test('repoPublishSession fails instead of reporting ok when the held state cannot be read', async () => {
 	resetMocks()
-	mockModule.buildHeldForApprovalPublishNotice.mockRejectedValueOnce(
+	mockModule.loadHeldForApprovalPublishStatus.mockRejectedValueOnce(
 		new Error('D1 unavailable'),
 	)
-	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-	const result = await repoPublishSessionCapability.handler(
-		{ session_id: 'session-1' },
-		createCtx(),
-	)
-
-	expect(result).toMatchObject({
-		status: 'ok',
-		published_commit: 'commit-1',
-	})
-	expect(result).not.toHaveProperty('held_for_approval')
-	warn.mockRestore()
+	await expect(
+		repoPublishSessionCapability.handler(
+			{ session_id: 'session-1' },
+			createCtx(),
+		),
+	).rejects.toThrow('D1 unavailable')
 })
 
 test('repoPublishSession keeps the credential notice on a locked publish', async () => {

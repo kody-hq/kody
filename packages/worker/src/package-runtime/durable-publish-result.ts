@@ -6,6 +6,10 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 
+/**
+ * Statuses whose commit is live. `held_for_approval` is not one: its commit
+ * is built but serves nobody until the owner approves it.
+ */
 const publishedExternalPushStatuses = ['published', 'already_published']
 
 /**

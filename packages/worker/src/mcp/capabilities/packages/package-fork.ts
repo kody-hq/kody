@@ -17,6 +17,7 @@ import { resolvePackageOwnerContext } from '#worker/package-registry/package-own
 import {
 	communityContentWarning,
 	crossScopeReferenceSchema,
+	leftoverOriginReferencesSchema,
 } from '#mcp/capabilities/community/shared.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
 
@@ -93,6 +94,7 @@ export const packageForkCapability = defineDomainCapability(
 				),
 			message: z.string().optional(),
 			cross_scope_references: z.array(crossScopeReferenceSchema),
+			leftover_origin_references: leftoverOriginReferencesSchema,
 			next_steps: z.string(),
 			content_warning: z.string(),
 		}),
@@ -152,6 +154,7 @@ export const packageForkCapability = defineDomainCapability(
 				already_forked: result.alreadyForked === true,
 				...(result.message ? { message: result.message } : {}),
 				cross_scope_references: result.crossScopeReferences,
+				leftover_origin_references: result.leftoverOriginReferences,
 				next_steps: packageForkNextSteps,
 				content_warning: communityContentWarning,
 			}

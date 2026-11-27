@@ -24,6 +24,8 @@ test('publishCliExitCode is 0 only for published, already_published, dispatched'
 		0,
 	)
 	assert.equal(publishCliExitCode({ status: 'dispatched' }), 0)
+	assert.equal(publishCliExitCode({ status: 'held_for_approval' }), 1)
+	assert.equal(publishCliExitCode({ status: 'approval_required' }), 1)
 	assert.equal(publishCliExitCode({ status: 'mystery' }), 1)
 	assert.equal(publishCliExitCode({}), 1)
 	assert.equal(publishCliExitCode(null), 1)
@@ -50,6 +52,16 @@ test('publishRefusalMessage prefers API message and summarizes checks_failed', (
 			message: 'Credential needs changed; owner approval required.',
 		}),
 		'Credential needs changed; owner approval required.',
+	)
+	assert.equal(
+		publishRefusalMessage({
+			status: 'held_for_approval',
+			message: 'This publish is held for approval and is not live.',
+			serving_commit: 'aaa',
+			held_commit: 'bbb',
+			approval_url: 'https://kody.codes/@me/app/approve-capabilities',
+		}),
+		'This publish is held for approval and is not live.\nApprove: https://kody.codes/@me/app/approve-capabilities',
 	)
 	assert.equal(
 		publishRefusalMessage({
@@ -218,7 +230,7 @@ test('kody package publish exits 1 and writes the refusal message to stderr', as
 	assert.match(locked.stdout, /"status": "locked"/)
 	assert.equal(
 		locked.stderr,
-		`${progressLines}Approve the pending commit on the website.\n`,
+		`${progressLines}Approve the pending commit on the website.\nApprove: https://kody.codes/approve\n`,
 	)
 
 	const checks = await runPublishWithBody({
@@ -255,6 +267,22 @@ test('kody package publish exits 1 and writes the refusal message to stderr', as
 	assert.equal(approval.code, 1)
 	assert.equal(
 		approval.stderr,
-		`${progressLines}Owner must approve credential need changes.\n`,
+		`${progressLines}Owner must approve credential need changes.\nApprove: https://kody.codes/approve-creds\n`,
 	)
+
+	const held = await runPublishWithBody({
+		status: 'held_for_approval',
+		message:
+			'This publish is held for approval and is not live. The owner approves it here: https://kody.codes/@me/app/approve-capabilities',
+		serving_commit: 'aaa',
+		held_commit: 'bbb',
+		approval_url: 'https://kody.codes/@me/app/approve-capabilities',
+	})
+	assert.equal(held.code, 1)
+	assert.equal(
+		held.stderr,
+		`${progressLines}This publish is held for approval and is not live. The owner approves it here: https://kody.codes/@me/app/approve-capabilities\n`,
+	)
+	assert.match(held.stdout, /"status": "held_for_approval"/)
+	assert.match(held.stdout, /"serving_commit": "aaa"/)
 })

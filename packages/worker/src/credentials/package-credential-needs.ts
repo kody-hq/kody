@@ -19,6 +19,7 @@ import {
 } from './credential-mappings.ts'
 import { mappedCredentialFitsNeed } from './credential-need-fit.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	savedCredentialNeeds,
 	type SavedCredentialNeed,
@@ -97,6 +98,12 @@ export async function describePackageCredentialNeeds(input: {
 	packageId: string
 	/** The caller's already-read flag result, so the needs agree with it. */
 	supplierSemanticsEnabled?: boolean
+	/**
+	 * The source row to read the needs at, for a caller that describes a
+	 * commit other than the latest publish (the serving commit while a publish
+	 * is held for approval). Omit to read the latest publish.
+	 */
+	source?: EntitySourceRow
 }) {
 	try {
 		const needs = savedCredentialNeeds(
@@ -104,6 +111,7 @@ export async function describePackageCredentialNeeds(input: {
 				env: input.env,
 				userId: input.ownerUserId,
 				sourceId: input.sourceId,
+				...(input.source ? { source: input.source } : {}),
 				request: input.request,
 				supplierSemanticsEnabled: input.supplierSemanticsEnabled,
 			}),

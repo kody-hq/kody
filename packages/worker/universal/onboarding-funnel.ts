@@ -70,5 +70,8 @@ export function sanitizeWaitingCardId(cardId: string): string | null {
 	if (trimmed === 'publish-lock' || trimmed.startsWith('publish-lock:')) {
 		return 'publish-lock'
 	}
+	if (trimmed === 'publish-held' || trimmed.startsWith('publish-held:')) {
+		return 'publish-held'
+	}
 	return null
 }

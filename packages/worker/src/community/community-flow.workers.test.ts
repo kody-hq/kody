@@ -264,6 +264,19 @@ test('public package flow works end-to-end through capability handlers', async (
 		sourceId,
 		kodyId,
 		publishedCommit,
+		// Line 3 is an escaped self-reference the fork rewrite follows. Line 4
+		// is a spelling it does not follow, so the fork reports it.
+		indexTs: [
+			`import { value } from 'kody:@usera/shared-utils/index'`,
+			'',
+			String.raw`const ownTopicPrefix = /^@usera\/${kodyId}\./`,
+			String.raw`const unicodeAt = '\u0040usera/${kodyId}'`,
+			'',
+			'export default async function main() {',
+			'\treturn { ok: true, value, ownTopicPrefix, unicodeAt }',
+			'}',
+			'',
+		].join('\n'),
 	})
 	const ownerCtx = createCapabilityContext(testEnv, owner)
 	const forkerCtx = createCapabilityContext(testEnv, forker)
@@ -351,6 +364,14 @@ test('public package flow works end-to-end through capability handlers', async (
 			{ file: 'src/index.ts', specifier: 'kody:@usera/' },
 		]),
 	)
+	// The escaped regex followed the fork; only the unfollowed spelling is left.
+	expect(forkResult.leftover_origin_references).toEqual([
+		{
+			file: 'src/index.ts',
+			line: 4,
+			snippet: String.raw`const unicodeAt = '\u0040usera/${kodyId}'`,
+		},
+	])
 	// Forks are inert sources until adopted: no saved package row yet.
 	expect(await countSavedPackagesForUser(forker.userId)).toBe(0)
 	const forkActivity = {

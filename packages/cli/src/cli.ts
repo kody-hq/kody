@@ -276,6 +276,7 @@ const cliFlagOptions = {
 	header: { type: 'string', multiple: true },
 	synthetic: { type: 'boolean' },
 	interval: { type: 'string' },
+	'promo-code': { type: 'string' },
 	body: { type: 'string' },
 	clients: { type: 'string' },
 	yes: { type: 'boolean', short: 'y' },
@@ -1645,18 +1646,26 @@ async function dispatch(
 		}
 		case 'billing': {
 			const {
-				billingCheckoutLinkUsage,
+				billingManageLinkUsage,
+				billingUsage,
 				parseBillingCheckoutLinkCommand,
 				runBillingCheckoutLink,
+				runBillingManageLink,
 			} = await import('./billing-commands.js')
 			const [subcommand, ...positionals] = parsed.positionals
-			if (subcommand !== 'checkout-link') {
-				throw new Error(billingCheckoutLinkUsage)
+			if (subcommand !== 'checkout-link' && subcommand !== 'manage-link') {
+				throw new Error(billingUsage)
 			}
-			const plan = parseBillingCheckoutLinkCommand({
-				positionals,
-				values: parsed.values,
-			})
+			if (subcommand === 'manage-link' && positionals.length > 0) {
+				throw new Error(billingManageLinkUsage)
+			}
+			const plan =
+				subcommand === 'checkout-link'
+					? parseBillingCheckoutLinkCommand({
+							positionals,
+							values: parsed.values,
+						})
+					: null
 			const apiUrl = earlyApiUrl
 			const token = await accessTokenForOpenApi({
 				tokenValues: tokenFlagValues(parsed.values),
@@ -1665,18 +1674,17 @@ async function dispatch(
 				org,
 			})
 			const { callOpenApiOperation } = await import('./open-api-client.js')
-			const { output, exitCode } = await runBillingCheckoutLink({
-				...plan,
-				json,
-				call: (operationId, params) =>
-					callOpenApiOperation({
-						operationId,
-						params,
-						token,
-						apiUrl,
-						...(org ? { org } : {}),
-					}),
-			})
+			const call = (operationId: string, params: Record<string, unknown>) =>
+				callOpenApiOperation({
+					operationId,
+					params,
+					token,
+					apiUrl,
+					...(org ? { org } : {}),
+				})
+			const { output, exitCode } = plan
+				? await runBillingCheckoutLink({ ...plan, json, call })
+				: await runBillingManageLink({ json, call })
 			write(output)
 			return exitCode
 		}

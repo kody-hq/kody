@@ -61,6 +61,7 @@ test('communityFork stores the fork under the personal org when it differs from 
 		targetName: '@adwin/google',
 		originCommit: 'commit-1',
 		crossScopeReferences: [],
+		leftoverOriginReferences: [],
 		filesCount: 3,
 		files: {},
 	})
@@ -96,6 +97,7 @@ test('communityFork keeps legacy equal-id personal orgs working', async () => {
 		targetName: '@adwin/google',
 		originCommit: 'commit-1',
 		crossScopeReferences: [],
+		leftoverOriginReferences: [],
 		filesCount: 3,
 		files: {},
 	})
@@ -126,6 +128,7 @@ test('communityFork returns an existing fork with already_forked and a message',
 		targetName: '@adwin/google',
 		originCommit: 'commit-1',
 		crossScopeReferences: [],
+		leftoverOriginReferences: [],
 		filesCount: 0,
 		files: {},
 		alreadyForked: true,
@@ -143,6 +146,11 @@ test('communityFork returns an existing fork with already_forked and a message',
 	})
 	expect(result).not.toHaveProperty('files_count')
 
+	const leftover = {
+		file: 'src/index.ts',
+		line: 4,
+		snippet: "const scope = '\\u0040owner/google'",
+	}
 	mocks.forkCommunityListing.mockResolvedValue({
 		forkId: 'fork-2',
 		packageId: 'pkg-2',
@@ -151,6 +159,7 @@ test('communityFork returns an existing fork with already_forked and a message',
 		targetName: '@adwin/google-2',
 		originCommit: 'commit-1',
 		crossScopeReferences: [],
+		leftoverOriginReferences: [leftover],
 		filesCount: 3,
 		files: {},
 	})
@@ -159,5 +168,9 @@ test('communityFork returns an existing fork with already_forked and a message',
 			{ listing_id: 'listing-1', kody_id: 'google-2' },
 			createContext({}),
 		),
-	).toMatchObject({ files_count: 3, already_forked: false })
+	).toMatchObject({
+		files_count: 3,
+		already_forked: false,
+		leftover_origin_references: [leftover],
+	})
 })

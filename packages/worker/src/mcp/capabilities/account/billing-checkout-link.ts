@@ -23,7 +23,7 @@ export const billingCheckoutLinkCapability = defineDomainCapability(
 		// a plain reason in the result instead of a permission error.
 		orgPermission: 'none',
 		description:
-			'Get a checkout link a person opens to upgrade an organization to Pro (start checkout, subscribe, apply a coupon or sale discount). Returns a kody.codes URL, never a payment page: hand it to the person. When they open it, Kody checks they are signed in and can manage billing for the organization, applies any running sale price they qualify for, and sends them to Stripe to pay. You cannot pay for them, and nothing is charged until they finish. Returns ok: false with a plain reason when checkout does not apply (already on a paid plan, no billing access, unknown organization, invalid plan or interval). `offer` says whether a running sale price will apply; when it will not, the link still works at the regular price.',
+			'Get a checkout link a person opens to upgrade an organization to Pro (start checkout, subscribe, apply a coupon or sale discount). Returns a kody.codes URL, never a payment page: hand it to the person. When they open it, Kody checks they are signed in and can manage billing for the organization, applies any running sale price they qualify for, and sends them to Stripe to pay. You cannot pay for them, and nothing is charged until they finish. Returns ok: false with a plain reason when checkout does not apply (already on a paid plan, no billing access, unknown organization, invalid plan or interval). An organization that already has a paid plan cannot use a promo: give the person `billingManageLink` instead. A new organization from `orgCreate` needs a connection to that organization first. `offer` says whether a running sale price will apply; when it will not, the link still works at the regular price.',
 		keywords: [
 			'billing',
 			'checkout',
@@ -53,7 +53,18 @@ export const billingCheckoutLinkCapability = defineDomainCapability(
 				.string()
 				.optional()
 				.describe('The plan to buy. Only "pro" is sold at checkout (default).'),
-			interval: z.string().optional().describe('"month" (default) or "year".'),
+			interval: z
+				.string()
+				.optional()
+				.describe(
+					'"month" (default) or "year". A promo code passed here is treated as `promoCode`.',
+				),
+			promoCode: z
+				.string()
+				.optional()
+				.describe(
+					'Optional. A sale code the person has. It picks the billing interval that code is for. A running sale price applies with or without it. A code that cannot be used is left out and picks no interval: the link still works.',
+				),
 		}),
 		outputSchema: z.discriminatedUnion('ok', [
 			z.object({
@@ -77,6 +88,12 @@ export const billingCheckoutLinkCapability = defineDomainCapability(
 					})
 					.nullable()
 					.describe('A running sale, or null when there is none.'),
+				note: z
+					.string()
+					.optional()
+					.describe(
+						'Present when the promo code you passed could not be applied. The link still works.',
+					),
 				message: z.string().describe('What to tell the person.'),
 			}),
 			z.object({
@@ -98,9 +115,18 @@ export const billingCheckoutLinkCapability = defineDomainCapability(
 				org: args.org ?? request.org.slug,
 				plan: args.plan ?? 'pro',
 				interval: args.interval ?? 'month',
+				promoCode: args.promoCode,
+				baseUrl: ctx.callerContext.baseUrl,
 				now: new Date(),
 			})
-			if (!decision.ok) return { ok: false as const, reason: decision.reason }
+			if (!decision.ok) {
+				return {
+					ok: false as const,
+					reason: decision.paidPlan
+						? `${decision.reason} Use billingManageLink when the person needs that page.`
+						: decision.reason,
+				}
+			}
 			const url = new URL(
 				checkoutLinkPath({
 					orgSlug: decision.org.slug,
@@ -123,8 +149,10 @@ export const billingCheckoutLinkCapability = defineDomainCapability(
 				plan: decision.plan,
 				interval: decision.interval,
 				offer,
+				...(decision.codeNote ? { note: decision.codeNote } : {}),
 				message: [
 					`Open this link to check out Pro for @${decision.org.slug}. You sign in, confirm, and pay on Stripe.`,
+					decision.codeNote,
 					offer?.applies
 						? offer.message
 						: offer

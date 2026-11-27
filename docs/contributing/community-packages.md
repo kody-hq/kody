@@ -253,6 +253,25 @@ whole package self-references and renamed emits-topic references in text files,
 skipping byte snapshots. The cross-scope scan reports textual `kody:@scope/`
 matches and manifest Kody dependencies; it does not resolve imports.
 
+`rewriteScopedReferences` follows a fixed set of spellings and keeps the one it
+found: `@` or `%40`, then `/`, `\/`, `\\/`, `%2F`, or `%2f`. It does not decode
+anything else. `scanLeftoverOriginReferences` runs on the rewritten tree with a
+looser pattern (any number of backslashes, `\u0040`, `\x40`, `\u002f`, `\x2f`)
+and returns the lines that still name the origin package, plus escaped or
+encoded references to the origin scope. A plain `@origin-scope/other` is an
+ordinary dependency and belongs to the cross-scope scan. The result is
+`leftoverOriginReferences` on the fork result, `leftover_origin_references` on
+`communityFork` and `packageFork`, and `leftoverOriginReferences` plus a
+sentence in `agentPrompt` on the one-click install response. It never fails the
+fork.
+
+The list always describes the tree the fork wrote. When the storage-layer copy
+lands on a dest HEAD that is ahead of the listing pin,
+`persistForkedArtifactRepoContents` rewrites and scans dest HEAD's tree and that
+scan replaces the one from preparation. If that tree cannot be read, only
+`package.json` is rewritten and the preparation scan is kept as the best
+estimate.
+
 `forkCommunityListing` reads the KV snapshot for rewrite/scan (Worker), then
 copies the origin Artifacts repo with `POST .../repos/{source}/fork` so the tree
 never enters a RepoSession isolate as `Record<path, string>` edits. When the

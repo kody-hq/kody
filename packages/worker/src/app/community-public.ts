@@ -185,15 +185,42 @@ export function buildForkPrompt(input: { name: string; listingId: string }) {
 	return `Use Kody to fork the public package "${input.name}" (listing id: ${input.listingId}). Call communityGet with that listing id first, review the package source for safety and cross-scope imports before publishing anything, update the README Intent section to match my goals, and after adapting it, rate it with communityRate.`
 }
 
-export function buildInstallSuccessPrompt(input: { targetName: string }) {
-	return `I just one-click installed the public package "${input.targetName}" into my Kody account. Call packageGet for export and secret metadata (it does not return files). Then open a repo session with repoOpenSession({ target: { kind: "package", kody_id: ${JSON.stringify(input.targetName)} } }) and repoReadFile README.md and AGENTS.md. Walk me through any remaining setup: create required secrets or OAuth connections, approve package secret access if prompted, and run a quick test to confirm it works.`
+const maxLeftoverLinesInPrompt = 10
+
+/**
+ * One sentence for the install prompts when the fork still names its origin
+ * after the fork rewrite. Empty when nothing is left.
+ */
+function leftoverOriginReferencesSentence(input: {
+	targetName: string
+	leftoverOriginReferences?: Array<{ file: string; line: number }>
+}) {
+	const leftovers = input.leftoverOriginReferences ?? []
+	if (leftovers.length === 0) return ''
+	const listed = leftovers
+		.slice(0, maxLeftoverLinesInPrompt)
+		.map((leftover) => `${leftover.file}:${leftover.line}`)
+		.join(', ')
+	const more =
+		leftovers.length > maxLeftoverLinesInPrompt
+			? ` and ${leftovers.length - maxLeftoverLinesInPrompt} more`
+			: ''
+	return ` The fork still names the package it was forked from on these lines: ${listed}${more}. Review each one and change it to "${input.targetName}" where it should follow the fork.`
+}
+
+export function buildInstallSuccessPrompt(input: {
+	targetName: string
+	leftoverOriginReferences?: Array<{ file: string; line: number }>
+}) {
+	return `I just one-click installed the public package "${input.targetName}" into my Kody account. Call packageGet for export and secret metadata (it does not return files). Then open a repo session with repoOpenSession({ target: { kind: "package", kody_id: ${JSON.stringify(input.targetName)} } }) and repoReadFile README.md and AGENTS.md. Walk me through any remaining setup: create required secrets or OAuth connections, approve package secret access if prompted, and run a quick test to confirm it works.${leftoverOriginReferencesSentence(input)}`
 }
 
 export function buildInstallAdaptPrompt(input: {
 	targetName: string
 	sourceId: string
+	leftoverOriginReferences?: Array<{ file: string; line: number }>
 }) {
-	return `I one-click installed the public package "${input.targetName}" on Kody, but it needs adaptation before it can be published. The fork is an inert source in my account (source_id: ${input.sourceId}). Open it with repoOpenSession, do a read-only safety review of all files, fix the failing publish checks — re-implement or remove any cross-scope kody:@ imports — rewrite the README Intent section for my goals, then publish with repoPublishSession.`
+	return `I one-click installed the public package "${input.targetName}" on Kody, but it needs adaptation before it can be published. The fork is an inert source in my account (source_id: ${input.sourceId}). Open it with repoOpenSession, do a read-only safety review of all files, fix the failing publish checks (re-implement or remove any cross-scope kody:@ imports), rewrite the README Intent section for my goals, then publish with repoPublishSession.${leftoverOriginReferencesSentence(input)}`
 }
 
 export function buildExistingInstallPrompt(input: { targetName: string }) {

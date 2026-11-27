@@ -26,6 +26,7 @@ export const waitingItemKinds = [
 	'enablement-paused',
 	'secret-expired',
 	'publish-lock',
+	'publish-held',
 	'email-change',
 	'entitlement',
 	'error-rate',
@@ -151,6 +152,15 @@ type WaitingLockedPackageSignal = {
 	kodyId: string
 }
 
+/** An internet-visible app whose latest publish waits for capability approval. */
+type WaitingHeldPublishSignal = {
+	id: string
+	name: string
+	kodyId: string
+	servingCommit: string
+	heldCommit: string
+}
+
 type WaitingEntitlementCapSignal = {
 	resource: string
 	label: string
@@ -166,6 +176,7 @@ export type WaitingSignals = {
 	pausedEnablements: Array<WaitingPausedEnablementSignal>
 	expiredSecrets: Array<WaitingExpiredSecretSignal>
 	lockedPackages: Array<WaitingLockedPackageSignal>
+	heldPublishes?: Array<WaitingHeldPublishSignal>
 	pendingEmailChange: string | null
 	/** Open (untriaged) Activity errors vs runs in the Activity window. */
 	errorRate: { errorCount: number; eventCount: number } | null
@@ -204,15 +215,16 @@ const kindRank: Record<WaitingItemKind, number> = {
 	'enablement-paused': 3,
 	'secret-expired': 4,
 	'publish-lock': 5,
-	'email-change': 6,
-	entitlement: 7,
-	'error-rate': 8,
-	onboarding: 9,
-	'first-use': 10,
-	'context-misconfigured': 11,
-	'context-elevation': 12,
-	'context-open-shell': 13,
-	'session-analytics-choice': 14,
+	'publish-held': 6,
+	'email-change': 7,
+	entitlement: 8,
+	'error-rate': 9,
+	onboarding: 10,
+	'first-use': 11,
+	'context-misconfigured': 12,
+	'context-elevation': 13,
+	'context-open-shell': 14,
+	'session-analytics-choice': 15,
 }
 
 const firstUseRank = Object.fromEntries(
@@ -377,6 +389,27 @@ export function buildWaitingItems(
 						username: signals.username,
 						kodyId: pkg.kodyId,
 					}),
+			severity: 'block',
+		})
+	}
+
+	for (const held of signals.heldPublishes ?? []) {
+		const scope = packageScopeFromNameOrOwner({
+			packageName: held.name,
+			ownerUsername: signals.username,
+			kodyId: held.kodyId,
+		})
+		items.push({
+			id: `publish-held:${held.id}`,
+			kind: 'publish-held',
+			title: `${held.name} has a publish held for approval`,
+			why: `Commit ${held.heldCommit.slice(0, 7)} asks for more capabilities than the version you approved. Everyone stays on ${held.servingCommit.slice(0, 7)} until an owner approves it.`,
+			who: 'you',
+			doLabel: 'Review and approve',
+			href: routes.communityPackageApproveCapabilities.href({
+				username: scope?.ownerUsername ?? signals.username,
+				kodyId: scope?.kodyId ?? held.kodyId,
+			}),
 			severity: 'block',
 		})
 	}
