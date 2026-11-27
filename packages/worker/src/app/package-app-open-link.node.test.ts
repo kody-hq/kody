@@ -14,8 +14,8 @@ import {
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
-	type AppVisitSessionCredential,
 } from '#app/package-app-session.ts'
+import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 import { silenceExpectedConsoleWarns } from '#worker/test-support/console-spies.ts'
 
 const cookieSecret = 'PACKAGE_APP_TEST_COOKIE_SECRET_32_CHARS_MINIMUM'

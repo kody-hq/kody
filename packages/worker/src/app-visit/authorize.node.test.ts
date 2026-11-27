@@ -324,7 +324,7 @@ test('an open-link visit session is checked as the profile and scopes that minte
 				? {
 						profileId: profile.id,
 						profileChain: [profile.id],
-						profileOrgId: ownerIdFromStored(outsiderId),
+						profileOrgId: ownerIdFromStored(String(outsiderId)),
 					}
 				: {}),
 		}
