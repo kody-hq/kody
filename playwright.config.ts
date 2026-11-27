@@ -34,7 +34,7 @@ export default defineConfig({
 	use: {
 		baseURL,
 		// Tests run with the Black Friday 2026 banner dismissed: it counts down
-		// and disappears on Nov 30, so it must not be part of what they assert.
+		// and disappears on Dec 4, so it must not be part of what they assert.
 		// Remove when: packages/worker/start/campaigns/black-friday-2026 is deleted.
 		storageState: {
 			cookies: [],

@@ -1,8 +1,8 @@
 # Black Friday 2026
 
 Sale banner and checkout auto-apply for the `blackfriday-2026` campaign. It ends
-Mon Nov 30, 2026, 11:59:59 PM MT. After that the server renders no banner and
-applies no code, so this folder is dead code that can go at any time.
+Fri Dec 4, 2026, 11:59:59 PM Pacific time. After that the server renders no
+banner and applies no code, so this folder is dead code that can go at any time.
 
 ## What it does
 
@@ -25,7 +25,7 @@ applies no code, so this folder is dead code that can go at any time.
 | `black-friday-2026.node.test.ts` | Tests for all of the above, including checkout through `startWebsiteCheckout`.                                   |
 
 The end time and prices in `offer.ts` must match the Stripe promotion codes
-(`expires_at` 1796108399, 25% off once, 50% off for 2 months). Server HTML never
+(`expires_at` 1796457599, 25% off once, 50% off for 2 months). Server HTML never
 contains the time left: signed-out pages are shared from the edge cache, so a
 script next to the banner fills the countdown from the visitor's clock before
 first paint, and hides the banner for a visitor who dismissed it.
