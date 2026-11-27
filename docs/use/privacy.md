@@ -235,9 +235,10 @@ find no person, company, product, or project name in it.
 A session row exists only while the session is open. When it ends, or after 30
 minutes without a call, it is folded into daily counts and deleted. The daily
 counts are kept for 400 days (about 13 months). Each member sees the counts for
-their own sessions on the organization's Session insights page, and Owners and
-Admins see the organization's combined counts. Either can delete any entry or
-all of them; entries cannot be edited. Turning session analytics off deletes
+their own sessions on the organization's Session insights page, and people who
+can manage the organization (Owners, Admins, and anyone they give that
+permission) see the organization's combined counts. Either can delete any entry
+or all of them; entries cannot be edited. Turning session analytics off deletes
 everything it stored for the organization right away, and deleting an account or
 organization deletes its counts too.
 
