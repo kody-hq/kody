@@ -103,9 +103,11 @@ import {
 } from '#worker/approval-bundles/paused-publishes.ts'
 import { optionalApprovalViewerForCaller } from './approval-bundle-shared.ts'
 import {
-	buildHeldForApprovalPublishNotice,
-	heldForApprovalSchema,
-} from './held-for-approval-publish-notice.ts'
+	heldForApprovalStatusDescription,
+	heldForApprovalStatusShape,
+	loadHeldForApprovalPublishStatus,
+	type HeldForApprovalPublishStatus,
+} from './held-for-approval-publish-status.ts'
 import {
 	credentialNeedChangeSchema,
 	pendingPackageSecretApprovalsSchema,
@@ -538,7 +540,6 @@ const outputSchema = z.discriminatedUnion('status', [
 		static_dependents: staticDependentsSchema,
 		pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
-		held_for_approval: heldForApprovalSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
 		build_origin: publishBuildOriginSchema.optional(),
@@ -616,11 +617,29 @@ const outputSchema = z.discriminatedUnion('status', [
 		static_dependents: staticDependentsSchema,
 		pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
-		held_for_approval: heldForApprovalSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
 		build_origin: publishBuildOriginSchema.optional(),
 	}),
+	z
+		.object({
+			status: z.literal('held_for_approval'),
+			unmappable_credentials_notice: z.string().nullable().optional(),
+			previous_commit: z
+				.string()
+				.nullable()
+				.describe('The package tip before this publish request.'),
+			...heldForApprovalStatusShape,
+			hosted_app_url: z.string().nullable(),
+			test_hints: packageTestHintsSchema.optional(),
+			static_dependents: staticDependentsSchema,
+			pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
+			allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
+			listing: communityListingBehindHintSchema.optional(),
+			phase_timings: publishPhaseTimingsSchema,
+			build_origin: publishBuildOriginSchema.optional(),
+		})
+		.describe(heldForApprovalStatusDescription),
 	z.object({
 		status: z.literal('dispatched'),
 		workflow_id: z.string(),
@@ -654,17 +673,18 @@ type PublishedResult = Extract<
 >
 
 /**
- * Fields every success status (published, already_published) returns, so a
- * new optional field cannot land on only one path.
+ * Fields every status whose commit was recorded (published,
+ * already_published, held_for_approval) returns, so a new optional field
+ * cannot land on only one path.
  */
-function publishSuccessFields(input: {
+function publishRecordedFields(input: {
 	extras: {
 		hosted_app_url: PublishedResult['hosted_app_url']
 		testHints?: PublishedResult['test_hints'] | null
 		static_dependents: PublishedResult['static_dependents']
 		pending_secret_package_approvals: PublishedResult['pending_secret_package_approvals']
 		allowed_packages_publish_notice: PublishedResult['allowed_packages_publish_notice']
-		held_for_approval: PublishedResult['held_for_approval']
+		held: HeldForApprovalPublishStatus | null
 		listing?: PublishedResult['listing'] | null
 	}
 	phaseTimings: PublishPhaseTimings
@@ -677,9 +697,6 @@ function publishSuccessFields(input: {
 		static_dependents: extras.static_dependents,
 		pending_secret_package_approvals: extras.pending_secret_package_approvals,
 		allowed_packages_publish_notice: extras.allowed_packages_publish_notice,
-		...(extras.held_for_approval
-			? { held_for_approval: extras.held_for_approval }
-			: {}),
 		...(extras.listing ? { listing: extras.listing } : {}),
 		phase_timings: input.phaseTimings,
 		...buildOriginField(input.uploadedBuild),
@@ -1281,7 +1298,7 @@ async function runExternalPublishAttempt(input: {
 										kodyId: published.kodyId,
 										sourceId: input.source.id,
 									}),
-								held_for_approval: await buildHeldForApprovalPublishNotice({
+								held: await loadHeldForApprovalPublishStatus({
 									env: input.env,
 									baseUrl: input.baseUrl,
 									ownerUserId: input.ownerUserId,
@@ -1310,8 +1327,7 @@ async function runExternalPublishAttempt(input: {
 					dependentsMs,
 				})
 				const sharedSuccessFields = {
-					published_commit: publishedCommit,
-					...publishSuccessFields({
+					...publishRecordedFields({
 						extras: alreadyPublishedExtras,
 						phaseTimings,
 						uploadedBuild: input.uploadedBuild,
@@ -1324,10 +1340,19 @@ async function runExternalPublishAttempt(input: {
 				})
 				phase = 'confirming the serving commit'
 				await assertCurrent(publishedCommit)
+				if (alreadyPublishedExtras.held) {
+					return {
+						status: 'held_for_approval' as const,
+						previous_commit: input.baselinePublishedCommit ?? null,
+						...alreadyPublishedExtras.held,
+						...sharedSuccessFields,
+					}
+				}
 				if (tipMoved) {
 					return {
 						status: 'published' as const,
 						previous_commit: input.baselinePublishedCommit,
+						published_commit: publishedCommit,
 						manifest: null,
 						checks: [],
 						...sharedSuccessFields,
@@ -1336,6 +1361,7 @@ async function runExternalPublishAttempt(input: {
 				const checksRerun = result.checks_rerun === true
 				return {
 					status: 'already_published' as const,
+					published_commit: publishedCommit,
 					artifacts_rebuilt: artifactsRebuilt,
 					...(checksRerun
 						? {
@@ -1550,7 +1576,7 @@ async function runExternalPublishAttempt(input: {
 									kodyId: published.kodyId,
 									sourceId: input.source.id,
 								}),
-							held_for_approval: await buildHeldForApprovalPublishNotice({
+							held: await loadHeldForApprovalPublishStatus({
 								env: input.env,
 								baseUrl: input.baseUrl,
 								ownerUserId: input.ownerUserId,
@@ -1580,19 +1606,25 @@ async function runExternalPublishAttempt(input: {
 			})
 			phase = 'confirming the serving commit'
 			await assertCurrent(result.published_commit)
-			return {
-				...result,
-				...publishSuccessFields({
-					extras: publishedExtras,
-					phaseTimings: buildPublishPhaseTimings({
-						startedAt: publishStartedAt,
-						fromPublish: result.phase_timings,
-						rebuildMs,
-						dependentsMs,
-					}),
-					uploadedBuild: input.uploadedBuild,
+			const recordedFields = publishRecordedFields({
+				extras: publishedExtras,
+				phaseTimings: buildPublishPhaseTimings({
+					startedAt: publishStartedAt,
+					fromPublish: result.phase_timings,
+					rebuildMs,
+					dependentsMs,
 				}),
-			} as const
+				uploadedBuild: input.uploadedBuild,
+			})
+			if (publishedExtras.held) {
+				return {
+					status: 'held_for_approval' as const,
+					previous_commit: result.previous_commit,
+					...publishedExtras.held,
+					...recordedFields,
+				}
+			}
+			return { ...result, ...recordedFields } as const
 		} catch (error) {
 			try {
 				if (
@@ -1656,7 +1688,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including a durable step retry after an earlier attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. The publish always runs as a durable workflow, never in the calling request: this capability returns status dispatched with a workflow_id right away (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags). Poll packageRunResult({ workflow_id }) until its `status` is terminal; the same answer then carries the full publish result. Active and published durable runs still dedupe. A durable run whose publish did not publish (checks_failed, not_fast_forward, locked, approval_required) ends errored with the reason in packageRunResult `last_error`, and like any terminal failure (for example a Durable Object reset because its code was updated) retrying the same commit starts a fresh run with a new workflow_id. dispatched includes phase_timings.total_ms as time-to-dispatch.',
+			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. A publish whose commit is built but not live returns held_for_approval, never published or already_published: an internet-visible app asked for more capabilities than its approved version, so everyone stays on serving_commit until the owner approves held_commit at approval_url (ADR 0069). That is different from approval_required, which pauses a locked or credential-changing publish before it starts. Published, already_published, and held_for_approval responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including a durable step retry after an earlier attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. The publish always runs as a durable workflow, never in the calling request: this capability returns status dispatched with a workflow_id right away (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags). Poll packageRunResult({ workflow_id }) until its `status` is terminal; the same answer then carries the full publish result. Active and published durable runs still dedupe. A durable run whose publish did not go live (checks_failed, not_fast_forward, locked, approval_required, held_for_approval) ends errored with the reason in packageRunResult `last_error`, and like any terminal failure (for example a Durable Object reset because its code was updated) retrying the same commit starts a fresh run with a new workflow_id. dispatched includes phase_timings.total_ms as time-to-dispatch.',
 		keywords: ['package', 'publish', 'git', 'artifacts', 'external', 'push'],
 		readOnly: false,
 		idempotent: true,
@@ -1710,7 +1742,9 @@ export const publishExternalPushCapability = defineDomainCapability(
 				result: T,
 			): T =>
 				unmappableNotice &&
-				(result.status === 'published' || result.status === 'already_published')
+				(result.status === 'published' ||
+					result.status === 'already_published' ||
+					result.status === 'held_for_approval')
 					? { ...result, unmappable_credentials_notice: unmappableNotice }
 					: result
 			const head = await resolveArtifactSourceHead(ctx.env, source.repo_id)

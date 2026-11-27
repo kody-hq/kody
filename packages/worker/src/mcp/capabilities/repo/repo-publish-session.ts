@@ -23,7 +23,7 @@ import { rebuildPublishedPackageArtifactsViaRepoSession } from './package-artifa
 import { settleFailedPublishRebuild } from './settle-failed-publish-rebuild.ts'
 import { assertPackagePublishCurrent } from './assert-package-publish-current.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
-import { buildHeldForApprovalPublishNotice } from '#mcp/capabilities/packages/held-for-approval-publish-notice.ts'
+import { loadHeldForApprovalPublishStatus } from '#mcp/capabilities/packages/held-for-approval-publish-status.ts'
 import {
 	buildPackagePublishApprovalUrl,
 	createPackagePublishLockedMessage,
@@ -70,7 +70,7 @@ export const repoPublishSessionCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish an active repo session back to the source repo after checks pass on the current tree and the base commit is still current. Visibility is a repo setting (`packageUpdate` / `repoUpdate`), not package.json#private. When publishing a community fork after absorbing origin updates, pass absorbed_upstream_commit. Retrying is safe: a publish whose push did not land fails with publish_not_applied (nothing moved), and an interrupted publish resumes; check repoGetSession last_publish for status.',
+			'Publish an active repo session back to the source repo after checks pass on the current tree and the base commit is still current. Visibility is a repo setting (`packageUpdate` / `repoUpdate`), not package.json#private. When publishing a community fork after absorbing origin updates, pass absorbed_upstream_commit. Status held_for_approval means the commit was pushed and built but is not live: an internet-visible app asked for more capabilities than its approved version, so everyone stays on serving_commit until the owner approves held_commit at approval_url. Retrying is safe: a publish whose push did not land fails with publish_not_applied (nothing moved), and an interrupted publish resumes; check repoGetSession last_publish for status.',
 		keywords: ['repo', 'publish', 'session', 'checks', 'artifact'],
 		readOnly: false,
 		idempotent: false,
@@ -151,7 +151,7 @@ export const repoPublishSessionCapability = defineDomainCapability(
 								originCommit: args.absorbed_upstream_commit,
 							})
 						: null
-					const heldForApproval = await buildHeldForApprovalNoticeForSource({
+					const held = await loadHeldForApprovalStatusForSource({
 						env: ctx.env,
 						baseUrl: ctx.callerContext.baseUrl,
 						ownerUserId: owner.ownerUserId,
@@ -169,13 +169,21 @@ export const repoPublishSessionCapability = defineDomainCapability(
 						userId: owner.ownerUserId,
 						commit: result.publishedCommit,
 					})
+					if (held) {
+						return {
+							status: 'held_for_approval' as const,
+							session_id: result.sessionId,
+							published_commit: null,
+							...held,
+							...(absorbNotice ? { notice: absorbNotice } : {}),
+						}
+					}
 					return {
 						status: 'ok' as const,
 						session_id: result.sessionId,
 						published_commit: result.publishedCommit,
 						message: result.message,
 						...(absorbNotice ? { notice: absorbNotice } : {}),
-						...(heldForApproval ? { held_for_approval: heldForApproval } : {}),
 					}
 				}
 				const source = await getEntitySourceByIdForUser(ctx.env.APP_DB, {
@@ -390,38 +398,29 @@ async function absorbForkUpstreamAfterPublish(input: {
 	}
 }
 
-async function buildHeldForApprovalNoticeForSource(input: {
+async function loadHeldForApprovalStatusForSource(input: {
 	env: Env
 	baseUrl: string
 	ownerUserId: OwnerId
 	ownerScope: string
 	sourceId: string
 }) {
-	// Optional notice only: never fail a completed publish because a read rejected.
-	try {
-		const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
-			id: input.sourceId,
-			userId: input.ownerUserId,
-		})
-		if (!source || source.entity_kind !== 'package') return null
-		const savedPackage = await getSavedPackageById(input.env.APP_DB, {
-			userId: input.ownerUserId,
-			packageId: source.entity_id,
-		})
-		if (!savedPackage) return null
-		return await buildHeldForApprovalPublishNotice({
-			env: input.env,
-			baseUrl: input.baseUrl,
-			ownerUserId: input.ownerUserId,
-			ownerScope: input.ownerScope,
-			packageId: savedPackage.id,
-			kodyId: savedPackage.kodyId,
-		})
-	} catch (error) {
-		console.warn(
-			`[heldForApproval] package lookup failed for source ${input.sourceId}:`,
-			error instanceof Error ? error.message : error,
-		)
-		return null
-	}
+	const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
+		id: input.sourceId,
+		userId: input.ownerUserId,
+	})
+	if (!source || source.entity_kind !== 'package') return null
+	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+		userId: input.ownerUserId,
+		packageId: source.entity_id,
+	})
+	if (!savedPackage) return null
+	return await loadHeldForApprovalPublishStatus({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		ownerUserId: input.ownerUserId,
+		ownerScope: input.ownerScope,
+		packageId: savedPackage.id,
+		kodyId: savedPackage.kodyId,
+	})
 }

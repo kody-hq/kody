@@ -387,7 +387,25 @@ export const packageDetailSchema =
 			.string()
 			.nullable()
 			.describe(
-				'Current published Artifacts commit for this package source (same field as `repoShowPublishNote` defaults to). Null when nothing has been published yet.',
+				'Latest commit whose publish completed and was not held for approval. Never the held commit: while a publish is held this is the serving commit. Null when nothing has been published yet.',
+			),
+		serving_commit: z
+			.string()
+			.nullable()
+			.describe(
+				'The commit that is live: what apps, exports, jobs, and subscriptions run right now. It trails published_commit only while a new publish is still building. Null when nothing serves yet.',
+			),
+		held_commit: z
+			.string()
+			.nullable()
+			.describe(
+				'A commit that is built but held for capability approval. It serves nobody until the owner approves it at approval_url. Null when nothing is held, and for callers who cannot publish this package.',
+			),
+		approval_url: z
+			.string()
+			.nullable()
+			.describe(
+				'Owner page that approves held_commit. Null when held_commit is null.',
 			),
 		exports: z.array(packageExportSurfaceSchema),
 		package_secrets: z

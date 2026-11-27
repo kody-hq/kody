@@ -3664,6 +3664,7 @@ export const capabilityManifest = {
 												"enablement-paused",
 												"secret-expired",
 												"publish-lock",
+												"publish-held",
 												"email-change",
 												"entitlement",
 												"error-rate",
@@ -3721,7 +3722,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type WaitingSummaryInput = Record<string, never>",
-					"outputTypeDefinition": "type WaitingSummaryOutput = {\n\tcount: number\n\twaiting_url: string\n\titems: Array<{\n\tid: string\n\tkind: \"verify-email\" | \"mcp-server\" | \"integration-auth\" | \"enablement-paused\" | \"secret-expired\" | \"publish-lock\" | \"email-change\" | \"entitlement\" | \"error-rate\" | \"onboarding\" | \"first-use\" | \"context-elevation\" | \"context-misconfigured\" | \"context-open-shell\"\n\ttitle: string\n\twhy: string\n\twho: \"you\"\n\tdo_label: string\n\thref: string\n\tseverity: \"block\" | \"degraded\" | \"setup\"\n}>\n}"
+					"outputTypeDefinition": "type WaitingSummaryOutput = {\n\tcount: number\n\twaiting_url: string\n\titems: Array<{\n\tid: string\n\tkind: \"verify-email\" | \"mcp-server\" | \"integration-auth\" | \"enablement-paused\" | \"secret-expired\" | \"publish-lock\" | \"publish-held\" | \"email-change\" | \"entitlement\" | \"error-rate\" | \"onboarding\" | \"first-use\" | \"context-elevation\" | \"context-misconfigured\" | \"context-open-shell\"\n\ttitle: string\n\twhy: string\n\twho: \"you\"\n\tdo_label: string\n\thref: string\n\tseverity: \"block\" | \"degraded\" | \"setup\"\n}>\n}"
 				},
 				{
 					"name": "billingCheckoutLink",
@@ -55384,39 +55385,29 @@ export const capabilityManifest = {
 								],
 								"description": "Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret."
 							},
-							"held_for_approval": {
-								"description": "Set when this internet-visible app now asks for more capabilities than the approved version. Everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url; approving moves everyone to held_commit. Test the new version with local dev or a dev check. Null/omitted otherwise.",
-								"anyOf": [
-									{
-										"type": "object",
-										"properties": {
-											"serving_commit": {
-												"type": "string",
-												"description": "The approved commit everyone still runs."
-											},
-											"held_commit": {
-												"type": "string",
-												"description": "The published commit that waits for capability approval before it serves."
-											},
-											"approval_url": {
-												"type": "string"
-											},
-											"message": {
-												"type": "string"
-											}
-										},
-										"required": [
-											"serving_commit",
-											"held_commit",
-											"approval_url",
-											"message"
-										],
-										"additionalProperties": false
-									},
-									{
-										"type": "null"
-									}
-								]
+							"status": {
+								"type": "string",
+								"enum": [
+									"published",
+									"held_for_approval"
+								],
+								"description": "published: the saved files are live. held_for_approval: The new commit is built but not live. This internet-visible app now asks for more capabilities than the approved version, so everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url. Approving moves everyone to held_commit. Test the new version with local dev or a dev check. Different from approval_required, which pauses a publish before it starts."
+							},
+							"serving_commit": {
+								"type": "string",
+								"description": "The approved commit everyone still runs."
+							},
+							"held_commit": {
+								"type": "string",
+								"description": "The commit this publish built. It serves nobody until the owner approves its capabilities."
+							},
+							"approval_url": {
+								"type": "string",
+								"description": "Owner page that approves held_commit and makes it live."
+							},
+							"message": {
+								"description": "Set with held_for_approval: what is held and how to approve.",
+								"type": "string"
 							}
 						},
 						"required": [
@@ -55435,17 +55426,18 @@ export const capabilityManifest = {
 							"created_at",
 							"updated_at",
 							"next_steps",
-							"pending_secret_package_approvals"
+							"pending_secret_package_approvals",
+							"status"
 						],
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type PackageSaveInput = {\n\t/** Optional saved package id to update in place. Omit to create a new saved package. */\n\tpackage_id?: string\n\t/** Full package file set to write. Must include package.json at the repo root. */\n\tfiles: Array<{\n\t/** Package-relative file path to write into the saved package repo. */\n\tpath: string\n\t/** Full file contents for this package file. Publish requires non-empty root README.md (human-focused, including a concise Intent section) and AGENTS.md (agent-focused: imports, smoke tests, edge cases). */\n\tcontent: string\n}>\n\t/** Set to true only when the user explicitly approved destructive overwrite of existing package source history. Promoting publishes replace advertised history with a new root commit (and drop leftover session refs); promotePublished:false stays additive. Restorable backups retain prior content — secret scrub of backups still needs packageDelete or an explicit purge. */\n\tconfirm_destructive_overwrite?: boolean\n\t/** Set to true only when the user explicitly approved changing package.json `\"private\"`. This flag does not change repo visibility: catalog listing is `packageUpdate` `changes.visibility`. Leftover `\"private\"` in manifests is ignored for the catalog. */\n\tconfirm_private_visibility_change?: boolean\n}",
-					"outputTypeDefinition": "type PackageSaveOutput = {\n\tpackage_id: string\n\t/** Package name leaf (same value as `slug`). Kept as a compatibility alias; prefer `slug` or `name`. */\n\tkody_id: string\n\t/** Package name leaf (the path segment after the scope). Same value as `kody_id`. */\n\tslug: string\n\tname: string\n\tdescription: string\n\ttags: Array<string>\n\thas_app: boolean\n\thidden: boolean\n\t/** Repo visibility / forkable. Public means default-branch HEAD is world-readable and forkable and the package appears on /community. Private is owner-only. Independent of internet_visible. */\n\tvisibility: \"public\" | \"private\"\n\t/** When true, the hosted package app may be served on the public internet after capability approval. Independent of visibility/forkable. Defaults false. */\n\tinternet_visible: boolean\n\t/** When set, publishes require a website click at /@{username}/{kodyId}/approve-publish?commit=<full 40-character SHA>. Agents may lock via packageUpdate (`changes.locked: true`). Unlocking is website-only at /@{username}/{kodyId}/settings. Do not abbreviate the commit. */\n\tlocked_at: string | null\n\tsource_id: string\n\tcreated_at: string\n\tupdated_at: string\n\t/** Follow-up guidance for continuing package work, including the git clone-edit-push lane for coding agents and any pending package secret approvals. */\n\tnext_steps: string\n\t/** Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret. */\n\tpending_secret_package_approvals: {\n\t/** Saved package id that needs approvals. */\n\tpackage_id: string\n\t/** Package name leaf that needs approvals (same value as `slug`). */\n\tkody_id: string\n\t/** Package name leaf that needs approvals. */\n\tslug: string\n\t/** User secrets that still need package approval. */\n\tsecrets: Array<{\n\tsecret_name: string\n\t/** Per-secret package approval URL in the account UI. */\n\tapproval_url: string\n}>\n\t/** One-click bulk approval URL when two or more secrets still need package approval; prefer this over individual links. */\n\tbulk_approval_url: string | null\n} | null\n\t/** Set when this internet-visible app now asks for more capabilities than the approved version. Everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url; approving moves everyone to held_commit. Test the new version with local dev or a dev check. Null/omitted otherwise. */\n\theld_for_approval?: {\n\t/** The approved commit everyone still runs. */\n\tserving_commit: string\n\t/** The published commit that waits for capability approval before it serves. */\n\theld_commit: string\n\tapproval_url: string\n\tmessage: string\n} | null\n}"
+					"outputTypeDefinition": "type PackageSaveOutput = {\n\tpackage_id: string\n\t/** Package name leaf (same value as `slug`). Kept as a compatibility alias; prefer `slug` or `name`. */\n\tkody_id: string\n\t/** Package name leaf (the path segment after the scope). Same value as `kody_id`. */\n\tslug: string\n\tname: string\n\tdescription: string\n\ttags: Array<string>\n\thas_app: boolean\n\thidden: boolean\n\t/** Repo visibility / forkable. Public means default-branch HEAD is world-readable and forkable and the package appears on /community. Private is owner-only. Independent of internet_visible. */\n\tvisibility: \"public\" | \"private\"\n\t/** When true, the hosted package app may be served on the public internet after capability approval. Independent of visibility/forkable. Defaults false. */\n\tinternet_visible: boolean\n\t/** When set, publishes require a website click at /@{username}/{kodyId}/approve-publish?commit=<full 40-character SHA>. Agents may lock via packageUpdate (`changes.locked: true`). Unlocking is website-only at /@{username}/{kodyId}/settings. Do not abbreviate the commit. */\n\tlocked_at: string | null\n\tsource_id: string\n\tcreated_at: string\n\tupdated_at: string\n\t/** Follow-up guidance for continuing package work, including the git clone-edit-push lane for coding agents and any pending package secret approvals. */\n\tnext_steps: string\n\t/** Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret. */\n\tpending_secret_package_approvals: {\n\t/** Saved package id that needs approvals. */\n\tpackage_id: string\n\t/** Package name leaf that needs approvals (same value as `slug`). */\n\tkody_id: string\n\t/** Package name leaf that needs approvals. */\n\tslug: string\n\t/** User secrets that still need package approval. */\n\tsecrets: Array<{\n\tsecret_name: string\n\t/** Per-secret package approval URL in the account UI. */\n\tapproval_url: string\n}>\n\t/** One-click bulk approval URL when two or more secrets still need package approval; prefer this over individual links. */\n\tbulk_approval_url: string | null\n} | null\n\t/** published: the saved files are live. held_for_approval: The new commit is built but not live. This internet-visible app now asks for more capabilities than the approved version, so everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url. Approving moves everyone to held_commit. Test the new version with local dev or a dev check. Different from approval_required, which pauses a publish before it starts. */\n\tstatus: \"published\" | \"held_for_approval\"\n\t/** The approved commit everyone still runs. */\n\tserving_commit?: string\n\t/** The commit this publish built. It serves nobody until the owner approves its capabilities. */\n\theld_commit?: string\n\t/** Owner page that approves held_commit and makes it live. */\n\tapproval_url?: string\n\t/** Set with held_for_approval: what is held and how to approve. */\n\tmessage?: string\n}"
 				},
 				{
 					"name": "packageGet",
 					"domain": "packages",
-					"description": "Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), its credential needs with how each resolves for you (`credentials.needs`), and the machine access it declares (`machine.needs`). For a single export contract, prefer search({ entity: \"package:{kodyId}#{subpath}\" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.",
+					"description": "Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), its credential needs with how each resolves for you (`credentials.needs`), and the machine access it declares (`machine.needs`). `serving_commit` is the commit that is live; when a publish is held for capability approval the record describes the serving commit, and `held_commit` plus `approval_url` name the commit that waits (shown to people who can publish the package). For a single export contract, prefer search({ entity: \"package:{kodyId}#{subpath}\" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.",
 					"keywords": [
 						"package",
 						"get",
@@ -55688,7 +55680,28 @@ export const capabilityManifest = {
 								"additionalProperties": false
 							},
 							"published_commit": {
-								"description": "Current published Artifacts commit for this package source (same field as `repoShowPublishNote` defaults to). Null when nothing has been published yet.",
+								"description": "Latest commit whose publish completed and was not held for approval. Never the held commit: while a publish is held this is the serving commit. Null when nothing has been published yet.",
+								"type": [
+									"string",
+									"null"
+								]
+							},
+							"serving_commit": {
+								"description": "The commit that is live: what apps, exports, jobs, and subscriptions run right now. It trails published_commit only while a new publish is still building. Null when nothing serves yet.",
+								"type": [
+									"string",
+									"null"
+								]
+							},
+							"held_commit": {
+								"description": "A commit that is built but held for capability approval. It serves nobody until the owner approves it at approval_url. Null when nothing is held, and for callers who cannot publish this package.",
+								"type": [
+									"string",
+									"null"
+								]
+							},
+							"approval_url": {
+								"description": "Owner page that approves held_commit. Null when held_commit is null.",
 								"type": [
 									"string",
 									"null"
@@ -57025,6 +57038,9 @@ export const capabilityManifest = {
 							"listing_published_at",
 							"listing_ahead",
 							"published_commit",
+							"serving_commit",
+							"held_commit",
+							"approval_url",
 							"exports",
 							"package_secrets",
 							"credentials",
@@ -57033,7 +57049,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type PackageGetInput = {\n\tpackage_id: string\n}",
-					"outputTypeDefinition": "type PackageGetOutput = {\n\tpackage_id: string\n\t/** Package name leaf (same value as `slug`). Kept as a compatibility alias; prefer `slug` or `name`. */\n\tkody_id: string\n\t/** Package name leaf (the path segment after the scope). Same value as `kody_id`. */\n\tslug: string\n\tname: string\n\tdescription: string\n\ttags: Array<string>\n\thas_app: boolean\n\thidden: boolean\n\t/** Repo visibility / forkable. Public means default-branch HEAD is world-readable and forkable and the package appears on /community. Private is owner-only. Independent of internet_visible. */\n\tvisibility: \"public\" | \"private\"\n\t/** When true, the hosted package app may be served on the public internet after capability approval. Independent of visibility/forkable. Defaults false. */\n\tinternet_visible: boolean\n\t/** When set, publishes require a website click at /@{username}/{kodyId}/approve-publish?commit=<full 40-character SHA>. Agents may lock via packageUpdate (`changes.locked: true`). Unlocking is website-only at /@{username}/{kodyId}/settings. Do not abbreviate the commit. */\n\tlocked_at: string | null\n\tsource_id: string\n\tcreated_at: string\n\tupdated_at: string\n\t/** Catalog entry id this package was forked from, or null for a self-authored package. */\n\tsource_listing_id: string | null\n\t/** Whether the source catalog entry currently resolves to an active public package, or null for a self-authored package. */\n\tlisting_current: boolean | null\n\t/** Original public package name leaf recorded when this package was forked, or null for a self-authored package. */\n\tlisting_kody_id: string | null\n\t/** Current source listing package name when the listing is active, or null when this package is self-authored or the listing is gone. */\n\tlisting_name: string | null\n\t/** Listing pinned commit this fork last absorbed. Starts as the fork-time snapshot and moves when a later publish passes absorbed_upstream_commit. */\n\torigin_commit: string | null\n\t/** Current pinned commit of the source listing, or null when this package is self-authored or the listing is gone. */\n\tlisting_pinned_commit: string | null\n\t/** Last community publish time of the source listing, or null when this package is self-authored or the listing is gone. */\n\tlisting_published_at: string | null\n\t/** True only when this community fork is outdated: the listing pin is not an ancestor of the fork tip. Null for a self-authored package. Otherwise false. */\n\tlisting_ahead: boolean | null\n\t/** Where the published version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n\t/** Informational record of the stored artifacts of the published commit: where each was built (Kody cloud, the publisher's CLI, or one of their execution contexts) and a SHA-256 of its modules. Null fields mean the artifact was stored before this was recorded. Kody does not check that an uploaded build was compiled from the pushed source, and nothing uses this record to allow or refuse a publish or a listing. */\n\tprovenance?: {\n\tcommit: string\n\tartifacts: Array<{\n\tkind: string\n\tname: string | null\n\tentry_point: string\n\tbuilt_in: \"cloud\" | \"cli\" | \"context\" | null\n\tcontext_name: string | null\n\tbundle_sha256: string | null\n}>\n}\n\t/** Current published Artifacts commit for this package source (same field as `repoShowPublishNote` defaults to). Null when nothing has been published yet. */\n\tpublished_commit: string | null\n\texports: Array<{\n\t/** Package export subpath from package.json exports. */\n\tsubpath: string\n\t/** Ready-to-use kody: import specifier for this export. */\n\timport_specifier: string\n\t/** Package-relative runtime source path for this export. */\n\truntime_target: string | null\n\t/** Package-relative types source path for this export, when declared. */\n\ttypes_path: string | null\n\t/** Export description parsed from JSDoc when available. */\n\tdescription: string | null\n\t/** Primary export type signature parsed from source when available. Null when the export has more than one callable function; use `functions` in that case. */\n\ttype_definition: string | null\n\t/** Callable functions extracted from this export. Namespace modules that export several helpers list each one here. */\n\tfunctions: Array<{\n\t/** Exported function name. Default exports use the name \"default\". */\n\tname: string\n\t/** Function JSDoc description when available. */\n\tdescription: string | null\n\t/** Function type signature parsed from source when available. */\n\ttype_definition: string | null\n}>\n\t/** Type, interface, enum, and `typeof` const definitions referenced by this export's callable functions. */\n\treferenced_types: Array<{\n\tname: string\n\tkind: \"type\" | \"interface\" | \"enum\" | \"const\"\n\t/** Source text of the referenced type, interface, or enum. For a `const` reached through `typeof`, the resolved schema input fields when the initializer is a schema builder, otherwise its declaration. */\n\tdefinition: string\n}>\n}>\n\t/** FYI metadata for package-scoped secrets owned by this package, including package_id. Never plaintext values. These are not execute-usable via search; using them still requires package context. */\n\tpackage_secrets: Array<{\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n}>\n\t/** Credential needs (ADR 0068): the published `kody.credentials` closure, including needs inherited from statically imported packages (`from`), each with how it resolves for you. Options list only credentials you can Use; never values. */\n\tcredentials: {\n\tneeds: Array<{\n\tkey: string\n\t/** When set, only credentials of this kind match. When omitted, any fetch-capable credential (secret, oauth, login) for the provider matches. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\"\n\tprovider: string\n\tdescription: string\n\tmultiple: boolean\n\t/** Who supplies the credential when the package-credential-suppliers flag is on: publisher (the org mapping, usable by app visitors through the app) or executor (each person who uses the package picks their own). Omitted for needs with no supplier, which keep the default package behavior. */\n\tsupplier?: \"publisher\" | \"executor\"\n\t/** Executor needs only: true when a visitor must connect a credential before the app serves (the default); false for an optional need. */\n\trequired?: boolean\n\t/** Older alias for supplier: \"publisher\". Still accepted in manifests. */\n\townerCredentialForVisitors?: true\n\t/** The imported package that declares this need, when inherited. */\n\tfrom?: string\n\t/** executor_supplied: a `supplier: \"executor\"` need; each app visitor or runner picks their own credential (on Sign in with Kody consent for apps), so your credentials and default mappings never fill it. ready: a stored default mapping (yours, then the org default) names a credential you can Use, or auto-resolve finds one (exactly one of your credentials matches the need kind filter and provider, or one Key bound to this package is named exactly like the need key); it resolves with no call map entry. ambiguous: several match, no default mapping applies, and no package-bound Key matches the need key by name; pick one with a call map or propose a default with credentialMappingPropose. unbound: none match, or a default maps the need to no credential on purpose. expired: the resolved Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it). */\n\tstatus: \"ready\" | \"ambiguous\" | \"unbound\" | \"expired\" | \"executor_supplied\"\n\t/** The credential name used when no call map entry is given. For a mapping of several credentials, the first one. */\n\tautoPick: string | null\n\t/** Where status and autoPick come from: visitor (an executor need; each visitor picks), mine (your own default mapping), org (the org default mapping), or auto (matched by kind and provider). A trigger run may use its own trigger mapping instead. */\n\tsource: \"mine\" | \"org\" | \"auto\" | \"visitor\"\n\t/** Credentials you can Use whose kind and provider match the need. For an executor need these are the credentials you would pick when you use the package yourself. */\n\tyourOptions: Array<{\n\tname: string\n\tscope: \"org\" | \"personal\"\n\torg?: string\n\thosts: Array<string>\n}>\n\t/** Matching-kind credentials you can Use that have no provider set. A call map may still pick one by name; set its provider to list and auto-resolve it. */\n\tpossibleMatchCount: number\n}>\n\t/** Published `kody.credentials` slots that fail the current slot schema, with the validation message. They are left out of `needs`, so nothing fills them. Fix each slot in package.json and republish. */\n\tinvalidSlots: Array<{\n\tkey: string\n\tmessage: string\n}>\n\t/** Whether the package-credential-suppliers early-access flag is on for the org that owns this package. When false, `supplier` and `required` in its manifest are ignored and executor needs behave like ordinary needs. */\n\tsuppliersEnabled: boolean\n}\n\t/** Machine access the package declares in `kody.machine`: named commands, local network destinations and host folders its code uses on an execution context. Only its own declarations; a package it imports does not pass access on. Declaring grants nothing: the machine defines each entry and its operator approves the package. */\n\tmachine: {\n\tneeds: Array<{\n\t/** The name the machine gives the entry. */\n\tname: string\n\tkind: \"command\" | \"lan\" | \"fs\"\n\tdescription: string\n\thosts?: Array<string>\n\tports?: Array<number>\n\tmode?: \"ro\" | \"rw\"\n}>\n}\n}"
+					"outputTypeDefinition": "type PackageGetOutput = {\n\tpackage_id: string\n\t/** Package name leaf (same value as `slug`). Kept as a compatibility alias; prefer `slug` or `name`. */\n\tkody_id: string\n\t/** Package name leaf (the path segment after the scope). Same value as `kody_id`. */\n\tslug: string\n\tname: string\n\tdescription: string\n\ttags: Array<string>\n\thas_app: boolean\n\thidden: boolean\n\t/** Repo visibility / forkable. Public means default-branch HEAD is world-readable and forkable and the package appears on /community. Private is owner-only. Independent of internet_visible. */\n\tvisibility: \"public\" | \"private\"\n\t/** When true, the hosted package app may be served on the public internet after capability approval. Independent of visibility/forkable. Defaults false. */\n\tinternet_visible: boolean\n\t/** When set, publishes require a website click at /@{username}/{kodyId}/approve-publish?commit=<full 40-character SHA>. Agents may lock via packageUpdate (`changes.locked: true`). Unlocking is website-only at /@{username}/{kodyId}/settings. Do not abbreviate the commit. */\n\tlocked_at: string | null\n\tsource_id: string\n\tcreated_at: string\n\tupdated_at: string\n\t/** Catalog entry id this package was forked from, or null for a self-authored package. */\n\tsource_listing_id: string | null\n\t/** Whether the source catalog entry currently resolves to an active public package, or null for a self-authored package. */\n\tlisting_current: boolean | null\n\t/** Original public package name leaf recorded when this package was forked, or null for a self-authored package. */\n\tlisting_kody_id: string | null\n\t/** Current source listing package name when the listing is active, or null when this package is self-authored or the listing is gone. */\n\tlisting_name: string | null\n\t/** Listing pinned commit this fork last absorbed. Starts as the fork-time snapshot and moves when a later publish passes absorbed_upstream_commit. */\n\torigin_commit: string | null\n\t/** Current pinned commit of the source listing, or null when this package is self-authored or the listing is gone. */\n\tlisting_pinned_commit: string | null\n\t/** Last community publish time of the source listing, or null when this package is self-authored or the listing is gone. */\n\tlisting_published_at: string | null\n\t/** True only when this community fork is outdated: the listing pin is not an ancestor of the fork tip. Null for a self-authored package. Otherwise false. */\n\tlisting_ahead: boolean | null\n\t/** Where the published version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n\t/** Informational record of the stored artifacts of the published commit: where each was built (Kody cloud, the publisher's CLI, or one of their execution contexts) and a SHA-256 of its modules. Null fields mean the artifact was stored before this was recorded. Kody does not check that an uploaded build was compiled from the pushed source, and nothing uses this record to allow or refuse a publish or a listing. */\n\tprovenance?: {\n\tcommit: string\n\tartifacts: Array<{\n\tkind: string\n\tname: string | null\n\tentry_point: string\n\tbuilt_in: \"cloud\" | \"cli\" | \"context\" | null\n\tcontext_name: string | null\n\tbundle_sha256: string | null\n}>\n}\n\t/** Latest commit whose publish completed and was not held for approval. Never the held commit: while a publish is held this is the serving commit. Null when nothing has been published yet. */\n\tpublished_commit: string | null\n\t/** The commit that is live: what apps, exports, jobs, and subscriptions run right now. It trails published_commit only while a new publish is still building. Null when nothing serves yet. */\n\tserving_commit: string | null\n\t/** A commit that is built but held for capability approval. It serves nobody until the owner approves it at approval_url. Null when nothing is held, and for callers who cannot publish this package. */\n\theld_commit: string | null\n\t/** Owner page that approves held_commit. Null when held_commit is null. */\n\tapproval_url: string | null\n\texports: Array<{\n\t/** Package export subpath from package.json exports. */\n\tsubpath: string\n\t/** Ready-to-use kody: import specifier for this export. */\n\timport_specifier: string\n\t/** Package-relative runtime source path for this export. */\n\truntime_target: string | null\n\t/** Package-relative types source path for this export, when declared. */\n\ttypes_path: string | null\n\t/** Export description parsed from JSDoc when available. */\n\tdescription: string | null\n\t/** Primary export type signature parsed from source when available. Null when the export has more than one callable function; use `functions` in that case. */\n\ttype_definition: string | null\n\t/** Callable functions extracted from this export. Namespace modules that export several helpers list each one here. */\n\tfunctions: Array<{\n\t/** Exported function name. Default exports use the name \"default\". */\n\tname: string\n\t/** Function JSDoc description when available. */\n\tdescription: string | null\n\t/** Function type signature parsed from source when available. */\n\ttype_definition: string | null\n}>\n\t/** Type, interface, enum, and `typeof` const definitions referenced by this export's callable functions. */\n\treferenced_types: Array<{\n\tname: string\n\tkind: \"type\" | \"interface\" | \"enum\" | \"const\"\n\t/** Source text of the referenced type, interface, or enum. For a `const` reached through `typeof`, the resolved schema input fields when the initializer is a schema builder, otherwise its declaration. */\n\tdefinition: string\n}>\n}>\n\t/** FYI metadata for package-scoped secrets owned by this package, including package_id. Never plaintext values. These are not execute-usable via search; using them still requires package context. */\n\tpackage_secrets: Array<{\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n}>\n\t/** Credential needs (ADR 0068): the published `kody.credentials` closure, including needs inherited from statically imported packages (`from`), each with how it resolves for you. Options list only credentials you can Use; never values. */\n\tcredentials: {\n\tneeds: Array<{\n\tkey: string\n\t/** When set, only credentials of this kind match. When omitted, any fetch-capable credential (secret, oauth, login) for the provider matches. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\"\n\tprovider: string\n\tdescription: string\n\tmultiple: boolean\n\t/** Who supplies the credential when the package-credential-suppliers flag is on: publisher (the org mapping, usable by app visitors through the app) or executor (each person who uses the package picks their own). Omitted for needs with no supplier, which keep the default package behavior. */\n\tsupplier?: \"publisher\" | \"executor\"\n\t/** Executor needs only: true when a visitor must connect a credential before the app serves (the default); false for an optional need. */\n\trequired?: boolean\n\t/** Older alias for supplier: \"publisher\". Still accepted in manifests. */\n\townerCredentialForVisitors?: true\n\t/** The imported package that declares this need, when inherited. */\n\tfrom?: string\n\t/** executor_supplied: a `supplier: \"executor\"` need; each app visitor or runner picks their own credential (on Sign in with Kody consent for apps), so your credentials and default mappings never fill it. ready: a stored default mapping (yours, then the org default) names a credential you can Use, or auto-resolve finds one (exactly one of your credentials matches the need kind filter and provider, or one Key bound to this package is named exactly like the need key); it resolves with no call map entry. ambiguous: several match, no default mapping applies, and no package-bound Key matches the need key by name; pick one with a call map or propose a default with credentialMappingPropose. unbound: none match, or a default maps the need to no credential on purpose. expired: the resolved Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it). */\n\tstatus: \"ready\" | \"ambiguous\" | \"unbound\" | \"expired\" | \"executor_supplied\"\n\t/** The credential name used when no call map entry is given. For a mapping of several credentials, the first one. */\n\tautoPick: string | null\n\t/** Where status and autoPick come from: visitor (an executor need; each visitor picks), mine (your own default mapping), org (the org default mapping), or auto (matched by kind and provider). A trigger run may use its own trigger mapping instead. */\n\tsource: \"mine\" | \"org\" | \"auto\" | \"visitor\"\n\t/** Credentials you can Use whose kind and provider match the need. For an executor need these are the credentials you would pick when you use the package yourself. */\n\tyourOptions: Array<{\n\tname: string\n\tscope: \"org\" | \"personal\"\n\torg?: string\n\thosts: Array<string>\n}>\n\t/** Matching-kind credentials you can Use that have no provider set. A call map may still pick one by name; set its provider to list and auto-resolve it. */\n\tpossibleMatchCount: number\n}>\n\t/** Published `kody.credentials` slots that fail the current slot schema, with the validation message. They are left out of `needs`, so nothing fills them. Fix each slot in package.json and republish. */\n\tinvalidSlots: Array<{\n\tkey: string\n\tmessage: string\n}>\n\t/** Whether the package-credential-suppliers early-access flag is on for the org that owns this package. When false, `supplier` and `required` in its manifest are ignored and executor needs behave like ordinary needs. */\n\tsuppliersEnabled: boolean\n}\n\t/** Machine access the package declares in `kody.machine`: named commands, local network destinations and host folders its code uses on an execution context. Only its own declarations; a package it imports does not pass access on. Declaring grants nothing: the machine defines each entry and its operator approves the package. */\n\tmachine: {\n\tneeds: Array<{\n\t/** The name the machine gives the entry. */\n\tname: string\n\tkind: \"command\" | \"lan\" | \"fs\"\n\tdescription: string\n\thosts?: Array<string>\n\tports?: Array<number>\n\tmode?: \"ro\" | \"rw\"\n}>\n}\n}"
 				},
 				{
 					"name": "packageGetGitRemote",
@@ -58613,7 +58629,7 @@ export const capabilityManifest = {
 				{
 					"name": "packagePublishExternalPush",
 					"domain": "packages",
-					"description": "Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including a durable step retry after an earlier attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. The publish always runs as a durable workflow, never in the calling request: this capability returns status dispatched with a workflow_id right away (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags). Poll packageRunResult({ workflow_id }) until its `status` is terminal; the same answer then carries the full publish result. Active and published durable runs still dedupe. A durable run whose publish did not publish (checks_failed, not_fast_forward, locked, approval_required) ends errored with the reason in packageRunResult `last_error`, and like any terminal failure (for example a Durable Object reset because its code was updated) retrying the same commit starts a fresh run with a new workflow_id. dispatched includes phase_timings.total_ms as time-to-dispatch.",
+					"description": "Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. A publish whose commit is built but not live returns held_for_approval, never published or already_published: an internet-visible app asked for more capabilities than its approved version, so everyone stays on serving_commit until the owner approves held_commit at approval_url (ADR 0069). That is different from approval_required, which pauses a locked or credential-changing publish before it starts. Published, already_published, and held_for_approval responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including a durable step retry after an earlier attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. The publish always runs as a durable workflow, never in the calling request: this capability returns status dispatched with a workflow_id right away (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags). Poll packageRunResult({ workflow_id }) until its `status` is terminal; the same answer then carries the full publish result. Active and published durable runs still dedupe. A durable run whose publish did not go live (checks_failed, not_fast_forward, locked, approval_required, held_for_approval) ends errored with the reason in packageRunResult `last_error`, and like any terminal failure (for example a Durable Object reset because its code was updated) retrying the same commit starts a fresh run with a new workflow_id. dispatched includes phase_timings.total_ms as time-to-dispatch.",
 					"keywords": [
 						"package",
 						"publish",
@@ -58988,40 +59004,6 @@ export const capabilityManifest = {
 										"type": [
 											"string",
 											"null"
-										]
-									},
-									"held_for_approval": {
-										"description": "Set when this internet-visible app now asks for more capabilities than the approved version. Everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url; approving moves everyone to held_commit. Test the new version with local dev or a dev check. Null/omitted otherwise.",
-										"anyOf": [
-											{
-												"type": "object",
-												"properties": {
-													"serving_commit": {
-														"type": "string",
-														"description": "The approved commit everyone still runs."
-													},
-													"held_commit": {
-														"type": "string",
-														"description": "The published commit that waits for capability approval before it serves."
-													},
-													"approval_url": {
-														"type": "string"
-													},
-													"message": {
-														"type": "string"
-													}
-												},
-												"required": [
-													"serving_commit",
-													"held_commit",
-													"approval_url",
-													"message"
-												],
-												"additionalProperties": false
-											},
-											{
-												"type": "null"
-											}
 										]
 									},
 									"listing": {
@@ -59784,40 +59766,6 @@ export const capabilityManifest = {
 											"null"
 										]
 									},
-									"held_for_approval": {
-										"description": "Set when this internet-visible app now asks for more capabilities than the approved version. Everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url; approving moves everyone to held_commit. Test the new version with local dev or a dev check. Null/omitted otherwise.",
-										"anyOf": [
-											{
-												"type": "object",
-												"properties": {
-													"serving_commit": {
-														"type": "string",
-														"description": "The approved commit everyone still runs."
-													},
-													"held_commit": {
-														"type": "string",
-														"description": "The published commit that waits for capability approval before it serves."
-													},
-													"approval_url": {
-														"type": "string"
-													},
-													"message": {
-														"type": "string"
-													}
-												},
-												"required": [
-													"serving_commit",
-													"held_commit",
-													"approval_url",
-													"message"
-												],
-												"additionalProperties": false
-											},
-											{
-												"type": "null"
-											}
-										]
-									},
 									"listing": {
 										"type": "object",
 										"properties": {
@@ -59941,6 +59889,435 @@ export const capabilityManifest = {
 								"properties": {
 									"status": {
 										"type": "string",
+										"const": "held_for_approval"
+									},
+									"unmappable_credentials_notice": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"previous_commit": {
+										"description": "The package tip before this publish request.",
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"serving_commit": {
+										"type": "string",
+										"description": "The approved commit everyone still runs."
+									},
+									"held_commit": {
+										"type": "string",
+										"description": "The commit this publish built. It serves nobody until the owner approves its capabilities."
+									},
+									"approval_url": {
+										"type": "string",
+										"description": "Owner page that approves held_commit and makes it live."
+									},
+									"message": {
+										"type": "string"
+									},
+									"hosted_app_url": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"test_hints": {
+										"type": "object",
+										"properties": {
+											"app": {
+												"type": "string"
+											},
+											"subscriptions": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"topic": {
+															"type": "string"
+														},
+														"snippet": {
+															"type": "string"
+														}
+													},
+													"required": [
+														"topic",
+														"snippet"
+													],
+													"additionalProperties": false
+												}
+											},
+											"enablements": {
+												"type": "object",
+												"properties": {
+													"message": {
+														"type": "string",
+														"description": "Agent-directed message: ask the user whether to enable each listed trigger, with the exact enablementEnable call (or Approve for webhooks/email)."
+													},
+													"triggers": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"enum": [
+																		"cron",
+																		"subscription",
+																		"webhook"
+																	]
+																},
+																"name": {
+																	"type": "string"
+																},
+																"reason": {
+																	"type": "string",
+																	"enum": [
+																		"missing",
+																		"paused"
+																	]
+																},
+																"call": {
+																	"description": "Exact enablementEnable call when applicable; null for Approve-only triggers.",
+																	"type": [
+																		"string",
+																		"null"
+																	]
+																}
+															},
+															"required": [
+																"kind",
+																"name",
+																"reason",
+																"call"
+															],
+															"additionalProperties": false
+														}
+													}
+												},
+												"required": [
+													"message",
+													"triggers"
+												],
+												"additionalProperties": false
+											}
+										},
+										"additionalProperties": false
+									},
+									"static_dependents": {
+										"type": "object",
+										"properties": {
+											"total": {
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991,
+												"description": "Total direct static dependent packages found."
+											},
+											"stale": {
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991,
+												"description": "Count of direct static dependent packages with stale bundled snapshots."
+											},
+											"truncated": {
+												"type": "boolean",
+												"description": "True when more dependent packages exist than are returned in items."
+											},
+											"items": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"package_id": {
+															"type": "string",
+															"description": "Saved package id of the dependent package."
+														},
+														"kody_id": {
+															"type": "string",
+															"description": "Package name leaf of the dependent package."
+														},
+														"name": {
+															"type": "string",
+															"description": "Scoped package.json name of the dependent package."
+														},
+														"source_id": {
+															"type": "string",
+															"description": "Repo-backed source id for the dependent package."
+														},
+														"published_commit": {
+															"description": "Current published commit of the dependent package.",
+															"type": [
+																"string",
+																"null"
+															]
+														},
+														"stale": {
+															"type": "boolean",
+															"description": "True when at least one dependent bundle artifact captured a dependency commit that differs from the package's current published commit."
+														},
+														"artifact_count": {
+															"type": "integer",
+															"minimum": 0,
+															"maximum": 9007199254740991,
+															"description": "Number of published bundle artifacts that reference this dependency."
+														},
+														"entrypoints": {
+															"type": "array",
+															"items": {
+																"type": "string"
+															},
+															"description": "Bounded list of dependent bundle entrypoints referencing this dependency."
+														},
+														"entrypoints_truncated": {
+															"type": "boolean",
+															"description": "True when the dependent has more matching entrypoints than returned."
+														},
+														"bundled_dependency_commit": {
+															"description": "Dependency commit captured in the dependent bundle, or null when matching artifacts have mixed or missing commits.",
+															"type": [
+																"string",
+																"null"
+															]
+														},
+														"current_dependency_commit": {
+															"type": "string",
+															"description": "Current published commit for the referenced dependency package."
+														},
+														"recommended_action": {
+															"type": "string",
+															"description": "Agent guidance for this dependent package."
+														}
+													},
+													"required": [
+														"package_id",
+														"kody_id",
+														"name",
+														"source_id",
+														"published_commit",
+														"stale",
+														"artifact_count",
+														"entrypoints",
+														"entrypoints_truncated",
+														"bundled_dependency_commit",
+														"current_dependency_commit",
+														"recommended_action"
+													],
+													"additionalProperties": false,
+													"description": "A direct static dependent package from persisted bundle metadata."
+												},
+												"description": "Bounded direct static dependent package summaries."
+											},
+											"recommended_next_action": {
+												"type": "string",
+												"description": "Agent guidance explaining whether to inspect or republish dependents. Kody does not republish dependents automatically."
+											}
+										},
+										"required": [
+											"total",
+											"stale",
+											"truncated",
+											"items",
+											"recommended_next_action"
+										],
+										"additionalProperties": false,
+										"description": "Bounded summary of saved packages whose published bundles statically captured this package through kody:@ imports."
+									},
+									"pending_secret_package_approvals": {
+										"anyOf": [
+											{
+												"type": "object",
+												"properties": {
+													"package_id": {
+														"type": "string",
+														"description": "Saved package id that needs approvals."
+													},
+													"kody_id": {
+														"type": "string",
+														"description": "Package name leaf that needs approvals (same value as `slug`)."
+													},
+													"slug": {
+														"type": "string",
+														"description": "Package name leaf that needs approvals."
+													},
+													"secrets": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"properties": {
+																"secret_name": {
+																	"type": "string"
+																},
+																"approval_url": {
+																	"type": "string",
+																	"description": "Per-secret package approval URL in the account UI."
+																}
+															},
+															"required": [
+																"secret_name",
+																"approval_url"
+															],
+															"additionalProperties": false
+														},
+														"description": "User secrets that still need package approval."
+													},
+													"bulk_approval_url": {
+														"description": "One-click bulk approval URL when two or more secrets still need package approval; prefer this over individual links.",
+														"type": [
+															"string",
+															"null"
+														]
+													}
+												},
+												"required": [
+													"package_id",
+													"kody_id",
+													"slug",
+													"secrets",
+													"bulk_approval_url"
+												],
+												"additionalProperties": false
+											},
+											{
+												"type": "null"
+											}
+										],
+										"description": "Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret."
+									},
+									"allowed_packages_publish_notice": {
+										"description": "Warning when this package fills a user credential whose allowed-packages list excludes it. Kody denies those uses at runtime for every package, including self-authored and adopted ones. Null/omitted when there is nothing to warn about. Does not block publish.",
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"listing": {
+										"type": "object",
+										"properties": {
+											"pinnedVersion": {
+												"type": [
+													"string",
+													"null"
+												]
+											},
+											"promotedVersion": {
+												"type": [
+													"string",
+													"null"
+												]
+											},
+											"behind": {
+												"type": "boolean",
+												"const": true
+											},
+											"updateHint": {
+												"type": "string"
+											},
+											"updateUrl": {
+												"type": "string"
+											}
+										},
+										"required": [
+											"pinnedVersion",
+											"promotedVersion",
+											"behind",
+											"updateHint",
+											"updateUrl"
+										],
+										"additionalProperties": false,
+										"description": "Present when this package has a public community listing whose pinned snapshot is still behind the published commit after promote auto-sync. Rare; a background backfill retries. No manual republish step is required."
+									},
+									"phase_timings": {
+										"type": "object",
+										"properties": {
+											"clone_ms": {
+												"description": "Milliseconds spent cloning Artifacts HEAD into the publish workspace. Omitted when this attempt did not clone.",
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991
+											},
+											"checks_typecheck_ms": {
+												"description": "Milliseconds spent in the publish typecheck phase. Omitted when typecheck did not run (for example already_published).",
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991
+											},
+											"checks_bundle_ms": {
+												"description": "Milliseconds spent in the publish bundle-check phase. Distinct from rebuild_ms. Omitted when bundle check did not run, including when full esbuild validation is deferred to rebuild.",
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991
+											},
+											"rebuild_ms": {
+												"description": "Milliseconds spent rebuilding published package artifacts after checks, or confirming they match this commit. Distinct from checks_bundle_ms.",
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991
+											},
+											"dependents_ms": {
+												"description": "Milliseconds spent indexing static dependents, hosted app URL, test hints, and pending secret approvals.",
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991
+											},
+											"total_ms": {
+												"description": "Milliseconds from the start of this publish attempt until the result was ready. On status dispatched, this is time-to-dispatch.",
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991
+											}
+										},
+										"additionalProperties": false,
+										"description": "Coarse packagePublishExternalPush phase timings in milliseconds. Field names are stable. Omitted keys mean that phase did not run in this result. checks_bundle_ms and rebuild_ms stay separate."
+									},
+									"build_origin": {
+										"type": "object",
+										"properties": {
+											"origin": {
+												"type": "string",
+												"enum": [
+													"cloud",
+													"cli",
+													"context"
+												]
+											},
+											"context_name": {
+												"type": [
+													"string",
+													"null"
+												]
+											}
+										},
+										"required": [
+											"origin",
+											"context_name"
+										],
+										"additionalProperties": false,
+										"description": "Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context)."
+									}
+								},
+								"required": [
+									"status",
+									"previous_commit",
+									"serving_commit",
+									"held_commit",
+									"approval_url",
+									"message",
+									"hosted_app_url",
+									"static_dependents",
+									"pending_secret_package_approvals",
+									"phase_timings"
+								],
+								"additionalProperties": false,
+								"description": "The new commit is built but not live. This internet-visible app now asks for more capabilities than the approved version, so everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url. Approving moves everyone to held_commit. Test the new version with local dev or a dev check. Different from approval_required, which pauses a publish before it starts."
+							},
+							{
+								"type": "object",
+								"properties": {
+									"status": {
+										"type": "string",
 										"const": "dispatched"
 									},
 									"workflow_id": {
@@ -60044,7 +60421,7 @@ export const capabilityManifest = {
 						]
 					},
 					"inputTypeDefinition": "type PackagePublishExternalPushInput = {\n\t/** Saved-package UUID. Use when the scoped name is not known, or for a stable ref. */\n\tpackage_id?: string\n\t/** Package name (`@owner/leaf` or the name leaf). Prefer this when you know the name. */\n\tname?: string\n\t/** Deprecated leftover alias for the package name (`@owner/leaf` or the name leaf). Prefer `name` or `package_id`. */\n\tkody_id?: string\n\tallow_force?: boolean\n\t/** Set to true only when the user explicitly approved destructive overwrite of existing package source history. Promoting publishes replace advertised history with a new root commit (and drop leftover session refs); promotePublished:false stays additive. Restorable backups retain prior content — secret scrub of backups still needs packageDelete or an explicit purge. */\n\tconfirm_destructive_overwrite?: boolean\n\tbaseline_published_commit?: string | null\n\texpected_head?: string\n\t/** Publish offload (publish-offload flag): the id of a publish build whose bundles were built by the Kody CLI or an execution context and uploaded for this exact commit. The server re-runs the cheap checks, verifies the uploaded tree and bundles, and only then serves the commit. Set by `kody package publish --build local|context`; agents should not set it by hand. */\n\tpublish_build_id?: string\n\t/** Execution context name or id to build this publish on, or \"cloud\" (execution-contexts and publish-offload flags). Overrides the package's kody.publish.execution.context binding and your chain, and never falls back. Without it, a bound package builds only on its bound context, and any other package follows your execution context chain like execute (contexts in order, Kody cloud last unless the chain is strict). */\n\tcontext?: string\n}",
-					"outputTypeDefinition": "type PackagePublishExternalPushOutput = {\n\tstatus: \"already_published\"\n\t/** Set when the package has unmappable credentials: explains that changes and publishes are owner-only unless a grant allows them, and how to allow one collaborator. */\n\tunmappable_credentials_notice?: string | null\n\tpublished_commit: string | null\n\t/** True when this already_published result still rebuilt one or more package bundle artifacts (true no-op tip that still repaired leftovers). False when every target was already current. Only present on already_published; a tip move relative to the pre-request tip always returns published. */\n\tartifacts_rebuilt: boolean\n\t/** True when tip already matched HEAD but publish checks were re-run because the stored check/stamp used an older checker version (or a prior attempt never sealed success). False/omitted on a true no-op (same commit, current checker, prior success). */\n\tchecks_rerun?: boolean\n\t/** When checks_rerun is true, explains that same-commit checks were re-validated and the stamp refreshed. Omitted on a true no-op. */\n\tmessage?: string\n\thosted_app_url: string | null\n\ttest_hints?: {\n\tapp?: string\n\tsubscriptions?: Array<{\n\ttopic: string\n\tsnippet: string\n}>\n\tenablements?: {\n\t/** Agent-directed message: ask the user whether to enable each listed trigger, with the exact enablementEnable call (or Approve for webhooks/email). */\n\tmessage: string\n\ttriggers: Array<{\n\tkind: \"cron\" | \"subscription\" | \"webhook\"\n\tname: string\n\treason: \"missing\" | \"paused\"\n\t/** Exact enablementEnable call when applicable; null for Approve-only triggers. */\n\tcall: string | null\n}>\n}\n}\n\t/** Bounded summary of saved packages whose published bundles statically captured this package through kody:@ imports. */\n\tstatic_dependents: {\n\t/** Total direct static dependent packages found. */\n\ttotal: number\n\t/** Count of direct static dependent packages with stale bundled snapshots. */\n\tstale: number\n\t/** True when more dependent packages exist than are returned in items. */\n\ttruncated: boolean\n\t/** Bounded direct static dependent package summaries. */\n\titems: Array<{\n\t/** Saved package id of the dependent package. */\n\tpackage_id: string\n\t/** Package name leaf of the dependent package. */\n\tkody_id: string\n\t/** Scoped package.json name of the dependent package. */\n\tname: string\n\t/** Repo-backed source id for the dependent package. */\n\tsource_id: string\n\t/** Current published commit of the dependent package. */\n\tpublished_commit: string | null\n\t/** True when at least one dependent bundle artifact captured a dependency commit that differs from the package's current published commit. */\n\tstale: boolean\n\t/** Number of published bundle artifacts that reference this dependency. */\n\tartifact_count: number\n\t/** Bounded list of dependent bundle entrypoints referencing this dependency. */\n\tentrypoints: Array<string>\n\t/** True when the dependent has more matching entrypoints than returned. */\n\tentrypoints_truncated: boolean\n\t/** Dependency commit captured in the dependent bundle, or null when matching artifacts have mixed or missing commits. */\n\tbundled_dependency_commit: string | null\n\t/** Current published commit for the referenced dependency package. */\n\tcurrent_dependency_commit: string\n\t/** Agent guidance for this dependent package. */\n\trecommended_action: string\n}>\n\t/** Agent guidance explaining whether to inspect or republish dependents. Kody does not republish dependents automatically. */\n\trecommended_next_action: string\n}\n\t/** Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret. */\n\tpending_secret_package_approvals: {\n\t/** Saved package id that needs approvals. */\n\tpackage_id: string\n\t/** Package name leaf that needs approvals (same value as `slug`). */\n\tkody_id: string\n\t/** Package name leaf that needs approvals. */\n\tslug: string\n\t/** User secrets that still need package approval. */\n\tsecrets: Array<{\n\tsecret_name: string\n\t/** Per-secret package approval URL in the account UI. */\n\tapproval_url: string\n}>\n\t/** One-click bulk approval URL when two or more secrets still need package approval; prefer this over individual links. */\n\tbulk_approval_url: string | null\n} | null\n\t/** Warning when this package fills a user credential whose allowed-packages list excludes it. Kody denies those uses at runtime for every package, including self-authored and adopted ones. Null/omitted when there is nothing to warn about. Does not block publish. */\n\tallowed_packages_publish_notice?: string | null\n\t/** Set when this internet-visible app now asks for more capabilities than the approved version. Everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url; approving moves everyone to held_commit. Test the new version with local dev or a dev check. Null/omitted otherwise. */\n\theld_for_approval?: {\n\t/** The approved commit everyone still runs. */\n\tserving_commit: string\n\t/** The published commit that waits for capability approval before it serves. */\n\theld_commit: string\n\tapproval_url: string\n\tmessage: string\n} | null\n\t/** Present when this package has a public community listing whose pinned snapshot is still behind the published commit after promote auto-sync. Rare; a background backfill retries. No manual republish step is required. */\n\tlisting?: {\n\tpinnedVersion: string | null\n\tpromotedVersion: string | null\n\tbehind: true\n\tupdateHint: string\n\tupdateUrl: string\n}\n\t/** Coarse packagePublishExternalPush phase timings in milliseconds. Field names are stable. Omitted keys mean that phase did not run in this result. checks_bundle_ms and rebuild_ms stay separate. */\n\tphase_timings: {\n\t/** Milliseconds spent cloning Artifacts HEAD into the publish workspace. Omitted when this attempt did not clone. */\n\tclone_ms?: number\n\t/** Milliseconds spent in the publish typecheck phase. Omitted when typecheck did not run (for example already_published). */\n\tchecks_typecheck_ms?: number\n\t/** Milliseconds spent in the publish bundle-check phase. Distinct from rebuild_ms. Omitted when bundle check did not run, including when full esbuild validation is deferred to rebuild. */\n\tchecks_bundle_ms?: number\n\t/** Milliseconds spent rebuilding published package artifacts after checks, or confirming they match this commit. Distinct from checks_bundle_ms. */\n\trebuild_ms?: number\n\t/** Milliseconds spent indexing static dependents, hosted app URL, test hints, and pending secret approvals. */\n\tdependents_ms?: number\n\t/** Milliseconds from the start of this publish attempt until the result was ready. On status dispatched, this is time-to-dispatch. */\n\ttotal_ms?: number\n}\n\t/** Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n} | {\n\tstatus: \"not_fast_forward\"\n\tprevious_commit: string\n\tpublished_commit: string\n\tmessage: string\n} | {\n\tstatus: \"locked\"\n\tprevious_commit: string | null\n\t/** Full 40-character SHA-1 of the HEAD commit that passed checks. Promote it on the website approval page. Do not abbreviate it. */\n\tpending_commit: string\n\t/** Owner page for pending_commit. The commit query is that full 40-character SHA-1. */\n\tapproval_url: string\n\tmessage: string\n} | {\n\tstatus: \"approval_required\"\n\tprevious_commit: string | null\n\t/** HEAD commit that passed checks. The previously published commit keeps serving until the owner approves this one. */\n\tpending_commit: string\n\tapproval_url: string\n\t/** Present when other paused publishes also wait on the owner: one page that approves them together. */\n\tapproval_bundle_url?: string\n\tcredential_need_changes: Array<{\n\tkey: string\n\tchange: \"added\"\n\tafter: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\t/** The dependency that declared an inherited need. */\n\tfrom?: string\n} | {\n\tkey: string\n\tchange: \"changed\"\n\tbefore: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\tafter: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\t/** The dependency that declared an inherited need. */\n\tfrom?: string\n}>\n\tmessage: string\n} | {\n\tstatus: \"checks_failed\"\n\tfailed_checks: Array<{\n\tkind: \"manifest\" | \"docs\" | \"skills\" | \"dependencies\" | \"bundle\" | \"typecheck\" | \"lint\" | \"credentials\" | \"capabilities\" | \"smoke\"\n\tok: boolean\n\tmessage: string\n}>\n\t/** Parsed package.json when available; null when the manifest itself failed validation or was missing. */\n\tmanifest: unknown | null\n\t/** Deprecated and no longer returned: it was an internal check-attempt id that runGet cannot load. Use packageRunResult for a dispatched publish. */\n\trun_id?: string\n} | {\n\tstatus: \"published\"\n\t/** Set when the package has unmappable credentials: explains that changes and publishes are owner-only unless a grant allows them, and how to allow one collaborator. */\n\tunmappable_credentials_notice?: string | null\n\tprevious_commit: string | null\n\tpublished_commit: string\n\tmanifest: unknown\n\tchecks: Array<{\n\tkind: \"manifest\" | \"docs\" | \"skills\" | \"dependencies\" | \"bundle\" | \"typecheck\" | \"lint\" | \"credentials\" | \"capabilities\" | \"smoke\"\n\tok: boolean\n\tmessage: string\n}>\n\thosted_app_url: string | null\n\ttest_hints?: {\n\tapp?: string\n\tsubscriptions?: Array<{\n\ttopic: string\n\tsnippet: string\n}>\n\tenablements?: {\n\t/** Agent-directed message: ask the user whether to enable each listed trigger, with the exact enablementEnable call (or Approve for webhooks/email). */\n\tmessage: string\n\ttriggers: Array<{\n\tkind: \"cron\" | \"subscription\" | \"webhook\"\n\tname: string\n\treason: \"missing\" | \"paused\"\n\t/** Exact enablementEnable call when applicable; null for Approve-only triggers. */\n\tcall: string | null\n}>\n}\n}\n\t/** Bounded summary of saved packages whose published bundles statically captured this package through kody:@ imports. */\n\tstatic_dependents: {\n\t/** Total direct static dependent packages found. */\n\ttotal: number\n\t/** Count of direct static dependent packages with stale bundled snapshots. */\n\tstale: number\n\t/** True when more dependent packages exist than are returned in items. */\n\ttruncated: boolean\n\t/** Bounded direct static dependent package summaries. */\n\titems: Array<{\n\t/** Saved package id of the dependent package. */\n\tpackage_id: string\n\t/** Package name leaf of the dependent package. */\n\tkody_id: string\n\t/** Scoped package.json name of the dependent package. */\n\tname: string\n\t/** Repo-backed source id for the dependent package. */\n\tsource_id: string\n\t/** Current published commit of the dependent package. */\n\tpublished_commit: string | null\n\t/** True when at least one dependent bundle artifact captured a dependency commit that differs from the package's current published commit. */\n\tstale: boolean\n\t/** Number of published bundle artifacts that reference this dependency. */\n\tartifact_count: number\n\t/** Bounded list of dependent bundle entrypoints referencing this dependency. */\n\tentrypoints: Array<string>\n\t/** True when the dependent has more matching entrypoints than returned. */\n\tentrypoints_truncated: boolean\n\t/** Dependency commit captured in the dependent bundle, or null when matching artifacts have mixed or missing commits. */\n\tbundled_dependency_commit: string | null\n\t/** Current published commit for the referenced dependency package. */\n\tcurrent_dependency_commit: string\n\t/** Agent guidance for this dependent package. */\n\trecommended_action: string\n}>\n\t/** Agent guidance explaining whether to inspect or republish dependents. Kody does not republish dependents automatically. */\n\trecommended_next_action: string\n}\n\t/** Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret. */\n\tpending_secret_package_approvals: {\n\t/** Saved package id that needs approvals. */\n\tpackage_id: string\n\t/** Package name leaf that needs approvals (same value as `slug`). */\n\tkody_id: string\n\t/** Package name leaf that needs approvals. */\n\tslug: string\n\t/** User secrets that still need package approval. */\n\tsecrets: Array<{\n\tsecret_name: string\n\t/** Per-secret package approval URL in the account UI. */\n\tapproval_url: string\n}>\n\t/** One-click bulk approval URL when two or more secrets still need package approval; prefer this over individual links. */\n\tbulk_approval_url: string | null\n} | null\n\t/** Warning when this package fills a user credential whose allowed-packages list excludes it. Kody denies those uses at runtime for every package, including self-authored and adopted ones. Null/omitted when there is nothing to warn about. Does not block publish. */\n\tallowed_packages_publish_notice?: string | null\n\t/** Set when this internet-visible app now asks for more capabilities than the approved version. Everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url; approving moves everyone to held_commit. Test the new version with local dev or a dev check. Null/omitted otherwise. */\n\theld_for_approval?: {\n\t/** The approved commit everyone still runs. */\n\tserving_commit: string\n\t/** The published commit that waits for capability approval before it serves. */\n\theld_commit: string\n\tapproval_url: string\n\tmessage: string\n} | null\n\t/** Present when this package has a public community listing whose pinned snapshot is still behind the published commit after promote auto-sync. Rare; a background backfill retries. No manual republish step is required. */\n\tlisting?: {\n\tpinnedVersion: string | null\n\tpromotedVersion: string | null\n\tbehind: true\n\tupdateHint: string\n\tupdateUrl: string\n}\n\t/** Coarse packagePublishExternalPush phase timings in milliseconds. Field names are stable. Omitted keys mean that phase did not run in this result. checks_bundle_ms and rebuild_ms stay separate. */\n\tphase_timings: {\n\t/** Milliseconds spent cloning Artifacts HEAD into the publish workspace. Omitted when this attempt did not clone. */\n\tclone_ms?: number\n\t/** Milliseconds spent in the publish typecheck phase. Omitted when typecheck did not run (for example already_published). */\n\tchecks_typecheck_ms?: number\n\t/** Milliseconds spent in the publish bundle-check phase. Distinct from rebuild_ms. Omitted when bundle check did not run, including when full esbuild validation is deferred to rebuild. */\n\tchecks_bundle_ms?: number\n\t/** Milliseconds spent rebuilding published package artifacts after checks, or confirming they match this commit. Distinct from checks_bundle_ms. */\n\trebuild_ms?: number\n\t/** Milliseconds spent indexing static dependents, hosted app URL, test hints, and pending secret approvals. */\n\tdependents_ms?: number\n\t/** Milliseconds from the start of this publish attempt until the result was ready. On status dispatched, this is time-to-dispatch. */\n\ttotal_ms?: number\n}\n\t/** Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n} | {\n\tstatus: \"dispatched\"\n\tworkflow_id: string\n\tworkflow_name: string\n\tidempotency_key: string\n\trun_status: string | null\n\tmessage: string\n\t/** Coarse packagePublishExternalPush phase timings in milliseconds. Field names are stable. Omitted keys mean that phase did not run in this result. checks_bundle_ms and rebuild_ms stay separate. */\n\tphase_timings: {\n\t/** Milliseconds spent cloning Artifacts HEAD into the publish workspace. Omitted when this attempt did not clone. */\n\tclone_ms?: number\n\t/** Milliseconds spent in the publish typecheck phase. Omitted when typecheck did not run (for example already_published). */\n\tchecks_typecheck_ms?: number\n\t/** Milliseconds spent in the publish bundle-check phase. Distinct from rebuild_ms. Omitted when bundle check did not run, including when full esbuild validation is deferred to rebuild. */\n\tchecks_bundle_ms?: number\n\t/** Milliseconds spent rebuilding published package artifacts after checks, or confirming they match this commit. Distinct from checks_bundle_ms. */\n\trebuild_ms?: number\n\t/** Milliseconds spent indexing static dependents, hosted app URL, test hints, and pending secret approvals. */\n\tdependents_ms?: number\n\t/** Milliseconds from the start of this publish attempt until the result was ready. On status dispatched, this is time-to-dispatch. */\n\ttotal_ms?: number\n}\n\t/** Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n}"
+					"outputTypeDefinition": "type PackagePublishExternalPushOutput = {\n\tstatus: \"already_published\"\n\t/** Set when the package has unmappable credentials: explains that changes and publishes are owner-only unless a grant allows them, and how to allow one collaborator. */\n\tunmappable_credentials_notice?: string | null\n\tpublished_commit: string | null\n\t/** True when this already_published result still rebuilt one or more package bundle artifacts (true no-op tip that still repaired leftovers). False when every target was already current. Only present on already_published; a tip move relative to the pre-request tip always returns published. */\n\tartifacts_rebuilt: boolean\n\t/** True when tip already matched HEAD but publish checks were re-run because the stored check/stamp used an older checker version (or a prior attempt never sealed success). False/omitted on a true no-op (same commit, current checker, prior success). */\n\tchecks_rerun?: boolean\n\t/** When checks_rerun is true, explains that same-commit checks were re-validated and the stamp refreshed. Omitted on a true no-op. */\n\tmessage?: string\n\thosted_app_url: string | null\n\ttest_hints?: {\n\tapp?: string\n\tsubscriptions?: Array<{\n\ttopic: string\n\tsnippet: string\n}>\n\tenablements?: {\n\t/** Agent-directed message: ask the user whether to enable each listed trigger, with the exact enablementEnable call (or Approve for webhooks/email). */\n\tmessage: string\n\ttriggers: Array<{\n\tkind: \"cron\" | \"subscription\" | \"webhook\"\n\tname: string\n\treason: \"missing\" | \"paused\"\n\t/** Exact enablementEnable call when applicable; null for Approve-only triggers. */\n\tcall: string | null\n}>\n}\n}\n\t/** Bounded summary of saved packages whose published bundles statically captured this package through kody:@ imports. */\n\tstatic_dependents: {\n\t/** Total direct static dependent packages found. */\n\ttotal: number\n\t/** Count of direct static dependent packages with stale bundled snapshots. */\n\tstale: number\n\t/** True when more dependent packages exist than are returned in items. */\n\ttruncated: boolean\n\t/** Bounded direct static dependent package summaries. */\n\titems: Array<{\n\t/** Saved package id of the dependent package. */\n\tpackage_id: string\n\t/** Package name leaf of the dependent package. */\n\tkody_id: string\n\t/** Scoped package.json name of the dependent package. */\n\tname: string\n\t/** Repo-backed source id for the dependent package. */\n\tsource_id: string\n\t/** Current published commit of the dependent package. */\n\tpublished_commit: string | null\n\t/** True when at least one dependent bundle artifact captured a dependency commit that differs from the package's current published commit. */\n\tstale: boolean\n\t/** Number of published bundle artifacts that reference this dependency. */\n\tartifact_count: number\n\t/** Bounded list of dependent bundle entrypoints referencing this dependency. */\n\tentrypoints: Array<string>\n\t/** True when the dependent has more matching entrypoints than returned. */\n\tentrypoints_truncated: boolean\n\t/** Dependency commit captured in the dependent bundle, or null when matching artifacts have mixed or missing commits. */\n\tbundled_dependency_commit: string | null\n\t/** Current published commit for the referenced dependency package. */\n\tcurrent_dependency_commit: string\n\t/** Agent guidance for this dependent package. */\n\trecommended_action: string\n}>\n\t/** Agent guidance explaining whether to inspect or republish dependents. Kody does not republish dependents automatically. */\n\trecommended_next_action: string\n}\n\t/** Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret. */\n\tpending_secret_package_approvals: {\n\t/** Saved package id that needs approvals. */\n\tpackage_id: string\n\t/** Package name leaf that needs approvals (same value as `slug`). */\n\tkody_id: string\n\t/** Package name leaf that needs approvals. */\n\tslug: string\n\t/** User secrets that still need package approval. */\n\tsecrets: Array<{\n\tsecret_name: string\n\t/** Per-secret package approval URL in the account UI. */\n\tapproval_url: string\n}>\n\t/** One-click bulk approval URL when two or more secrets still need package approval; prefer this over individual links. */\n\tbulk_approval_url: string | null\n} | null\n\t/** Warning when this package fills a user credential whose allowed-packages list excludes it. Kody denies those uses at runtime for every package, including self-authored and adopted ones. Null/omitted when there is nothing to warn about. Does not block publish. */\n\tallowed_packages_publish_notice?: string | null\n\t/** Present when this package has a public community listing whose pinned snapshot is still behind the published commit after promote auto-sync. Rare; a background backfill retries. No manual republish step is required. */\n\tlisting?: {\n\tpinnedVersion: string | null\n\tpromotedVersion: string | null\n\tbehind: true\n\tupdateHint: string\n\tupdateUrl: string\n}\n\t/** Coarse packagePublishExternalPush phase timings in milliseconds. Field names are stable. Omitted keys mean that phase did not run in this result. checks_bundle_ms and rebuild_ms stay separate. */\n\tphase_timings: {\n\t/** Milliseconds spent cloning Artifacts HEAD into the publish workspace. Omitted when this attempt did not clone. */\n\tclone_ms?: number\n\t/** Milliseconds spent in the publish typecheck phase. Omitted when typecheck did not run (for example already_published). */\n\tchecks_typecheck_ms?: number\n\t/** Milliseconds spent in the publish bundle-check phase. Distinct from rebuild_ms. Omitted when bundle check did not run, including when full esbuild validation is deferred to rebuild. */\n\tchecks_bundle_ms?: number\n\t/** Milliseconds spent rebuilding published package artifacts after checks, or confirming they match this commit. Distinct from checks_bundle_ms. */\n\trebuild_ms?: number\n\t/** Milliseconds spent indexing static dependents, hosted app URL, test hints, and pending secret approvals. */\n\tdependents_ms?: number\n\t/** Milliseconds from the start of this publish attempt until the result was ready. On status dispatched, this is time-to-dispatch. */\n\ttotal_ms?: number\n}\n\t/** Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n} | {\n\tstatus: \"not_fast_forward\"\n\tprevious_commit: string\n\tpublished_commit: string\n\tmessage: string\n} | {\n\tstatus: \"locked\"\n\tprevious_commit: string | null\n\t/** Full 40-character SHA-1 of the HEAD commit that passed checks. Promote it on the website approval page. Do not abbreviate it. */\n\tpending_commit: string\n\t/** Owner page for pending_commit. The commit query is that full 40-character SHA-1. */\n\tapproval_url: string\n\tmessage: string\n} | {\n\tstatus: \"approval_required\"\n\tprevious_commit: string | null\n\t/** HEAD commit that passed checks. The previously published commit keeps serving until the owner approves this one. */\n\tpending_commit: string\n\tapproval_url: string\n\t/** Present when other paused publishes also wait on the owner: one page that approves them together. */\n\tapproval_bundle_url?: string\n\tcredential_need_changes: Array<{\n\tkey: string\n\tchange: \"added\"\n\tafter: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\t/** The dependency that declared an inherited need. */\n\tfrom?: string\n} | {\n\tkey: string\n\tchange: \"changed\"\n\tbefore: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\tafter: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\t/** The dependency that declared an inherited need. */\n\tfrom?: string\n}>\n\tmessage: string\n} | {\n\tstatus: \"checks_failed\"\n\tfailed_checks: Array<{\n\tkind: \"manifest\" | \"docs\" | \"skills\" | \"dependencies\" | \"bundle\" | \"typecheck\" | \"lint\" | \"credentials\" | \"capabilities\" | \"smoke\"\n\tok: boolean\n\tmessage: string\n}>\n\t/** Parsed package.json when available; null when the manifest itself failed validation or was missing. */\n\tmanifest: unknown | null\n\t/** Deprecated and no longer returned: it was an internal check-attempt id that runGet cannot load. Use packageRunResult for a dispatched publish. */\n\trun_id?: string\n} | {\n\tstatus: \"published\"\n\t/** Set when the package has unmappable credentials: explains that changes and publishes are owner-only unless a grant allows them, and how to allow one collaborator. */\n\tunmappable_credentials_notice?: string | null\n\tprevious_commit: string | null\n\tpublished_commit: string\n\tmanifest: unknown\n\tchecks: Array<{\n\tkind: \"manifest\" | \"docs\" | \"skills\" | \"dependencies\" | \"bundle\" | \"typecheck\" | \"lint\" | \"credentials\" | \"capabilities\" | \"smoke\"\n\tok: boolean\n\tmessage: string\n}>\n\thosted_app_url: string | null\n\ttest_hints?: {\n\tapp?: string\n\tsubscriptions?: Array<{\n\ttopic: string\n\tsnippet: string\n}>\n\tenablements?: {\n\t/** Agent-directed message: ask the user whether to enable each listed trigger, with the exact enablementEnable call (or Approve for webhooks/email). */\n\tmessage: string\n\ttriggers: Array<{\n\tkind: \"cron\" | \"subscription\" | \"webhook\"\n\tname: string\n\treason: \"missing\" | \"paused\"\n\t/** Exact enablementEnable call when applicable; null for Approve-only triggers. */\n\tcall: string | null\n}>\n}\n}\n\t/** Bounded summary of saved packages whose published bundles statically captured this package through kody:@ imports. */\n\tstatic_dependents: {\n\t/** Total direct static dependent packages found. */\n\ttotal: number\n\t/** Count of direct static dependent packages with stale bundled snapshots. */\n\tstale: number\n\t/** True when more dependent packages exist than are returned in items. */\n\ttruncated: boolean\n\t/** Bounded direct static dependent package summaries. */\n\titems: Array<{\n\t/** Saved package id of the dependent package. */\n\tpackage_id: string\n\t/** Package name leaf of the dependent package. */\n\tkody_id: string\n\t/** Scoped package.json name of the dependent package. */\n\tname: string\n\t/** Repo-backed source id for the dependent package. */\n\tsource_id: string\n\t/** Current published commit of the dependent package. */\n\tpublished_commit: string | null\n\t/** True when at least one dependent bundle artifact captured a dependency commit that differs from the package's current published commit. */\n\tstale: boolean\n\t/** Number of published bundle artifacts that reference this dependency. */\n\tartifact_count: number\n\t/** Bounded list of dependent bundle entrypoints referencing this dependency. */\n\tentrypoints: Array<string>\n\t/** True when the dependent has more matching entrypoints than returned. */\n\tentrypoints_truncated: boolean\n\t/** Dependency commit captured in the dependent bundle, or null when matching artifacts have mixed or missing commits. */\n\tbundled_dependency_commit: string | null\n\t/** Current published commit for the referenced dependency package. */\n\tcurrent_dependency_commit: string\n\t/** Agent guidance for this dependent package. */\n\trecommended_action: string\n}>\n\t/** Agent guidance explaining whether to inspect or republish dependents. Kody does not republish dependents automatically. */\n\trecommended_next_action: string\n}\n\t/** Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret. */\n\tpending_secret_package_approvals: {\n\t/** Saved package id that needs approvals. */\n\tpackage_id: string\n\t/** Package name leaf that needs approvals (same value as `slug`). */\n\tkody_id: string\n\t/** Package name leaf that needs approvals. */\n\tslug: string\n\t/** User secrets that still need package approval. */\n\tsecrets: Array<{\n\tsecret_name: string\n\t/** Per-secret package approval URL in the account UI. */\n\tapproval_url: string\n}>\n\t/** One-click bulk approval URL when two or more secrets still need package approval; prefer this over individual links. */\n\tbulk_approval_url: string | null\n} | null\n\t/** Warning when this package fills a user credential whose allowed-packages list excludes it. Kody denies those uses at runtime for every package, including self-authored and adopted ones. Null/omitted when there is nothing to warn about. Does not block publish. */\n\tallowed_packages_publish_notice?: string | null\n\t/** Present when this package has a public community listing whose pinned snapshot is still behind the published commit after promote auto-sync. Rare; a background backfill retries. No manual republish step is required. */\n\tlisting?: {\n\tpinnedVersion: string | null\n\tpromotedVersion: string | null\n\tbehind: true\n\tupdateHint: string\n\tupdateUrl: string\n}\n\t/** Coarse packagePublishExternalPush phase timings in milliseconds. Field names are stable. Omitted keys mean that phase did not run in this result. checks_bundle_ms and rebuild_ms stay separate. */\n\tphase_timings: {\n\t/** Milliseconds spent cloning Artifacts HEAD into the publish workspace. Omitted when this attempt did not clone. */\n\tclone_ms?: number\n\t/** Milliseconds spent in the publish typecheck phase. Omitted when typecheck did not run (for example already_published). */\n\tchecks_typecheck_ms?: number\n\t/** Milliseconds spent in the publish bundle-check phase. Distinct from rebuild_ms. Omitted when bundle check did not run, including when full esbuild validation is deferred to rebuild. */\n\tchecks_bundle_ms?: number\n\t/** Milliseconds spent rebuilding published package artifacts after checks, or confirming they match this commit. Distinct from checks_bundle_ms. */\n\trebuild_ms?: number\n\t/** Milliseconds spent indexing static dependents, hosted app URL, test hints, and pending secret approvals. */\n\tdependents_ms?: number\n\t/** Milliseconds from the start of this publish attempt until the result was ready. On status dispatched, this is time-to-dispatch. */\n\ttotal_ms?: number\n}\n\t/** Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n} | {\n\tstatus: \"held_for_approval\"\n\tunmappable_credentials_notice?: string | null\n\t/** The package tip before this publish request. */\n\tprevious_commit: string | null\n\t/** The approved commit everyone still runs. */\n\tserving_commit: string\n\t/** The commit this publish built. It serves nobody until the owner approves its capabilities. */\n\theld_commit: string\n\t/** Owner page that approves held_commit and makes it live. */\n\tapproval_url: string\n\tmessage: string\n\thosted_app_url: string | null\n\ttest_hints?: {\n\tapp?: string\n\tsubscriptions?: Array<{\n\ttopic: string\n\tsnippet: string\n}>\n\tenablements?: {\n\t/** Agent-directed message: ask the user whether to enable each listed trigger, with the exact enablementEnable call (or Approve for webhooks/email). */\n\tmessage: string\n\ttriggers: Array<{\n\tkind: \"cron\" | \"subscription\" | \"webhook\"\n\tname: string\n\treason: \"missing\" | \"paused\"\n\t/** Exact enablementEnable call when applicable; null for Approve-only triggers. */\n\tcall: string | null\n}>\n}\n}\n\t/** Bounded summary of saved packages whose published bundles statically captured this package through kody:@ imports. */\n\tstatic_dependents: {\n\t/** Total direct static dependent packages found. */\n\ttotal: number\n\t/** Count of direct static dependent packages with stale bundled snapshots. */\n\tstale: number\n\t/** True when more dependent packages exist than are returned in items. */\n\ttruncated: boolean\n\t/** Bounded direct static dependent package summaries. */\n\titems: Array<{\n\t/** Saved package id of the dependent package. */\n\tpackage_id: string\n\t/** Package name leaf of the dependent package. */\n\tkody_id: string\n\t/** Scoped package.json name of the dependent package. */\n\tname: string\n\t/** Repo-backed source id for the dependent package. */\n\tsource_id: string\n\t/** Current published commit of the dependent package. */\n\tpublished_commit: string | null\n\t/** True when at least one dependent bundle artifact captured a dependency commit that differs from the package's current published commit. */\n\tstale: boolean\n\t/** Number of published bundle artifacts that reference this dependency. */\n\tartifact_count: number\n\t/** Bounded list of dependent bundle entrypoints referencing this dependency. */\n\tentrypoints: Array<string>\n\t/** True when the dependent has more matching entrypoints than returned. */\n\tentrypoints_truncated: boolean\n\t/** Dependency commit captured in the dependent bundle, or null when matching artifacts have mixed or missing commits. */\n\tbundled_dependency_commit: string | null\n\t/** Current published commit for the referenced dependency package. */\n\tcurrent_dependency_commit: string\n\t/** Agent guidance for this dependent package. */\n\trecommended_action: string\n}>\n\t/** Agent guidance explaining whether to inspect or republish dependents. Kody does not republish dependents automatically. */\n\trecommended_next_action: string\n}\n\t/** Pending user-secret package approvals detected from secretMounts and secret placeholders. Null when none are pending. Do not treat the package as ready to run until the user approves these and a static-import smoke test from execute succeeds against a read-only export or dry-run input that actually uses the approved secret. */\n\tpending_secret_package_approvals: {\n\t/** Saved package id that needs approvals. */\n\tpackage_id: string\n\t/** Package name leaf that needs approvals (same value as `slug`). */\n\tkody_id: string\n\t/** Package name leaf that needs approvals. */\n\tslug: string\n\t/** User secrets that still need package approval. */\n\tsecrets: Array<{\n\tsecret_name: string\n\t/** Per-secret package approval URL in the account UI. */\n\tapproval_url: string\n}>\n\t/** One-click bulk approval URL when two or more secrets still need package approval; prefer this over individual links. */\n\tbulk_approval_url: string | null\n} | null\n\t/** Warning when this package fills a user credential whose allowed-packages list excludes it. Kody denies those uses at runtime for every package, including self-authored and adopted ones. Null/omitted when there is nothing to warn about. Does not block publish. */\n\tallowed_packages_publish_notice?: string | null\n\t/** Present when this package has a public community listing whose pinned snapshot is still behind the published commit after promote auto-sync. Rare; a background backfill retries. No manual republish step is required. */\n\tlisting?: {\n\tpinnedVersion: string | null\n\tpromotedVersion: string | null\n\tbehind: true\n\tupdateHint: string\n\tupdateUrl: string\n}\n\t/** Coarse packagePublishExternalPush phase timings in milliseconds. Field names are stable. Omitted keys mean that phase did not run in this result. checks_bundle_ms and rebuild_ms stay separate. */\n\tphase_timings: {\n\t/** Milliseconds spent cloning Artifacts HEAD into the publish workspace. Omitted when this attempt did not clone. */\n\tclone_ms?: number\n\t/** Milliseconds spent in the publish typecheck phase. Omitted when typecheck did not run (for example already_published). */\n\tchecks_typecheck_ms?: number\n\t/** Milliseconds spent in the publish bundle-check phase. Distinct from rebuild_ms. Omitted when bundle check did not run, including when full esbuild validation is deferred to rebuild. */\n\tchecks_bundle_ms?: number\n\t/** Milliseconds spent rebuilding published package artifacts after checks, or confirming they match this commit. Distinct from checks_bundle_ms. */\n\trebuild_ms?: number\n\t/** Milliseconds spent indexing static dependents, hosted app URL, test hints, and pending secret approvals. */\n\tdependents_ms?: number\n\t/** Milliseconds from the start of this publish attempt until the result was ready. On status dispatched, this is time-to-dispatch. */\n\ttotal_ms?: number\n}\n\t/** Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n} | {\n\tstatus: \"dispatched\"\n\tworkflow_id: string\n\tworkflow_name: string\n\tidempotency_key: string\n\trun_status: string | null\n\tmessage: string\n\t/** Coarse packagePublishExternalPush phase timings in milliseconds. Field names are stable. Omitted keys mean that phase did not run in this result. checks_bundle_ms and rebuild_ms stay separate. */\n\tphase_timings: {\n\t/** Milliseconds spent cloning Artifacts HEAD into the publish workspace. Omitted when this attempt did not clone. */\n\tclone_ms?: number\n\t/** Milliseconds spent in the publish typecheck phase. Omitted when typecheck did not run (for example already_published). */\n\tchecks_typecheck_ms?: number\n\t/** Milliseconds spent in the publish bundle-check phase. Distinct from rebuild_ms. Omitted when bundle check did not run, including when full esbuild validation is deferred to rebuild. */\n\tchecks_bundle_ms?: number\n\t/** Milliseconds spent rebuilding published package artifacts after checks, or confirming they match this commit. Distinct from checks_bundle_ms. */\n\trebuild_ms?: number\n\t/** Milliseconds spent indexing static dependents, hosted app URL, test hints, and pending secret approvals. */\n\tdependents_ms?: number\n\t/** Milliseconds from the start of this publish attempt until the result was ready. On status dispatched, this is time-to-dispatch. */\n\ttotal_ms?: number\n}\n\t/** Where this version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n}"
 				},
 				{
 					"name": "packagePublishBuildCreate",
@@ -64149,7 +64526,7 @@ export const capabilityManifest = {
 				{
 					"name": "repoGetSession",
 					"domain": "repo",
-					"description": "Inspect one repo editing session by id so the model can resume work without reopening it. `last_publish` reports the latest repoPublishSession attempt (running, interrupted, published, not_published, failed), so after an error or dropped connection you can tell whether anything was published before retrying.",
+					"description": "Inspect one repo editing session by id so the model can resume work without reopening it. `last_publish` reports the latest repoPublishSession attempt (running, interrupted, published, not_published, failed), so after an error or dropped connection you can tell whether anything was published before retrying. `published` there means the commit was recorded; packageGet `serving_commit` and `held_commit` say whether it is live or held for approval.",
 					"keywords": [
 						"repo",
 						"session",
@@ -65222,7 +65599,7 @@ export const capabilityManifest = {
 				{
 					"name": "repoPublishSession",
 					"domain": "repo",
-					"description": "Publish an active repo session back to the source repo after checks pass on the current tree and the base commit is still current. Visibility is a repo setting (`packageUpdate` / `repoUpdate`), not package.json#private. When publishing a community fork after absorbing origin updates, pass absorbed_upstream_commit. Retrying is safe: a publish whose push did not land fails with publish_not_applied (nothing moved), and an interrupted publish resumes; check repoGetSession last_publish for status.",
+					"description": "Publish an active repo session back to the source repo after checks pass on the current tree and the base commit is still current. Visibility is a repo setting (`packageUpdate` / `repoUpdate`), not package.json#private. When publishing a community fork after absorbing origin updates, pass absorbed_upstream_commit. Status held_for_approval means the commit was pushed and built but is not live: an internet-visible app asked for more capabilities than its approved version, so everyone stays on serving_commit until the owner approves held_commit at approval_url. Retrying is safe: a publish whose push did not land fails with publish_not_applied (nothing moved), and an interrupted publish resumes; check repoGetSession last_publish for status.",
 					"keywords": [
 						"repo",
 						"publish",
@@ -65289,40 +65666,6 @@ export const capabilityManifest = {
 											"string",
 											"null"
 										]
-									},
-									"held_for_approval": {
-										"description": "Set when this internet-visible app now asks for more capabilities than the approved version. Everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url; approving moves everyone to held_commit. Test the new version with local dev or a dev check. Null/omitted otherwise.",
-										"anyOf": [
-											{
-												"type": "object",
-												"properties": {
-													"serving_commit": {
-														"type": "string",
-														"description": "The approved commit everyone still runs."
-													},
-													"held_commit": {
-														"type": "string",
-														"description": "The published commit that waits for capability approval before it serves."
-													},
-													"approval_url": {
-														"type": "string"
-													},
-													"message": {
-														"type": "string"
-													}
-												},
-												"required": [
-													"serving_commit",
-													"held_commit",
-													"approval_url",
-													"message"
-												],
-												"additionalProperties": false
-											},
-											{
-												"type": "null"
-											}
-										]
 									}
 								},
 								"required": [
@@ -65332,6 +65675,53 @@ export const capabilityManifest = {
 									"message"
 								],
 								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"status": {
+										"type": "string",
+										"const": "held_for_approval"
+									},
+									"session_id": {
+										"type": "string"
+									},
+									"published_commit": {
+										"type": "null"
+									},
+									"serving_commit": {
+										"type": "string",
+										"description": "The approved commit everyone still runs."
+									},
+									"held_commit": {
+										"type": "string",
+										"description": "The commit this publish built. It serves nobody until the owner approves its capabilities."
+									},
+									"approval_url": {
+										"type": "string",
+										"description": "Owner page that approves held_commit and makes it live."
+									},
+									"message": {
+										"type": "string"
+									},
+									"notice": {
+										"type": [
+											"string",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"status",
+									"session_id",
+									"published_commit",
+									"serving_commit",
+									"held_commit",
+									"approval_url",
+									"message"
+								],
+								"additionalProperties": false,
+								"description": "The new commit is built but not live. This internet-visible app now asks for more capabilities than the approved version, so everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url. Approving moves everyone to held_commit. Test the new version with local dev or a dev check. Different from approval_required, which pauses a publish before it starts."
 							},
 							{
 								"type": "object",
@@ -65640,7 +66030,7 @@ export const capabilityManifest = {
 						]
 					},
 					"inputTypeDefinition": "type RepoPublishSessionInput = {\n\t/** Active repo session id from repoOpenSession or repoListSessions. */\n\tsession_id: string\n\t/** Unused. Visibility is a repo setting via packageUpdate, not package.json#private. */\n\tconfirm_private_visibility_change?: boolean\n\t/** When publishing a community fork after porting (or skipping) origin updates, pass origin HEAD so the behind-upstream banner clears. Does not copy files. */\n\tabsorbed_upstream_commit?: string\n}",
-					"outputTypeDefinition": "type RepoPublishSessionOutput = {\n\tstatus: \"ok\"\n\tsession_id: string\n\tpublished_commit: string\n\tmessage: string\n\tpackage_shaped?: boolean\n\tnotice?: string | null\n\t/** Set when this internet-visible app now asks for more capabilities than the approved version. Everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url; approving moves everyone to held_commit. Test the new version with local dev or a dev check. Null/omitted otherwise. */\n\theld_for_approval?: {\n\t/** The approved commit everyone still runs. */\n\tserving_commit: string\n\t/** The published commit that waits for capability approval before it serves. */\n\theld_commit: string\n\tapproval_url: string\n\tmessage: string\n} | null\n} | {\n\tstatus: \"checks_outdated\"\n\tsession_id: string\n\tpublished_commit: null\n\tmessage: string\n} | {\n\tstatus: \"base_moved\"\n\tsession_id: string\n\tpublished_commit: null\n\tmessage: string\n\trepair_hint: \"repoRebaseSession\"\n\tsession_base_commit: string\n\tcurrent_published_commit: string | null\n} | {\n\tstatus: \"locked\"\n\tsession_id: string\n\tpublished_commit: null\n\t/** Full 40-character SHA-1 to promote. Do not abbreviate it. */\n\tpending_commit: string\n\tcurrent_published_commit: string | null\n\t/** Owner page for pending_commit. The commit query is that full 40-character SHA-1. */\n\tapproval_url: string\n\tmessage: string\n} | {\n\tstatus: \"approval_required\"\n\tsession_id: string\n\tpublished_commit: null\n\tpending_commit: string\n\tcurrent_published_commit: string | null\n\tapproval_url: string\n\t/** Present when other paused publishes also wait on the owner: one page that approves them together. */\n\tapproval_bundle_url?: string\n\tcredential_need_changes: Array<{\n\tkey: string\n\tchange: \"added\"\n\tafter: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\t/** The dependency that declared an inherited need. */\n\tfrom?: string\n} | {\n\tkey: string\n\tchange: \"changed\"\n\tbefore: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\tafter: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\t/** The dependency that declared an inherited need. */\n\tfrom?: string\n}>\n\tmessage: string\n}"
+					"outputTypeDefinition": "type RepoPublishSessionOutput = {\n\tstatus: \"ok\"\n\tsession_id: string\n\tpublished_commit: string\n\tmessage: string\n\tpackage_shaped?: boolean\n\tnotice?: string | null\n} | {\n\tstatus: \"held_for_approval\"\n\tsession_id: string\n\tpublished_commit: null\n\t/** The approved commit everyone still runs. */\n\tserving_commit: string\n\t/** The commit this publish built. It serves nobody until the owner approves its capabilities. */\n\theld_commit: string\n\t/** Owner page that approves held_commit and makes it live. */\n\tapproval_url: string\n\tmessage: string\n\tnotice?: string | null\n} | {\n\tstatus: \"checks_outdated\"\n\tsession_id: string\n\tpublished_commit: null\n\tmessage: string\n} | {\n\tstatus: \"base_moved\"\n\tsession_id: string\n\tpublished_commit: null\n\tmessage: string\n\trepair_hint: \"repoRebaseSession\"\n\tsession_base_commit: string\n\tcurrent_published_commit: string | null\n} | {\n\tstatus: \"locked\"\n\tsession_id: string\n\tpublished_commit: null\n\t/** Full 40-character SHA-1 to promote. Do not abbreviate it. */\n\tpending_commit: string\n\tcurrent_published_commit: string | null\n\t/** Owner page for pending_commit. The commit query is that full 40-character SHA-1. */\n\tapproval_url: string\n\tmessage: string\n} | {\n\tstatus: \"approval_required\"\n\tsession_id: string\n\tpublished_commit: null\n\tpending_commit: string\n\tcurrent_published_commit: string | null\n\tapproval_url: string\n\t/** Present when other paused publishes also wait on the owner: one page that approves them together. */\n\tapproval_bundle_url?: string\n\tcredential_need_changes: Array<{\n\tkey: string\n\tchange: \"added\"\n\tafter: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\t/** The dependency that declared an inherited need. */\n\tfrom?: string\n} | {\n\tkey: string\n\tchange: \"changed\"\n\tbefore: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\tafter: {\n\t/** Omitted when the need accepts any fetch-capable credential for the provider. \"secret-provider\" means the need names a secret provider package. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\" | \"secret-provider\"\n\tprovider: string\n\t/** Kind \"secret-provider\" only: the provider package name. */\n\tpackage?: string\n\tmultiple: boolean\n}\n\t/** The dependency that declared an inherited need. */\n\tfrom?: string\n}>\n\tmessage: string\n}"
 				},
 				{
 					"name": "repoRebaseSession",

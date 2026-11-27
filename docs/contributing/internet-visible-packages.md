@@ -108,9 +108,30 @@ they inspect (`commit`).
 
 `loadHeldForApproval` (`package-capabilities/held-for-approval.ts`) reports the
 held state from `held_commit`: an internet-visible app whose held commit is the
-published commit and not the serving one. The owner package page renders it as a
-notice with the approval link, and every publish result (`packageSave`,
-`publishExternalPush`, `repoPublishSession`) returns it as `held_for_approval`.
+published commit and not the serving one (`heldForApprovalFromSource`). The
+`entity_sources.published_commit` column is the internal tip and does name the
+held commit; nothing reports it to callers as published. A held publish is its
+own status, `held_for_approval`, on every publish result
+(`packagePublishExternalPush`, `repoPublishSession`, `packageSave`), built by
+`loadHeldForApprovalPublishStatus`, with `serving_commit`, `held_commit`,
+`approval_url`, and `message`. It is never `published`, `already_published`, or
+`ok`, and it is distinct from `approval_required`, which pauses a publish before
+it starts. A durable publish run that ends held fails like any other refusal
+(`durablePublishRefusalReason`), and the CLI exits 1. `packageGet` reads the
+serving view while a commit is held and returns `serving_commit`, `held_commit`,
+and `approval_url`; `held_commit` and `approval_url` are null for callers
+without `package:write`.
+
+The owner notice fires where the hold is recorded, not in a publish handler:
+`advancePackageServingCommit` calls `notifyOwnersOfHeldPublish`
+(`package-capabilities/held-for-approval-notice.ts`) the first time a commit is
+held. Every publish path serves a commit through that one function, so a direct
+publish and an automatic republish notify the same way. It emails the owners of
+the account that owns the held package (transactional kind
+`publish_held_for_approval`), which is not always the person who published.
+Waiting lists the same packages as `publish-held` items
+(`listHeldForApprovalPackages`) until they are approved. The owner package page
+renders the held state as a notice with the approval link.
 
 ## Self-publish
 

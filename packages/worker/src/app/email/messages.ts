@@ -770,6 +770,31 @@ export function buildJobAutoDisabledEmail(input: {
 	})
 }
 
+export function buildPublishHeldForApprovalEmail(input: {
+	appBaseUrl: string
+	packageName: string
+	servingCommit: string
+	heldCommit: string
+	approvalUrl: string
+}) {
+	const serving = input.servingCommit.slice(0, 7)
+	const held = input.heldCommit.slice(0, 7)
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: `${input.packageName} has a publish waiting for your approval`,
+		preheader: `Everyone is still on ${serving} until you approve ${held}.`,
+		heading: 'A publish is held for approval',
+		body: [
+			`A new version of ${input.packageName} was published, but it is not live. It asks for more capabilities than the version you approved, and the app is open to the internet, so Kody is holding it.`,
+			`Live now: commit ${serving}. Held: commit ${held}.`,
+			'Everyone, including you and the members of your account, keeps using the live commit until you approve the held one. The publish may not have been yours: an agent, a teammate, or an automatic republish can publish this package too.',
+		],
+		action: { label: 'Review and approve', url: input.approvalUrl },
+		footnote:
+			"You're receiving this because a publish of a package on an account you own is waiting for your approval.",
+	})
+}
+
 export function buildCustomDomainActiveEmail(input: {
 	appBaseUrl: string
 	hostname: string

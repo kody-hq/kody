@@ -89,9 +89,10 @@ import {
 import { credentialPatternNoticeForFiles } from '#worker/repo/credential-pattern-check.ts'
 import { buildCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import {
-	buildHeldForApprovalPublishNotice,
-	heldForApprovalSchema,
-} from './held-for-approval-publish-notice.ts'
+	heldForApprovalStatusDescription,
+	heldForApprovalStatusShape,
+	loadHeldForApprovalPublishStatus,
+} from './held-for-approval-publish-status.ts'
 
 function parseSavedPackageManifest(input: {
 	content: string
@@ -273,7 +274,20 @@ export const savePackageCapability = defineDomainCapability(
 					'Follow-up guidance for continuing package work, including the git clone-edit-push lane for coding agents and any pending package secret approvals.',
 				),
 			pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
-			held_for_approval: heldForApprovalSchema,
+			status: z
+				.enum(['published', 'held_for_approval'])
+				.describe(
+					`published: the saved files are live. held_for_approval: ${heldForApprovalStatusDescription}`,
+				),
+			serving_commit: heldForApprovalStatusShape.serving_commit.optional(),
+			held_commit: heldForApprovalStatusShape.held_commit.optional(),
+			approval_url: heldForApprovalStatusShape.approval_url.optional(),
+			message: z
+				.string()
+				.optional()
+				.describe(
+					'Set with held_for_approval: what is held and how to approve.',
+				),
 		}),
 		async handler(args, ctx) {
 			const user = requireMcpUser(ctx.callerContext)
@@ -644,7 +658,7 @@ export const savePackageCapability = defineDomainCapability(
 				// Warning is best-effort: never fail save after persistence.
 				allowedPackagesPublishNotice = null
 			}
-			const heldForApproval = await buildHeldForApprovalPublishNotice({
+			const held = await loadHeldForApprovalPublishStatus({
 				env: ctx.env,
 				baseUrl: ctx.callerContext.baseUrl,
 				ownerUserId: owner.ownerUserId,
@@ -675,7 +689,9 @@ export const savePackageCapability = defineDomainCapability(
 				created_at: saved.createdAt,
 				updated_at: saved.updatedAt,
 				pending_secret_package_approvals: pendingSecretApprovals,
-				...(heldForApproval ? { held_for_approval: heldForApproval } : {}),
+				...(held
+					? { status: 'held_for_approval' as const, ...held }
+					: { status: 'published' as const }),
 				next_steps: buildPackageSaveNextSteps({
 					packageId: saved.id,
 					pendingSecretApprovalsGuidance: pendingSecretApprovals
