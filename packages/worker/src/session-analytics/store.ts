@@ -514,7 +514,8 @@ export function deleteOrgSessionAnalyticsStatements(
 		db
 			.prepare(
 				`DELETE FROM ${table} WHERE org_id = ? AND EXISTS (
-					SELECT 1 FROM orgs WHERE id = ? AND session_analytics = ?
+					SELECT 1 FROM orgs
+					WHERE id = ? AND session_analytics = ? AND deleted_at IS NULL
 				)`,
 			)
 			.bind(orgId, orgId, state),
