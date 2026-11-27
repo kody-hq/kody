@@ -24,7 +24,10 @@ import {
 } from '#worker/entitlements/service.ts'
 import { loadOrgBindingForSlug, type OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
-import { loadBlackFridayCheckoutOffer } from '../../start/campaigns/black-friday-2026/server.ts'
+import {
+	loadBlackFridayCheckoutOffer,
+	resolveBlackFridayCodeInterval,
+} from '../../start/campaigns/black-friday-2026/server.ts'
 
 export const checkoutLinkPlan = 'pro'
 
@@ -40,8 +43,10 @@ export const checkoutLinkReasons = {
 		`This connection works for a different organization than @${slug}. Connect to @${slug} to start its checkout, or open its billing page.`,
 	credentialScope: (slug: string) =>
 		`This connection is not allowed to manage billing for @${slug}. An owner or billing admin can start checkout on the billing page instead.`,
-	alreadySubscribed: (slug: string) =>
-		`@${slug} already has a paid plan, so there is nothing to check out. Change or cancel it on the organization's billing page.`,
+	alreadySubscribed: (slug: string, billingUrl: string) =>
+		`@${slug} already has a paid plan, so there is nothing to check out. Change or cancel it at ${billingUrl}`,
+	codeNotApplied:
+		'That promo code could not be applied, so it is left out of this checkout.',
 } as const
 
 export type CheckoutLinkOffer =
@@ -56,8 +61,31 @@ export type CheckoutLinkDecision =
 			interval: BillingInterval
 			/** A running sale, and whether its price applies to this checkout. */
 			offer: CheckoutLinkOffer | null
+			/** Set when the caller passed a promo code that cannot be used. */
+			codeNote: string | null
 	  }
+	| { ok: false; reason: string; paidPlan?: true }
+
+type BillingOrgAccess =
+	| { ok: true; binding: OrgBinding; slug: string }
 	| { ok: false; reason: string }
+
+/** `https://kody.codes/@acme/-/billing` */
+export function orgBillingPageUrl(orgSlug: string, baseUrl: string) {
+	return new URL(orgBillingPath(orgSlug), baseUrl).toString()
+}
+
+/**
+ * A promo code is letters and digits in capitals, usually with a dash
+ * (`SAVE20`, `SPRING-SALE`). Tells a code passed as `interval` apart from a
+ * mistyped interval such as "weekly".
+ */
+function looksLikePromoCode(value: string) {
+	return (
+		/^[A-Z0-9]{4,}$/.test(value) ||
+		/^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)+$/.test(value)
+	)
+}
 
 function normalizeOrgSlug(value: unknown) {
 	return typeof value === 'string'
@@ -78,29 +106,18 @@ export function checkoutLinkPath(input: {
 }
 
 /**
- * Whether `userId` may start Pro checkout for the organization, and whether
- * a running sale applies. `requestForOrg` returns the request the permission
- * check runs against, or null when the caller's credential cannot act for
- * that organization (an agent connection belongs to one organization).
+ * Whether `userId` may manage billing for the organization. `requestForOrg`
+ * returns the request the permission check runs against, or null when the
+ * caller's credential cannot act for that organization (an agent connection
+ * belongs to one organization).
  */
-export async function evaluateCheckoutLink(input: {
+export async function resolveBillingOrgAccess(input: {
 	env: Env
 	userId: string
 	requestForOrg: (binding: OrgBinding) => RequestContext | null
 	org: unknown
-	plan: unknown
-	interval: unknown
-	now: Date
-}): Promise<CheckoutLinkDecision> {
-	const { env, now } = input
-	if (input.plan !== checkoutLinkPlan) {
-		return { ok: false, reason: checkoutLinkReasons.plan }
-	}
-	const interval =
-		input.interval === 'month' || input.interval === 'year'
-			? input.interval
-			: null
-	if (!interval) return { ok: false, reason: checkoutLinkReasons.interval }
+}): Promise<BillingOrgAccess> {
+	const { env } = input
 	const slug = normalizeOrgSlug(input.org)
 	const binding = /^[a-z0-9_-]+$/.test(slug)
 		? await loadOrgBindingForSlug(env.APP_DB, input.userId, slug)
@@ -124,10 +141,49 @@ export async function evaluateCheckoutLink(input: {
 					: checkoutLinkReasons.credentialScope(slug),
 		}
 	}
-	if (
-		!isBillingConfigured(env) ||
-		!getPriceIdForPlan(env, checkoutLinkPlan, interval)
-	) {
+	return { ok: true, binding, slug }
+}
+
+/**
+ * Whether `userId` may start Pro checkout for the organization, and whether
+ * a running sale applies. A promo code (as `promoCode`, or passed where the
+ * interval goes) only picks the billing interval: the sale price is applied
+ * at checkout by the same rules with or without it.
+ */
+export async function evaluateCheckoutLink(input: {
+	env: Env
+	userId: string
+	requestForOrg: (binding: OrgBinding) => RequestContext | null
+	org: unknown
+	plan: unknown
+	interval: unknown
+	promoCode?: unknown
+	baseUrl: string
+	now: Date
+}): Promise<CheckoutLinkDecision> {
+	const { env, now } = input
+	if (input.plan !== checkoutLinkPlan) {
+		return { ok: false, reason: checkoutLinkReasons.plan }
+	}
+	const givenInterval =
+		input.interval === 'month' || input.interval === 'year'
+			? input.interval
+			: null
+	const intervalText =
+		typeof input.interval === 'string' ? input.interval.trim() : ''
+	const intervalCode =
+		!givenInterval && looksLikePromoCode(intervalText) ? intervalText : null
+	if (!givenInterval && !intervalCode) {
+		return { ok: false, reason: checkoutLinkReasons.interval }
+	}
+	const code =
+		typeof input.promoCode === 'string' && input.promoCode.trim()
+			? input.promoCode.trim()
+			: intervalCode
+	const access = await resolveBillingOrgAccess(input)
+	if (!access.ok) return access
+	const { binding, slug } = access
+	if (!isBillingConfigured(env)) {
 		return { ok: false, reason: checkoutLinkReasons.notConfigured }
 	}
 	const row = await env.APP_DB.prepare(
@@ -140,10 +196,25 @@ export async function evaluateCheckoutLink(input: {
 	// `stripe_plan` is the stored result of the subscription filter checkout
 	// runs live against Stripe when the person confirms.
 	if (row.stripe_plan || resolveUserPlanFromRow(row, now).plan !== 'free') {
-		return { ok: false, reason: checkoutLinkReasons.alreadySubscribed(slug) }
+		return {
+			ok: false,
+			reason: checkoutLinkReasons.alreadySubscribed(
+				slug,
+				orgBillingPageUrl(slug, input.baseUrl),
+			),
+			paidPlan: true,
+		}
 	}
 	// Remove when: the Black Friday 2026 campaign folder is deleted (any time
-	// after 2026-12-04); see its README. `offer` is then always null.
+	// after 2026-12-04); see its README. Every code is then unknown and
+	// `offer` is always null.
+	const codeInterval = code
+		? await resolveBlackFridayCodeInterval({ env, code, now })
+		: null
+	const interval = codeInterval ?? givenInterval ?? 'month'
+	if (!getPriceIdForPlan(env, checkoutLinkPlan, interval)) {
+		return { ok: false, reason: checkoutLinkReasons.notConfigured }
+	}
 	const offer = await loadBlackFridayCheckoutOffer({
 		db: env.APP_DB,
 		userId: input.userId,
@@ -161,6 +232,7 @@ export async function evaluateCheckoutLink(input: {
 		plan: checkoutLinkPlan,
 		interval,
 		offer,
+		codeNote: code && !codeInterval ? checkoutLinkReasons.codeNotApplied : null,
 	}
 }
 
@@ -171,6 +243,7 @@ export function evaluateCheckoutLinkForSession(input: {
 	org: unknown
 	plan: unknown
 	interval: unknown
+	baseUrl: string
 	now: Date
 }) {
 	return evaluateCheckoutLink({
@@ -185,6 +258,7 @@ export function evaluateCheckoutLinkForSession(input: {
 		org: input.org,
 		plan: input.plan,
 		interval: input.interval,
+		baseUrl: input.baseUrl,
 		now: input.now,
 	})
 }

@@ -452,8 +452,7 @@ membership.
 When a person asks you to upgrade an org, start checkout, or get a sale price,
 call `billingCheckoutLink` and give them the link it returns. You cannot pay for
 them: the link opens a Kody page, and they finish on Stripe. The link applies a
-running sale on its own and takes no coupon code. Someone with a code to type
-enters it in **Promo code** on the org's billing page (`/@<slug>/-/billing`).
+running sale on its own, chosen by the billing interval.
 
 ```ts
 const result = await codemode.billingCheckoutLink({
@@ -463,13 +462,26 @@ const result = await codemode.billingCheckoutLink({
 // { ok: true, url: 'https://kody.codes/@acme/-/billing/checkout?plan=pro&interval=year',
 //   org: 'acme', plan: 'pro', interval: 'year',
 //   offer: { applies: true, message: '...' } | null, message: '...' }
-// { ok: false, reason: '@acme already has a paid plan, so there is nothing to check out. ...' }
+// { ok: false, reason: '@acme already has a paid plan, so there is nothing to check out.
+//   Change or cancel it at https://kody.codes/@acme/-/billing Use billingManageLink ...' }
 ```
 
 In a terminal: `kody billing checkout-link --org acme --interval year`.
 
 - You need `billing:write` on the org (Owner or Billing). The org must be the
   one your connection works for.
+- After `orgCreate`, switch to the new org before you ask for its link:
+  reconnect to it, run `kody org use <slug>`, or pass `--org <slug>`. A
+  connection that works for another org cannot start checkout for the new one.
+- A promo code is optional. Pass `interval` (`month` or `year`), or pass a sale
+  code the person has as `promoCode` (`--promo-code` in the CLI). A code passed
+  as `interval` is read the same way. A sale code picks its own billing
+  interval, even when you also pass `interval`. With no code, the running sale
+  is still applied by interval.
+- A code that is unknown, expired, or no longer active does not fail the call.
+  You still get the link, plus a `note` saying the code could not be applied.
+  The code picks no interval, so a bad code passed as `interval` gives a monthly
+  link. A running sale the person qualifies for is still applied by interval.
 - `ok: false` carries a plain `reason` to pass on: the org already has a paid
   plan, you cannot manage its billing, the org is unknown, or the plan or
   interval is invalid. Pro is the only plan sold at checkout.
@@ -483,6 +495,27 @@ In a terminal: `kody billing checkout-link --org acme --interval year`.
   applied for them there. Forwarding the link to someone without billing access
   shows them the reason instead.
 - Package app and job code cannot call it.
+
+### An org that already has a paid plan
+
+`billingCheckoutLink` refuses an org with a paid plan, including an older plan
+that is no longer sold. The reason names the org's billing page. Call
+`billingManageLink` and give the person that link:
+
+```ts
+const result = await codemode.billingManageLink({ org: 'acme' })
+// { ok: true, url: 'https://kody.codes/@acme/-/billing', org: 'acme', message: '...' }
+```
+
+In a terminal: `kody billing manage-link --org acme`.
+
+- On the billing page the person changes or cancels the plan, or switches from
+  an older plan to current Pro.
+- It starts no checkout and applies no promo. A promo cannot be added to an
+  existing subscription. The sale price is only for a new subscription on a Free
+  org the person owns, and only if they have not claimed that sale before.
+- It needs the same billing access as `billingCheckoutLink` and returns the same
+  plain reasons. Package app and job code cannot call it.
 
 ## Move a Pro plan
 

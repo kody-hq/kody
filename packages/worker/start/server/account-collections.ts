@@ -863,11 +863,13 @@ export const loadCheckoutLinkPage = createServerFn({ method: 'GET' })
 			{ evaluateCheckoutLinkForSession },
 			{ loadDocumentHead },
 			{ orgBillingPath },
+			{ getRequest },
 		] = await Promise.all([
 			import('./collection-context.ts'),
 			import('../../src/billing/checkout-link.ts'),
 			import('./document-head.ts'),
 			import('../../universal/org-pages.ts'),
+			import('@tanstack/react-start/server'),
 		])
 		const pathname = `${orgBillingPath(data.orgSlug)}/checkout`
 		const params = new URLSearchParams()
@@ -882,6 +884,7 @@ export const loadCheckoutLinkPage = createServerFn({ method: 'GET' })
 			org: data.orgSlug,
 			plan: data.plan ?? 'pro',
 			interval: data.interval ?? 'month',
+			baseUrl: getRequest().url,
 			now: new Date(),
 		})
 		const payload: OrgBillingCheckoutLoaderData = decision.ok

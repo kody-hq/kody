@@ -64,6 +64,7 @@ export const startCheckoutFromLink = createServerFn({ method: 'POST' })
 					org: data.orgSlug,
 					plan: 'pro',
 					interval: data.interval,
+					baseUrl: context.request.url,
 					now: new Date(),
 				})
 				if (!decision.ok) throw new Error(decision.reason)

@@ -3726,7 +3726,7 @@ export const capabilityManifest = {
 				{
 					"name": "billingCheckoutLink",
 					"domain": "account",
-					"description": "Get a checkout link a person opens to upgrade an organization to Pro (start checkout, subscribe, apply a coupon or sale discount). Returns a kody.codes URL, never a payment page: hand it to the person. When they open it, Kody checks they are signed in and can manage billing for the organization, applies any running sale price they qualify for, and sends them to Stripe to pay. You cannot pay for them, and nothing is charged until they finish. Returns ok: false with a plain reason when checkout does not apply (already on a paid plan, no billing access, unknown organization, invalid plan or interval). `offer` says whether a running sale price will apply; when it will not, the link still works at the regular price.",
+					"description": "Get a checkout link a person opens to upgrade an organization to Pro (start checkout, subscribe, apply a coupon or sale discount). Returns a kody.codes URL, never a payment page: hand it to the person. When they open it, Kody checks they are signed in and can manage billing for the organization, applies any running sale price they qualify for, and sends them to Stripe to pay. You cannot pay for them, and nothing is charged until they finish. Returns ok: false with a plain reason when checkout does not apply (already on a paid plan, no billing access, unknown organization, invalid plan or interval). An organization that already has a paid plan cannot use a promo: give the person `billingManageLink` instead. A new organization from `orgCreate` needs a connection to that organization first. `offer` says whether a running sale price will apply; when it will not, the link still works at the regular price.",
 					"keywords": [
 						"billing",
 						"checkout",
@@ -3762,7 +3762,11 @@ export const capabilityManifest = {
 								"type": "string"
 							},
 							"interval": {
-								"description": "\"month\" (default) or \"year\".",
+								"description": "\"month\" (default) or \"year\". A promo code passed here is treated as `promoCode`.",
+								"type": "string"
+							},
+							"promoCode": {
+								"description": "Optional. A sale code the person has. It picks the billing interval that code is for. A running sale price applies with or without it. A code that cannot be used is left out and picks no interval: the link still works.",
 								"type": "string"
 							}
 						},
@@ -3821,6 +3825,10 @@ export const capabilityManifest = {
 										],
 										"description": "A running sale, or null when there is none."
 									},
+									"note": {
+										"description": "Present when the promo code you passed could not be applied. The link still works.",
+										"type": "string"
+									},
 									"message": {
 										"type": "string",
 										"description": "What to tell the person."
@@ -3857,8 +3865,95 @@ export const capabilityManifest = {
 							}
 						]
 					},
-					"inputTypeDefinition": "type BillingCheckoutLinkInput = {\n\t/** Handle of the organization to upgrade, with or without @. Defaults to the organization this connection works for, and must be that organization. */\n\torg?: string\n\t/** The plan to buy. Only \"pro\" is sold at checkout (default). */\n\tplan?: string\n\t/** \"month\" (default) or \"year\". */\n\tinterval?: string\n}",
-					"outputTypeDefinition": "type BillingCheckoutLinkOutput = {\n\tok: true\n\t/** The kody.codes link to give the person. It does not expire and is safe to forward: every check runs again for whoever opens it. */\n\turl: string\n\torg: string\n\tplan: \"pro\"\n\tinterval: \"month\" | \"year\"\n\t/** A running sale, or null when there is none. */\n\toffer: {\n\tapplies: boolean\n\t/** The sale price the person will get, or why the sale price will not apply to them. */\n\tmessage: string\n} | null\n\t/** What to tell the person. */\n\tmessage: string\n} | {\n\tok: false\n\t/** Why checkout does not apply, in plain words. */\n\treason: string\n}"
+					"inputTypeDefinition": "type BillingCheckoutLinkInput = {\n\t/** Handle of the organization to upgrade, with or without @. Defaults to the organization this connection works for, and must be that organization. */\n\torg?: string\n\t/** The plan to buy. Only \"pro\" is sold at checkout (default). */\n\tplan?: string\n\t/** \"month\" (default) or \"year\". A promo code passed here is treated as `promoCode`. */\n\tinterval?: string\n\t/** Optional. A sale code the person has. It picks the billing interval that code is for. A running sale price applies with or without it. A code that cannot be used is left out and picks no interval: the link still works. */\n\tpromoCode?: string\n}",
+					"outputTypeDefinition": "type BillingCheckoutLinkOutput = {\n\tok: true\n\t/** The kody.codes link to give the person. It does not expire and is safe to forward: every check runs again for whoever opens it. */\n\turl: string\n\torg: string\n\tplan: \"pro\"\n\tinterval: \"month\" | \"year\"\n\t/** A running sale, or null when there is none. */\n\toffer: {\n\tapplies: boolean\n\t/** The sale price the person will get, or why the sale price will not apply to them. */\n\tmessage: string\n} | null\n\t/** Present when the promo code you passed could not be applied. The link still works. */\n\tnote?: string\n\t/** What to tell the person. */\n\tmessage: string\n} | {\n\tok: false\n\t/** Why checkout does not apply, in plain words. */\n\treason: string\n}"
+				},
+				{
+					"name": "billingManageLink",
+					"domain": "account",
+					"description": "Get the link to an organization's billing page, where a person changes or cancels a paid plan (manage a subscription, switch from a retired plan to current Pro, update billing). Returns a kody.codes URL to hand to the person. It starts no checkout and applies no promo: promos are for new subscriptions only, so use `billingCheckoutLink` for an organization on the Free plan. Returns ok: false with a plain reason when the caller cannot manage billing for the organization.",
+					"keywords": [
+						"billing",
+						"billing page",
+						"manage billing",
+						"manage subscription",
+						"subscription",
+						"change plan",
+						"switch plan",
+						"legacy plan",
+						"cancel",
+						"pro"
+					],
+					"readOnly": true,
+					"idempotent": true,
+					"destructive": false,
+					"orgPermission": "none",
+					"contextRuns": "deny",
+					"requiresLivePerson": "never",
+					"source": "builtin",
+					"inputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"org": {
+								"description": "Handle of the organization, with or without @. Defaults to the organization this connection works for, and must be that organization.",
+								"type": "string"
+							}
+						},
+						"additionalProperties": false
+					},
+					"outputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"oneOf": [
+							{
+								"type": "object",
+								"properties": {
+									"ok": {
+										"type": "boolean",
+										"const": true
+									},
+									"url": {
+										"type": "string",
+										"description": "The organization's billing page on kody.codes."
+									},
+									"org": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string",
+										"description": "What to tell the person."
+									}
+								},
+								"required": [
+									"ok",
+									"url",
+									"org",
+									"message"
+								],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"ok": {
+										"type": "boolean",
+										"const": false
+									},
+									"reason": {
+										"type": "string",
+										"description": "Why there is no link for this caller, in plain words."
+									}
+								},
+								"required": [
+									"ok",
+									"reason"
+								],
+								"additionalProperties": false
+							}
+						]
+					},
+					"inputTypeDefinition": "type BillingManageLinkInput = {\n\t/** Handle of the organization, with or without @. Defaults to the organization this connection works for, and must be that organization. */\n\torg?: string\n}",
+					"outputTypeDefinition": "type BillingManageLinkOutput = {\n\tok: true\n\t/** The organization's billing page on kody.codes. */\n\turl: string\n\torg: string\n\t/** What to tell the person. */\n\tmessage: string\n} | {\n\tok: false\n\t/** Why there is no link for this caller, in plain words. */\n\treason: string\n}"
 				},
 				{
 					"name": "guestClaimStart",
