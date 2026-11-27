@@ -833,7 +833,11 @@ test('simultaneous retries of a failed newsletter key make one provider call', a
 			expect(isMcpCallerError(result.reason)).toBe(true)
 		}
 	}
-	expect(results.some((r) => r.status === 'fulfilled')).toBe(true)
+	const fulfilled = results.flatMap((r) =>
+		r.status === 'fulfilled' ? [r.value] : [],
+	)
+	expect(fulfilled.length).toBeGreaterThan(0)
+	expect(fulfilled.filter((r) => !r.replayed)).toHaveLength(1)
 })
 
 test('a 2xx without success or an error code leaves the newsletter key outcome unknown', async () => {
