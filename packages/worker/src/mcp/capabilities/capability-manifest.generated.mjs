@@ -57537,7 +57537,7 @@ export const capabilityManifest = {
 				{
 					"name": "appList",
 					"domain": "packages",
-					"description": "List the hosted package apps you can run: apps in every org you belong to and apps other orgs shared with you. Each is one you hold app:execute on, the same check appFetch and a browser visit make; a profile token lists only the apps its profile chain was given Use on. Returns the @org/app address to pass to appFetch, the owning org, the hosted URL a person opens, and visibility. Pass org to list one org only.",
+					"description": "List the hosted package apps you can run: apps in every org you belong to and apps other orgs shared with you. Each is one you hold app:execute on, the same check appFetch and a browser visit make; a profile token lists only the apps its profile chain was given Use on. Returns the @org/app address to pass to appFetch, the owning org, the hosted URL a person opens, and visibility. Pass owner to list one org only.",
 					"keywords": [
 						"app",
 						"apps",
@@ -57558,7 +57558,7 @@ export const capabilityManifest = {
 						"$schema": "https://json-schema.org/draft/2020-12/schema",
 						"type": "object",
 						"properties": {
-							"org": {
+							"owner": {
 								"description": "Org handle (with or without @) to list one org only. Omit to list every app you can run.",
 								"type": "string",
 								"minLength": 1
@@ -57647,7 +57647,7 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type AppListInput = {\n\t/** Org handle (with or without @) to list one org only. Omit to list every app you can run. */\n\torg?: string\n\t/** Apps per page. Defaults to 100. */\n\tlimit?: number\n\t/** next_cursor from the previous page. */\n\tcursor?: string\n}",
+					"inputTypeDefinition": "type AppListInput = {\n\t/** Org handle (with or without @) to list one org only. Omit to list every app you can run. */\n\towner?: string\n\t/** Apps per page. Defaults to 100. */\n\tlimit?: number\n\t/** next_cursor from the previous page. */\n\tcursor?: string\n}",
 					"outputTypeDefinition": "type AppListOutput = {\n\tapps: Array<{\n\t/** The app address to pass to appFetch: @org/app. */\n\tapp: string\n\t/** Handle of the org that owns the app. */\n\towner: string\n\t/** Package name of the app. */\n\tname: string\n\tpackage_id: string\n\tdescription: string\n\t/** Where a person opens the app in a browser. Call it with appFetch; the hosted URL does not accept tokens. */\n\thosted_url: string\n\t/** public: anyone on the internet can open it. private: only people it is shared with. */\n\tvisibility: \"public\" | \"private\"\n\t/** True when the app was shared with you from an org you are not a member of. */\n\tshared: boolean\n}>\n\t/** Pass as cursor for the next page; null on the last page. */\n\tnext_cursor: string | null\n}"
 				},
 				{

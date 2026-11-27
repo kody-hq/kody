@@ -420,7 +420,9 @@ test('appList lists apps in member orgs and apps shared from other orgs, narrowe
 	])
 	expect((await t.listApps(strangerId)).apps).toEqual([])
 	expect(
-		(await t.listApps(outsiderId, { org: '@acme' })).apps.map((app) => app.app),
+		(await t.listApps(outsiderId, { owner: '@acme' })).apps.map(
+			(app) => app.app,
+		),
 	).toEqual(['@acme/board'])
 	const firstPage = await t.listApps(outsiderId, { limit: 1 })
 	expect(firstPage).toMatchObject({

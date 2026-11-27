@@ -61,7 +61,7 @@ export const appListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
-			'List the hosted package apps you can run: apps in every org you belong to and apps other orgs shared with you. Each is one you hold app:execute on, the same check appFetch and a browser visit make; a profile token lists only the apps its profile chain was given Use on. Returns the @org/app address to pass to appFetch, the owning org, the hosted URL a person opens, and visibility. Pass org to list one org only.',
+			'List the hosted package apps you can run: apps in every org you belong to and apps other orgs shared with you. Each is one you hold app:execute on, the same check appFetch and a browser visit make; a profile token lists only the apps its profile chain was given Use on. Returns the @org/app address to pass to appFetch, the owning org, the hosted URL a person opens, and visibility. Pass owner to list one org only.',
 		keywords: [
 			'app',
 			'apps',
@@ -75,7 +75,7 @@ export const appListCapability = defineDomainCapability(
 		idempotent: true,
 		destructive: false,
 		inputSchema: z.object({
-			org: z
+			owner: z
 				.string()
 				.min(1)
 				.optional()
@@ -112,7 +112,7 @@ export const appListCapability = defineDomainCapability(
 			const offset = parseCursor(args.cursor)
 			const limit = args.limit ?? appListDefaultLimit
 			const db = ctx.env.APP_DB
-			const onlyOrg = args.org?.trim().replace(/^@/, '').toLowerCase()
+			const onlyOrg = args.owner?.trim().replace(/^@/, '').toLowerCase()
 			const orgs = (await listOrgsForPerson(db, actor.userId)).filter(
 				(org) => !onlyOrg || org.slug.toLowerCase() === onlyOrg,
 			)

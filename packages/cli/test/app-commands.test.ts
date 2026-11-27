@@ -172,7 +172,7 @@ test('app list follows pages and filters by org', async () => {
 	const text = await runAppList({ call: api.call, json: false, org: 'acme' })
 	assert.deepEqual(
 		api.calls.map((call) => call.params),
-		[{ org: 'acme' }, { org: 'acme', cursor: '1' }],
+		[{ owner: 'acme' }, { owner: 'acme', cursor: '1' }],
 	)
 	assert.match(text, /@acme\/board .* private, shared with you\n@kent\/mine /)
 	const empty = recorder({ apps: [], next_cursor: null })

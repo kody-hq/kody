@@ -176,7 +176,8 @@ export async function runAppList(input: {
 	let cursor: string | null = null
 	do {
 		const page = (await input.call('appList', {
-			...(input.org ? { org: input.org } : {}),
+			// `org` in a query selects the token's org; `owner` is the filter.
+			...(input.org ? { owner: normalizeOrgSlug(input.org) } : {}),
 			...(cursor ? { cursor } : {}),
 		})) as { apps: Array<AppListItem>; next_cursor: string | null }
 		apps.push(...page.apps)
