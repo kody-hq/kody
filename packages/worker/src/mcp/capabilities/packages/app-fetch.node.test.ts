@@ -234,7 +234,8 @@ test('appFetch returns the link the person opens when a visitor need is not allo
 		new Response(
 			JSON.stringify({
 				need: 'github',
-				consent_url: 'https://heykody.dev/connect/app?need=github',
+				consent_url:
+					'https://demo-app--acme.apps.example.com/-/auth/login?app=demo-app&scope=profile+need%3Agithub',
 			}),
 			{ status: 403, headers: { 'X-Kody-Visitor-Consent': 'required' } },
 		),
@@ -244,8 +245,25 @@ test('appFetch returns the link the person opens when a visitor need is not allo
 	expect(error).toMatchObject({
 		consent: 'visitor_need',
 		need: 'github',
-		consentUrl: 'https://heykody.dev/connect/app?need=github',
+		consentUrl:
+			'https://demo-app--acme.apps.example.com/-/auth/login?app=demo-app&scope=profile+need%3Agithub',
 	})
+})
+
+test('appFetch refuses a consent link an app forged for another site', async () => {
+	allowVisit()
+	mockModule.servePackageAppRequest.mockResolvedValue(
+		new Response(
+			JSON.stringify({
+				need: 'github',
+				consent_url: 'https://evil.example/-/auth/login?app=demo-app',
+			}),
+			{ status: 403, headers: { 'X-Kody-Visitor-Consent': 'required' } },
+		),
+	)
+	const error = await fetchApp({ app: '@acme/demo-app' }).catch((e) => e)
+	expect(error).not.toBeInstanceOf(AppConsentRequiredError)
+	expect(String(error.message)).not.toContain('evil.example')
 })
 
 test('appFetch refuses package app and job runtime callers', async () => {
@@ -325,4 +343,29 @@ test('appFetch returns a larger body to the Open API, up to the hard cap', async
 	)
 	expect(capped.truncated).toBe(true)
 	expect(capped.body).toHaveLength(10 * 1024 * 1024)
+})
+
+test('appFetch counts a raised cap in file bytes and keeps a UTF-8 marker', async () => {
+	allowVisit()
+	mockModule.servePackageAppRequest.mockImplementation(
+		async () =>
+			new Response(new Uint8Array(200_000).fill(0xff), {
+				headers: { 'Content-Type': 'application/zip' },
+			}),
+	)
+	const binary = await fetchApp(
+		{ app: '@acme/demo-app', max_bytes: 250_000 },
+		{ source: 'api-token' },
+	)
+	expect(binary).toMatchObject({ body_encoding: 'base64', truncated: false })
+	expect(Buffer.from(binary.body, 'base64')).toHaveLength(200_000)
+
+	mockModule.servePackageAppRequest.mockImplementation(
+		async () =>
+			new Response(new Uint8Array([0xef, 0xbb, 0xbf, 0x61, 0x2c, 0x62]), {
+				headers: { 'Content-Type': 'text/csv' },
+			}),
+	)
+	const csv = await fetchApp({ app: '@acme/demo-app' })
+	expect(csv.body).toBe('\uFEFFa,b')
 })

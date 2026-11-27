@@ -48,6 +48,11 @@ test('an app address names the owning org as @org/app or as a hosted URL', async
 		ownerHandle: 'acme',
 		appSlug: 'board',
 		path: '/export.csv',
+		// The custom domain stays the app's host for the visit.
+		customMount: {
+			baseUrl: 'https://board.example.org',
+			mount: 'custom-hostname',
+		},
 	})
 	expect(await resolve('https://kody.example/@acme/board')).toEqual({
 		ownerHandle: 'acme',

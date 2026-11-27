@@ -1,3 +1,4 @@
+import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { resolveHostedPackageAppLocation } from '@kody-internal/shared/public-urls.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
@@ -186,7 +187,9 @@ function collectSafeResponseHeaders(response: Response) {
 
 function decodeUtf8Body(bytes: Uint8Array) {
 	try {
-		return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+		return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+			bytes,
+		)
 	} catch {
 		return null
 	}
@@ -461,6 +464,9 @@ export const appFetchCapability = defineDomainCapability(
 				: requested.appSlug
 			const { owner } = visit
 
+			// A custom domain the caller named stays the app's host, so links
+			// the app builds from the request point back at that domain.
+			const customMount = visit.retiredSlug ? null : requested.customMount
 			const packageAppOrigin = getPackageAppBaseUrl({ env: ctx.env })
 			const hosted = resolveHostedPackageAppLocation({
 				packageAppBaseUrl: packageAppOrigin,
@@ -473,11 +479,13 @@ export const appFetchCapability = defineDomainCapability(
 				username: owner.username,
 				kodyId: appSlug,
 				restPath: restPathOnly,
-				mount: !packageAppOrigin
-					? 'username-path'
-					: hosted.appBasePath === ''
-						? 'custom-hostname'
-						: 'user-subdomain',
+				mount: customMount
+					? customMount.mount
+					: !packageAppOrigin
+						? 'username-path'
+						: hosted.appBasePath === ''
+							? 'custom-hostname'
+							: 'user-subdomain',
 			}
 			const appLabel = `@${owner.username}/${appSlug}`
 			const runConsentRequired = () =>
@@ -502,7 +510,12 @@ export const appFetchCapability = defineDomainCapability(
 			if (args.body != null && method !== 'GET' && method !== 'HEAD') {
 				requestInit.body = args.body
 			}
-			const request = new Request(hosted.hostedUrl, requestInit)
+			const request = new Request(
+				customMount
+					? `${customMount.baseUrl}${restPath === '/' && customMount.mount !== 'custom-hostname' ? '' : restPath}`
+					: hosted.hostedUrl,
+				requestInit,
+			)
 
 			const response = await servePackageAppRequest({
 				request,
@@ -535,14 +548,25 @@ export const appFetchCapability = defineDomainCapability(
 					need?: unknown
 					consent_url?: unknown
 				} | null
-				if (typeof refusal?.consent_url !== 'string') {
-					throw new Error('App consent refusal carried no consent link.')
+				// App code can set this header too, so only a link to Kody's own
+				// sign-in page for this app's host is passed on to the person.
+				const consentUrl =
+					typeof refusal?.consent_url === 'string'
+						? URL.parse(refusal.consent_url)
+						: null
+				const expected = new URL(packageAppOauthPaths.login, request.url)
+				if (
+					!consentUrl ||
+					consentUrl.origin !== expected.origin ||
+					consentUrl.pathname !== expected.pathname
+				) {
+					throw new Error('App consent refusal carried no valid consent link.')
 				}
 				throw new AppConsentRequiredError({
 					consent: 'visitor_need',
 					app: appLabel,
-					consentUrl: refusal.consent_url,
-					need: typeof refusal.need === 'string' ? refusal.need : null,
+					consentUrl: consentUrl.toString(),
+					need: typeof refusal?.need === 'string' ? refusal?.need : null,
 				})
 			}
 
@@ -553,8 +577,12 @@ export const appFetchCapability = defineDomainCapability(
 			)
 			const encoded = encodeAppFetchBody(response, bytes)
 			const maxBase64SourceBytes = Math.floor(maxBytes / 4) * 3
+			// Base64 only has to fit the cap where the body lands in an agent's
+			// context. A larger requested cap counts the bytes written to disk.
 			const encodedBodyTooLarge =
-				encoded.encoding === 'base64' && bytes.byteLength > maxBase64SourceBytes
+				maxBytes <= appFetchDefaultMaxBodyBytes &&
+				encoded.encoding === 'base64' &&
+				bytes.byteLength > maxBase64SourceBytes
 			const body = encodedBodyTooLarge
 				? bytesToBase64(bytes.slice(0, maxBase64SourceBytes))
 				: encoded.body

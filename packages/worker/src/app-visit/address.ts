@@ -17,6 +17,11 @@ export type AppAddress = {
 	appSlug: string
 	/** Path and query after the app's mount, when the address carried one. */
 	path: string | null
+	/**
+	 * Set when the address was a verified custom domain: the URL the app is
+	 * mounted at there, so the app sees the host the caller named.
+	 */
+	customMount?: { baseUrl: string; mount: 'custom-hostname' | 'user-subdomain' }
 }
 
 const appNamePattern = /^@([^/\s?#]+)\/([^/\s?#]+)([/?#].*)?$/
@@ -97,10 +102,17 @@ export async function resolveAppAddress(input: {
 				username: custom.username,
 			})
 			if (!parsed) throw invalidAddress(address)
+			const mountPath = url.pathname.endsWith(parsed.restPath)
+				? url.pathname.slice(0, -parsed.restPath.length)
+				: url.pathname
 			return {
 				ownerHandle: parsed.username,
 				appSlug: parsed.kodyId,
 				path: withSearch(parsed.restPath, url),
+				customMount: {
+					baseUrl: `${url.origin}${mountPath.replace(/\/$/, '')}`,
+					mount: 'user-subdomain',
+				},
 			}
 		}
 		if (custom) {
@@ -108,6 +120,7 @@ export async function resolveAppAddress(input: {
 				ownerHandle: custom.username,
 				appSlug: custom.kodyId,
 				path: withSearch(url.pathname, url),
+				customMount: { baseUrl: url.origin, mount: 'custom-hostname' },
 			}
 		}
 	}
