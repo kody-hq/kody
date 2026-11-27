@@ -23,10 +23,10 @@ Call `appList`. It returns every app you can run: apps in each org your person
 belongs to, and apps another org shared with them.
 
 ```json
-{ "org": "acme" }
+{ "owner": "acme" }
 ```
 
-`org` is optional. Each result has the address to call (`app`, such as
+`owner` is optional. Each result has the address to call (`app`, such as
 `@acme/board`), the owning org, the `package_id`, the hosted URL a person opens,
 whether the app is public or private, and `shared: true` when it comes from an
 org your person is not a member of. Long lists page with `next_cursor`.
