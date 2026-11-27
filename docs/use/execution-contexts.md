@@ -58,14 +58,6 @@ Execution contexts are an experiment. Turn them on at
   same with example commands. List those packages for the shell, or define the
   programs as named commands on the machine. See
   [Shared-box best practices](../guides/execution-contexts.md#shared-box-best-practices).
-- `executionContextList` is ordered by name and paged: `limit` (default 20, at
-  most 100) and `cursor`; pass `nextCursor` back until it is null.
-- Registration limits: one person may own 10 live contexts in an org on Free, 20
-  on Standard and Pro, and 50 on Max. A paid org's total is that number times
-  its seats; a Free org's total is 10. Revoked contexts and contexts attached
-  from another org do not count. Over a limit, registration fails with 429
-  `entitlement_limit` (`details.resource` is `execution_contexts_per_seat` or
-  `execution_contexts_per_org`); revoke an unused context or upgrade.
 - Token scopes: reads (`executionContextList`, `executionContextGet`, sharing
   and run lists, `executionChainGet`) need `execution_context:read`. Sharing
   changes (`executionContextShareSet`, `executionContextShareRemove`,
@@ -94,6 +86,29 @@ Execution contexts are an experiment. Turn them on at
   is status `error`). Once execute returned an in-progress runId, closing the
   CLI or MCP client does not cancel the run; disconnecting before execute
   returns can.
+
+## Listing machines
+
+`executionContextList` returns one page, ordered by name (id breaks ties). Omit
+`cursor` for the first page and pass `nextCursor` as `cursor` until it is
+`null`. The default `limit` is 20; the maximum is 100.
+
+`unutilized` summarizes live contexts outside your chain that you can use or opt
+in to, across all pages. It does not check whether the machines are online. It
+returns a count and names the contexts when there are at most three. It is
+omitted when there are none.
+
+## Registration limits
+
+Registration counts unrevoked contexts owned by the org, excluding those it only
+attaches from elsewhere. One person may own 10 in an org on Free, 20 on Standard
+and Pro, or 50 on Max. Free uses one org-wide pool of 10; paid plans multiply
+the per-seat amount by live seats (at least one).
+
+A registration over either cap returns HTTP 429 `entitlement_limit`.
+`details.resource` is `execution_contexts_per_seat` or
+`execution_contexts_per_org`. Revoke an unused context with
+`kody context revoke <name>`, or upgrade if available.
 
 ## Auto-update
 

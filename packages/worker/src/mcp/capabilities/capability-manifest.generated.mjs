@@ -57418,7 +57418,7 @@ export const capabilityManifest = {
 				{
 					"name": "appFetch",
 					"domain": "packages",
-					"description": "Call a hosted package app you can run, as you: one HTTP request to its fetch handler, answered with status, headers, and body. Works for apps in any org you belong to and apps shared with you (appList lists them); name the app as @org/app or by its hosted URL. This is a real visit with real side effects, authorized exactly like opening the app in a browser (app:execute on that app in the org that owns it). The app sees your user id; when a profile token makes the call it also sees the profile, and the profile chain must hold Use on the app. If the app still needs your one-time \"Run as me\" confirmation or a credential you have not allowed, the call fails with the link to open once. Pass synthetic: true for a smoke test the app can recognize by its Kody-Synthetic header. Use this instead of fetching the hosted URL with a token: app hosts never accept bearer tokens. Websockets are not supported.",
+					"description": "Send one HTTP request to a hosted package app as the signed-in person, e.g. appFetch({ app: \"@acme/board\", path: \"/api/cards\" }). Use appList to find an address, including apps shared from another org. Calls can have real side effects, even with synthetic: true. See /docs/agent-apps for access and consent.",
 					"keywords": [
 						"app",
 						"package app",
@@ -57481,7 +57481,7 @@ export const capabilityManifest = {
 								"type": "boolean"
 							},
 							"max_bytes": {
-								"description": "Most response body bytes to return before truncating. Defaults to 102,400. The Open API and the CLI (kody app fetch --out) may raise it to 10,485,760; over MCP the response always stays at 102,400.",
+								"description": "Most response body bytes to return before truncating. Defaults to 102,400. The Open API and the CLI (kody app fetch --out) may raise it to 10,485,760; MCP OAuth calls stay at 102,400.",
 								"type": "integer",
 								"minimum": 1,
 								"maximum": 10485760
@@ -57531,13 +57531,13 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type AppFetchInput = {\n\t/** The app: @org/app (the owning org handle and the app name) or its hosted URL. A path in the address is used when path is omitted. */\n\tapp?: string\n\t/** Saved package id of the app, as appList and packageList return it. Use instead of app. */\n\tpackage_id?: string\n\t/** Path after the app mount that the handler sees, with any query string. Defaults to /. */\n\tpath?: string\n\t/** HTTP method, case-insensitive: GET, HEAD, POST, PUT, PATCH, DELETE, or OPTIONS. Defaults to GET. */\n\tmethod?: string\n\t/** Extra request headers. Credential, internal, upgrade, and Kody-Synthetic headers are stripped. */\n\theaders?: Record<string, string>\n\t/** Raw request body string for POST, PUT, or PATCH. At most 102,400 UTF-8 bytes; the schema bounds characters and the bytes are checked when the request is sent. */\n\tbody?: string\n\t/** True marks the request as a smoke test with the Kody-Synthetic: true header. Omit it for a real visit. The handler still runs with real side effects either way. */\n\tsynthetic?: boolean\n\t/** Most response body bytes to return before truncating. Defaults to 102,400. The Open API and the CLI (kody app fetch --out) may raise it to 10,485,760; over MCP the response always stays at 102,400. */\n\tmax_bytes?: number\n}",
+					"inputTypeDefinition": "type AppFetchInput = {\n\t/** The app: @org/app (the owning org handle and the app name) or its hosted URL. A path in the address is used when path is omitted. */\n\tapp?: string\n\t/** Saved package id of the app, as appList and packageList return it. Use instead of app. */\n\tpackage_id?: string\n\t/** Path after the app mount that the handler sees, with any query string. Defaults to /. */\n\tpath?: string\n\t/** HTTP method, case-insensitive: GET, HEAD, POST, PUT, PATCH, DELETE, or OPTIONS. Defaults to GET. */\n\tmethod?: string\n\t/** Extra request headers. Credential, internal, upgrade, and Kody-Synthetic headers are stripped. */\n\theaders?: Record<string, string>\n\t/** Raw request body string for POST, PUT, or PATCH. At most 102,400 UTF-8 bytes; the schema bounds characters and the bytes are checked when the request is sent. */\n\tbody?: string\n\t/** True marks the request as a smoke test with the Kody-Synthetic: true header. Omit it for a real visit. The handler still runs with real side effects either way. */\n\tsynthetic?: boolean\n\t/** Most response body bytes to return before truncating. Defaults to 102,400. The Open API and the CLI (kody app fetch --out) may raise it to 10,485,760; MCP OAuth calls stay at 102,400. */\n\tmax_bytes?: number\n}",
 					"outputTypeDefinition": "type AppFetchOutput = {\n\tstatus: number\n\theaders: Record<string, string>\n\tbody: string\n\t/** base64 when the response body is not text. */\n\tbody_encoding: \"text\" | \"base64\"\n\ttruncated: boolean\n}"
 				},
 				{
 					"name": "appList",
 					"domain": "packages",
-					"description": "List the hosted package apps you can run: apps in every org you belong to and apps other orgs shared with you. Each is one you hold app:execute on, the same check appFetch and a browser visit make; a profile token lists only the apps its profile chain was given Use on. Returns the @org/app address to pass to appFetch, the owning org, the hosted URL a person opens, and visibility. Pass owner to list one org only.",
+					"description": "Find hosted package apps you have Use access to, including apps shared from another org. Pass the returned @org/app address to appFetch. To filter by org, call appList({ owner: \"acme\" }). See /docs/agent-apps for access and paging.",
 					"keywords": [
 						"app",
 						"apps",

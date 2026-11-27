@@ -368,7 +368,7 @@ function decodeListCursor(cursor: string): ExecutionContextListPosition {
 			return { name: value[0], id: value[1] }
 		}
 	} catch {
-		// Any cursor we did not issue gets the same refusal, whatever broke.
+		// Invalid cursor encoding and invalid JSON share the same refusal.
 	}
 	throw new ExecutionContextError({
 		status: 400,
@@ -388,9 +388,9 @@ function canSeeContext(access: ContextAccess, caller: ExecutionContextCaller) {
 }
 
 /**
- * Protocol 7.1: usable contexts that are in none of the caller's chain.
- * Reads live rows and access only (no session status), and names at most
- * {@link unutilizedNamedMax} of them.
+ * Summarize live contexts outside the caller's chain that they can use or
+ * opt in to. This reads access, not session status, and names individual
+ * contexts only when the total is at most {@link unutilizedNamedMax}.
  */
 export async function unutilizedSummary(
 	caller: ExecutionContextCaller,
@@ -455,7 +455,7 @@ export async function unutilizedSummary(
 }
 
 /**
- * One page of contexts visible to the caller, ordered by name. Pass
+ * One page of contexts visible to the caller, ordered by name then id. Pass
  * `nextCursor` back as `cursor` for the next page; it is null on the last.
  */
 export async function listContexts(

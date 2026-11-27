@@ -24,6 +24,13 @@ cloud.
 | Website capability hops, page data, machine-access grants                                 | `packages/worker/src/app/handlers/execution-contexts.ts`                                                    |
 | Host commands (ADR 0093): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
 
+The
+[website page contract](../../../packages/worker/universal/execution-contexts.ts)
+keeps the current context page and its cursor separate from the chain.
+`chainContexts` supplies any resolved chain contexts missing from that page. See
+the [listing reference](../../use/execution-contexts.md#listing-machines) for
+paging and the chain-wide summary.
+
 ## Lifecycle
 
 ```mermaid

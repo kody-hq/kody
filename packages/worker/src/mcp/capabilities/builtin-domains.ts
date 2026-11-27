@@ -71,7 +71,7 @@ const loadBuiltinDomainModuleMemo = isolateMemoByKey(
 	{ limit: Number.POSITIVE_INFINITY },
 )
 
-/** Loads one builtin domain module (real definitions and handlers). */
+/** Loads and memoizes one domain's real definitions and handlers per isolate. */
 export function loadBuiltinDomainModule(name: string): Promise<DomainSpec> {
 	if (!Object.hasOwn(builtinDomainModuleLoaders, name)) {
 		return Promise.reject(new Error(`Unknown builtin domain "${name}"`))
@@ -103,6 +103,7 @@ function createLazyHandler(
 		(await loadBuiltinCapabilityHandler(domainName, capabilityName))(args, ctx)
 }
 
+/** Loads memoized manifest definitions; their handlers load domains on demand. */
 export const loadBuiltinDomains: () => Promise<ReadonlyArray<DomainSpec>> =
 	isolateMemo(() =>
 		importCapabilityManifest().then(({ capabilityManifest }) =>

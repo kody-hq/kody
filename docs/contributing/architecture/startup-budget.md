@@ -84,17 +84,19 @@ non-library caller to find which of our modules imported it.
    `{domain}/domain.ts` through dynamic `import()` and `getStaticRegistry()` is
    async. The registry itself comes from `capability-manifest.generated.mjs`, an
    allowlisted additional module, so search and listings evaluate no domain
-   module and dispatch evaluates only the called domain. Direct Wrangler/esbuild
-   worker builds keep domain code in the same bundle and wrap those modules so
-   each evaluates on its first dispatch, not on registry load. Origin Vite
-   builds emit those `import()` targets as hashed SSR chunks under `dist/ssr`.
-   Never import a `*/domain.ts` or a capability definition module statically
-   from anything on the startup path; one static edge makes the Wrangler/esbuild
-   path evaluate the module eagerly again. That lazy wrap is for these in-repo
-   domain modules. An npm package follows the additional-module rule in
-   [What counts](#what-counts). Shared helpers (`{domain}/shared.ts`) are the
-   supported static entry points, so keep them light: helpers, not schema
-   catalogs.
+   module and dispatch loads the called domain on demand. Both loads use
+   [isolate memoization](../../../packages/worker/src/isolate-memo.ts), which
+   retries rejected loads and pending loads whose owning request has ended.
+   Direct Wrangler/esbuild worker builds keep domain code in the same bundle and
+   wrap those modules so each evaluates on its first dispatch, not on registry
+   load. Origin Vite builds emit those `import()` targets as hashed SSR chunks
+   under `dist/ssr`. Never import a `*/domain.ts` or a capability definition
+   module statically from anything on the startup path; one static edge makes
+   the Wrangler/esbuild path evaluate the module eagerly again. That lazy wrap
+   is for these in-repo domain modules. An npm package follows the
+   additional-module rule in [What counts](#what-counts). Shared helpers
+   (`{domain}/shared.ts`) are the supported static entry points, so keep them
+   light: helpers, not schema catalogs.
 2. **Heavy libraries load on first use.** `isomorphic-git` goes through
    `packages/worker/src/isomorphic-git-load.ts` (re-exported as
    `repo/isomorphic-git-lazy.ts`), including platform `RepoSession`. That helper

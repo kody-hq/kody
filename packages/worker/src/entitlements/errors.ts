@@ -347,10 +347,7 @@ export class EntitlementLimitError extends Error {
 
 export type ExecutionContextLimitScope = 'seat' | 'org'
 
-/**
- * Live owned execution contexts allowed in an org: one person may hold the
- * per-seat cap; paid orgs pool seats times it, and Free is one pool.
- */
+/** Org-wide registration cap; separate from the per-person cap. */
 export function executionContextOrgLimit(input: {
 	plan: PlanName
 	perSeat: number
@@ -361,10 +358,7 @@ export function executionContextOrgLimit(input: {
 		: input.perSeat * Math.max(1, input.seats)
 }
 
-/**
- * {@link buildEntitlementLimitMessage} for the two execution-context
- * registration caps. Both say which number blocked and how it was made.
- */
+/** Format a registration refusal for the cap that blocked it. */
 export function buildExecutionContextLimitMessage(input: {
 	scope: ExecutionContextLimitScope
 	plan: PlanName

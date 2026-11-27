@@ -16,8 +16,8 @@ audience: agents
 
 An execution context is a machine you run code on: your laptop, a home server,
 or a build box. Run `kody connect` there and `execute`, jobs, webhooks, and
-other automations can run on that machine instead of Kody cloud. Kody cloud is
-always there as the fallback.
+other automations can run on that machine instead of Kody cloud. Include Kody
+cloud last in your chain to use it as a fallback.
 
 Use one when code needs something only a machine has: a folder on disk, a device
 on your local network, or a tool installed there.
@@ -296,11 +296,10 @@ Kody cloud, such as a nested `execute`, counts on Kody cloud.
 
 ## The chain and cloud fallback
 
-Your chain is the ordered list of places Kody tries for your runs, up to three
-contexts, with Kody cloud last. For each run Kody walks the chain and uses the
-first entry that can take it. An entry is skipped when it is offline, busy, you
-lost access to it, or it lacks what the run `requires`. When no context can take
-the run, it runs on Kody cloud.
+Your chain is the ordered list of places Kody tries for your runs: up to eight
+contexts, with Kody cloud last if included. Kody walks the chain and uses the
+first entry that can take the run. It skips an entry when it is offline, busy,
+you lost access to it, or it lacks what the run `requires`.
 
 A machine counts as offline as soon as its heartbeat goes quiet: the daemon
 pings every 30 seconds, and a context whose last ping is older than 45 seconds
@@ -315,7 +314,8 @@ A run can also pick where it goes:
 - `context: "my-laptop"` runs there and does not fall back. Add
   `fallback: "chain"` to fall back to your chain instead of failing.
 - `chain: ["my-laptop", "build-box", "cloud"]` uses that order for this run. A
-  chain without `"cloud"` is strict: it fails instead of using Kody cloud.
+  [strict chain](../../packages/worker/src/execution-contexts/routing.node.test.ts)
+  leaves out `"cloud"` and fails rather than falling back to Kody cloud.
 - `requires: ["fs"]` or `requires: ["lan"]` skips Kody cloud and any context
   without host folders or LAN.
 

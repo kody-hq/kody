@@ -71,11 +71,8 @@ export function isGitPushNotFastForwardError(error: unknown) {
 }
 
 /**
- * Stable prefix when `repoRebaseSession` cannot merge the latest source into
- * the session. isomorphic-git conflict errors (`MergeConflictError`,
- * `MergeNotSupportedError`, `CheckoutConflictError`) reflect session content,
- * not platform state, so the DO rethrows them with this prefix and MCP
- * observability keeps them out of Sentry. KODY-HH.
+ * Stable prefix for caller-correctable rebase conflicts across DO RPC.
+ * See {@link toRepoSessionRebaseCallerError} for the mapped git errors.
  */
 export const repoSessionRebaseStoppedMessagePrefix =
 	'repoRebaseSession did not rebase the session: '

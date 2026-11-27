@@ -178,11 +178,8 @@ export async function viewerIsSavedPackageOrgOwner(input: {
 /**
  * Whether a signed-in person may run a hosted package app owned by this org,
  * asked as the person themselves (a session: no profile, no token scopes).
- * The decision is {@link checkAppVisitAccess}, the check every visit uses.
- * Owners always hold `app:execute`. Members and outside collaborators need a
- * grant that includes it (team member defaults do not, until that ships).
- * When `appId` is set, the check is for that app resource only: a grant on
- * another app does not open this one.
+ * Delegates to {@link checkAppVisitAccess} for the owning org's
+ * `app:execute` decision, scoped to the app when `appId` is provided.
  */
 export async function viewerCanExecutePackageApp(input: {
 	env: Env

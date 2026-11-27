@@ -1,17 +1,23 @@
 # App fetch
 
-`appFetch` calls a hosted package app you can run, as you: one HTTP request to
-the fetch handler `kody.app.entry` exports, answered with status, headers, and
-body. It is the one sanctioned way for an agent to use an app. It works for apps
-in any org you belong to and for apps another org shared with you.
+`appFetch` sends one HTTP request to a hosted package app as the signed-in
+person. Use [`appList`](#list-apps) to find the address, then
+[call it](#call-shape). For a walkthrough, see
+[Using apps as an agent](../guides/agent-apps.md).
 
-**It is a real visit with real side effects.** It goes through the same access
-check and the same serve path as a person opening the app in a browser: same
-package runtime, `packageStorage()`, secret mounts, billing, and "Run as me"
-confirmation. Each call is an `app_fetch` run in [Activity](./activity.md) and
-counts in the publisher's Visitors list.
+**An app request can have real side effects**, including a synthetic smoke test.
 
-The agent guide is [Using apps as an agent](../guides/agent-apps.md).
+## List apps
+
+`appList` lists hosted apps that pass the caller's `app:execute` check in the
+owning org. It searches orgs the person belongs to or has a grant in, not the
+entire public catalog. Filter to an org with `{ "owner": "acme" }`.
+
+Results include `app` (the `@org/app` address), `package_id`, `owner`,
+`hosted_url`, and `visibility`. `shared: true` means the person has no
+membership role in the owning org. The list sorts by app address and returns 100
+per page by default (maximum 200). Pass `next_cursor` as `cursor` for the next
+page; `null` marks the last page.
 
 ## Who may call it
 
@@ -85,10 +91,11 @@ equivalent) are rejected.
 | `body_encoding` | `text` or `base64`                                        |
 | `truncated`     | `true` when the body was cut to fit the response size cap |
 
-Over MCP the body always stops at 102,400 bytes, whatever `max_bytes` asks for.
-The Open API honors `max_bytes` up to 10,485,760; `kody app fetch --out <file>`
-asks for that and writes the body to the file, decoding binary responses from
-base64. Without `--out`, the CLI uses the default cap.
+For MCP OAuth calls the body stops at 102,400 bytes, whatever `max_bytes` asks
+for. The Open API honors `max_bytes` up to 10,485,760;
+`kody app fetch --out <file>` asks for that and writes the body to the file,
+decoding binary responses from base64. Without `--out`, the CLI uses the default
+cap.
 
 A host-setup 500 (`Package app could not be prepared`) can include the
 underlying platform error in `cause` when you pass `synthetic: true` (CLI:
@@ -108,9 +115,13 @@ Use on that credential, whatever the person allowed in a browser.
 
 ## Consent
 
-An agent never approves anything for the person. When the app still needs the
-person's one-time "Run as me" confirmation, or a visitor need the person has not
-allowed, the call fails with:
+An outside visitor with no membership role is asked for "Run as me" once per
+app. The
+[serve path](../../packages/worker/src/package-runtime/package-app-serve.ts)
+rechecks their approval before serving. An eligible browser GET navigation
+redirects for confirmation; a trusted in-process dispatch gets a 403 instead.
+`appFetch` reports missing "Run as me" approval or missing consent for a
+required visitor credential as:
 
 ```json
 {
@@ -126,17 +137,20 @@ allowed, the call fails with:
 ```
 
 `consent` is `run_as_me` or `visitor_need` (with `need`). Give `consent_url` to
-the person; they open it once in a browser, and the same call then works. The
-call itself records nothing.
+the person to approve in a browser, then retry. The call itself does not record
+approval. If the person has consented but the acting profile lacks Use on the
+credential, the result has `status: 403` with `app_profile_credential_required`
+in `body` instead. The HTTP call itself still succeeds, so check the result's
+`status`.
 
 ## Synthetic smoke tests
 
 After a publish, `test_hints.app` gives an `appFetch({ ..., synthetic: true })`
-call to copy. `synthetic: true` is the only way the `Kody-Synthetic: true`
-header is set; a caller-supplied `Kody-Synthetic` header is stripped. The
-handler still runs with real side effects, so handlers treat a synthetic fetch
-like production unless a deliberate guard says otherwise. Synthetic fetches do
-not count as visitor traffic.
+call to copy. The
+[trusted dispatch](../../packages/worker/src/package-runtime/package-app-synthetic.node.test.ts)
+adds `Kody-Synthetic: true` for that opt-in; a caller-supplied header is
+stripped. The handler still runs with real side effects unless app code
+deliberately guards them. Synthetic fetches do not count as visitor traffic.
 
 ## Semantics
 
@@ -144,6 +158,9 @@ not count as visitor traffic.
   headers) before the handler runs, the same rule as public package-app ingress.
 - Populates `packageContext` (`hostedUrl`, `appBasePath`) from the owning org
   and package name leaf.
+- Uses the browser serve path for package runtime, storage, and secret mounts.
+  Handler runs are recorded as `app_fetch` in [Activity](./activity.md); real
+  visits count in the publisher's Visitors list.
 - Bills like a browser visit: a member's visit bills the owning org, a shared
   cross-org visit bills the visitor's own org, and a public app bills its
   publisher.

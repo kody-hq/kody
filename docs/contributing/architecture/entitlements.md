@@ -1193,9 +1193,9 @@ email usage) should keep calling `getUserPlan` / `getUserEntitlement` directly.
 
 ## The error shape
 
-Every enforcement point throws `EntitlementLimitError` from
-`entitlements/errors.ts` and lets it propagate unchanged. Its `details` field is
-the stable programmatic contract:
+The shared enforcement helper throws `EntitlementLimitError` from
+`entitlements/errors.ts`. Its `details` field is the stable programmatic
+contract:
 
 ```ts
 {
@@ -1207,6 +1207,9 @@ the stable programmatic contract:
 	upgradeHint: string,
 }
 ```
+
+Execution-context registration reports its cap as HTTP 429; see the
+[registration limits reference](../../use/execution-contexts.md#registration-limits).
 
 The `message` is built by `buildEntitlementLimitMessage` and is the single
 user-facing string across MCP and UI surfaces. For rate/compute limits credits

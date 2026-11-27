@@ -4,19 +4,17 @@ export const packageAppSyntheticHeaderValue = 'true'
 export const appFetchCapabilityName = 'appFetch'
 
 /**
- * Platform-only marker for a trusted in-process app visit from `appFetch`.
- * The caller is an agent or script, never a browser, so a missing consent is
- * reported with the link the person opens instead of redirecting to it.
- * `synthetic` is the caller's explicit smoke-test opt-in: it is the only way
- * `Kody-Synthetic` reaches the app. Neither can be set through request
- * headers.
+ * Platform-only options for trusted in-process app dispatch.
+ * `agent` requests an actionable response for missing visitor-need consent.
+ * `synthetic` opts in to the `Kody-Synthetic` header. Run-as-me refusals use a
+ * 403 for either kind of dispatch; inbound headers set neither option.
  */
 export type PackageAppTrustedDispatch = {
 	readonly agent?: true
 	readonly synthetic?: boolean
 }
 
-/** Set on the 403 that tells an agent which visitor-need consent is missing. */
+/** Marks a visitor-need consent refusal; the response body names the need. */
 export const packageAppVisitorConsentRequiredHeader = 'X-Kody-Visitor-Consent'
 
 export function isPackageAppSyntheticRequest(request: Request) {
