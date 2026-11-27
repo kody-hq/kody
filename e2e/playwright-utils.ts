@@ -46,6 +46,19 @@ export async function waitForClientHydration(page: Page) {
 	})
 }
 
+/**
+ * Drop the browser session without racing the app's auth-guard redirect.
+ *
+ * Clearing cookies while still on an authenticated document lets the client
+ * navigate to `/login?redirectTo=…` at the same time Playwright `goto`s
+ * `/login`, which fails with "interrupted by another navigation". Unload the
+ * document first so the next navigation is uncontested.
+ */
+export async function clearBrowserSession(page: Page) {
+	await page.goto('about:blank')
+	await page.context().clearCookies()
+}
+
 const authRetryBudgetMs = 15_000
 const authRetryPauseMs = 250
 

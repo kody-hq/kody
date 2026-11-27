@@ -1,6 +1,7 @@
 import { generateTOTP } from '@epic-web/totp'
 import {
 	type Page,
+	clearBrowserSession,
 	expect,
 	test,
 	waitForClientHydration,
@@ -139,7 +140,7 @@ test('passkey lifecycle: reject unverified registration, retry, skip TOTP, sign 
 
 	// Sign in with the passkey instead of the password; land on /account, not
 	// /verify.
-	await page.context().clearCookies()
+	await clearBrowserSession(page)
 	clearAuthRateLimitsInE2eDatabase()
 	await gotoLocalhost(page, baseURL, '/login')
 	await page.getByRole('button', { name: 'Sign in with a passkey' }).click()

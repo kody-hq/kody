@@ -1,5 +1,10 @@
 import { generateTOTP, verifyTOTP } from '@epic-web/totp'
-import { expect, test, waitForClientHydration } from './playwright-utils.ts'
+import {
+	clearBrowserSession,
+	expect,
+	test,
+	waitForClientHydration,
+} from './playwright-utils.ts'
 import { clearAuthRateLimitsInE2eDatabase } from './d1-utils.ts'
 
 async function currentCodeFor(secret: string) {
@@ -71,7 +76,7 @@ test('two-factor lifecycle rejects invalid codes and recovers on enable, login, 
 		}),
 	).toBeVisible()
 
-	await page.context().clearCookies()
+	await clearBrowserSession(page)
 	clearAuthRateLimitsInE2eDatabase()
 	const resume =
 		'/oauth/authorize?client_id=redirect-audit&state=state-kept&prompt=login%20consent'
@@ -177,7 +182,7 @@ test('two-factor lifecycle rejects invalid codes and recovers on enable, login, 
 		page.getByText('Two-factor authentication is disabled.'),
 	).toBeVisible()
 
-	await page.context().clearCookies()
+	await clearBrowserSession(page)
 	clearAuthRateLimitsInE2eDatabase()
 	await page.goto('/login')
 	await waitForClientHydration(page)
