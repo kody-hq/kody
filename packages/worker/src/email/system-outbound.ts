@@ -419,12 +419,14 @@ async function deliverReservedEmail({
 						? 'System email was skipped because no Cloudflare Email credentials are configured.'
 						: (result.error ?? 'System email send failed.'),
 				)
-		// Lost transport or a 5xx may still have queued the message. An
-		// unreadable 2xx throws in sendCloudflareEmail and is treated the same.
+		// Lost transport, a 5xx, or a 2xx without a Cloudflare error code may
+		// still have queued the message. An unreadable 2xx throws earlier.
 		const mayHaveSent =
 			!result.skipped &&
 			!result.messageId &&
-			(result.status === undefined || result.status >= 500)
+			(result.status === undefined ||
+				result.status >= 500 ||
+				(result.status < 300 && result.providerCode === undefined))
 		throw mayHaveSent ? error : new ProviderRejection(error)
 	}
 	const providerMessageId = result.messageId ?? null

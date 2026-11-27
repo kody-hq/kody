@@ -835,3 +835,33 @@ test('simultaneous retries of a failed newsletter key make one provider call', a
 	}
 	expect(results.some((r) => r.status === 'fulfilled')).toBe(true)
 })
+
+test('a 2xx without success or an error code leaves the newsletter key outcome unknown', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	let calls = 0
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () => {
+				calls++
+				return HttpResponse.json({ result: {} })
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		idempotencyKey: 'campaign-ambiguous:user-1',
+		now: new Date('2026-11-27T20:00:00.000Z'),
+	}
+	await expect(sendNewsletterEmail(input)).rejects.toThrow()
+	const retry = await sendNewsletterEmail(input).catch(
+		(caught: unknown) => caught,
+	)
+	expect(isMcpCallerError(retry)).toBe(true)
+	expect((retry as Error).message).toContain('Outcome unknown')
+	expect(calls).toBe(1)
+})
