@@ -47,6 +47,7 @@ import kodyWeekly20261030 from './posts/kody-weekly-2026-10-30.md'
 import kodyWeekly20261106 from './posts/kody-weekly-2026-11-06.md'
 import kodyWeekly20261113 from './posts/kody-weekly-2026-11-13.md'
 import kodyWeekly20261120 from './posts/kody-weekly-2026-11-20.md'
+import kodyWeekly20261127 from './posts/kody-weekly-2026-11-27.md'
 import whatsNewInKody20261112 from './posts/whats-new-in-kody-2026-11-12.md'
 import whyWeMovedKodyFromRemix3ToTanstackStart from './posts/why-we-moved-kody-from-remix-3-to-tanstack-start.md'
 import selfServiceMeansOwnership from './posts/self-service-means-ownership.md'
@@ -235,6 +236,7 @@ const postSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'kody-weekly-2026-11-06', raw: kodyWeekly20261106 },
 	{ slug: 'kody-weekly-2026-11-13', raw: kodyWeekly20261113 },
 	{ slug: 'kody-weekly-2026-11-20', raw: kodyWeekly20261120 },
+	{ slug: 'kody-weekly-2026-11-27', raw: kodyWeekly20261127 },
 	{ slug: 'whats-new-in-kody-2026-11-12', raw: whatsNewInKody20261112 },
 	{
 		slug: 'why-we-moved-kody-from-remix-3-to-tanstack-start',
