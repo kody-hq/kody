@@ -323,6 +323,7 @@ test('package app kody proxy answers only metaGetCurrentUser for an identity-onl
 		email: '',
 		display_name: 'outsider',
 		org: { slug: 'owner' },
+		profile: null,
 	})
 	expect(calls).toEqual([])
 	// Every other capability still goes to the anonymous bridge and fails closed.
