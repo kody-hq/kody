@@ -37,6 +37,8 @@
 		"./start/document-negotiation.ts",
 		"./start/action-page-method.ts",
 		"./start/action-pages.ts",
+		"./start/campaigns/black-friday-2026/server.ts",
+		"./start/campaigns/black-friday-2026/offer.ts",
 
 		"./env.d.ts",
 		"./worker-configuration.d.ts",

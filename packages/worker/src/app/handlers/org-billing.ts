@@ -51,6 +51,7 @@ import {
 	BillingLinkError,
 	linkStripeCustomerFromCheckoutSessionAttribution,
 } from '#worker/billing/subscription-sync.ts'
+import { resolveBlackFridayCheckoutPromo } from '../../../start/campaigns/black-friday-2026/server.ts'
 import { enqueuePlatformFeedbackDispatch } from '#worker/platform-feedback/dispatch-queue-producer.ts'
 import { isPlatformFeedbackDomainError } from '#worker/platform-feedback/errors.ts'
 import { submitPlatformFeedback } from '#worker/platform-feedback/service.ts'
@@ -534,6 +535,10 @@ export async function startWebsiteCheckout(input: {
 		}
 
 		let promoClaim: { promotionCodeId: string; claimKey: string } | undefined
+		// A code the person did not type must never fail their checkout.
+		// Remove when: the Black Friday 2026 campaign folder is deleted (any
+		// time after 2026-11-30); see its README.
+		let promoIsOptional = false
 		if (promo.code) {
 			const resolved = await resolveCheckoutPromotionCode(env, {
 				code: promo.code,
@@ -544,6 +549,18 @@ export async function startWebsiteCheckout(input: {
 				return operationResult({ ok: false, error: resolved.error }, 400)
 			}
 			promoClaim = { promotionCodeId: resolved.id, claimKey: resolved.claimKey }
+		} else {
+			promoClaim =
+				(await resolveBlackFridayCheckoutPromo({
+					env,
+					userId: user.mcpUser.userId,
+					orgId: org.id,
+					interval,
+					now: new Date(),
+				})) ?? undefined
+			promoIsOptional = promoClaim !== undefined
+		}
+		if (promoClaim) {
 			const reserved = await reservePromoClaim({
 				db: env.APP_DB,
 				userId: user.mcpUser.userId,
@@ -551,40 +568,43 @@ export async function startWebsiteCheckout(input: {
 				orgId: org.id,
 				now: new Date(),
 			})
-			if (!reserved) {
+			if (!reserved && !promoIsOptional) {
 				return operationResult(
 					{ ok: false, error: promoClaimedRejection(promoClaim.claimKey) },
 					409,
 				)
 			}
+			if (!reserved) promoClaim = undefined
 		}
 
 		// Org is the billing subject; the signed-in member only authorizes.
 		const clientReferenceId = await createBillingLinkReference(env, org.id)
 		const successUrl = `${orgBillingUrl(request, org.slug, 'success').toString()}?session_id={CHECKOUT_SESSION_ID}`
-		let session: { id: string; url: string }
-		try {
-			session = await createCheckoutSession(env, {
+		const createSession = (claim: typeof promoClaim) =>
+			createCheckoutSession(env, {
 				priceId,
 				clientReferenceId,
 				successUrl,
 				cancelUrl: billingUrl,
 				quantity: seatQuantity,
 				...(customerId ? { customerId } : { customerEmail: user.email }),
-				...(promoClaim ? { promotionCodeId: promoClaim.promotionCodeId } : {}),
+				...(claim ? { promotionCodeId: claim.promotionCodeId } : {}),
 				// Org identity on Stripe objects (ADR 0065). HMAC client_reference_id
 				// is also org-backed and verified on link.
 				metadata: {
 					...buildOrgBillingMetadata(org.id),
 					kody_plan: plan,
-					...(promoClaim
+					...(claim
 						? promoClaimMetadata({
 								userId: user.mcpUser.userId,
-								...promoClaim,
+								...claim,
 							})
 						: {}),
 				},
 			})
+		let session: { id: string; url: string }
+		try {
+			session = await createSession(promoClaim)
 		} catch (error) {
 			if (promoClaim) {
 				await releasePromoReservation({
@@ -604,9 +624,17 @@ export async function startWebsiteCheckout(input: {
 					orgId: org.id,
 					code: error.code,
 				})
-				return operationResult({ ok: false, error: promoRejectedByStripe }, 400)
+				if (!promoIsOptional) {
+					return operationResult(
+						{ ok: false, error: promoRejectedByStripe },
+						400,
+					)
+				}
+				promoClaim = undefined
+				session = await createSession(undefined)
+			} else {
+				throw error
 			}
-			throw error
 		}
 		if (promoClaim) {
 			await attachPromoReservationSession({

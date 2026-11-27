@@ -14,6 +14,7 @@ import { accountManagementNarrowMq } from '../pages/account-management-link-nav.
 import { BrandContextMenu } from './brand-context-menu.tsx'
 import { DemoIndicator } from './demo-indicator.tsx'
 import { GuestBanner } from '../pages/guest-banner.tsx'
+import { BlackFridayWorkspaceCard } from '../campaigns/black-friday-2026/banner.tsx'
 import { KodyMark } from './kody-mark.tsx'
 import { AccountMenu } from './org-switcher.tsx'
 import { SiteLink } from './site-link.tsx'
@@ -515,6 +516,9 @@ export function WorkspaceLayout() {
 						}}
 					>
 						{session.guest ? <GuestBanner guest={session.guest} /> : null}
+						{fullPanel ? null : (
+							<BlackFridayWorkspaceCard orgSlug={navigation.orgSlug} />
+						)}
 						<Outlet />
 					</main>
 				</div>

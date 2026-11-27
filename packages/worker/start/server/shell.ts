@@ -89,6 +89,7 @@ export const loadShell = createServerFn({ method: 'GET' })
 			{ loadYoutubeWatchLoaderData },
 			{ parseYoutubeWatchSearch },
 			{ recordServerTiming },
+			{ loadBlackFridayBanner },
 		] = await Promise.all([
 			import('cloudflare:workers'),
 			import('@tanstack/react-start/server'),
@@ -100,6 +101,7 @@ export const loadShell = createServerFn({ method: 'GET' })
 			import('../../src/app/youtube-watch-ssr.ts'),
 			import('../../universal/youtube-watch.ts'),
 			import('../../src/request-context.ts'),
+			import('../campaigns/black-friday-2026/server.ts'),
 		])
 		const appEnv = getEnv(env)
 		setAuthSessionSecret(appEnv.COOKIE_SECRET)
@@ -130,6 +132,12 @@ export const loadShell = createServerFn({ method: 'GET' })
 			}),
 			fathomSiteId: appEnv.FATHOM_SITE_ID?.trim() || null,
 			youtubeWatch,
+			blackFridayBanner: await loadBlackFridayBanner({
+				env,
+				user: session ? resolvedAuth.user : null,
+				organizations: session?.organizations ?? null,
+				now: new Date(),
+			}),
 			canonicalOrigin: getCanonicalAppBaseUrl({
 				env: appEnv,
 				requestUrl: request.url,

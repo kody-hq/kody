@@ -11,6 +11,7 @@
 	],
 	"exclude": [
 		"start/server/**/*.node.test.ts",
+		"start/campaigns/black-friday-2026/**/*.node.test.ts",
 		"start/http-entry.node.test.ts",
 		"start/server-isolation.node.test.ts"
 	]
