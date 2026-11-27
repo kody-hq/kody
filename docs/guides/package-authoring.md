@@ -134,9 +134,9 @@ Before publish (`guide:package_lifecycle`): session lane — `repoRunChecks` the
 `repoPublishSession`; git lane — local checks, commit, push, then
 `packagePublishExternalPush` (sessions refuse unpublished HEAD). After publish,
 when Node ≥22.19 and the CLI are available, prefer local CLI execute
-(`guide:local_execute`). MCP-only hosts smoke with the matching post-publish
-surface (`appFetch`, `packageSubscriptionDispatch`, webhook synthetic dispatch)
-or a static `kody:@…` import from `execute` when that tool is on the session.
+(`guide:local_execute`) for exported functions. Smoke each declared surface with
+its matching [post-publish check](#verify-your-publish), including `appFetch`
+with `synthetic: true` for package apps.
 
 ## Edge cases
 
