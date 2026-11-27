@@ -36,7 +36,8 @@ first paint, and hides the banner for a visitor who dismissed it.
 2. `packages/worker/start/routes/__root.tsx`: remove the `BlackFridaySiteBar`
    import and its mount above `SiteHeader`.
 3. `packages/worker/start/components/workspace-layout.tsx`: remove the
-   `BlackFridayWorkspaceCard` import and its mount in `<main>`.
+   `BlackFridayWorkspaceCard` import and its mount in `<main>` (the
+   `fullPanel ? null : ...` expression around it goes too).
 4. `packages/worker/start/server/shell.ts`: remove the `loadBlackFridayBanner`
    import and the `blackFridayBanner` field of the shell data.
 5. `packages/worker/src/app/handlers/org-billing.ts` (`startWebsiteCheckout`):
@@ -45,8 +46,11 @@ first paint, and hides the banner for a visitor who dismissed it.
    `!reserved` fallthrough, and the full-price retry in the `catch`.
 6. `packages/worker/src/billing/checkout-promo.ts`: remove
    `hasBlockingPromoClaim` (only this campaign reads it).
-7. `packages/worker/tsconfig-worker.json`: remove the two
-   `./start/campaigns/black-friday-2026/` entries from `include`.
+7. `packages/worker/tsconfig-worker.json`, `tsconfig-start-tests.json`, and
+   `tsconfig-start-server-tests.json`: remove the
+   `start/campaigns/black-friday-2026/` entries.
+
+`git grep -n -i -e black-friday-2026 -e blackfriday` should then print nothing.
 
 Nothing is stored on the server for this campaign beyond the normal promo claim
 rows. The dismissal is a `localStorage` key

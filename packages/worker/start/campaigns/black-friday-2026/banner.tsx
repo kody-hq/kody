@@ -169,10 +169,13 @@ function Banner(props: { audience: BlackFridayAudience; href: string }) {
 				</div>
 			</section>
 			{/* Server HTML and its hydration only: a banner mounted in the
-			    browser already has the real countdown. */}
+			    browser already has the real countdown. The server and browser
+			    builds minify the script text differently, so hydration must not
+			    compare it. */}
 			{countdown === '' ? (
 				<script
 					nonce={nonce}
+					suppressHydrationWarning
 					dangerouslySetInnerHTML={{ __html: blackFridayPrePaintScript() }}
 				/>
 			) : null}

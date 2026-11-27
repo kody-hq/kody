@@ -47,7 +47,7 @@ export type BlackFridayBanner =
  * checkout runs live), and the person has no claim or live reservation for
  * this campaign.
  */
-export async function blackFridayOfferAvailable(input: {
+async function blackFridayOfferAvailable(input: {
 	db: D1Database
 	userId: string
 	orgId: string
@@ -73,7 +73,7 @@ export async function blackFridayOfferAvailable(input: {
 /** What the shell shows this viewer, if anything. */
 export async function loadBlackFridayBanner(input: {
 	env: Env
-	user: AuthenticatedAppUser | null
+	user: Pick<AuthenticatedAppUser, 'mcpUser'> | null
 	/** Organizations of the signed-in session; null when signed out. */
 	organizations: ReadonlyArray<{ slug: string; personal: boolean }> | null
 	/** Shell path: `/@slug` for an org page, `/` otherwise. */
