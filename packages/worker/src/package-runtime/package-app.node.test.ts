@@ -1337,6 +1337,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		...rc(buildPackageStorageId('dep-package'), ''),
+		undefined,
 	)
 	expect(setValue).toHaveBeenCalledWith({ key: 'flag', value: true })
 	// The bound binding cannot be pointed at another granted bucket either.
