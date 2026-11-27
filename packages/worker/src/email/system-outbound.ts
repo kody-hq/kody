@@ -23,6 +23,10 @@ import {
 import { dispatchSystemEmailSentSubscriptionEvent } from './system-email-sent-package-subscriptions.ts'
 import { buildSystemEmailSentEvent } from './system-email-sent-subscription-event.ts'
 import {
+	claimSystemEmailSendKey,
+	finishSystemEmailSendKey,
+} from './system-email-send-keys.ts'
+import {
 	recordSystemEmailSends,
 	systemEmailOperatorSendKind,
 } from './system-email-sends.ts'
@@ -49,6 +53,8 @@ export type SystemOutboundResult = {
 	from: string
 	to: Array<string>
 	providerMessageId: string | null
+	/** True when an idempotency key matched a finished send and nothing was sent. */
+	replayed?: boolean
 }
 
 function escapeHtml(value: string) {
@@ -128,12 +134,17 @@ type SystemEmailInput = {
 	headers?: Record<string, string>
 	/** Send kind recorded for delivery-report matching. */
 	kind?: string
+	/**
+	 * Newsletter only. Reserved per send kind before the counter or provider
+	 * is touched; see `system-email-send-keys.ts`.
+	 */
+	idempotencyKey?: string
 	now?: Date
 	waitUntil?: (promise: Promise<unknown>) => void
 }
 
 export async function sendSystemEmail(
-	input: SystemEmailInput,
+	input: Omit<SystemEmailInput, 'idempotencyKey'>,
 ): Promise<SystemOutboundResult> {
 	if (
 		!transactionalSystemEmailLocals.includes(
@@ -173,7 +184,10 @@ export async function sendNewsletterEmail(
  * newsletter delivery listings.
  */
 export async function sendNewsletterConfirmationEmail(
-	input: Omit<SystemEmailInput, 'localPart' | 'replyTo' | 'kind' | 'to'> & {
+	input: Omit<
+		SystemEmailInput,
+		'localPart' | 'replyTo' | 'kind' | 'to' | 'idempotencyKey'
+	> & {
 		to: string
 	},
 ): Promise<SystemOutboundResult> {
@@ -227,7 +241,117 @@ async function sendReservedEmail(
 				from,
 				replyTo: explicitReplyTo,
 			}) ?? null)
+	const now = input.now ?? new Date()
+	const kind = input.kind ?? systemEmailOperatorSendKind
+	const key = newsletter ? input.idempotencyKey?.trim() || null : null
+	if (key) {
+		const claim = await claimSystemEmailSendKey({
+			db: input.env.APP_DB,
+			kind,
+			key,
+			recipient: to[0]!,
+			now,
+		})
+		if (claim.type === 'replay') {
+			return {
+				from: claim.sender || from,
+				to,
+				providerMessageId: claim.providerMessageId,
+				replayed: true,
+			}
+		}
+	}
+	let providerReached = false
+	try {
+		const result = await deliverReservedEmail({
+			input,
+			newsletter,
+			localPart,
+			from,
+			to,
+			subject,
+			text,
+			html,
+			replyTo,
+			kind,
+			now,
+			onProviderCall: () => {
+				providerReached = true
+			},
+			onAccepted: async (providerMessageId) => {
+				if (!key) return
+				await finishSystemEmailSendKey({
+					db: input.env.APP_DB,
+					kind,
+					key,
+					state: 'sent',
+					sender: from,
+					providerMessageId,
+					now,
+				})
+			},
+		})
+		return result
+	} catch (error) {
+		if (key) {
+			// A thrown provider call may have reached Cloudflare; a definite
+			// rejection or any failure before the call did not.
+			await finishSystemEmailSendKey({
+				db: input.env.APP_DB,
+				kind,
+				key,
+				state:
+					providerReached && !(error instanceof ProviderRejection)
+						? 'unknown'
+						: 'failed',
+				now,
+			}).catch((finishError: unknown) => {
+				console.warn('system-email-send-key-finish-failed', finishError)
+			})
+		}
+		if (error instanceof ProviderRejection) throw error.rejection
+		throw error
+	}
+}
 
+/** A definite provider response that the message was not accepted. */
+class ProviderRejection extends Error {
+	readonly rejection: Error
+	constructor(rejection: Error) {
+		super(rejection.message)
+		this.rejection = rejection
+	}
+}
+
+async function deliverReservedEmail({
+	input,
+	newsletter,
+	localPart,
+	from,
+	to,
+	subject,
+	text,
+	html,
+	replyTo,
+	kind,
+	now,
+	onProviderCall,
+	onAccepted,
+}: {
+	input: SystemEmailInput
+	newsletter: boolean
+	localPart: SystemEmailLocal
+	from: string
+	to: Array<string>
+	subject: string
+	text: string | null
+	html: string | null
+	replyTo: string | null
+	kind: string
+	now: Date
+	onProviderCall: () => void
+	onAccepted: (providerMessageId: string | null) => Promise<void>
+}): Promise<SystemOutboundResult> {
 	for (const recipient of to) {
 		const suppression = await loadRecipientSuppression({
 			db: input.env.APP_DB,
@@ -238,7 +362,6 @@ async function sendReservedEmail(
 		}
 	}
 
-	const now = input.now ?? new Date()
 	const consumed = await consumeSystemEmailDailySend({
 		db: input.env.APP_DB,
 		localPart,
@@ -256,6 +379,7 @@ async function sendReservedEmail(
 	}
 
 	let result: Awaited<ReturnType<typeof sendCloudflareEmail>>
+	onProviderCall()
 	try {
 		result = await sendCloudflareEmail(
 			{
@@ -290,20 +414,28 @@ async function sendReservedEmail(
 			now,
 		})
 		const rejection = cloudflareRequestRejectionMessage(result)
-		if (rejection) throw new McpCallerError(rejection)
-		throw new Error(
-			result.skipped
-				? 'System email was skipped because no Cloudflare Email credentials are configured.'
-				: (result.error ?? 'System email send failed.'),
-		)
+		const error = rejection
+			? new McpCallerError(rejection)
+			: new Error(
+					result.skipped
+						? 'System email was skipped because no Cloudflare Email credentials are configured.'
+						: (result.error ?? 'System email send failed.'),
+				)
+		// Lost transport or a 5xx may still have queued the message.
+		const mayHaveSent =
+			!result.skipped &&
+			!result.messageId &&
+			(result.status === undefined || result.status >= 500)
+		throw mayHaveSent ? error : new ProviderRejection(error)
 	}
 	const providerMessageId = result.messageId ?? null
+	await onAccepted(providerMessageId)
 	await recordSystemEmailSends({
 		db: input.env.APP_DB,
 		providerMessageId,
 		recipients: to,
 		sender: from,
-		kind: input.kind ?? systemEmailOperatorSendKind,
+		kind,
 		now,
 	})
 	const resolvedHtml = html ?? htmlFromText(text ?? '')

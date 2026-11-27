@@ -39,6 +39,18 @@ can move a send during pagination. No new delivery pipeline is introduced. The
 returned send ID encodes the existing composite key as JSON, or is null when the
 provider returned no message ID and matching is unavailable.
 
+Cloudflare Email has no idempotency key or send lookup, so a caller that loses
+the response cannot tell whether a newsletter went out. `adminWhatsNewEmailSend`
+takes an optional `idempotency_key`, stable per campaign and recipient, stored
+in `system_email_send_keys` per send kind. Kody reserves the key before the
+daily counter or Cloudflare is touched. A retry of a sent key returns the stored
+result with `replayed: true` and sends nothing. A key refused before Cloudflare
+accepted anything (suppression, daily limit, a 4xx rejection) may be retried. A
+key still pending, or whose provider call was lost in transport or answered 5xx,
+is refused as outcome unknown and never retried automatically, because the
+message may already have been delivered. Keys expire with the 90-day send
+retention.
+
 The package owns composition, audience selection, consent checks before sending,
 and signed opt-in/out links and public pages. No platform unsubscribe-token API
 or general bulk-mail primitive is introduced.

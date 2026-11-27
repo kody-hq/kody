@@ -255,6 +255,7 @@ test('newsletter capabilities require a site admin and send exactly one recipien
 	expect(await send.handler(input, admin)).toMatchObject({
 		provider_message_id: 'message-1',
 		send_id: JSON.stringify(['message-1', input.to]),
+		replayed: false,
 	})
 	expect(mocks.sendNewsletterEmail).toHaveBeenCalledWith(
 		expect.objectContaining(input),
@@ -272,6 +273,22 @@ test('newsletter capabilities require a site admin and send exactly one recipien
 	await expect(
 		send.handler({ to: input.to, subject: 'Empty' }, admin),
 	).rejects.toThrow('Email text or HTML')
+	mocks.sendNewsletterEmail.mockResolvedValueOnce({
+		from: 'news@kody.example.com',
+		to: [input.to],
+		providerMessageId: 'message-1',
+		replayed: true,
+	})
+	expect(
+		await send.handler({ ...input, idempotency_key: 'campaign:user' }, admin),
+	).toMatchObject({ provider_message_id: 'message-1', replayed: true })
+	expect(mocks.sendNewsletterEmail.mock.calls.at(-1)?.[0]).toMatchObject({
+		idempotencyKey: 'campaign:user',
+	})
+	expect(mocks.sendNewsletterEmail.mock.calls.at(-1)?.[0]).not.toHaveProperty(
+		'idempotency_key',
+	)
+	expect(logAuditEventSpy.mock.calls.at(-1)?.[0].reason).toContain('replayed')
 	mocks.sendNewsletterEmail.mockRejectedValueOnce(new Error('Provider failed'))
 	await expect(send.handler(input, admin)).rejects.toThrow('Provider failed')
 	mocks.sendNewsletterEmail.mockResolvedValueOnce({
