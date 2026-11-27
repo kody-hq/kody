@@ -556,8 +556,9 @@ without consent.
 handler smoke tests after publish. When the host can run the CLI, prefer
 [Local testing with `kody dev`](#local-testing-with-kody-dev) while the package
 is still unpublished. MCP-only agents (no shell) validate with `repoRunChecks`,
-publish, then smoke with `appFetch`. Use the handed-off or OAuth URL for
-cookies, layout, redirects, and websocket facets.
+publish, then smoke with
+[`appFetch` and `synthetic: true`](#smoke-with-appfetch). Use the handed-off or
+OAuth URL for cookies, layout, redirects, and websocket facets.
 
 ## Local testing with `kody dev`
 
@@ -927,12 +928,10 @@ side effects. Pass `synthetic: true` for a smoke test: it sets the
 it the call is a real visit. Read [App fetch](../use/app-fetch.md) for the call
 shape.
 
-`appFetch` is also how an agent uses an app it can run, including one shared
-from another org: same access check as a browser visit, the person's `user_id`,
-and a `profile` label when a profile token calls. See
-[Using apps as an agent](./agent-apps.md). To use an app, call `appFetch`; to
-reuse its code inside the same org, import it. Hosted URLs are for browsers and
-never take an API token.
+For ordinary agent visits, including visits to apps shared from another org, see
+[Using apps as an agent](./agent-apps.md). From a terminal, use
+`kody app fetch @org/app / --synthetic` for a smoke test. Pass a hosted URL as
+the app address if you do not know its scoped name.
 
 Typical first probe:
 
@@ -944,9 +943,10 @@ Typical first probe:
 }
 ```
 
-Check status, content-type, and a small HTML or JS snippet in `body`. When
-`truncated` is `true`, the handler ran; the MCP body is a size-capped sample
-(about 100 KB). Side effects are real.
+Check status, content-type, and a small HTML or JS snippet in `body`.
+`truncated: true` means the response hit the size cap; it does not tell you
+whether the response came from the handler, a platform asset, or a platform
+error. Synthetic calls still have real side effects.
 
 Copy-paste starting points land on `test_hints.app` after
 `packagePublishExternalPush`.
@@ -977,8 +977,8 @@ against the handed-off or local harness URL, or the streamed app route that
 serves those bytes — and confirm length, content-type, and that the file opens
 in the client.
 
-Treat `truncated: true` as “the handler answered,” then finish the proof on the
-full stream.
+If `truncated` is `true`, check the status and headers, then verify the full
+stream.
 
 ## Remix recipe
 
@@ -2190,9 +2190,9 @@ old caches on activate.
   import and keep the client entry out of `src/app.ts`.
 - **`appFetch` returns HTTP 500 `"Package app could not be prepared"`** —
   host-setup failed before package code ran (manifest load, worker build, or
-  asset prep). The JSON body includes `cause` on synthetic fetches. Publish
-  rejects `kody.app.runtime`; published snapshots that still contain the field
-  serve without it.
+  asset prep). For details, pass `synthetic: true` and check the JSON body for
+  `cause`. Publish rejects `kody.app.runtime`; published snapshots that still
+  contain the field serve without it.
 
 Checked-in browser-ready `.js` served from the fetch handler with an explicit
 `Content-Type` is valid; `client` is the pit-of-success path for source you want

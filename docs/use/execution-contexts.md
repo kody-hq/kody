@@ -100,11 +100,15 @@ omitted when there are none.
 
 ## Registration limits
 
-Registration counts unrevoked contexts owned by the org. The plan caps both each
-person's registrations and the org total. Free uses one org-wide pool; paid
-plans multiply the per-seat amount by live seats (at least one). When
-registration hits a cap, revoke an unused context with
-`kody context revoke <name>`.
+Registration counts unrevoked contexts owned by the org, excluding those it only
+attaches from elsewhere. One person may own 10 in an org on Free, 20 on Standard
+and Pro, or 50 on Max. Free uses one org-wide pool of 10; paid plans multiply
+the per-seat amount by live seats (at least one).
+
+A registration over either cap returns HTTP 429 `entitlement_limit`.
+`details.resource` is `execution_contexts_per_seat` or
+`execution_contexts_per_org`. Revoke an unused context with
+`kody context revoke <name>`, or upgrade if available.
 
 ## Auto-update
 

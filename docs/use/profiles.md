@@ -150,14 +150,12 @@ fails, revoke it yourself with `profileRevoke`.
   reason `profile_grant`. Host commands (`kody.command.*`) on a context also
   need `execution_context:command` in every layer of the chain, even when you
   operate the machine.
-- **Apps:** a profile calls an app with `appFetch` (or `kody app fetch`) when
-  its chain holds `app:execute` on that app. The app sees the person's `user_id`
-  plus `profile: { id, name }`. A `grants[]` entry or `accessGrant` with
-  `resource_type: "app"` may name an app another org shared with the person:
-  pass the `package_id` from `appList`. The person must hold `app:execute` on
-  it, a sub-profile cannot get more than its parent holds, and the grant is
-  stored in the org that owns the app. A visitor-need credential also needs a
-  grant on the credential itself in every layer. See
+- **Apps:** `appFetch` (or `kody app fetch`) reaches an app only when the
+  profile chain holds `app:execute` on it; the app sees the person plus
+  `profile: { id, name }`. A grant may name an app another org shared with the
+  person (`package_id` from `appList`). The person must be able to run the app,
+  and a sub-profile cannot get an app its parent lacks
+  ([test](../../packages/worker/src/app-visit/authorize.node.test.ts)). See
   [App fetch](./app-fetch.md).
 - **Jobs, triggers, app visits:** what a profile turns on runs as that profile.
   When the profile or a parent is revoked or expires, the enablement pauses with

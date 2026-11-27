@@ -36,20 +36,21 @@ page; `null` marks the last page.
 }
 ```
 
-| Field        | Default | Meaning                                                               |
-| ------------ | ------- | --------------------------------------------------------------------- |
-| `app`        |         | `@org/app`, or the app's hosted URL. `appList` returns it             |
-| `package_id` |         | The app's package id, instead of `app`                                |
-| `path`       | `/`     | Path **after** the app mount (what the handler sees)                  |
-| `method`     | `GET`   | HTTP method                                                           |
-| `headers`    | `{}`    | Extra request headers (safe subset)                                   |
-| `body`       | omitted | Raw request body string for `POST` / `PUT` / `PATCH`, up to 100 KB    |
-| `synthetic`  | `false` | `true` marks a smoke test with the `Kody-Synthetic: true` header      |
-| `max_bytes`  | 102400  | Most response bytes to return. Up to 10485760 on the Open API and CLI |
+| Field        | Default            | Meaning                                                               |
+| ------------ | ------------------ | --------------------------------------------------------------------- |
+| `app`        |                    | `@org/app`, or the app's hosted URL. `appList` returns it             |
+| `package_id` |                    | The app's package id, instead of `app`                                |
+| `path`       | App address or `/` | Path **after** the app mount (what the handler sees)                  |
+| `method`     | `GET`              | HTTP method                                                           |
+| `headers`    | `{}`               | Extra request headers (safe subset)                                   |
+| `body`       | omitted            | Raw request body string for `POST` / `PUT` / `PATCH`, up to 100 KB    |
+| `synthetic`  | `false`            | `true` marks a smoke test with the `Kody-Synthetic: true` header      |
+| `max_bytes`  | 102400             | Most response bytes to return. Up to 10485760 on the Open API and CLI |
 
 Pass `app` or `package_id`. The lookup uses the org the address names, not the
 org your connection is bound to, which is what lets a shared app in another org
-work.
+work. If you omit `path`, the call uses the path in the app address if present,
+or `/` otherwise.
 
 Example POST with JSON:
 
@@ -71,9 +72,11 @@ kody app fetch @acme/board /api/items --method POST \
 kody app fetch https://board--acme.kody.run/export.csv --out export.csv
 ```
 
-The CLI sends your token to the Kody API only. The app's hosted URL is an
-address here; nothing is sent to it. When the address names the org, `--org` is
-not needed, and a different `--org` is refused.
+The [CLI calls the Kody Open API](../../packages/cli/src/cli.ts) with your token
+and passes the hosted URL as an app address, not as the request destination.
+With an `@org/app` address, an explicit `--org` must match that org; omit
+`--org` with a hosted URL. `KODY_ORG` and the stored active org do not set the
+app's owning org.
 
 Websocket upgrade requests (`Upgrade: websocket`, `Connection: Upgrade`, or
 equivalent) are rejected.
@@ -90,10 +93,13 @@ equivalent) are rejected.
 
 For MCP OAuth calls the body stops at 102,400 bytes, whatever `max_bytes` asks
 for. The Open API honors `max_bytes` up to 10,485,760;
-`kody app fetch --out <file>` asks for that and writes the body to the file.
+`kody app fetch --out <file>` asks for that and writes the body to the file,
+decoding binary responses from base64. Without `--out`, the CLI uses the default
+cap.
 
-A host-setup 500 (`Package app could not be prepared`) includes `cause` with the
-platform error. Host-setup failures happen before the isolate starts, so they do
+A host-setup 500 (`Package app could not be prepared`) can include the
+underlying platform error in `cause` when you pass `synthetic: true` (CLI:
+`--synthetic`). Host-setup failures happen before the isolate starts, so they do
 not appear as `app_fetch` run errors.
 
 ## Identity
