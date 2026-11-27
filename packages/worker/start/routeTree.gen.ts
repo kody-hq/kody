@@ -257,6 +257,7 @@ import { Route as AppAccountSecretsApproveRouteImport } from './routes/_app.acco
 import { Route as AppAccountSecretsNewRouteImport } from './routes/_app.account_.secrets_.new'
 import { Route as AppAccountWorkflowsWorkflowIdRouteImport } from './routes/_app.account_.workflows_.$workflowId'
 import { Route as AppAdminAccountDeletionsApprovalIdRouteImport } from './routes/_app.admin.account-deletions_.$approvalId'
+import { Route as AppAdminInsightsSessionsRouteImport } from './routes/_app.admin.insights_.sessions'
 import { Route as AppAdminOrgsOrgSlugRouteImport } from './routes/_app.admin.orgs_.$orgSlug'
 import { Route as AppAdminPlatformIntegrationsSlugRouteImport } from './routes/_app.admin.platform-integrations_.$slug'
 import { Route as AppAdminPlatformIntegrationsNewRouteImport } from './routes/_app.admin.platform-integrations_.new'
@@ -299,6 +300,7 @@ import { Route as AppAtChar123orgSlugChar125RepositoriesNewRouteImport } from '.
 import { Route as AppAtChar123orgSlugChar125SecretProvidersApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers_.approve'
 import { Route as AppAtChar123orgSlugChar125SecretsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.approve'
 import { Route as AppAtChar123orgSlugChar125SecretsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.new'
+import { Route as AppAtChar123orgSlugChar125SettingsSessionInsightsRouteImport } from './routes/_app.@{$orgSlug}_.-.settings_.session-insights'
 import { Route as AppAtChar123orgSlugChar125WorkflowsWorkflowIdRouteImport } from './routes/_app.@{$orgSlug}_.-.workflows_.$workflowId'
 import { Route as AppAtChar123usernameChar125KodyIdFilesSplatRouteImport } from './routes/_app.@{$username}_.$kodyId_.files.$'
 import { Route as AppAccountAgentsNewAgentRouteImport } from './routes/_app.account_.agents_.new_.$agent'
@@ -1652,6 +1654,12 @@ const AppAdminAccountDeletionsApprovalIdRoute =
     path: '/admin/account-deletions/$approvalId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAdminInsightsSessionsRoute =
+  AppAdminInsightsSessionsRouteImport.update({
+    id: '/admin/insights_/sessions',
+    path: '/admin/insights/sessions',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAdminOrgsOrgSlugRoute = AppAdminOrgsOrgSlugRouteImport.update({
   id: '/admin/orgs_/$orgSlug',
   path: '/admin/orgs/$orgSlug',
@@ -1901,6 +1909,12 @@ const AppAtChar123orgSlugChar125SecretsNewRoute =
   AppAtChar123orgSlugChar125SecretsNewRouteImport.update({
     id: '/@{$orgSlug}_/-/secrets_/new',
     path: '/@{$orgSlug}/-/secrets/new',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SettingsSessionInsightsRoute =
+  AppAtChar123orgSlugChar125SettingsSessionInsightsRouteImport.update({
+    id: '/@{$orgSlug}_/-/settings_/session-insights',
+    path: '/@{$orgSlug}/-/settings/session-insights',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute =
@@ -2295,6 +2309,7 @@ export interface FileRoutesByFullPath {
   '/account/secrets/new': typeof AppAccountSecretsNewRoute
   '/account/workflows/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
   '/admin/account-deletions/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/admin/insights/sessions': typeof AppAdminInsightsSessionsRoute
   '/admin/orgs/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/admin/platform-integrations/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AppAdminPlatformIntegrationsNewRoute
@@ -2338,6 +2353,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/secret-providers/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/@{$orgSlug}/-/secrets/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/@{$orgSlug}/-/secrets/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
+  '/@{$orgSlug}/-/settings/session-insights': typeof AppAtChar123orgSlugChar125SettingsSessionInsightsRoute
   '/@{$orgSlug}/-/workflows/$workflowId': typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute
   '/@{$username}/$kodyId/files/$': typeof AppAtChar123usernameChar125KodyIdFilesSplatRoute
   '/account/agents/new/$agent': typeof AppAccountAgentsNewAgentRoute
@@ -2608,6 +2624,7 @@ export interface FileRoutesByTo {
   '/account/secrets/new': typeof AppAccountSecretsNewRoute
   '/account/workflows/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
   '/admin/account-deletions/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/admin/insights/sessions': typeof AppAdminInsightsSessionsRoute
   '/admin/orgs/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/admin/platform-integrations/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AppAdminPlatformIntegrationsNewRoute
@@ -2651,6 +2668,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/secret-providers/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/@{$orgSlug}/-/secrets/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/@{$orgSlug}/-/secrets/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
+  '/@{$orgSlug}/-/settings/session-insights': typeof AppAtChar123orgSlugChar125SettingsSessionInsightsRoute
   '/@{$orgSlug}/-/workflows/$workflowId': typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute
   '/@{$username}/$kodyId/files/$': typeof AppAtChar123usernameChar125KodyIdFilesSplatRoute
   '/account/agents/new/$agent': typeof AppAccountAgentsNewAgentRoute
@@ -2924,6 +2942,7 @@ export interface FileRoutesById {
   '/_app/account_/secrets_/new': typeof AppAccountSecretsNewRoute
   '/_app/account_/workflows_/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
   '/_app/admin/account-deletions_/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/_app/admin/insights_/sessions': typeof AppAdminInsightsSessionsRoute
   '/_app/admin/orgs_/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/_app/admin/platform-integrations_/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/_app/admin/platform-integrations_/new': typeof AppAdminPlatformIntegrationsNewRoute
@@ -2967,6 +2986,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/secret-providers_/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/_app/@{$orgSlug}_/-/secrets_/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/_app/@{$orgSlug}_/-/secrets_/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
+  '/_app/@{$orgSlug}_/-/settings_/session-insights': typeof AppAtChar123orgSlugChar125SettingsSessionInsightsRoute
   '/_app/@{$orgSlug}_/-/workflows_/$workflowId': typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute
   '/_app/@{$username}_/$kodyId_/files/$': typeof AppAtChar123usernameChar125KodyIdFilesSplatRoute
   '/_app/account_/agents_/new_/$agent': typeof AppAccountAgentsNewAgentRoute
@@ -3240,6 +3260,7 @@ export interface FileRouteTypes {
     | '/account/secrets/new'
     | '/account/workflows/$workflowId'
     | '/admin/account-deletions/$approvalId'
+    | '/admin/insights/sessions'
     | '/admin/orgs/$orgSlug'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
@@ -3283,6 +3304,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers/approve'
     | '/@{$orgSlug}/-/secrets/approve'
     | '/@{$orgSlug}/-/secrets/new'
+    | '/@{$orgSlug}/-/settings/session-insights'
     | '/@{$orgSlug}/-/workflows/$workflowId'
     | '/@{$username}/$kodyId/files/$'
     | '/account/agents/new/$agent'
@@ -3553,6 +3575,7 @@ export interface FileRouteTypes {
     | '/account/secrets/new'
     | '/account/workflows/$workflowId'
     | '/admin/account-deletions/$approvalId'
+    | '/admin/insights/sessions'
     | '/admin/orgs/$orgSlug'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
@@ -3596,6 +3619,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers/approve'
     | '/@{$orgSlug}/-/secrets/approve'
     | '/@{$orgSlug}/-/secrets/new'
+    | '/@{$orgSlug}/-/settings/session-insights'
     | '/@{$orgSlug}/-/workflows/$workflowId'
     | '/@{$username}/$kodyId/files/$'
     | '/account/agents/new/$agent'
@@ -3868,6 +3892,7 @@ export interface FileRouteTypes {
     | '/_app/account_/secrets_/new'
     | '/_app/account_/workflows_/$workflowId'
     | '/_app/admin/account-deletions_/$approvalId'
+    | '/_app/admin/insights_/sessions'
     | '/_app/admin/orgs_/$orgSlug'
     | '/_app/admin/platform-integrations_/$slug'
     | '/_app/admin/platform-integrations_/new'
@@ -3911,6 +3936,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/secret-providers_/approve'
     | '/_app/@{$orgSlug}_/-/secrets_/approve'
     | '/_app/@{$orgSlug}_/-/secrets_/new'
+    | '/_app/@{$orgSlug}_/-/settings_/session-insights'
     | '/_app/@{$orgSlug}_/-/workflows_/$workflowId'
     | '/_app/@{$username}_/$kodyId_/files/$'
     | '/_app/account_/agents_/new_/$agent'
@@ -5826,6 +5852,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminAccountDeletionsApprovalIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/insights_/sessions': {
+      id: '/_app/admin/insights_/sessions'
+      path: '/admin/insights/sessions'
+      fullPath: '/admin/insights/sessions'
+      preLoaderRoute: typeof AppAdminInsightsSessionsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/admin/orgs_/$orgSlug': {
       id: '/_app/admin/orgs_/$orgSlug'
       path: '/admin/orgs/$orgSlug'
@@ -6120,6 +6153,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125SecretsNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/settings_/session-insights': {
+      id: '/_app/@{$orgSlug}_/-/settings_/session-insights'
+      path: '/@{$orgSlug}/-/settings/session-insights'
+      fullPath: '/@{$orgSlug}/-/settings/session-insights'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SettingsSessionInsightsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/workflows_/$workflowId': {
       id: '/_app/@{$orgSlug}_/-/workflows_/$workflowId'
       path: '/@{$orgSlug}/-/workflows/$workflowId'
@@ -6405,6 +6445,7 @@ interface AppRouteChildren {
   AppAccountSecretsNewRoute: typeof AppAccountSecretsNewRoute
   AppAccountWorkflowsWorkflowIdRoute: typeof AppAccountWorkflowsWorkflowIdRoute
   AppAdminAccountDeletionsApprovalIdRoute: typeof AppAdminAccountDeletionsApprovalIdRoute
+  AppAdminInsightsSessionsRoute: typeof AppAdminInsightsSessionsRoute
   AppAdminOrgsOrgSlugRoute: typeof AppAdminOrgsOrgSlugRoute
   AppAdminPlatformIntegrationsSlugRoute: typeof AppAdminPlatformIntegrationsSlugRoute
   AppAdminPlatformIntegrationsNewRoute: typeof AppAdminPlatformIntegrationsNewRoute
@@ -6435,6 +6476,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125SecretProvidersApproveRoute: typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   AppAtChar123orgSlugChar125SecretsApproveRoute: typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   AppAtChar123orgSlugChar125SecretsNewRoute: typeof AppAtChar123orgSlugChar125SecretsNewRoute
+  AppAtChar123orgSlugChar125SettingsSessionInsightsRoute: typeof AppAtChar123orgSlugChar125SettingsSessionInsightsRoute
   AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute: typeof AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute
   AppAtChar123usernameChar125KodyIdFilesSplatRoute: typeof AppAtChar123usernameChar125KodyIdFilesSplatRoute
   AppAccountAgentsNewAgentRoute: typeof AppAccountAgentsNewAgentRoute
@@ -6598,6 +6640,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountWorkflowsWorkflowIdRoute: AppAccountWorkflowsWorkflowIdRoute,
   AppAdminAccountDeletionsApprovalIdRoute:
     AppAdminAccountDeletionsApprovalIdRoute,
+  AppAdminInsightsSessionsRoute: AppAdminInsightsSessionsRoute,
   AppAdminOrgsOrgSlugRoute: AppAdminOrgsOrgSlugRoute,
   AppAdminPlatformIntegrationsSlugRoute: AppAdminPlatformIntegrationsSlugRoute,
   AppAdminPlatformIntegrationsNewRoute: AppAdminPlatformIntegrationsNewRoute,
@@ -6652,6 +6695,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125SecretsApproveRoute,
   AppAtChar123orgSlugChar125SecretsNewRoute:
     AppAtChar123orgSlugChar125SecretsNewRoute,
+  AppAtChar123orgSlugChar125SettingsSessionInsightsRoute:
+    AppAtChar123orgSlugChar125SettingsSessionInsightsRoute,
   AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute:
     AppAtChar123orgSlugChar125WorkflowsWorkflowIdRoute,
   AppAtChar123usernameChar125KodyIdFilesSplatRoute:

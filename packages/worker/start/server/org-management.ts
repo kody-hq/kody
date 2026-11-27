@@ -82,6 +82,29 @@ export const loadOrgSettings = createServerFn({ method: 'GET' })
 		return loadOrgSettingsData({ ...input, org: access.org })
 	})
 
+export const loadOrgSessionInsights = createServerFn({ method: 'GET' })
+	.validator(slugInput)
+	.handler(async ({ data }) => {
+		const input = await orgContext(data.slug, 'settings/session-insights')
+		const [{ resolveOrgManagementAccess }, { loadOrgSessionInsightsData }] =
+			await Promise.all([
+				import('../../src/app/org-management-access.ts'),
+				import('../../src/app/handlers/session-insights.ts'),
+			])
+		const access = await resolveOrgManagementAccess({
+			...input,
+			permission: 'org:read',
+		})
+		if (!access.ok) {
+			if (access.status === 404) throw notFound()
+			const { setResponseStatus } = await import('@tanstack/react-start/server')
+			setResponseStatus(403)
+			throw new PermissionDeniedError(access.error)
+		}
+
+		return loadOrgSessionInsightsData({ ...input, org: access.org })
+	})
+
 export const loadOrgTeams = createServerFn({ method: 'GET' })
 	.validator(slugInput)
 	.handler(async ({ data }) => {

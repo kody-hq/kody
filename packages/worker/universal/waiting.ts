@@ -17,6 +17,7 @@ import {
 } from './community-links.ts'
 import { orgResourcePath, orgResourcePathForAccountPath } from './org-pages.ts'
 import { routes } from './routes.ts'
+import { sessionAnalyticsAskTitle } from './session-analytics.ts'
 
 export const waitingItemKinds = [
 	'verify-email',
@@ -34,6 +35,7 @@ export const waitingItemKinds = [
 	'context-elevation',
 	'context-misconfigured',
 	'context-open-shell',
+	'session-analytics-choice',
 ] as const
 
 type WaitingItemKind = (typeof waitingItemKinds)[number]
@@ -186,6 +188,11 @@ export type WaitingSignals = {
 	firstUseMissing: Array<WaitingFirstUseId>
 	/** Execution-context notices for the viewer (ADR 0096). */
 	contextNotices?: Array<WaitingContextNoticeSignal>
+	/**
+	 * Set when this organization has not answered the session analytics
+	 * question and the viewer is an Owner or Admin who can answer it.
+	 */
+	sessionAnalyticsChoice?: { orgName: string } | null
 }
 
 type WaitingContextNoticeSignal = {
@@ -217,6 +224,7 @@ const kindRank: Record<WaitingItemKind, number> = {
 	'context-misconfigured': 12,
 	'context-elevation': 13,
 	'context-open-shell': 14,
+	'session-analytics-choice': 15,
 }
 
 const firstUseRank = Object.fromEntries(
@@ -260,6 +268,19 @@ export function buildWaitingItems(
 			doLabel: notice.kind === 'misconfigured' ? 'Fix it' : 'Review',
 			href: orgResourcePath(orgSlug, 'execution-contexts', notice.contextId),
 			severity: notice.kind === 'misconfigured' ? 'degraded' : 'setup',
+		})
+	}
+
+	if (signals.sessionAnalyticsChoice) {
+		items.push({
+			id: 'session-analytics-choice',
+			kind: 'session-analytics-choice',
+			title: sessionAnalyticsAskTitle,
+			why: `Off until you answer. Kody would count how agent sessions in ${signals.sessionAnalyticsChoice.orgName} go and where they get stuck, and never store what agents send. Only a person can answer this; an agent can pass the question along but must not answer for you.`,
+			who: 'you',
+			doLabel: 'Choose in settings',
+			href: `/@${orgSlug}/-/settings#session-analytics`,
+			severity: 'setup',
 		})
 	}
 

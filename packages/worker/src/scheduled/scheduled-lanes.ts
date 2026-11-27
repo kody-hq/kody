@@ -1,3 +1,4 @@
+import { runSessionAnalyticsMaintenance } from '#worker/session-analytics/weekly.ts'
 import { pruneExpiredGuestAccounts } from '#worker/guest/guest-account-purge.ts'
 import { checkD1ReplicaReadsAndAlert } from '#worker/d1-replica-read-alert.ts'
 import { runPackageAppHostMigrationReminder } from '#worker/package-codemods/host-migration-reminder.ts'
@@ -227,6 +228,18 @@ export async function runScheduledLane(input: {
 					reason: 'query_failed',
 				}
 			}
+			let sessionAnalytics:
+				| Awaited<ReturnType<typeof runSessionAnalyticsMaintenance>>
+				| { status: 'failed' }
+			try {
+				sessionAnalytics = await runSessionAnalyticsMaintenance({
+					env: input.env,
+					now: input.scheduledAt,
+				})
+			} catch (error) {
+				console.warn('session-analytics-maintenance-failed', error)
+				sessionAnalytics = { status: 'failed' }
+			}
 			let runLogSnapshot: { status: 'ok' | 'failed' }
 			try {
 				await refreshAdminInsightsRunLogSnapshot({
@@ -257,6 +270,7 @@ export async function runScheduledLane(input: {
 				fleetPackageErrorRate,
 				packageOwnerErrorSpike,
 				runLogSnapshot,
+				sessionAnalytics,
 				creditDebits,
 			}
 		}

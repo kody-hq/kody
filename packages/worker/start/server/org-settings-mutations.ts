@@ -1,5 +1,10 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
+import {
+	sessionInsightsScopes,
+	sessionOutcomes,
+	sessionStuckKinds,
+} from '#universal/session-analytics.ts'
 const orgSlug = z.string().min(1)
 export const updateOrganizationProfile = createServerFn({ method: 'POST' })
 	.validator(
@@ -63,6 +68,24 @@ export const updateOrganizationUsageWarnings = createServerFn({
 			async (context) =>
 				requireOperationResult(
 					await updateOrganizationUsageWarnings({ ...context, ...data }),
+				),
+		)
+	})
+export const updateOrganizationSessionAnalytics = createServerFn({
+	method: 'POST',
+})
+	.validator(z.object({ orgSlug, enabled: z.boolean() }))
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { updateOrganizationSessionAnalytics } =
+			await import('../../src/app/handlers/org-settings.ts')
+		const { requireOperationResult } =
+			await import('../../src/app/operation-result.ts')
+		return withWebsiteMutation(
+			{ scope: { orgSlug: data.orgSlug } },
+			async (context) =>
+				requireOperationResult(
+					await updateOrganizationSessionAnalytics({ ...context, ...data }),
 				),
 		)
 	})
@@ -188,5 +211,36 @@ export const saveOrganizationAvatar = createServerFn({ method: 'POST' })
 					avatar: avatar instanceof File ? avatar : null,
 				}),
 			),
+		)
+	})
+export const deleteOrganizationSessionInsights = createServerFn({
+	method: 'POST',
+})
+	.validator(
+		z.object({
+			orgSlug,
+			scope: z.enum(sessionInsightsScopes),
+			entry: z
+				.object({
+					categoryId: z.string(),
+					outcome: z.enum(sessionOutcomes),
+					stuckKind: z.enum(sessionStuckKinds).nullable(),
+					stuckTool: z.string().nullable(),
+				})
+				.optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { deleteOrganizationSessionInsights } =
+			await import('../../src/app/handlers/session-insights.ts')
+		const { requireOperationResult } =
+			await import('../../src/app/operation-result.ts')
+		return withWebsiteMutation(
+			{ scope: { orgSlug: data.orgSlug } },
+			async (context) =>
+				requireOperationResult(
+					await deleteOrganizationSessionInsights({ ...context, ...data }),
+				),
 		)
 	})

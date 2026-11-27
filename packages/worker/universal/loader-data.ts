@@ -1,3 +1,8 @@
+import type {
+	SessionAnalyticsSettingsView,
+	SessionAnalyticsState,
+	SessionInsightsView,
+} from './session-analytics.ts'
 import type { PackageAppCpuSummary } from './package-app-cpu-samples.ts'
 import type {
 	BlogCategorySlug,
@@ -1463,6 +1468,7 @@ export type OrgSettingsLoaderData = {
 	memberCreation: { packages: boolean; credentials: boolean } | null
 	/** Usage emails and the execute heads-up; personal and team orgs alike. */
 	usageWarnings: boolean
+	sessionAnalytics: SessionAnalyticsSettingsView
 }
 
 export type OrgMemberView = {
@@ -3902,4 +3908,12 @@ export type OrgAppMemberConnectionsData = {
 	own: OrgAppMemberConnection | null
 	/** Every member's connection; empty unless `canManage`. */
 	connections: Array<OrgAppMemberConnection>
+}
+
+export type OrgSessionInsightsLoaderData = {
+	org: { slug: string; displayName: string; personal: boolean }
+	state: SessionAnalyticsState
+	mine: SessionInsightsView
+	/** Null unless the viewer can change organization settings. */
+	organization: SessionInsightsView | null
 }

@@ -3,6 +3,10 @@ import {
 	loadOrgUsageWarningsEnabled,
 	updateOrgUsageWarnings,
 } from '#worker/orgs/usage-warnings.ts'
+import {
+	loadOrgSessionAnalyticsState,
+	updateOrgSessionAnalytics,
+} from '#worker/session-analytics/consent.ts'
 import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	orgHasPermission,
@@ -113,6 +117,10 @@ export async function loadOrgSettingsData(input: {
 			input.env.APP_DB,
 			input.org.id,
 		),
+		sessionAnalytics: {
+			state: await loadOrgSessionAnalyticsState(input.env.APP_DB, input.org.id),
+			canChange: canWrite,
+		},
 	}
 }
 
@@ -250,6 +258,37 @@ export async function updateOrganizationUsageWarnings(
 		)
 	}
 	return operationResult({ ok: true, usageWarnings: updated.enabled })
+}
+
+export async function updateOrganizationSessionAnalytics(
+	input: OrganizationWriteContext & { enabled: boolean },
+) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	const updated = await updateOrgSessionAnalytics(env.APP_DB, {
+		orgId: access.org.id,
+		enabled: input.enabled,
+		audit: orgAuditWriterFromRequest(env, user.request),
+	})
+	if (!updated.ok) {
+		return operationResult(
+			{ ok: false, error: updated.error },
+			updated.code === 'not_found' ? 404 : 409,
+		)
+	}
+	return operationResult({
+		ok: true,
+		sessionAnalytics: { state: updated.state, canChange: true },
+	})
 }
 
 export async function removeOrganizationPhoto(input: OrganizationWriteContext) {

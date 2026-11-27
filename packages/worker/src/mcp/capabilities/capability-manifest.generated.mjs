@@ -3672,7 +3672,8 @@ export const capabilityManifest = {
 												"first-use",
 												"context-elevation",
 												"context-misconfigured",
-												"context-open-shell"
+												"context-open-shell",
+												"session-analytics-choice"
 											]
 										},
 										"title": {
@@ -3722,7 +3723,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type WaitingSummaryInput = Record<string, never>",
-					"outputTypeDefinition": "type WaitingSummaryOutput = {\n\tcount: number\n\twaiting_url: string\n\titems: Array<{\n\tid: string\n\tkind: \"verify-email\" | \"mcp-server\" | \"integration-auth\" | \"enablement-paused\" | \"secret-expired\" | \"publish-lock\" | \"publish-held\" | \"email-change\" | \"entitlement\" | \"error-rate\" | \"onboarding\" | \"first-use\" | \"context-elevation\" | \"context-misconfigured\" | \"context-open-shell\"\n\ttitle: string\n\twhy: string\n\twho: \"you\"\n\tdo_label: string\n\thref: string\n\tseverity: \"block\" | \"degraded\" | \"setup\"\n}>\n}"
+					"outputTypeDefinition": "type WaitingSummaryOutput = {\n\tcount: number\n\twaiting_url: string\n\titems: Array<{\n\tid: string\n\tkind: \"verify-email\" | \"mcp-server\" | \"integration-auth\" | \"enablement-paused\" | \"secret-expired\" | \"publish-lock\" | \"publish-held\" | \"email-change\" | \"entitlement\" | \"error-rate\" | \"onboarding\" | \"first-use\" | \"context-elevation\" | \"context-misconfigured\" | \"context-open-shell\" | \"session-analytics-choice\"\n\ttitle: string\n\twhy: string\n\twho: \"you\"\n\tdo_label: string\n\thref: string\n\tseverity: \"block\" | \"degraded\" | \"setup\"\n}>\n}"
 				},
 				{
 					"name": "billingCheckoutLink",
@@ -53840,7 +53841,7 @@ export const capabilityManifest = {
 		},
 		{
 			"name": "orgs",
-			"description": "Organization lifecycle: profile, soft delete, restore, resource restore, and package-app custom domains.",
+			"description": "Organization lifecycle: profile, soft delete, restore, resource restore, package-app custom domains, and session analytics insights.",
 			"keywords": [
 				"org",
 				"organization",
@@ -53849,13 +53850,14 @@ export const capabilityManifest = {
 				"restore",
 				"purge",
 				"custom domain",
-				"hostname"
+				"hostname",
+				"session analytics"
 			],
 			"capabilities": [
 				{
 					"name": "orgUpdate",
 					"domain": "orgs",
-					"description": "Update the display name or page visibility of the organization this request is bound to. profile_visibility public shows kody.codes/@<slug> (name, photo, bio, public packages; never members) to everyone; private shows it only to members. The handle (slug, kody.codes/@<slug>) is permanent and cannot be changed; passing any other handle fails. Signup organizations keep the person’s account profile as their identity. In team organizations, members_can_create_packages (default false) lets every Member create packages, repos, and their apps, and members_can_create_credentials (default true) lets every Member add secrets, OAuth connections, and MCP servers; Owners always can, and package:create / secret:create / integration:create grants still work when a setting is off. usage_warnings (default true, personal and team orgs) controls the 80% and 100% usage emails and the once-a-month usage heads-up on hosted execute responses; false turns all of them off for the org.",
+					"description": "Update the display name or page visibility of the organization this request is bound to. profile_visibility public shows kody.codes/@<slug> (name, photo, bio, public packages; never members) to everyone; private shows it only to members. The handle (slug, kody.codes/@<slug>) is permanent and cannot be changed; passing any other handle fails. Signup organizations keep the person’s account profile as their identity. In team organizations, members_can_create_packages (default false) lets every Member create packages, repos, and their apps, and members_can_create_credentials (default true) lets every Member add secrets, OAuth connections, and MCP servers; Owners always can, and package:create / secret:create / integration:create grants still work when a setting is off. usage_warnings (default true, personal and team orgs) controls the 80% and 100% usage emails and the once-a-month usage heads-up on hosted execute responses; false turns all of them off for the org. session_analytics (personal and team orgs, off until someone turns it on) is the opt-in to session analytics: true lets Kody count a general work category, the outcome, and the stuck point of agent sessions so Kody can improve, and false turns it off and deletes everything it stored for the org right away. This choice belongs to a person: relay the question and pass session_analytics only after an Owner or Admin has answered it, never on your own initiative.",
 					"keywords": [
 						"org",
 						"organization",
@@ -53877,7 +53879,10 @@ export const capabilityManifest = {
 						"notifications",
 						"opt out",
 						"unsubscribe",
-						"heads-up"
+						"heads-up",
+						"session analytics",
+						"analytics opt in",
+						"help improve kody"
 					],
 					"readOnly": false,
 					"idempotent": true,
@@ -53918,6 +53923,10 @@ export const capabilityManifest = {
 							"usage_warnings": {
 								"description": "Personal and team orgs. Send the 80% and 100% usage emails and the monthly usage heads-up on execute responses (default true).",
 								"type": "boolean"
+							},
+							"session_analytics": {
+								"description": "Personal and team orgs. The answer a person gave to the session analytics question. true opts the org in; false opts it out and deletes everything session analytics stored for it.",
+								"type": "boolean"
 							}
 						},
 						"additionalProperties": false
@@ -53956,6 +53965,14 @@ export const capabilityManifest = {
 									},
 									"usage_warnings": {
 										"type": "boolean"
+									},
+									"session_analytics": {
+										"type": "string",
+										"enum": [
+											"unset",
+											"enabled",
+											"declined"
+										]
 									}
 								},
 								"required": [
@@ -53965,7 +53982,8 @@ export const capabilityManifest = {
 									"profile_visibility",
 									"members_can_create_packages",
 									"members_can_create_credentials",
-									"usage_warnings"
+									"usage_warnings",
+									"session_analytics"
 								],
 								"additionalProperties": false
 							}
@@ -53975,8 +53993,8 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type OrgUpdateInput = {\n\tdisplay_name?: string\n\t/** Must match the current handle. Handles are permanent and cannot be changed. */\n\tslug?: string\n\tprofile_visibility?: \"public\" | \"private\"\n\t/** Team orgs only. Let every Member create packages, repos, and their apps. */\n\tmembers_can_create_packages?: boolean\n\t/** Team orgs only. Let every Member add secrets, OAuth connections, and MCP servers. */\n\tmembers_can_create_credentials?: boolean\n\t/** Personal and team orgs. Send the 80% and 100% usage emails and the monthly usage heads-up on execute responses (default true). */\n\tusage_warnings?: boolean\n}",
-					"outputTypeDefinition": "type OrgUpdateOutput = {\n\torg: {\n\tid: string\n\tslug: string\n\tdisplay_name: string | null\n\tprofile_visibility: \"public\" | \"private\"\n\tmembers_can_create_packages: boolean\n\tmembers_can_create_credentials: boolean\n\tusage_warnings: boolean\n}\n}"
+					"inputTypeDefinition": "type OrgUpdateInput = {\n\tdisplay_name?: string\n\t/** Must match the current handle. Handles are permanent and cannot be changed. */\n\tslug?: string\n\tprofile_visibility?: \"public\" | \"private\"\n\t/** Team orgs only. Let every Member create packages, repos, and their apps. */\n\tmembers_can_create_packages?: boolean\n\t/** Team orgs only. Let every Member add secrets, OAuth connections, and MCP servers. */\n\tmembers_can_create_credentials?: boolean\n\t/** Personal and team orgs. Send the 80% and 100% usage emails and the monthly usage heads-up on execute responses (default true). */\n\tusage_warnings?: boolean\n\t/** Personal and team orgs. The answer a person gave to the session analytics question. true opts the org in; false opts it out and deletes everything session analytics stored for it. */\n\tsession_analytics?: boolean\n}",
+					"outputTypeDefinition": "type OrgUpdateOutput = {\n\torg: {\n\tid: string\n\tslug: string\n\tdisplay_name: string | null\n\tprofile_visibility: \"public\" | \"private\"\n\tmembers_can_create_packages: boolean\n\tmembers_can_create_credentials: boolean\n\tusage_warnings: boolean\n\tsession_analytics: \"unset\" | \"enabled\" | \"declined\"\n}\n}"
 				},
 				{
 					"name": "orgDelete",
@@ -54136,6 +54154,415 @@ export const capabilityManifest = {
 					},
 					"inputTypeDefinition": "type ResourceRestoreInput = {\n\t/** Soft-deleted organization id that owns the resource. Must match the soft-deleted org the actor can restore. */\n\torgId: string\n\t/** Resource type key (for example package, secret, email). */\n\tresourceType: string\n\tresourceId: string\n}",
 					"outputTypeDefinition": "type ResourceRestoreOutput = {\n\trestored: boolean\n}"
+				},
+				{
+					"name": "sessionInsightsGet",
+					"domain": "orgs",
+					"description": "Read session analytics for the organization this request is bound to: whether it is turned on, and the same insights Kody staff see, limited to your own data (scope mine) or the whole organization (scope org, Owners and Admins). Counts only: sessions, how they ended, where they got stuck, and by client, for the last 30 days. Nothing agents sent is stored, so there is no list of sessions. Entries can be deleted with sessionInsightsDelete and never edited.",
+					"keywords": [
+						"session analytics",
+						"session insights",
+						"agent sessions",
+						"stuck",
+						"analytics opt in"
+					],
+					"readOnly": true,
+					"idempotent": true,
+					"destructive": false,
+					"orgPermission": "org:read",
+					"contextRuns": "deny",
+					"requiresLivePerson": "never",
+					"source": "builtin",
+					"inputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"scope": {
+								"default": "mine",
+								"type": "string",
+								"enum": [
+									"mine",
+									"org"
+								],
+								"description": "mine: only your own sessions in this organization. org: every member combined, with no per-member breakdown (Owners and Admins only)."
+							}
+						},
+						"additionalProperties": false
+					},
+					"outputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"session_analytics": {
+								"type": "string",
+								"enum": [
+									"unset",
+									"enabled",
+									"declined"
+								]
+							},
+							"scope": {
+								"type": "string",
+								"enum": [
+									"mine",
+									"org"
+								]
+							},
+							"window_days": {
+								"type": "number"
+							},
+							"summary": {
+								"type": "object",
+								"properties": {
+									"sessions": {
+										"type": "number"
+									},
+									"linked_sessions": {
+										"type": "number"
+									},
+									"ended_without_errors": {
+										"type": "number"
+									},
+									"stuck": {
+										"type": "number"
+									},
+									"recovered": {
+										"type": "number"
+									},
+									"nudged_sessions": {
+										"type": "number"
+									}
+								},
+								"required": [
+									"sessions",
+									"linked_sessions",
+									"ended_without_errors",
+									"stuck",
+									"recovered",
+									"nudged_sessions"
+								],
+								"additionalProperties": false
+							},
+							"entries": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"category_id": {
+											"type": "string"
+										},
+										"category": {
+											"type": "string"
+										},
+										"outcome": {
+											"type": "string",
+											"enum": [
+												"succeeded",
+												"recovered",
+												"stuck",
+												"abandoned",
+												"unknown"
+											]
+										},
+										"stuck_kind": {
+											"anyOf": [
+												{
+													"type": "string",
+													"enum": [
+														"user_code",
+														"credential_missing",
+														"credential_denied",
+														"validation",
+														"not_found",
+														"entitlement",
+														"timeout",
+														"platform",
+														"other"
+													]
+												},
+												{
+													"type": "null"
+												}
+											]
+										},
+										"stuck_tool": {
+											"type": [
+												"string",
+												"null"
+											]
+										},
+										"sessions": {
+											"type": "number"
+										},
+										"calls": {
+											"type": "number"
+										},
+										"errors": {
+											"type": "number"
+										}
+									},
+									"required": [
+										"category_id",
+										"category",
+										"outcome",
+										"stuck_kind",
+										"stuck_tool",
+										"sessions",
+										"calls",
+										"errors"
+									],
+									"additionalProperties": false
+								}
+							},
+							"clients": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"client": {
+											"type": "string"
+										},
+										"sessions": {
+											"type": "number"
+										},
+										"ended_without_errors": {
+											"type": "number"
+										},
+										"stuck": {
+											"type": "number"
+										}
+									},
+									"required": [
+										"client",
+										"sessions",
+										"ended_without_errors",
+										"stuck"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"session_analytics",
+							"scope",
+							"window_days",
+							"summary",
+							"entries",
+							"clients"
+						],
+						"additionalProperties": false
+					},
+					"inputTypeDefinition": "type SessionInsightsGetInput = {\n\t/** mine: only your own sessions in this organization. org: every member combined, with no per-member breakdown (Owners and Admins only). */\n\tscope?: \"mine\" | \"org\"\n}",
+					"outputTypeDefinition": "type SessionInsightsGetOutput = {\n\tsession_analytics: \"unset\" | \"enabled\" | \"declined\"\n\tscope: \"mine\" | \"org\"\n\twindow_days: number\n\tsummary: {\n\tsessions: number\n\tlinked_sessions: number\n\tended_without_errors: number\n\tstuck: number\n\trecovered: number\n\tnudged_sessions: number\n}\n\tentries: Array<{\n\tcategory_id: string\n\tcategory: string\n\toutcome: \"succeeded\" | \"recovered\" | \"stuck\" | \"abandoned\" | \"unknown\"\n\tstuck_kind: \"user_code\" | \"credential_missing\" | \"credential_denied\" | \"validation\" | \"not_found\" | \"entitlement\" | \"timeout\" | \"platform\" | \"other\" | null\n\tstuck_tool: string | null\n\tsessions: number\n\tcalls: number\n\terrors: number\n}>\n\tclients: Array<{\n\tclient: string\n\tsessions: number\n\tended_without_errors: number\n\tstuck: number\n}>\n}"
+				},
+				{
+					"name": "sessionInsightsDelete",
+					"domain": "orgs",
+					"description": "Delete session analytics entries for the organization this request is bound to. Pass entry (the category_id, outcome, stuck_kind, and stuck_tool of one row from sessionInsightsGet) to delete that entry, or all: true to delete everything in the scope. scope mine deletes only your own data; scope org deletes for every member and needs an Owner or Admin. Deleted numbers also leave the combined totals Kody staff and package publishers see. This cannot be undone, and entries cannot be edited.",
+					"keywords": [
+						"session analytics",
+						"session insights",
+						"delete",
+						"erase"
+					],
+					"readOnly": false,
+					"idempotent": true,
+					"destructive": true,
+					"orgPermission": "org:read",
+					"contextRuns": "deny",
+					"requiresLivePerson": "never",
+					"source": "builtin",
+					"inputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"scope": {
+								"default": "mine",
+								"type": "string",
+								"enum": [
+									"mine",
+									"org"
+								],
+								"description": "mine: only your own sessions in this organization. org: every member combined, with no per-member breakdown (Owners and Admins only)."
+							},
+							"entry": {
+								"description": "One entry to delete, as returned by sessionInsightsGet.",
+								"type": "object",
+								"properties": {
+									"category_id": {
+										"type": "string"
+									},
+									"outcome": {
+										"type": "string",
+										"enum": [
+											"succeeded",
+											"recovered",
+											"stuck",
+											"abandoned",
+											"unknown"
+										]
+									},
+									"stuck_kind": {
+										"anyOf": [
+											{
+												"type": "string",
+												"enum": [
+													"user_code",
+													"credential_missing",
+													"credential_denied",
+													"validation",
+													"not_found",
+													"entitlement",
+													"timeout",
+													"platform",
+													"other"
+												]
+											},
+											{
+												"type": "null"
+											}
+										]
+									},
+									"stuck_tool": {
+										"type": [
+											"string",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"category_id",
+									"outcome"
+								],
+								"additionalProperties": false
+							},
+							"all": {
+								"description": "true deletes every entry in the scope.",
+								"type": "boolean"
+							}
+						},
+						"additionalProperties": false
+					},
+					"outputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"scope": {
+								"type": "string",
+								"enum": [
+									"mine",
+									"org"
+								]
+							},
+							"deleted_rows": {
+								"type": "number"
+							}
+						},
+						"required": [
+							"scope",
+							"deleted_rows"
+						],
+						"additionalProperties": false
+					},
+					"inputTypeDefinition": "type SessionInsightsDeleteInput = {\n\t/** mine: only your own sessions in this organization. org: every member combined, with no per-member breakdown (Owners and Admins only). */\n\tscope?: \"mine\" | \"org\"\n\t/** One entry to delete, as returned by sessionInsightsGet. */\n\tentry?: {\n\tcategory_id: string\n\toutcome: \"succeeded\" | \"recovered\" | \"stuck\" | \"abandoned\" | \"unknown\"\n\tstuck_kind?: \"user_code\" | \"credential_missing\" | \"credential_denied\" | \"validation\" | \"not_found\" | \"entitlement\" | \"timeout\" | \"platform\" | \"other\" | null\n\tstuck_tool?: string | null\n}\n\t/** true deletes every entry in the scope. */\n\tall?: boolean\n}",
+					"outputTypeDefinition": "type SessionInsightsDeleteOutput = {\n\tscope: \"mine\" | \"org\"\n\tdeleted_rows: number\n}"
+				},
+				{
+					"name": "packageSessionInsights",
+					"domain": "orgs",
+					"description": "For a public package this organization publishes: how it does across agent sessions in other organizations that turned on session analytics, over the last 30 days. Combined totals only (sessions, organizations, share ended without errors, most common stuck kinds). Returns available: false until the package has at least 10 sessions from at least 5 organizations; each stuck kind needs the same minimum. No organization, person, or session is ever identified.",
+					"keywords": [
+						"package analytics",
+						"publisher analytics",
+						"session analytics",
+						"package usage"
+					],
+					"readOnly": true,
+					"idempotent": true,
+					"destructive": false,
+					"orgPermission": "org:read",
+					"contextRuns": "deny",
+					"requiresLivePerson": "never",
+					"source": "builtin",
+					"inputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"package_id": {
+								"type": "string",
+								"minLength": 1,
+								"description": "Saved package id."
+							}
+						},
+						"required": [
+							"package_id"
+						],
+						"additionalProperties": false
+					},
+					"outputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"available": {
+								"type": "boolean"
+							},
+							"window_days": {
+								"type": "number"
+							},
+							"min_sessions": {
+								"type": "number"
+							},
+							"min_orgs": {
+								"type": "number"
+							},
+							"sessions": {
+								"type": "number"
+							},
+							"orgs": {
+								"type": "number"
+							},
+							"ended_without_errors": {
+								"type": "number"
+							},
+							"stuck_kinds": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"stuck_kind": {
+											"type": "string",
+											"enum": [
+												"user_code",
+												"credential_missing",
+												"credential_denied",
+												"validation",
+												"not_found",
+												"entitlement",
+												"timeout",
+												"platform",
+												"other"
+											]
+										},
+										"sessions": {
+											"type": "number"
+										}
+									},
+									"required": [
+										"stuck_kind",
+										"sessions"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"available",
+							"window_days"
+						],
+						"additionalProperties": false
+					},
+					"inputTypeDefinition": "type PackageSessionInsightsInput = {\n\t/** Saved package id. */\n\tpackage_id: string\n}",
+					"outputTypeDefinition": "type PackageSessionInsightsOutput = {\n\tavailable: boolean\n\twindow_days: number\n\tmin_sessions?: number\n\tmin_orgs?: number\n\tsessions?: number\n\torgs?: number\n\tended_without_errors?: number\n\tstuck_kinds?: Array<{\n\tstuck_kind: \"user_code\" | \"credential_missing\" | \"credential_denied\" | \"validation\" | \"not_found\" | \"entitlement\" | \"timeout\" | \"platform\" | \"other\"\n\tsessions: number\n}>\n}"
 				},
 				{
 					"name": "packageAppCustomHostnameAdd",
@@ -57554,7 +57981,7 @@ export const capabilityManifest = {
 				{
 					"name": "packageSubscriptionsList",
 					"domain": "packages",
-					"description": "List package.json#kody.subscriptions entries for the packages you can read in the org this connection is bound to, optionally filtered by exact event topic. Use this to discover package event handlers such as email receipt, delivery-update, repo.pushed / repo.created / repo.deleted Artifacts lifecycle notifiers, run.error.recorded activity notifiers, integration.auth.failed / integration.auth.succeeded reconnect notifiers, mcp.server.disconnected / mcp.server.reconnected connection episodes, community.fork.upstream_updated fork notifiers, follow.published / follow.pushed follow notifiers, resource change events (credential.*, package.*, job.*, trigger.updated, membership.*, memory.*), admin platform-feedback, admin community-activity, admin community-listing-published, admin status-incident, admin fleet.package_owner_error_spike, admin fleet.users_affected.elevated, admin fleet.users_affected.resolved, admin fleet.entitlement.crossed, admin auth.denial.burst, admin email.delivery.burst, admin d1.replica_reads.alert, admin user.created / user.deleted / user.guest_claimed, admin user.email_verification.failed, admin user.email_verification.stalled, admin user.email_outbound.paused, or admin email.system-message.sent notification subscribers before debugging dispatch or building fan-out. Admin-only topics carry only their documented payload, and declaring one does not grant delivery; dispatch checks the package owner role fresh at delivery time (a few admin topics, such as d1.replica_reads.alert, also reach packages owned by the trusted first-party orgs).",
+					"description": "List package.json#kody.subscriptions entries for the packages you can read in the org this connection is bound to, optionally filtered by exact event topic. Use this to discover package event handlers such as email receipt, delivery-update, repo.pushed / repo.created / repo.deleted Artifacts lifecycle notifiers, run.error.recorded activity notifiers, integration.auth.failed / integration.auth.succeeded reconnect notifiers, mcp.server.disconnected / mcp.server.reconnected connection episodes, community.fork.upstream_updated fork notifiers, follow.published / follow.pushed follow notifiers, resource change events (credential.*, package.*, job.*, trigger.updated, membership.*, memory.*), admin platform-feedback, admin community-activity, admin community-listing-published, admin status-incident, admin fleet.package_owner_error_spike, admin fleet.users_affected.elevated, admin fleet.users_affected.resolved, admin fleet.entitlement.crossed, admin session.stuck_pattern.crossed, admin session.category.merged, admin auth.denial.burst, admin email.delivery.burst, admin d1.replica_reads.alert, admin user.created / user.deleted / user.guest_claimed, admin user.email_verification.failed, admin user.email_verification.stalled, admin user.email_outbound.paused, or admin email.system-message.sent notification subscribers before debugging dispatch or building fan-out. Admin-only topics carry only their documented payload, and declaring one does not grant delivery; dispatch checks the package owner role fresh at delivery time (a few admin topics, such as d1.replica_reads.alert, also reach packages owned by the trusted first-party orgs).",
 					"keywords": [
 						"package",
 						"package.json#kody.subscriptions",
@@ -57614,6 +58041,8 @@ export const capabilityManifest = {
 						"fleet.users_affected.resolved",
 						"fleet users affected resolved",
 						"fleet.entitlement.crossed",
+						"session.stuck_pattern.crossed",
+						"session.category.merged",
 						"fleet entitlement crossed",
 						"entitlement crossing",
 						"user.created",
@@ -57658,7 +58087,7 @@ export const capabilityManifest = {
 						"type": "object",
 						"properties": {
 							"topic": {
-								"description": "Optional exact event topic filter such as \"email.message.received\", \"repo.pushed\", \"run.error.recorded\", \"integration.auth.failed\", \"integration.auth.succeeded\", \"mcp.server.disconnected\", \"community.fork.upstream_updated\", \"follow.published\", \"follow.pushed\", \"credential.rotated\", \"package.updated\", \"membership.created\", \"platform.feedback.submitted\", \"community.activity.recorded\", \"community.listing.published\", \"status.incident.opened\", \"fleet.package_owner_error_spike\", \"fleet.users_affected.elevated\", \"fleet.users_affected.resolved\", \"fleet.entitlement.crossed\", \"auth.denial.burst\", \"email.delivery.burst\", \"d1.replica_reads.alert\", \"user.created\", \"user.deleted\", \"user.guest_claimed\", \"user.email_verification.failed\", \"user.email_verification.stalled\", \"user.email_outbound.paused\", or \"email.system-message.sent\".",
+								"description": "Optional exact event topic filter such as \"email.message.received\", \"repo.pushed\", \"run.error.recorded\", \"integration.auth.failed\", \"integration.auth.succeeded\", \"mcp.server.disconnected\", \"community.fork.upstream_updated\", \"follow.published\", \"follow.pushed\", \"credential.rotated\", \"package.updated\", \"membership.created\", \"platform.feedback.submitted\", \"community.activity.recorded\", \"community.listing.published\", \"status.incident.opened\", \"fleet.package_owner_error_spike\", \"fleet.users_affected.elevated\", \"fleet.users_affected.resolved\", \"fleet.entitlement.crossed\", \"session.stuck_pattern.crossed\", \"session.category.merged\", \"auth.denial.burst\", \"email.delivery.burst\", \"d1.replica_reads.alert\", \"user.created\", \"user.deleted\", \"user.guest_claimed\", \"user.email_verification.failed\", \"user.email_verification.stalled\", \"user.email_outbound.paused\", or \"email.system-message.sent\".",
 								"type": "string",
 								"minLength": 1
 							}
@@ -57734,7 +58163,7 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type PackageSubscriptionsListInput = {\n\t/** Optional exact event topic filter such as \"email.message.received\", \"repo.pushed\", \"run.error.recorded\", \"integration.auth.failed\", \"integration.auth.succeeded\", \"mcp.server.disconnected\", \"community.fork.upstream_updated\", \"follow.published\", \"follow.pushed\", \"credential.rotated\", \"package.updated\", \"membership.created\", \"platform.feedback.submitted\", \"community.activity.recorded\", \"community.listing.published\", \"status.incident.opened\", \"fleet.package_owner_error_spike\", \"fleet.users_affected.elevated\", \"fleet.users_affected.resolved\", \"fleet.entitlement.crossed\", \"auth.denial.burst\", \"email.delivery.burst\", \"d1.replica_reads.alert\", \"user.created\", \"user.deleted\", \"user.guest_claimed\", \"user.email_verification.failed\", \"user.email_verification.stalled\", \"user.email_outbound.paused\", or \"email.system-message.sent\". */\n\ttopic?: string\n}",
+					"inputTypeDefinition": "type PackageSubscriptionsListInput = {\n\t/** Optional exact event topic filter such as \"email.message.received\", \"repo.pushed\", \"run.error.recorded\", \"integration.auth.failed\", \"integration.auth.succeeded\", \"mcp.server.disconnected\", \"community.fork.upstream_updated\", \"follow.published\", \"follow.pushed\", \"credential.rotated\", \"package.updated\", \"membership.created\", \"platform.feedback.submitted\", \"community.activity.recorded\", \"community.listing.published\", \"status.incident.opened\", \"fleet.package_owner_error_spike\", \"fleet.users_affected.elevated\", \"fleet.users_affected.resolved\", \"fleet.entitlement.crossed\", \"session.stuck_pattern.crossed\", \"session.category.merged\", \"auth.denial.burst\", \"email.delivery.burst\", \"d1.replica_reads.alert\", \"user.created\", \"user.deleted\", \"user.guest_claimed\", \"user.email_verification.failed\", \"user.email_verification.stalled\", \"user.email_outbound.paused\", or \"email.system-message.sent\". */\n\ttopic?: string\n}",
 					"outputTypeDefinition": "type PackageSubscriptionsListOutput = {\n\tsubscriptions: Array<{\n\tpackage_id: string\n\t/** Package name leaf (same value as `slug`). */\n\tkody_id: string\n\t/** Package name leaf (same value as `kody_id`). */\n\tslug: string\n\tname: string\n\ttopic: string\n\thandler: string\n\tdescription: string | null\n\tfilters: Record<string, unknown> | null\n}>\n}"
 				},
 				{

@@ -233,7 +233,8 @@ surface) for run records; the run record includes `synthetic: true` (and
 - Admin-only delivery rules (for example `platform.feedback.submitted`,
   `status.incident.opened`, `fleet.package_owner_error_spike`,
   `fleet.users_affected.elevated`, `fleet.users_affected.resolved`,
-  `fleet.entitlement.crossed`, `auth.denial.burst`, `email.delivery.burst`,
+  `fleet.entitlement.crossed`, `session.stuck_pattern.crossed`,
+  `session.category.merged`, `auth.denial.burst`, `email.delivery.burst`,
   `user.created`, `user.deleted`, `user.guest_claimed`,
   `user.email_verification.failed`, `user.email_verification.stalled`,
   `user.email_outbound.paused`, or `email.system-message.sent`) apply to
