@@ -115,12 +115,12 @@ own status, `held_for_approval`, on every publish result
 (`packagePublishExternalPush`, `repoPublishSession`, `packageSave`), built by
 `loadHeldForApprovalPublishStatus`, with `serving_commit`, `held_commit`,
 `approval_url`, and `message`. It is never `published`, `already_published`, or
-`ok`, and it is distinct from `approval_required`, which pauses a publish before
-it starts. A durable publish run that ends held fails like any other refusal
-(`durablePublishRefusalReason`), and the CLI exits 1. `packageGet` reads the
-serving view while a commit is held and returns `serving_commit`, `held_commit`,
-and `approval_url`; `held_commit` and `approval_url` are null for callers
-without `package:write`.
+`ok`, and it is distinct from `locked` and `approval_required`, which pause a
+publish before it starts. A durable publish run that ends held fails like any
+other refusal (`durablePublishRefusalReason`), and the CLI exits 1. `packageGet`
+reads the serving view while a commit is held and returns `serving_commit`,
+`held_commit`, and `approval_url`; `held_commit` and `approval_url` are null for
+callers without `package:write`.
 
 The owner notice fires where the hold is recorded, not in a publish handler:
 `advancePackageServingCommit` calls `notifyOwnersOfHeldPublish`

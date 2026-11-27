@@ -127,8 +127,11 @@ export const getPackageCapability = defineDomainCapability(
 				userId: owner.ownerUserId,
 				sourceId: saved.sourceId,
 			})
+			// An approval can land between the two reads: trust the loaded row.
+			const servingCommit = servingCommitForSource(loaded.source)
 			const showHeld =
 				held !== null &&
+				servingCommit === held.servingCommit &&
 				(await authorize(
 					{ env: ctx.env, request },
 					'package:write',
@@ -221,9 +224,7 @@ export const getPackageCapability = defineDomainCapability(
 				locked_at: saved.lockedAt ?? null,
 				source_id: saved.sourceId,
 				published_commit: publishedCommit,
-				serving_commit: held
-					? held.servingCommit
-					: servingCommitForSource(loaded.source),
+				serving_commit: servingCommit,
 				held_commit: held && showHeld ? held.heldCommit : null,
 				approval_url:
 					held && showHeld

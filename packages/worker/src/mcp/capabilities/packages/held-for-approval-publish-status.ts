@@ -6,7 +6,7 @@ import {
 } from '#worker/package-capabilities/held-for-approval.ts'
 
 export const heldForApprovalStatusDescription =
-	'The new commit is built but not live. This internet-visible app now asks for more capabilities than the approved version, so everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url. Approving moves everyone to held_commit. Test the new version with local dev or a dev check. Different from approval_required, which pauses a publish before it starts.'
+	'The new commit is built but not live. This internet-visible app now asks for more capabilities than the approved version, so everyone, members and the owner included, stays on serving_commit until the owner approves at approval_url. Approving moves everyone to held_commit. Test the new version with local dev or a dev check. Different from locked and approval_required, which pause a publish before it starts.'
 
 /** What every `held_for_approval` publish result reports. */
 export const heldForApprovalStatusShape = {
