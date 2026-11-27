@@ -118,7 +118,8 @@ export async function runAppFetchPlan(input: {
 		...(plan.headers ? { headers: plan.headers } : {}),
 		...(body === undefined ? {} : { body }),
 		...(plan.synthetic ? { synthetic: true } : {}),
-		// Without `--out`, use the API's default response cap.
+		// A body written to `--out` may be large; one printed to a terminal or
+		// read by an agent stays at the API's default cap.
 		...(plan.out ? { max_bytes: appFetchOutMaxBytes } : {}),
 	})) as AppFetchResult
 	const truncatedNote = result.truncated
