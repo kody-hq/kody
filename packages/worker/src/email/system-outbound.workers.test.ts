@@ -824,8 +824,14 @@ test('simultaneous retries of a failed newsletter key make one provider call', a
 		sendNewsletterEmail(input),
 		sendNewsletterEmail(input),
 	])
+	// The loser is refused while the winner is pending, or replays it after.
 	expect(calls).toBe(1)
-	expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
-	const refused = results.find((r) => r.status === 'rejected')
-	expect(isMcpCallerError(refused?.reason)).toBe(true)
+	for (const result of results) {
+		if (result.status === 'fulfilled') {
+			expect(result.value.providerMessageId).toBe('race-1')
+		} else {
+			expect(isMcpCallerError(result.reason)).toBe(true)
+		}
+	}
+	expect(results.some((r) => r.status === 'fulfilled')).toBe(true)
 })
