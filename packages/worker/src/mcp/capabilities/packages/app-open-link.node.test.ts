@@ -262,6 +262,30 @@ test('appOpenLink resolves package_id and hosted URLs to the app host', async ()
 	}
 })
 
+test('appOpenLink opens the root of an org custom-domain mount with its trailing slash', async () => {
+	allowVisit()
+	const mountRoot: AppAddress = {
+		ownerHandle: 'acme',
+		appSlug: 'demo-app',
+		path: '/',
+		customMount: {
+			baseUrl: 'https://apps.customer.example/demo-app',
+			mount: 'user-subdomain',
+		},
+	}
+	mockModule.customDomainAddress.mockReturnValue(mountRoot)
+	// Without the slash the app's relative links resolve against the host
+	// root, outside the mount.
+	for (const app of [
+		'https://apps.customer.example/demo-app/',
+		'https://apps.customer.example/demo-app',
+	]) {
+		const link = new URL((await openLink({ app })).url)
+		link.searchParams.delete(packageAppOpenLinkQueryParam)
+		expect(link.toString()).toBe('https://apps.customer.example/demo-app/')
+	}
+})
+
 test('appOpenLink mints for the host each hosted URL form is served on', async () => {
 	allowVisit()
 	const custom: Record<string, AppAddress> = {
