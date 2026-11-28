@@ -15,11 +15,13 @@ import {
 } from '#worker/test-support/console-spies.ts'
 import {
 	accessFixture,
+	accessFixtureOrigin,
 	packageAppAccessAuditRows,
 	packageAppSessionCookieFor,
 	seedPackageAppAccessFixture,
 	type AccessFixturePerson,
 } from '#worker/test-support/package-app-access-fixture.ts'
+import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 /**
@@ -333,4 +335,181 @@ test('a refused agent credential never falls back to the person on a public app'
 	// Not the anonymous serve, and not the person's sign-in identity.
 	const visit = await open(`${publicOrigin}/`, cookie)
 	expect(visit).toMatchObject({ status: 403, openLink: 'rejected' })
+})
+
+const mountBase = `${accessFixtureOrigin}/${privateApp.slug}`
+const orgHostname = 'apps.open-link-test.example'
+const orgMountBase = `https://${orgHostname}/${privateApp.slug}`
+const customHostname = 'cards.open-link-test.example'
+const customOrigin = `https://${customHostname}`
+
+async function seedCustomHostname() {
+	await ensurePackageAppCustomHostnamesTestSchema()
+	const now = '2026-11-27T00:00:00.000Z'
+	await env.APP_DB.prepare(
+		`DELETE FROM package_app_custom_hostnames WHERE hostname = ?`,
+	)
+		.bind(customHostname)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO package_app_custom_hostnames (
+			id, hostname, binding_kind, package_id, org_id,
+			hostname_status, ssl_status, verified_at, created_at, updated_at
+		) VALUES (?, ?, 'app', ?, NULL, 'active', 'active', ?, ?, ?)`,
+	)
+		.bind(`host-${privateApp.id}`, customHostname, privateApp.id, now, now, now)
+		.run()
+	await env.APP_DB.prepare(
+		`DELETE FROM package_app_custom_hostnames WHERE hostname = ?`,
+	)
+		.bind(orgHostname)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO package_app_custom_hostnames (
+			id, hostname, binding_kind, package_id, org_id,
+			hostname_status, ssl_status, verified_at, created_at, updated_at
+		) VALUES (?, ?, 'org', NULL, ?, 'active', 'active', ?, ?, ?)`,
+	)
+		.bind(
+			`host-org-${orgSlug}`,
+			orgHostname,
+			accessFixture.orgId,
+			now,
+			now,
+			now,
+		)
+		.run()
+}
+
+/** What a person's own session gets on the same URL: the gate is cleared. */
+async function expectServedLikeAPerson(url: string, session: string) {
+	const person = await open(url, await packageAppSessionCookieFor('owner'))
+	const visit = await open(url, session)
+	expect({ url, status: visit.status }).toEqual({ url, status: person.status })
+	expect(visit.status).not.toBe(403)
+}
+
+test.each([
+	{ name: "the owner's shared host", base: mountBase },
+	{ name: "an org's verified custom domain", base: orgMountBase },
+])(
+	'an open link works on a path mount on $name, and its cookie stays on that host',
+	async ({ base }) => {
+		await seedCustomHostname()
+		const mountOrigin = new URL(base).origin
+		const anonymous = await open(`${base}/cards`)
+		expect(anonymous.session).toBeNull()
+		expect(anonymous.status).not.toBe(200)
+
+		const link = await mintLink({
+			person: 'owner',
+			origin: mountOrigin,
+			path: `/${privateApp.slug}/cards?tab=2`,
+		})
+		const exchanged = await open(link)
+		expect(exchanged.status).toBe(302)
+		expect(exchanged.location).toBe(`${base}/cards?tab=2`)
+		const sessionCookie = exchanged.setCookies.find((cookie) =>
+			cookie.startsWith('__Host-kody_pkg_session_'),
+		)
+		expect(sessionCookie).toContain('Path=/')
+		expect(sessionCookie).not.toMatch(/Domain=/i)
+		const session = exchanged.session ?? ''
+		expect(session).not.toBe('')
+
+		// Later navigations inside the mount need no second link.
+		await expectServedLikeAPerson(`${base}/cards?tab=2`, session)
+		await expectServedLikeAPerson(`${base}/settings`, session)
+
+		// The visit is for the mount's host: the same app on its own subdomain
+		// does not accept the cookie.
+		const onSubdomain = await open(`${privateOrigin}/cards`, session)
+		expect(onSubdomain.status).toBe(403)
+
+		await expect(open(link)).resolves.toMatchObject({
+			status: 403,
+			openLink: 'rejected',
+		})
+	},
+)
+
+test('an open link works on a verified custom domain, and its cookie stays on that host', async () => {
+	await seedCustomHostname()
+	const anonymous = await open(`${customOrigin}/cards`)
+	expect(anonymous.session).toBeNull()
+	expect(anonymous.status).not.toBe(200)
+
+	const link = await mintLink({
+		person: 'owner',
+		origin: customOrigin,
+		path: '/cards?tab=2',
+	})
+	const exchanged = await open(link)
+	expect(exchanged.status).toBe(302)
+	expect(exchanged.location).toBe(`${customOrigin}/cards?tab=2`)
+	const sessionCookie = exchanged.setCookies.find((cookie) =>
+		cookie.startsWith('__Host-kody_pkg_session_'),
+	)
+	expect(sessionCookie).toContain('Path=/')
+	expect(sessionCookie).not.toMatch(/Domain=/i)
+	const session = exchanged.session ?? ''
+	expect(session).not.toBe('')
+
+	await expectServedLikeAPerson(`${customOrigin}/cards?tab=2`, session)
+	await expectServedLikeAPerson(`${customOrigin}/settings`, session)
+
+	const onSubdomain = await open(`${privateOrigin}/cards`, session)
+	expect(onSubdomain.status).toBe(403)
+	const onMount = await open(`${mountBase}/cards`, session)
+	expect(onMount.session).toBeNull()
+	expect(onMount.status).not.toBe(200)
+	expect(onMount.status).not.toBe(500)
+})
+
+test('a link minted for one host form of an app is refused on every other', async () => {
+	await seedCustomHostname()
+	const forms = [
+		{ name: 'subdomain', origin: privateOrigin, prefix: '' },
+		{
+			name: 'path mount',
+			origin: accessFixtureOrigin,
+			prefix: `/${privateApp.slug}`,
+		},
+		{ name: 'custom domain', origin: customOrigin, prefix: '' },
+		{
+			name: 'path mount on an org custom domain',
+			origin: `https://${orgHostname}`,
+			prefix: `/${privateApp.slug}`,
+		},
+	]
+	expect(new Set(forms.map((form) => new URL(form.origin).host)).size).toBe(4)
+	for (const minted of forms) {
+		const link = await mintLink({
+			person: 'owner',
+			origin: minted.origin,
+			path: `${minted.prefix}/cards`,
+		})
+		const token = link.searchParams.get(packageAppOpenLinkQueryParam) ?? ''
+		for (const other of forms) {
+			if (other === minted) continue
+			const moved = new URL(`${other.prefix}/cards`, other.origin)
+			moved.searchParams.set(packageAppOpenLinkQueryParam, token)
+			const result = await open(moved)
+			expect({
+				minted: minted.name,
+				openedOn: other.name,
+				status: result.status,
+				openLink: result.openLink,
+				setCookies: result.setCookies,
+			}).toEqual({
+				minted: minted.name,
+				openedOn: other.name,
+				status: 403,
+				openLink: 'rejected',
+				setCookies: [],
+			})
+		}
+		// A refusal on the wrong host does not spend the link on its own host.
+		await expect(open(link)).resolves.toMatchObject({ status: 302 })
+	}
 })

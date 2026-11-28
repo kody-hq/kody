@@ -13,6 +13,8 @@ import {
 import { AppConsentRequiredError } from '#worker/app-visit/consent-required.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import type * as AppBaseUrl from '#worker/app-base-url.ts'
+import type * as AppAddressModule from '#worker/app-visit/address.ts'
+import type { AppAddress } from '#worker/app-visit/address.ts'
 import { silenceExpectedConsoleWarns } from '#worker/test-support/console-spies.ts'
 
 const mockModule = vi.hoisted(() => ({
@@ -20,6 +22,10 @@ const mockModule = vi.hoisted(() => ({
 	getSavedPackageByIdInAnyOrg: vi.fn(),
 	getOrgById: vi.fn(),
 	servePackageAppRequest: vi.fn(),
+	/** What address resolution returns for a verified custom domain. */
+	customDomainAddress: vi.fn<(address: string) => AppAddress | null>(
+		() => null,
+	),
 	getPackageAppBaseUrl: vi.fn<typeof AppBaseUrl.getPackageAppBaseUrl>(
 		() => 'https://apps.example.com',
 	),
@@ -28,6 +34,22 @@ const mockModule = vi.hoisted(() => ({
 vi.mock('#worker/app-visit/authorize.ts', () => ({
 	authorizeAppVisit: (...args: Array<unknown>) =>
 		mockModule.authorizeAppVisit(...args),
+}))
+
+vi.mock('#worker/app-visit/address.ts', async (original) => {
+	const actual = await original<typeof AppAddressModule>()
+	return {
+		...actual,
+		resolveAppAddress: async (
+			input: Parameters<typeof actual.resolveAppAddress>[0],
+		) =>
+			(await mockModule.customDomainAddress(input.address)) ??
+			(await actual.resolveAppAddress(input)),
+	}
+})
+
+vi.mock('#worker/package-app-profile-host.ts', () => ({
+	hasProfilePackageApp: async () => false,
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -62,6 +84,7 @@ await ensureOpenLinkTestSchema(db)
 const env = {
 	APP_DB: db,
 	COOKIE_SECRET: 'PACKAGE_APP_TEST_COOKIE_SECRET_32_CHARS_MINIMUM',
+	PACKAGE_APP_BASE_URL: 'https://apps.example.com',
 } as unknown as Env
 
 type ContextInput = {
@@ -139,6 +162,7 @@ async function exchange(url: string) {
 
 beforeEach(() => {
 	vi.clearAllMocks()
+	mockModule.customDomainAddress.mockImplementation(() => null)
 	mockModule.servePackageAppRequest.mockImplementation(
 		async () => new Response(null, { status: 204 }),
 	)
@@ -235,6 +259,84 @@ test('appOpenLink resolves package_id and hosted URLs to the app host', async ()
 		await expect(exchange(result.url)).resolves.toMatchObject({
 			kodyId: 'demo-app',
 		})
+	}
+})
+
+test('appOpenLink mints for the host each hosted URL form is served on', async () => {
+	allowVisit()
+	const custom: Record<string, AppAddress> = {
+		'https://demo.customer.example/cards?tab=2': {
+			ownerHandle: 'acme',
+			appSlug: 'demo-app',
+			path: '/cards?tab=2',
+			customMount: {
+				baseUrl: 'https://demo.customer.example',
+				mount: 'custom-hostname',
+			},
+		},
+		'https://apps.customer.example/demo-app/cards?tab=2': {
+			ownerHandle: 'acme',
+			appSlug: 'demo-app',
+			path: '/cards?tab=2',
+			customMount: {
+				baseUrl: 'https://apps.customer.example/demo-app',
+				mount: 'user-subdomain',
+			},
+		},
+	}
+	mockModule.customDomainAddress.mockImplementation(
+		(address) => custom[address] ?? null,
+	)
+	const forms = [
+		{
+			// The owner's shared host only redirects to the app's own host once
+			// the path address is retired, so the link is minted for that host.
+			app: 'https://acme.apps.example.com/demo-app/cards?tab=2',
+			opens: 'https://demo-app--acme.apps.example.com/cards?tab=2',
+		},
+		{
+			app: 'https://demo.customer.example/cards?tab=2',
+			opens: 'https://demo.customer.example/cards?tab=2',
+		},
+		{
+			app: 'https://apps.customer.example/demo-app/cards?tab=2',
+			opens: 'https://apps.customer.example/demo-app/cards?tab=2',
+		},
+	]
+	const tokens = new Map<string, string>()
+	for (const form of forms) {
+		const result = await openLink({ app: form.app })
+		const link = new URL(result.url)
+		tokens.set(
+			link.host,
+			link.searchParams.get(packageAppOpenLinkQueryParam) ?? '',
+		)
+		link.searchParams.delete(packageAppOpenLinkQueryParam)
+		expect(link.toString()).toBe(form.opens)
+	}
+	expect(tokens.size).toBe(3)
+
+	silenceExpectedConsoleWarns(['Package app open link rejected.'])
+	// Each link is for its own host: the other two refuse it, then its own
+	// host still accepts it once.
+	for (const [mintedFor, token] of tokens) {
+		for (const host of tokens.keys()) {
+			if (host === mintedFor) continue
+			await expect(
+				consumePackageAppOpenLinkToken({
+					env,
+					token,
+					expected: { username: 'acme', kodyId: 'demo-app', host },
+				}),
+			).resolves.toBeNull()
+		}
+		await expect(
+			consumePackageAppOpenLinkToken({
+				env,
+				token,
+				expected: { username: 'acme', kodyId: 'demo-app', host: mintedFor },
+			}),
+		).resolves.toMatchObject({ host: mintedFor })
 	}
 })
 
