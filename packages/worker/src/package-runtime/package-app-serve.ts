@@ -988,7 +988,7 @@ async function servePackageAppRequestWithId(input: {
 			identity: input.identity ?? null,
 			consentPrincipal: input.consentPrincipal ?? null,
 			approvedPublishedCommit: input.approvedPublishedCommit,
-			visitSession: input.visitSession ?? null,
+			visitSession: input.visitSession,
 			packagePath: input.packagePath,
 			dispatch: input.dispatch,
 		})

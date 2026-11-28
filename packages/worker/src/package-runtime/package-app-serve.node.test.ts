@@ -457,6 +457,15 @@ async function serveHelloWorld(input?: {
 			email: 'demo-user@example.com',
 			displayName: 'Demo User',
 		},
+		visitSession: input?.outsider
+			? null
+			: {
+					stableUserId: 'user-1',
+					issuedAt: Date.now(),
+					expiresAt: Date.now() + 60_000,
+					handle: 'demo-user',
+					kodyId,
+				},
 		visitor: input?.outsider
 			? null
 			: input?.externalVisitor
