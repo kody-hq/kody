@@ -243,7 +243,11 @@ function undeclaredError(
 	const fix =
 		reference.use === 'provider'
 			? providerFix(reference, declarations)
-			: `Add "${key}" to kody.credentials in its package.json (with a description) and publish again. If it names accounts as "<slot>-<purpose>", set prefix: true on that slot instead.`
+			: `Add "${key}" to kody.credentials in its package.json (with a description) and publish again.${
+					reference.use === 'key'
+						? ''
+						: ' If it names accounts as "<slot>-<purpose>", set prefix: true on that slot instead.'
+				}`
 	return new CredentialNeedUndeclaredError({
 		key,
 		message: `${subject} uses ${describeUse(reference)} without declaring it. ${rule} ${fix}`,
