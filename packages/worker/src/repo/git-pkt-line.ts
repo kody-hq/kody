@@ -320,3 +320,77 @@ export function normalizeUploadPackNegotiationResponse(input: {
 	}
 	return textEncoder.encode(encoded)
 }
+
+const zeroOid = /^0+$/
+const receivePackCommandBytesCap = 64 * 1024
+
+/**
+ * New object ids a receive-pack request asks to set refs to, read from the
+ * pkt-line commands before its pack. Null until the command list (through
+ * its flush) is complete; deletes are skipped.
+ */
+export function readReceivePackPushedOids(
+	prefix: Uint8Array,
+): Array<string> | null {
+	const oids: Array<string> = []
+	let offset = 0
+	while (offset + 4 <= prefix.byteLength) {
+		const lengthHex = textDecoder.decode(prefix.subarray(offset, offset + 4))
+		if (lengthHex === flushPkt) return oids
+		if (!pktLengthHexPattern.test(lengthHex)) return []
+		const length = Number.parseInt(lengthHex, 16)
+		if (length < 4) return []
+		if (offset + length > prefix.byteLength) return null
+		const line = textDecoder
+			.decode(prefix.subarray(offset + 4, offset + length))
+			.split('\0')[0]!
+			.trim()
+		const newOid = line.split(' ')[1]
+		if (newOid && /^[0-9a-f]{40}$/.test(newOid) && !zeroOid.test(newOid)) {
+			oids.push(newOid)
+		}
+		offset += length
+	}
+	return null
+}
+
+/**
+ * Pass a receive-pack body through unchanged while reading which commits it
+ * pushes. Resolves with [] when the commands never complete within the cap.
+ */
+export function observeReceivePackPushedOids(
+	body: ReadableStream<Uint8Array>,
+): { body: ReadableStream<Uint8Array>; pushedOids: Promise<Array<string>> } {
+	let settle: (oids: Array<string>) => void = () => {}
+	const pushedOids = new Promise<Array<string>>((resolve) => {
+		settle = resolve
+	})
+	let buffered = new Uint8Array(0)
+	let done = false
+	const finish = (oids: Array<string>) => {
+		if (done) return
+		done = true
+		buffered = new Uint8Array(0)
+		settle(oids)
+	}
+	const observer = new TransformStream<Uint8Array, Uint8Array>({
+		transform(chunk, controller) {
+			controller.enqueue(chunk)
+			if (done) return
+			const next = new Uint8Array(buffered.byteLength + chunk.byteLength)
+			next.set(buffered)
+			next.set(chunk, buffered.byteLength)
+			buffered = next
+			const oids = readReceivePackPushedOids(buffered)
+			if (oids) finish(oids)
+			else if (buffered.byteLength > receivePackCommandBytesCap) finish([])
+		},
+		flush() {
+			finish(readReceivePackPushedOids(buffered) ?? [])
+		},
+		cancel() {
+			finish([])
+		},
+	})
+	return { body: body.pipeThrough(observer), pushedOids }
+}

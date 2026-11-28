@@ -1,4 +1,7 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import type * as memoryRepo from '#mcp/memory/repo.ts'
@@ -153,6 +156,7 @@ function createStubDb(
 const user = {
 	userId: 11,
 	stableUserId: ownerIdFromStored('user-aaa'),
+	personId: personIdFromStored('user-aaa'),
 	email: 'waiting@example.com',
 	username: 'waiting',
 	emailVerified: true,

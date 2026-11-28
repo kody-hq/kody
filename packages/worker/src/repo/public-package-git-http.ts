@@ -1,4 +1,7 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	type OwnerId,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	enforceWalletGuard,
 	isWalletGuardLimitError,
@@ -24,6 +27,7 @@ import { getCommunityListingById } from '#worker/community/repo.ts'
 import { buildMcpUserContextFromGrantProps } from '#worker/mcp-auth-user-context.ts'
 import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
 import { kodyPackageIdPattern } from '#worker/package-registry/types.ts'
+import { notePackageAppPublishRequester } from '#worker/package-runtime/package-app-authority.ts'
 import {
 	buildAuthenticatedArtifactsRemote,
 	parseArtifactTokenSecret,
@@ -35,6 +39,7 @@ import {
 	encodeGitFlushPkt,
 	encodeGitPktLine,
 	normalizeUploadPackNegotiationResponse,
+	observeReceivePackPushedOids,
 	rewriteUploadPackAdvertisement,
 	summarizeUploadPackRequest,
 	uploadPackWantsOnlySnapshot,
@@ -624,6 +629,8 @@ type ProxiedGitTarget = {
 	resourceKind: 'package' | 'repo' | 'public'
 	/** Plain repos only: pushes go through the push queue and record `git_push`. */
 	plainRepo: { sourceId: string; ownerId: string } | null
+	/** Packages only: who pushes, so the reconcile publish runs as them. */
+	packagePusher: { orgId: OwnerId; packageId: string; personId: string } | null
 }
 
 function toProxiedPublicTarget(
@@ -640,6 +647,7 @@ function toProxiedPublicTarget(
 		canWrite: false,
 		resourceKind: 'public',
 		plainRepo: null,
+		packagePusher: null,
 	}
 }
 
@@ -832,6 +840,7 @@ async function proxyArtifactsUploadPack(input: {
 }
 
 async function proxyArtifactsReceivePack(input: {
+	env: Env
 	target: ProxiedGitTarget
 	request: Request
 }): Promise<Response> {
@@ -847,10 +856,17 @@ async function proxyArtifactsReceivePack(input: {
 	if (accept) headers.set('Accept', accept)
 	headers.set('Git-Protocol', 'version=1')
 
+	const pusher = input.target.packagePusher
+	const observed =
+		pusher &&
+		input.request.body &&
+		!input.request.headers.get('Content-Encoding')
+			? observeReceivePackPushedOids(input.request.body)
+			: null
 	const upstream = await fetch(upstreamUrl, {
 		method: 'POST',
 		headers,
-		body: input.request.body,
+		body: observed?.body ?? input.request.body,
 		duplex: 'half',
 		signal: AbortSignal.timeout(120_000),
 	} as RequestInit & { duplex: 'half' })
@@ -861,12 +877,45 @@ async function proxyArtifactsReceivePack(input: {
 			`The artifact repository rejected git-receive-pack (HTTP ${upstream.status}).`,
 		)
 	}
+	if (pusher && observed) {
+		const noting = notePushedCommits({
+			db: input.env.APP_DB,
+			pusher,
+			pushedOids: observed.pushedOids,
+		})
+		// Noted before the push reports success, so the reconcile that picks
+		// up the new HEAD finds its pusher.
+		await noting
+	}
 
 	return new Response(upstream.body, {
 		status: upstream.status,
 		statusText: upstream.statusText,
 		headers: filterProxiedResponseHeaders(upstream.headers),
 	})
+}
+
+async function notePushedCommits(input: {
+	db: D1Database
+	pusher: NonNullable<ProxiedGitTarget['packagePusher']>
+	pushedOids: Promise<Array<string>>
+}) {
+	try {
+		for (const commit of new Set(await input.pushedOids)) {
+			await notePackageAppPublishRequester({
+				db: input.db,
+				scope: {
+					orgId: input.pusher.orgId,
+					packageId: input.pusher.packageId,
+				},
+				personId: input.pusher.personId,
+				commit,
+				replace: true,
+			})
+		}
+	} catch (error) {
+		console.warn('package push: could not note the pusher', error)
+	}
 }
 
 async function proxyArtifactsInfoRefs(input: {
@@ -1164,6 +1213,14 @@ async function resolveAuthenticatedGitTarget(input: {
 				access.resourceKind === 'repo'
 					? { sourceId: access.sourceId, ownerId: access.resourceOrgId }
 					: null,
+			packagePusher:
+				access.resourceKind === 'package'
+					? {
+							orgId: ownerIdFromStored(access.resourceOrgId),
+							packageId: access.resourceId,
+							personId: authContext.user.userId,
+						}
+					: null,
 		},
 	}
 }
@@ -1361,6 +1418,7 @@ export async function handlePublicPackageGitHttpRequest(
 				})
 			}
 			return await proxyArtifactsReceivePack({
+				env,
 				target: resolved.target,
 				request,
 			})

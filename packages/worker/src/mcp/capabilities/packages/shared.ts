@@ -407,6 +407,12 @@ export const packageDetailSchema =
 			.describe(
 				'Owner page that approves held_commit. Null when held_commit is null.',
 			),
+		app_runs_as_warning: z
+			.string()
+			.optional()
+			.describe(
+				'Present when the package has an app that has no one to run as: its server-side Kody calls that act as the publisher fail until an Owner of its org publishes again or picks a person with packageAppRunsAsSet. See packageAppRunsAsGet.',
+			),
 		exports: z.array(packageExportSurfaceSchema),
 		package_secrets: z
 			.array(secretMetadataSchema)

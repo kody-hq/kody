@@ -5,6 +5,10 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 const mockModule = vi.hoisted(() => ({
 	resolveArtifactSourceHead: vi.fn(),
 	publishFromExternalRef: vi.fn(),
+	clearExpiredPackageGitWriteMinters: vi.fn(
+		async (..._args: Array<unknown>) => {},
+	),
+	pusherByCommit: new Map<string, string>(),
 	pendingApproval: null as {
 		pendingCommit: string
 		baseCommit: string | null
@@ -13,6 +17,13 @@ const mockModule = vi.hoisted(() => ({
 
 vi.mock('#worker/package-capabilities/approval-requests-repo.ts', () => ({
 	getPendingPackageApprovalRequest: async () => mockModule.pendingApproval,
+}))
+
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	clearExpiredPackageGitWriteMinters: (...args: Array<unknown>) =>
+		mockModule.clearExpiredPackageGitWriteMinters(...args),
+	findPackageAppPusher: async (input: { commit: string }) =>
+		mockModule.pusherByCommit.get(input.commit) ?? null,
 }))
 
 vi.mock('#worker/repo/artifacts.ts', () => ({
@@ -459,4 +470,93 @@ test('reconcileArtifactsPushes remembers a failed head and skips re-checking it'
 	)
 	expect(retried.failedHeadSkipped).toBe(0)
 	expect(retried.checksFailed).toBe(1)
+})
+
+test('reconcileArtifactsPushes publishes a pushed HEAD as the person who pushed it', async () => {
+	mockModule.pendingApproval = null
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-new',
+	})
+	mockModule.publishFromExternalRef.mockReset()
+	mockModule.publishFromExternalRef.mockResolvedValue({
+		status: 'published',
+		previous_commit: 'commit-old',
+		published_commit: 'commit-new',
+	})
+	const reconcile = () =>
+		reconcileArtifactsPushes({
+			env: createPackageSourceEnv({ updates: [] }),
+			baseUrl: 'https://kody.test',
+			now: new Date('2026-08-04T12:00:00.000Z'),
+			batchSize: 10,
+			staleAfterMinutes: 0,
+			timeBudgetMs: 1000,
+		})
+
+	mockModule.pusherByCommit.set('commit-new', 'user-pusher')
+	expect((await reconcile()).published).toBe(1)
+	expect(mockModule.publishFromExternalRef).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			newCommit: 'commit-new',
+			requestedByUserId: 'user-pusher',
+		}),
+	)
+
+	mockModule.pusherByCommit.clear()
+	await reconcile()
+	expect(mockModule.publishFromExternalRef).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			newCommit: 'commit-new',
+			requestedByUserId: null,
+		}),
+	)
+})
+
+test('reconcileArtifactsPushes clears expired write-token minters only once HEAD is published', async () => {
+	mockModule.pendingApproval = null
+	const reconcile = () =>
+		reconcileArtifactsPushes({
+			env: createPackageSourceEnv({ updates: [] }),
+			baseUrl: 'https://kody.test',
+			now: new Date('2026-08-04T12:00:00.000Z'),
+			batchSize: 10,
+			staleAfterMinutes: 0,
+			timeBudgetMs: 1000,
+		})
+	const clear = mockModule.clearExpiredPackageGitWriteMinters
+	mockModule.publishFromExternalRef.mockReset()
+
+	// An unchanged HEAD means no expired token pushed anything newer.
+	clear.mockClear()
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-old',
+	})
+	expect((await reconcile()).alreadyPublished).toBe(1)
+	expect(clear).toHaveBeenCalledWith(
+		expect.objectContaining({
+			scope: { orgId: ownerIdFromStored('user-1'), packageId: 'pkg-1' },
+		}),
+	)
+
+	// A push still awaiting publication keeps every possible pusher.
+	clear.mockClear()
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-new',
+	})
+	mockModule.publishFromExternalRef.mockResolvedValueOnce({
+		status: 'checks_failed',
+	})
+	expect((await reconcile()).checksFailed).toBe(1)
+	expect(clear).not.toHaveBeenCalled()
+
+	mockModule.publishFromExternalRef.mockResolvedValueOnce({
+		status: 'published',
+		previous_commit: 'commit-old',
+		published_commit: 'commit-new',
+	})
+	expect((await reconcile()).published).toBe(1)
+	expect(clear).toHaveBeenCalledTimes(1)
 })

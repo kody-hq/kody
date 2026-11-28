@@ -13,6 +13,7 @@ const mockModule = vi.hoisted(() => ({
 	resolveSavedPackageRef: vi.fn(),
 	getEntitySourceByIdForUser: vi.fn(),
 	markEntitySourcePendingExternalReconcile: vi.fn(),
+	notePackageGitWriteMinter: vi.fn(),
 	resolveExistingArtifactSourceRepo: vi.fn(),
 	createStubSavedPackage: vi.fn(),
 	resolvePackageOwnerContext: vi.fn(),
@@ -45,6 +46,11 @@ vi.mock('#worker/community/pending-fork-lookup.ts', () => ({
 vi.mock('#worker/package-registry/package-owner.ts', () => ({
 	resolvePackageOwnerContext: (...args: Array<unknown>) =>
 		mockModule.resolvePackageOwnerContext(...args),
+}))
+
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	notePackageGitWriteMinter: (...args: Array<unknown>) =>
+		mockModule.notePackageGitWriteMinter(...args),
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
@@ -300,6 +306,12 @@ test('get_git_remote defaults to write when the caller can write', async () => {
 		userId: ownerIdFromStored('user-1'),
 		tokenExpiresAt: defaultResult.expires_at,
 	})
+	expect(mockModule.notePackageGitWriteMinter).toHaveBeenCalledWith({
+		db: expect.anything(),
+		scope: { orgId: ownerIdFromStored('user-1'), packageId: 'package-1' },
+		personId: personIdFromStored('user-1'),
+		expiresAt: defaultResult.expires_at,
+	})
 	expect(defaultResult).toMatchObject({
 		package_id: 'package-1',
 		kody_id: 'unleashed-wifi',
@@ -342,6 +354,7 @@ test('get_git_remote defaults to write when the caller can write', async () => {
 	expect(
 		mockModule.markEntitySourcePendingExternalReconcile,
 	).not.toHaveBeenCalled()
+	expect(mockModule.notePackageGitWriteMinter).not.toHaveBeenCalled()
 })
 
 test('get_git_remote defaults to read for read-only credentials and denies explicit write clearly', async () => {

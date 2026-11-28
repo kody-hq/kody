@@ -385,9 +385,11 @@ means an Owner of the owning org, which is the publisher only in a personal org.
   account is suspended or deleted, stops the app from acting as them, with an
   error that says so, until an Owner picks someone else or someone publishes
   again.
-- A publish with no known person behind it (for example an external push with no
-  requester) clears the recorded publisher, so the app never keeps running as
-  someone who did not ship that code.
+- A git push (proxy or `packageGetGitRemote` token) records the pusher; the
+  five-minute reconcile publishes as them. A collaborator's push runs as no one.
+- A publish with no known person clears the publisher: a personal org then runs
+  as its owner, a team org as no one until an Owner acts. `packageGet`
+  (`app_runs_as_warning`) and Waiting flag an app with no one to run as.
 - Publishing never changes the person an Owner picked. That choice stays until
   an Owner changes it, whoever publishes.
 - Authority is capped twice: only the capabilities the app may call (see the

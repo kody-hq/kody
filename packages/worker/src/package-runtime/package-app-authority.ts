@@ -160,7 +160,7 @@ async function resolveCandidate(
 ): Promise<Candidate | null> {
 	const row = await db
 		.prepare(
-			`SELECT runs_as_person_id, published_by_person_id, publisher_unknown
+			`SELECT runs_as_person_id, published_by_person_id
 			 FROM package_app_authority
 			 WHERE package_id = ? AND owner_id = ?`,
 		)
@@ -168,11 +168,12 @@ async function resolveCandidate(
 		.first<{
 			runs_as_person_id: string | null
 			published_by_person_id: string | null
-			publisher_unknown: number | null
 		}>()
 	const explicit = row?.runs_as_person_id?.trim()
 	if (explicit) return { personId: explicit, source: 'explicit' }
-	if (row?.publisher_unknown === 1) return null
+	// An unknown publisher clears `published_by_person_id`, so a personal org
+	// still falls through to its owner (its only person) and a team org fails
+	// closed.
 	const publisher = row?.published_by_person_id?.trim()
 	if (publisher) return { personId: publisher, source: 'publisher' }
 	const personal = await db
@@ -311,7 +312,8 @@ export async function recordPackageAppPublisherUnknown(input: {
 
 /**
  * Note who asked to publish a commit that will finish in the durable
- * workflow. Nothing about the live app changes: the person becomes the
+ * workflow, or who pushed it over git (the five-minute reconcile publishes it
+ * later). Nothing about the live app changes: the person becomes the
  * publisher only when that commit is published (`recordPackageAppPublish`).
  * The first person to ask for a commit stays noted for it. Notes are kept
  * for a week, so a finish step that is retried still finds its requester.
@@ -322,6 +324,8 @@ export async function notePackageAppPublishRequester(input: {
 	personId: string
 	commit: string
 	now?: Date
+	/** Git pushes: the latest pusher of a commit replaces an earlier one. */
+	replace?: boolean
 }) {
 	const now = input.now ?? new Date()
 	await input.db.batch([
@@ -339,7 +343,11 @@ export async function notePackageAppPublishRequester(input: {
 				`INSERT INTO package_app_publish_requests
 				 (package_id, commit_sha, owner_id, person_id, created_at)
 				 VALUES (?, ?, ?, ?, ?)
-				 ON CONFLICT(package_id, commit_sha) DO NOTHING`,
+				 ON CONFLICT(package_id, commit_sha) DO ${
+						input.replace
+							? 'UPDATE SET person_id = excluded.person_id, created_at = excluded.created_at'
+							: 'NOTHING'
+					}`,
 			)
 			.bind(
 				input.scope.packageId,
@@ -399,6 +407,108 @@ export async function recordPackageAppPublish(input: {
 	})
 }
 
+/**
+ * The person with a live binding to the owning org who asked for, or pushed,
+ * this commit (`notePackageAppPublishRequester`), or null. A grant-only
+ * collaborator counts, so their code is recorded as theirs and fails closed
+ * instead of running as the org owner.
+ */
+export async function findPackageAppPublishRequester(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	commit: string
+}) {
+	const requester = await loadPublishRequester(
+		input.db,
+		input.scope,
+		input.commit,
+	)
+	if (!requester) return null
+	const binding = await loadOrgBindingForOrg(
+		input.db,
+		requester,
+		input.scope.orgId,
+	)
+	return binding ? requester : null
+}
+
+/**
+ * Note who minted a write token for a package's git remote. Rows stay until a
+ * reconcile publish settles, so a push held by a lock keeps its pusher.
+ */
+export async function notePackageGitWriteMinter(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	personId: string
+	expiresAt: string
+}) {
+	await input.db
+		.prepare(
+			`INSERT INTO package_git_write_minters
+			 (package_id, owner_id, person_id, expires_at)
+			 VALUES (?, ?, ?, ?)
+			 ON CONFLICT(package_id, person_id) DO UPDATE SET
+				owner_id = excluded.owner_id,
+				expires_at = MAX(expires_at, excluded.expires_at)`,
+		)
+		.bind(
+			input.scope.packageId,
+			input.scope.orgId,
+			input.personId,
+			input.expiresAt,
+		)
+		.run()
+}
+
+/** After a reconcile publish settles: expired tokens cannot push anything newer. */
+export async function clearExpiredPackageGitWriteMinters(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	now?: Date
+}) {
+	await input.db
+		.prepare(
+			`DELETE FROM package_git_write_minters
+			 WHERE package_id = ? AND expires_at < ?`,
+		)
+		.bind(input.scope.packageId, (input.now ?? new Date()).toISOString())
+		.run()
+}
+
+/**
+ * Who to publish a pushed HEAD as: whoever pushed that commit through the Kody
+ * git remote, else the one person holding a write token minted since the last
+ * settled publish (tokens push straight to Artifacts). With several holders, a
+ * collaborator without an org role wins so their code fails closed; several
+ * members are unknown.
+ */
+export async function findPackageAppPusher(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	commit: string
+}) {
+	const pusher = await findPackageAppPublishRequester(input)
+	if (pusher) return pusher
+	const { results } = await input.db
+		.prepare(
+			`SELECT person_id FROM package_git_write_minters
+			 WHERE package_id = ? AND owner_id = ?`,
+		)
+		.bind(input.scope.packageId, input.scope.orgId)
+		.all<{ person_id: string }>()
+	const bound = []
+	for (const { person_id } of results) {
+		const binding = await loadOrgBindingForOrg(
+			input.db,
+			person_id,
+			input.scope.orgId,
+		)
+		if (binding) bound.push({ personId: person_id, role: binding.role })
+	}
+	if (bound.length === 1) return bound[0]!.personId
+	return bound.find((minter) => !minter.role)?.personId ?? null
+}
+
 async function resolvePublishingPerson(input: {
 	db: D1Database
 	scope: PackageAppAuthorityScope
@@ -410,12 +520,11 @@ async function resolvePublishingPerson(input: {
 		(await loadOrgBindingForOrg(input.db, personId, input.scope.orgId)) !== null
 	if (await isMember(input.personId)) return input.personId
 	if (!input.commit) return null
-	const requester = await loadPublishRequester(
-		input.db,
-		input.scope,
-		input.commit,
-	)
-	return requester && (await isMember(requester)) ? requester : null
+	return await findPackageAppPublishRequester({
+		db: input.db,
+		scope: input.scope,
+		commit: input.commit,
+	})
 }
 
 /** Choose who an app runs as; null goes back to the publisher. */

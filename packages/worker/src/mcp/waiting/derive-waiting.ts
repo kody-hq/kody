@@ -3,6 +3,7 @@ import {
 	noticePayload,
 } from '#worker/execution-contexts/notices.ts'
 import {
+	ownerIdFromStored,
 	personalOrgId,
 	type OwnerId,
 	type PersonId,
@@ -25,6 +26,7 @@ import { readEntitlementUsageSnapshot } from '#worker/entitlements/usage-snapsho
 import { getUserEntitlement } from '#worker/entitlements/service.ts'
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
 import { listHeldForApprovalPackages } from '#worker/package-capabilities/held-for-approval.ts'
+import { loadPackageAppRunsAs } from '#worker/package-runtime/package-app-authority.ts'
 import { listJoinedIntegrations } from '#worker/integrations/service.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { listEnablementsForOrg } from '#worker/enablements/repo.ts'
@@ -46,13 +48,15 @@ import {
 	type WaitingSignals,
 } from '#universal/waiting.ts'
 
-import { getOrgById } from '#worker/orgs/repo.ts'
+import { getOrgById, loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 export type DeriveWaitingUser = {
 	userId: number
 	stableUserId: OwnerId
 	/** Person id for probes that are not org-owned, such as agent OAuth grants. */
 	actorStableUserId?: OwnerId
+	/** The signed-in person, for their role in the org. */
+	personId: PersonId
 	email: string
 	username: string
 	emailVerified: boolean
@@ -120,6 +124,7 @@ export async function deriveWaitingItemsForStableUser(input: {
 				userId: userRow.id,
 				stableUserId: orgId,
 				actorStableUserId,
+				personId: input.personId,
 				email: input.email,
 				username: userRow.username,
 				emailVerified: Boolean(userRow.email_verified_at),
@@ -164,6 +169,7 @@ export async function collectWaitingSignals(input: {
 		enablementsProbe,
 		contextNoticesProbe,
 		heldPublishesProbe,
+		appsWithoutRunsAsProbe,
 		sessionAnalyticsChoice,
 	] = await Promise.all([
 		readOnboardingChecklistDismissed({
@@ -212,6 +218,16 @@ export async function collectWaitingSignals(input: {
 			probe(() =>
 				listHeldForApprovalPackages(
 					env.APP_DB,
+					packages.ok ? packages.value : [],
+				),
+			),
+		),
+		packagesRead.then((packages) =>
+			probe(() =>
+				appsWithoutRunsAs(
+					env,
+					user.stableUserId,
+					user.personId,
 					packages.ok ? packages.value : [],
 				),
 			),
@@ -273,6 +289,9 @@ export async function collectWaitingSignals(input: {
 					servingCommit: held.servingCommit,
 					heldCommit: held.heldCommit,
 				}))
+			: [],
+		appsWithoutRunsAs: appsWithoutRunsAsProbe.ok
+			? appsWithoutRunsAsProbe.value
 			: [],
 		pendingEmailChange,
 		errorRate,
@@ -466,6 +485,47 @@ function expiredUserSecrets(
 	return secrets
 		.filter((secret) => secret.ttlMs != null && secret.ttlMs <= 0)
 		.map((secret) => ({ name: secret.name }))
+}
+
+/** Owners only: they can fix it and can read every package in the org. */
+async function appsWithoutRunsAs(
+	env: WaitingEnv,
+	orgId: string,
+	personId: string,
+	packages: Awaited<ReturnType<typeof listSavedPackagesByUserId>>,
+) {
+	const apps = packages.filter((pkg) => pkg.hasApp)
+	if (apps.length === 0) return []
+	const binding = await loadOrgBindingForOrg(env.APP_DB, personId, orgId).catch(
+		(error: unknown) => {
+			console.warn(
+				'waiting: could not read the org role, so app-runs-as items are omitted',
+				error,
+			)
+			return null
+		},
+	)
+	if (binding?.role !== 'owner') return []
+	const resolved = await Promise.all(
+		apps.map(async (pkg) => ({
+			pkg,
+			runsAs: await loadPackageAppRunsAs({
+				env,
+				scope: { orgId: ownerIdFromStored(orgId), packageId: pkg.id },
+			}).catch((error: unknown) => {
+				console.warn(
+					'waiting: could not read who an app runs as, so its app-runs-as item is omitted',
+					error,
+				)
+				return null
+			}),
+		})),
+	)
+	return resolved.flatMap(({ pkg, runsAs }) =>
+		runsAs?.status === 'unavailable'
+			? [{ id: pkg.id, name: pkg.name, message: runsAs.message }]
+			: [],
+	)
 }
 
 function lockedSavedPackages(

@@ -119,6 +119,7 @@ import { adminListedPackageCredentialUseDetailCapability } from './admin-listed-
 import { adminPackageAppCapabilityMigrationReportCapability } from './admin-package-app-capability-migration-report.ts'
 import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
 import { adminPackageScopedSecretReportCapability } from './admin-package-scoped-secret-report.ts'
+import { adminPackageAppUnknownPublisherReportCapability } from './admin-package-app-unknown-publisher-report.ts'
 import { adminUnmappableCredentialLockReportCapability } from './admin-unmappable-credential-lock-report.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
@@ -255,6 +256,7 @@ export const adminDomain = defineDomain({
 		adminPackageAppCapabilityMigrationReportCapability,
 		adminPackageCredentialSupplierReportCapability,
 		adminPackageScopedSecretReportCapability,
+		adminPackageAppUnknownPublisherReportCapability,
 		adminUnmappableCredentialLockReportCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,

@@ -941,6 +941,7 @@ test("a member's paused email subscription waits on that member's own list, not 
 				userId: row!.id,
 				stableUserId: orgId,
 				actorStableUserId: personalOrgId(personId),
+				personId,
 				email: `${person}@acme.example`,
 				username: t.people[person].username,
 				emailVerified: true,

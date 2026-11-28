@@ -12,6 +12,10 @@ import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { getSavedPackageLockedAt } from '#worker/package-registry/repo.ts'
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
 import { getPendingPackageApprovalRequest } from '#worker/package-capabilities/approval-requests-repo.ts'
+import {
+	clearExpiredPackageGitWriteMinters,
+	findPackageAppPusher,
+} from '#worker/package-runtime/package-app-authority.ts'
 
 export type ReconcileArtifactsPushesResult = {
 	checked: number
@@ -274,6 +278,20 @@ async function checkSource(input: {
 			userId: source.user_id,
 			lastExternalCheckAt: now.toISOString(),
 		})
+	// Once HEAD is published, an expired write token cannot push anything newer.
+	const clearExpiredMinters = async () => {
+		if (source.entity_kind !== 'package') return
+		await clearExpiredPackageGitWriteMinters({
+			db: env.APP_DB,
+			scope: { orgId: source.user_id, packageId: source.entity_id },
+			now,
+		}).catch((error: unknown) => {
+			console.warn(
+				'reconcile_artifacts_pushes: could not clear expired git write minters, so a later push may publish as unknown',
+				error,
+			)
+		})
+	}
 	const head = await resolveArtifactSourceHead(env, source.repo_id)
 	if (input.shouldCleanupTokens) {
 		try {
@@ -318,6 +336,7 @@ async function checkSource(input: {
 			lastExternalCheckAt: now.toISOString(),
 			...(horizonPassed ? { externalCheckUntil: null } : {}),
 		})
+		await clearExpiredMinters()
 		return 'alreadyPublished'
 	}
 	const pendingApproval =
@@ -351,6 +370,16 @@ async function checkSource(input: {
 		await advanceCursor()
 		return 'failedHeadSkipped'
 	}
+	// Publish as the person who pushed this HEAD; otherwise the publisher is
+	// unknown.
+	const pusher =
+		source.entity_kind === 'package'
+			? await findPackageAppPusher({
+					db: env.APP_DB,
+					scope: { orgId: source.user_id, packageId: source.entity_id },
+					commit: head.commit,
+				})
+			: null
 	const sessionId = `external-reconcile-${source.id}`
 	const publishResult = await repoSessionRpc(
 		env,
@@ -363,9 +392,11 @@ async function checkSource(input: {
 		expectedHead: head.commit,
 		allowForce: false,
 		baseUrl: input.baseUrl,
+		requestedByUserId: pusher,
 	})
 	const outcome = publishOutcome(publishResult.status)
 	const settled = outcome === 'published' || outcome === 'alreadyPublished'
+	if (settled) await clearExpiredMinters()
 	await updateEntitySource(env.APP_DB, {
 		id: source.id,
 		userId: source.user_id,

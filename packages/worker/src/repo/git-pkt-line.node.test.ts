@@ -5,6 +5,8 @@ import {
 	encodeGitPktLine,
 	extractUploadPackWantOids,
 	normalizeUploadPackNegotiationResponse,
+	observeReceivePackPushedOids,
+	readReceivePackPushedOids,
 	rewriteUploadPackAdvertisement,
 	summarizeUploadPackRequest,
 	uploadPackWantsOnlySnapshot,
@@ -277,4 +279,45 @@ test('normalizeUploadPackNegotiationResponse leaves compliant and non-ack bodies
 			new TextEncoder().encode(encodeGitPktLine(`ACK ${commonOid}\n`)),
 		),
 	)
+})
+
+const receiveZeroOid = '0'.repeat(40)
+const receiveOldOid = '1'.repeat(40)
+const receiveNewOid = '2'.repeat(40)
+const receiveOtherOid = '3'.repeat(40)
+const receivePackCommands =
+	encodeGitPktLine(
+		`${receiveOldOid} ${receiveNewOid} refs/heads/main\0 report-status side-band-64k\n`,
+	) +
+	encodeGitPktLine(
+		`${receiveZeroOid} ${receiveOtherOid} refs/heads/feature\n`,
+	) +
+	encodeGitPktLine(`${receiveOldOid} ${receiveZeroOid} refs/heads/gone\n`) +
+	encodeGitFlushPkt()
+
+test('readReceivePackPushedOids lists the new commits once the command list is complete, skipping deletes', () => {
+	const bytes = new TextEncoder().encode(`${receivePackCommands}PACK...`)
+	expect(readReceivePackPushedOids(bytes)).toEqual([
+		receiveNewOid,
+		receiveOtherOid,
+	])
+	expect(readReceivePackPushedOids(bytes.subarray(0, 30))).toBeNull()
+})
+
+test('observeReceivePackPushedOids passes the body through unchanged across split chunks', async () => {
+	const bytes = new TextEncoder().encode(`${receivePackCommands}PACK-bytes`)
+	const body = new ReadableStream<Uint8Array>({
+		start(controller) {
+			for (let offset = 0; offset < bytes.byteLength; offset += 7) {
+				controller.enqueue(bytes.subarray(offset, offset + 7))
+			}
+			controller.close()
+		},
+	})
+	const observed = observeReceivePackPushedOids(body)
+	const forwarded = new Uint8Array(
+		await new Response(observed.body).arrayBuffer(),
+	)
+	expect(forwarded).toEqual(bytes)
+	expect(await observed.pushedOids).toEqual([receiveNewOid, receiveOtherOid])
 })

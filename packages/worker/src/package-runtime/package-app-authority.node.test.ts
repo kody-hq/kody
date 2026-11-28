@@ -19,6 +19,10 @@ import {
 	createPackageAppVisitorCredentialRequest,
 	createPackageAppVisitorPersonalRequest,
 	createPackageAppCredentialAuthority,
+	findPackageAppPublishRequester,
+	findPackageAppPusher,
+	notePackageGitWriteMinter,
+	clearExpiredPackageGitWriteMinters,
 	forgetPackageAppRunsAs,
 	loadPackageAppRunsAs,
 	notePackageAppPublishRequester,
@@ -139,6 +143,109 @@ test('a Member republishing keeps the runs-as person an Owner chose', async () =
 		source: 'explicit',
 		role: 'owner',
 	})
+})
+
+test('a personal-org app published with no known person runs as the org owner', async () => {
+	const t = await setup()
+	const scope = {
+		orgId: ownerIdFromStored(t.owner),
+		packageId: `pkg-${crypto.randomUUID()}`,
+	}
+	await recordPackageAppPublisher({ db: t.db, scope, personId: t.owner })
+	await recordPackageAppPublisherUnknown({ db: t.db, scope })
+	forgetPackageAppRunsAs(scope)
+	expect(await loadPackageAppRunsAs({ env: t.env, scope })).toMatchObject({
+		status: 'ready',
+		personId: t.owner,
+		source: 'personal-org',
+	})
+})
+
+test('a git push notes the pusher, and only a live member of the org is found for that commit', async () => {
+	const t = await setup()
+	const commit = 'a'.repeat(40)
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		commit,
+	})
+	expect(
+		await findPackageAppPublishRequester({ db: t.db, scope: t.scope, commit }),
+	).toBe(t.member)
+	expect(
+		await findPackageAppPublishRequester({
+			db: t.db,
+			scope: t.scope,
+			commit: 'b'.repeat(40),
+		}),
+	).toBeNull()
+
+	const outsiderCommit = 'c'.repeat(40)
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.outsider,
+		commit: outsiderCommit,
+	})
+	expect(
+		await findPackageAppPublishRequester({
+			db: t.db,
+			scope: t.scope,
+			commit: outsiderCommit,
+		}),
+	).toBeNull()
+})
+
+test('a push with a git remote write token publishes as the one person who minted it', async () => {
+	const t = await setup()
+	const commit = 'd'.repeat(40)
+	const expiresAt = new Date(Date.now() + 60_000).toISOString()
+	const pusher = () =>
+		findPackageAppPusher({ db: t.db, scope: t.scope, commit })
+	expect(await pusher()).toBeNull()
+	await notePackageGitWriteMinter({
+		db: t.db,
+		scope: t.scope,
+		personId: t.outsider,
+		expiresAt,
+	})
+	expect(await pusher()).toBeNull()
+	await notePackageGitWriteMinter({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		expiresAt,
+	})
+	expect(await pusher()).toBe(t.member)
+	await notePackageGitWriteMinter({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+		expiresAt,
+	})
+	expect(await pusher()).toBeNull()
+	await clearExpiredPackageGitWriteMinters({
+		db: t.db,
+		scope: t.scope,
+		now: new Date(Date.now() + 120_000),
+	})
+	expect(await pusher()).toBeNull()
+	await notePackageGitWriteMinter({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		expiresAt: new Date(Date.now() - 60_000).toISOString(),
+	})
+	expect(await pusher()).toBe(t.member)
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+		commit,
+		replace: true,
+	})
+	expect(await pusher()).toBe(t.owner)
 })
 
 test('a publish with no known person forgets the publisher and keeps the Owner pick', async () => {
