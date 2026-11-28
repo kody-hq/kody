@@ -1360,18 +1360,14 @@ counter increments after hydration (`<html data-hydrated="true">`).
 
 ### Realtime access ends with the visit
 
-A member's socket lasts only as long as the visit that opened it. Kody closes it
-with `1008` and one of these reasons:
+Kody
+[rechecks the visit behind a member's socket](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
+Handle close code `1008` with reason `session-expired`, `signed-out`, or
+`access-revoked`. Reconnect as you would after a dropped connection.
 
-- `session-expired`: the visit's session cookie expired (for an `appOpenLink`
-  agent visit, one hour after the link was opened).
-- `signed-out`: the visitor signed out of the app.
-- `access-revoked`: the visitor lost access to the app (grant, role or profile
-  grant removed, API token revoked, account suspended). Kody checks open sockets
-  every minute, so this happens within a minute.
-
-Reconnect after a close the way you would after a dropped connection. A
-reconnect without access gets the same answer an HTTP request would.
+See
+[member realtime re-authorization](../contributing/security.md#member-realtime-re-authorization)
+for close timing and sign-out behavior.
 
 ### Anonymous realtime
 
