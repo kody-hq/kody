@@ -1406,6 +1406,7 @@ async function exchangePackageAppOpenLink(input: {
 					stableUserId: claims.stableUserId,
 					username: claims.username,
 					credential: claims.credential,
+					host: claims.host,
 				},
 				slug: packagePath.kodyId,
 				secure: isSecureRequest(request),

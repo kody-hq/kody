@@ -59,6 +59,12 @@ export type PackageAppSession = {
 	username: string
 	/** Set for an agent's visit; absent for a person's own browser session. */
 	credential?: AppVisitSessionCredential
+	/**
+	 * Host the agent's visit was opened on. Required with `credential`: an
+	 * agent's session is good for one app on one host, never a same-named
+	 * app on another host.
+	 */
+	host?: string
 }
 
 type StoredPackageAppSession = {
@@ -70,6 +76,8 @@ type StoredPackageAppSession = {
 	issuedAt: number
 	expiresAt: number
 	credential?: AppVisitSessionCredential
+	/** Lowercased host an agent's session is bound to. */
+	host?: string
 }
 
 export type ParsedPackageAppSession = {
@@ -166,7 +174,9 @@ function isStoredPackageAppSession(
 		Number.isFinite(record.expiresAt) &&
 		record.expiresAt > 0 &&
 		(record.credential === undefined ||
-			isAppVisitSessionCredential(record.credential))
+			(isAppVisitSessionCredential(record.credential) &&
+				typeof record.host === 'string' &&
+				record.host.length > 0))
 	)
 }
 
@@ -196,6 +206,11 @@ export async function createPackageAppSessionCookie(input: {
 		throw new Error('Package app session expiresAt is not in the future.')
 	}
 	const slug = input.slug.trim().toLowerCase()
+	const { credential } = input.session
+	const host = input.session.host?.trim().toLowerCase()
+	if (credential && !host) {
+		throw new Error('An agent package app session needs the host it is for.')
+	}
 	const cookie = await getPackageAppSessionCookie(input.env, slug, input.secure)
 	const setCookie = await cookie.serialize(
 		JSON.stringify({
@@ -205,9 +220,7 @@ export async function createPackageAppSessionCookie(input: {
 			app: slug,
 			issuedAt: now,
 			expiresAt: input.expiresAt,
-			...(input.session.credential
-				? { credential: input.session.credential }
-				: {}),
+			...(credential ? { credential, host } : {}),
 		} satisfies StoredPackageAppSession),
 		{ secure: input.secure, maxAge },
 	)
@@ -232,12 +245,14 @@ function parseStoredPackageAppSession(
 	stored: unknown,
 	now: number,
 	expectedSlug: string,
+	requestHost: string,
 ): ParsedPackageAppSession | null {
 	if (!stored || typeof stored !== 'string') return null
 	try {
 		const parsed: unknown = JSON.parse(stored)
 		if (!isStoredPackageAppSession(parsed)) return null
 		if (parsed.app !== expectedSlug) return null
+		if (parsed.credential && parsed.host !== requestHost) return null
 		if (parsed.expiresAt <= now) {
 			return null
 		}
@@ -245,7 +260,9 @@ function parseStoredPackageAppSession(
 			session: {
 				stableUserId: parsed.stableUserId,
 				username: parsed.pkgUsername,
-				...(parsed.credential ? { credential: parsed.credential } : {}),
+				...(parsed.credential
+					? { credential: parsed.credential, host: parsed.host }
+					: {}),
 			},
 			issuedAt: parsed.issuedAt,
 			expiresAt: parsed.expiresAt,
@@ -288,5 +305,6 @@ export async function readPackageAppSession(input: {
 		await appCookie.parse(cookieHeader),
 		now,
 		slug,
+		new URL(input.request.url).host.toLowerCase(),
 	)
 }

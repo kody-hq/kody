@@ -144,6 +144,7 @@ test('an open link is not a handoff token and its session is not a Kody account 
 			stableUserId: personId,
 			username: 'acme',
 			credential: profileCredential,
+			host: claims.host,
 		},
 		slug: 'board',
 		secure: true,
@@ -171,6 +172,16 @@ test('an open link is not a handoff token and its session is not a Kody account 
 	})
 	await expect(
 		readPackageAppSession({ request: request(cookieName), env, slug: 'notes' }),
+	).resolves.toBeNull()
+	// A same-named app on another host does not accept it either.
+	await expect(
+		readPackageAppSession({
+			request: new Request('https://board--other.kody.run/', {
+				headers: { Cookie: cookie },
+			}),
+			env,
+			slug: 'board',
+		}),
 	).resolves.toBeNull()
 	// Replayed under the account cookie name, it is not an account session.
 	setAuthSessionSecret(cookieSecret)
