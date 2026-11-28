@@ -253,6 +253,8 @@ function returnedValues(
 	if (!body || Array.isArray(body)) return []
 	// The function's own parameters and locals shadow module constants.
 	const scope = [...outer, fn]
+	// walkAst pushes onto the array it is given.
+	const depth = scope.length
 	if (body.type !== 'BlockStatement') {
 		return [toValue(body, constantsWithoutShadows(moduleConstants, scope))]
 	}
@@ -263,7 +265,7 @@ function returnedValues(
 			if (node.type !== 'ReturnStatement') return
 			if (
 				ancestors
-					.slice(scope.length)
+					.slice(depth)
 					.some((ancestor) => functionTypes.has(ancestor.type))
 			) {
 				return
