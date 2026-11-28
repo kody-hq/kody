@@ -30,6 +30,7 @@ export async function loadAccountWaitingData(input: {
 					user: input.user.mcpUser,
 				}),
 				actorStableUserId: personalOrgIdForPerson(input.user.mcpUser),
+				personId: input.user.mcpUser.userId,
 				email: input.user.email,
 				username: input.user.username,
 				emailVerified: input.user.emailVerified,

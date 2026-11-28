@@ -55,6 +55,8 @@ export type DeriveWaitingUser = {
 	stableUserId: OwnerId
 	/** Person id for probes that are not org-owned, such as agent OAuth grants. */
 	actorStableUserId?: OwnerId
+	/** The signed-in person, for their role in the org. */
+	personId?: PersonId
 	email: string
 	username: string
 	emailVerified: boolean
@@ -122,6 +124,7 @@ export async function deriveWaitingItemsForStableUser(input: {
 				userId: userRow.id,
 				stableUserId: orgId,
 				actorStableUserId,
+				personId: input.personId,
 				email: input.email,
 				username: userRow.username,
 				emailVerified: Boolean(userRow.email_verified_at),
@@ -224,7 +227,7 @@ export async function collectWaitingSignals(input: {
 				appsWithoutRunsAs(
 					env,
 					user.stableUserId,
-					user.actorStableUserId ?? user.stableUserId,
+					user.personId ?? user.actorStableUserId ?? user.stableUserId,
 					packages.ok ? packages.value : [],
 				),
 			),
@@ -493,7 +496,15 @@ async function appsWithoutRunsAs(
 ) {
 	const apps = packages.filter((pkg) => pkg.hasApp)
 	if (apps.length === 0) return []
-	const binding = await loadOrgBindingForOrg(env.APP_DB, personId, orgId)
+	const binding = await loadOrgBindingForOrg(env.APP_DB, personId, orgId).catch(
+		(error: unknown) => {
+			console.warn(
+				'waiting: could not read the org role, so app-runs-as items are omitted',
+				error,
+			)
+			return null
+		},
+	)
 	if (binding?.role !== 'owner') return []
 	const resolved = await Promise.all(
 		apps.map(async (pkg) => ({
