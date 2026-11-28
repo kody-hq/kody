@@ -44,6 +44,11 @@ export type ModuleNameSummary = {
 	functions: Map<string, Array<FunctionSummary>>
 	parameters: Map<string, Array<ParameterSummary>>
 	calls: Map<string, Array<Array<Value>>>
+	/**
+	 * `name.startsWith(prefix)` checks, by the name checked: the package tests
+	 * the name against a convention before it uses it.
+	 */
+	guards: Map<string, Array<Value>>
 	/** Too many calls to keep: parameters of this package are unknown. */
 	callsTruncated: boolean
 	sites: Array<CredentialNameSite>
@@ -369,6 +374,28 @@ function placeholderSites(
 	return sites
 }
 
+/** The prefix a `startsWith` argument names: a head, then a hyphen. */
+function guardValue(
+	node: AstNode | undefined,
+	constants: ReadonlyMap<string, string>,
+): Value | null {
+	const literal = resolveStringExpression(node, constants)
+	if (literal != null) {
+		const head = literal.match(prefixHeadPattern)?.[1]
+		return head ? { t: 'prefix', head: { t: 'lit', value: head } } : null
+	}
+	const inner = unwrapExpression(node)
+	if (!inner || !isComposite(inner)) return null
+	const parts = stringParts(inner, constants)
+	const [first, second] = parts
+	return parts.length === 2 &&
+		first !== undefined &&
+		typeof first !== 'string' &&
+		second === '-'
+		? { t: 'prefix', head: toValue(first, constants) }
+		: null
+}
+
 export function summarizeModuleNames(
 	parsed: AstNode,
 	moduleConstants: ReadonlyMap<string, string>,
@@ -379,6 +406,7 @@ export function summarizeModuleNames(
 		functions: new Map(),
 		parameters: new Map(),
 		calls: new Map(),
+		guards: new Map(),
 		callsTruncated: false,
 		sites: [],
 	}
@@ -505,6 +533,16 @@ export function summarizeModuleNames(
 							value: toValue(argument, constants()),
 						})
 					}
+				}
+				if (
+					name === 'startsWith' &&
+					node.callee &&
+					memberTypes.has(node.callee.type) &&
+					node.callee.object?.type === 'Identifier'
+				) {
+					const checked = getNodeName(node.callee.object)
+					const guard = guardValue(node.arguments?.[0], constants())
+					if (checked && guard) push(summary.guards, checked, guard)
 				}
 				const nameFields = Object.hasOwn(nameFieldsByCallee, name)
 					? nameFieldsByCallee[name]
@@ -674,11 +712,19 @@ export function inferCredentialNames(
 				const parameters = everywhere(home, (summary) =>
 					summary.parameters.get(current.name),
 				)
+				// A name the package checks against a prefix is bounded by that
+				// prefix and by the literals it can also be, whatever passes it.
+				const guards = modules.get(home)?.guards.get(current.name) ?? []
+				for (const guard of guards) resolve(guard, home, into)
+				const target: InferredCredentialNames =
+					guards.length > 0
+						? { exact: into.exact, prefix: into.prefix, unknown: false }
+						: into
 				if (bindings.length === 0 && parameters.length === 0) {
-					into.unknown = true
+					target.unknown = true
 				}
 				for (const binding of bindings) {
-					resolve(binding.item, binding.path, into)
+					resolve(binding.item, binding.path, target)
 				}
 				for (const parameter of parameters) {
 					const fn = parameter.item.fn
@@ -701,11 +747,11 @@ export function inferCredentialNames(
 						calls.length === 0 ||
 						declared.some((candidate) => candidate.exported)
 					) {
-						into.unknown = true
+						target.unknown = true
 					}
 					for (const call of calls) {
 						const argument = call.args[parameter.item.index]
-						if (argument) resolve(argument, call.path, into)
+						if (argument) resolve(argument, call.path, target)
 					}
 				}
 				active.delete(key)

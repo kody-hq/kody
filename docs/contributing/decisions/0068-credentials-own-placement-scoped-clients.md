@@ -1316,5 +1316,7 @@ is no other pattern, and a prefix is never inferred from anything but a literal
 in the package's source.
 
 Codemod `0013` declares prefix slots and literal defaults it can trace in a
-package's source, and no longer reports `typeof credential` in a type. The flag
-stays off; it is turned on only after a scoped rescan comes back clean.
+package's source, and no longer reports `typeof credential` in a type. It still
+reports a package when some value the name can take is not bounded by those
+slots, such as an override nothing checks. The flag stays off; it is turned on
+only after a scoped rescan comes back clean.

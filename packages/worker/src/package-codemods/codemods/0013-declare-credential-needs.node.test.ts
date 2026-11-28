@@ -375,7 +375,7 @@ test('0013 does not read typeof credential in a type as passing it around', asyn
 	])
 })
 
-test('0013 declares a prefix slot for a provider-purpose convention', async () => {
+test('0013 declares a prefix slot for a provider-purpose convention and reports an unchecked override', async () => {
 	// The @kody/google shape: default `google`, or `google-<purpose>`.
 	const result = await transformFiles({
 		'index.ts': [
@@ -409,14 +409,17 @@ test('0013 declares a prefix slot for a provider-purpose convention', async () =
 		].join('\n'),
 	})
 	expect(declaredSlots(result)).toEqual({ google: prefixSlot })
-	expect(result.needsManual).toEqual([])
+	// `raw.integration` reaches the fetch with nothing checking it.
+	expect(result.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
 
 	const again = await declareCredentialNeedsCodemod.transform(
 		result.files,
 		packageContext,
 	)
 	expect(again.changed).toBe(false)
-	expect(again.needsManual).toEqual([])
+	expect(again.needsManual).toEqual(result.needsManual)
 })
 
 test('0013 declares a prefix slot for each catalog prefix a secret name is built from', async () => {
@@ -464,7 +467,10 @@ test('0013 declares a prefix slot for each catalog prefix a secret name is built
 		openaiApiKey: { kind: 'secret', description: 'OpenAI.', prefix: true },
 		anthropicApiKey: prefixSlot,
 	})
-	expect(result.needsManual).toEqual([])
+	// `secretNameFor` is exported, so a caller outside could pass any prefix.
+	expect(result.needsManual).toEqual([
+		{ path: 'validation.ts', message: messages.computed },
+	])
 })
 
 test('0013 declares a prefix written into the placeholder and a concatenated one', async () => {
@@ -615,4 +621,36 @@ test('0013 matches a name to the covering prefix slot whose kind fills it', asyn
 	)
 	expect(result.changed).toBe(false)
 	expect(result.needsManual).toEqual([])
+})
+
+test('0013 clears a name the package checks against its prefix before use', async () => {
+	const source = (check: string) =>
+		[
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"const DEFAULT = 'google'",
+			'function resolve(input: { integration?: string; account?: string }) {',
+			'	const explicit = input.integration?.trim()',
+			'	if (explicit) {',
+			check,
+			'		return explicit',
+			'	}',
+			'	return input.account ? `${DEFAULT}-${input.account}` : DEFAULT',
+			'}',
+			'export function files(input: { integration?: string; account?: string }) {',
+			'	return createAuthenticatedFetch(resolve(input))',
+			'}',
+		].join('\n')
+	const checked = await transformFiles({
+		'index.ts': source(
+			"		if (explicit !== DEFAULT && !explicit.startsWith(DEFAULT + '-')) throw new Error('Not a Google account.')",
+		),
+	})
+	expect(declaredSlots(checked)).toEqual({ google: prefixSlot })
+	expect(checked.needsManual).toEqual([])
+
+	const unchecked = await transformFiles({ 'index.ts': source('') })
+	expect(declaredSlots(unchecked)).toEqual({ google: prefixSlot })
+	expect(unchecked.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
 })

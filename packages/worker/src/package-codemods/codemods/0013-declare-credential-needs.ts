@@ -387,8 +387,8 @@ async function planDeclarations(
 	})
 	// A run-time-built name is declared from what the source says it can be:
 	// its literal defaults, and each `<literal>-<suffix>` convention as a
-	// prefix slot. It stays for the owner unless a convention bounds it or
-	// every value it takes is a literal.
+	// prefix slot. It stays for the owner unless every value it can take is
+	// one of those: an override nothing checks is still undeclared.
 	const prefixUses = new Map<string, Set<NameKind>>()
 	const prefixPaths = new Map<string, Set<string>>()
 	for (const [path, summary] of summaries) {
@@ -411,12 +411,7 @@ async function planDeclarations(
 				paths.add(path)
 				prefixPaths.set(name, paths)
 			}
-			if (
-				inferred.prefix.size > 0 ||
-				(!inferred.unknown && inferred.exact.size > 0)
-			) {
-				bounded += 1
-			}
+			if (!inferred.unknown && names.length > 0) bounded += 1
 		}
 		if ((computedByPath.get(path) ?? 0) > bounded) flag(path, 'computed')
 		computedByPath.delete(path)

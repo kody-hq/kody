@@ -508,10 +508,15 @@ fields, matched by name). The codemod declares each literal the name can be.
 Where the traced value is a literal, a hyphen, then anything
 (`` `${DEFAULT}-${purpose}` ``, `prefix + '-' + account`,
 `{{secret:stripe-${env}}}`), it declares that literal as a `prefix: true` slot,
-or sets `prefix: true` on the slot already declared. Such a name is no longer
-reported when a prefix bounds it or when every value it takes is a literal. It
-never writes a prefix that is not a literal in the source, and a name with only
-a literal default (`name || 'slack'`) gets that slot and is still reported.
+or sets `prefix: true` on the slot already declared. It never writes a prefix
+that is not a literal in the source.
+
+Such a name is no longer reported only when every value it can take is one of
+those literals or falls under one of those prefixes. A value from outside the
+package (a parameter of an exported function, an object field, an input) is
+unbounded unless the package checks it with `name.startsWith(prefix)` first. So
+a wrapper with the convention and an unchecked override gets its prefix slot and
+is still reported, as is a name with only a literal default (`name || 'slack'`).
 
 Each new slot has no `kind` and a fixed description the owner can reword.
 Placeholders resolve by name whatever their slot says, so this changes nothing
