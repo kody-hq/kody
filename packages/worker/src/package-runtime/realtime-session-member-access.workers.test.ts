@@ -66,11 +66,18 @@ function bumpAccessEpoch() {
 		.run()
 }
 
-function createBinding() {
+function createBinding(): {
+	env: Env
+	userId: ReturnType<typeof ownerIdFromStored>
+	packageId: string
+	kodyId: string
+	sourceId: string
+	baseUrl: string
+} {
 	return {
 		env,
 		userId: ownerIdFromStored(orgId),
-		packageId: `package-${crypto.randomUUID()}`,
+		packageId: privateApp.id,
 		kodyId: privateApp.slug,
 		sourceId: `src-${privateApp.id}`,
 		baseUrl: 'https://app.kody.test:8788',
@@ -299,24 +306,18 @@ test('signing out of the app closes the sockets that visit session opened, and o
 		slug: privateApp.slug,
 	})
 	if (!parsed) throw new Error('Expected a parsed package-app session.')
+	const otherApp = { ...binding, packageId: `package-${crypto.randomUUID()}` }
+	await prepare(otherApp)
 	const signedIn = await connect(
-		binding,
+		otherApp,
 		'signed-in',
 		visitSessionFor('member', {
 			issuedAt: parsed.issuedAt,
 			expiresAt: parsed.expiresAt,
 		}),
 	)
-	const otherSession = await connect(
-		binding,
-		'other',
-		visitSessionFor('member'),
-	)
-	// The DO the logout reaches is keyed by the saved package id.
-	const appBinding = { ...binding, packageId: privateApp.id }
-	await prepare(appBinding)
 	const onApp = await connect(
-		appBinding,
+		binding,
 		'on-app',
 		visitSessionFor('member', {
 			issuedAt: parsed.issuedAt,
@@ -324,7 +325,7 @@ test('signing out of the app closes the sockets that visit session opened, and o
 		}),
 	)
 	const otherOnApp = await connect(
-		appBinding,
+		binding,
 		'other-on-app',
 		visitSessionFor('member'),
 	)
@@ -343,7 +344,59 @@ test('signing out of the app closes the sockets that visit session opened, and o
 	expect(otherOnApp.isOpen()).toBe(true)
 	// Another app's sockets are untouched.
 	expect(signedIn.isOpen()).toBe(true)
-	for (const socket of [signedIn, otherSession, otherOnApp]) {
+	for (const socket of [signedIn, otherOnApp]) {
 		socket.socket?.close(1000, 'done')
 	}
+})
+
+test("withdrawing an outside collaborator's Run as me approval closes their socket", async () => {
+	const binding = createBinding()
+	await prepare(binding)
+	const collaboratorId = testStableUserIdFromEmail(
+		accessFixture.people.collaborator.email,
+	)
+	await env.APP_DB.prepare(
+		`INSERT OR IGNORE INTO package_app_run_consents (person_id, package_id, approved_at)
+		 VALUES (?, ?, ?)`,
+	)
+		.bind(collaboratorId, privateApp.id, new Date().toISOString())
+		.run()
+	const collaborator = await connect(
+		binding,
+		'collaborator',
+		visitSessionFor('collaborator'),
+	)
+	await inInstance(binding, async (instance) => {
+		await instance.alarm()
+	})
+	expect(collaborator.isOpen()).toBe(true)
+
+	await env.APP_DB.prepare(
+		`DELETE FROM package_app_run_consents WHERE person_id = ? AND package_id = ?`,
+	)
+		.bind(collaboratorId, privateApp.id)
+		.run()
+	await inInstance(binding, async (instance) => {
+		await instance.alarm()
+	})
+	await expect(collaborator.closed).resolves.toEqual({
+		code: 1008,
+		reason: 'access-revoked',
+	})
+})
+
+test('a socket closes once its session slug names a different app than the one it runs', async () => {
+	const binding = {
+		...createBinding(),
+		packageId: `package-${crypto.randomUUID()}`,
+	}
+	await prepare(binding)
+	const owner = await connect(binding, 'owner', visitSessionFor('owner'))
+	await inInstance(binding, async (instance) => {
+		await instance.alarm()
+	})
+	await expect(owner.closed).resolves.toEqual({
+		code: 1008,
+		reason: 'access-revoked',
+	})
 })

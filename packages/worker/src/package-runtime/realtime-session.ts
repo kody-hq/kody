@@ -1232,6 +1232,7 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			if (!session) continue
 			if (!isPublicAccess(session.access)) {
 				const closure = await this.memberAccessClosure(
+					binding,
 					session,
 					now,
 					visitChecks,
@@ -1272,6 +1273,7 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 	 * keeps the socket open until the next alarm.
 	 */
 	private async memberAccessClosure(
+		binding: PackageRealtimeBindingState,
 		session: PersistedPackageRealtimeSession,
 		now: number,
 		checks: Map<string, Promise<PackageAppVisitSessionStatus | null>>,
@@ -1283,7 +1285,7 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		const key = JSON.stringify(visit)
 		let check = checks.get(key)
 		if (!check) {
-			check = this.checkVisitSession(visit).catch((error: unknown) => {
+			check = this.checkVisitSession(binding, visit).catch((error: unknown) => {
 				console.warn('package-realtime-visit-recheck-failed', error)
 				return null
 			})
@@ -1295,8 +1297,15 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		return null
 	}
 
-	private checkVisitSession(session: RuntimePackageAppVisitSession) {
-		return checkPackageAppVisitSession({ env: this.env, session })
+	private checkVisitSession(
+		binding: PackageRealtimeBindingState,
+		session: RuntimePackageAppVisitSession,
+	) {
+		return checkPackageAppVisitSession({
+			env: this.env,
+			session,
+			appId: binding.packageId,
+		})
 	}
 
 	private async scheduleAccessAlarm() {

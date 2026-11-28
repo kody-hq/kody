@@ -25,6 +25,10 @@ export type AuthorizedPackageAppServe =
 			kind: 'ok'
 			owner: PackageAppServeOwner
 			visitor: RuntimePackageAppVisitor
+			/** The live app the slug names; null when the visit named none. */
+			appId: string | null
+			/** Whether serve will ask this outside visitor for "Run as me" first. */
+			needsRunConsent: boolean
 			/** Org `access_epoch` the decision was made at. */
 			epoch: number
 			visitorEmail: string
@@ -108,6 +112,8 @@ export async function authorizePackageAppVisitorForOrg(input: {
 			displayName: visit.owner.displayName,
 		},
 		visitor: visit.visitor,
+		appId: visit.app?.id ?? null,
+		needsRunConsent: visit.needsRunConsent,
 		epoch: visit.epoch,
 		visitorEmail: person.email,
 		sessionIssuedAt: input.issuedAt,
@@ -138,12 +144,15 @@ export type PackageAppVisitSessionStatus = 'live' | 'expired' | 'revoked'
  * Whether `session` may still use the app, decided exactly as the next HTTP
  * request carrying it would be: refused once its cookie expires, once the
  * person is gone, suspended or changed their password, once its API token
- * is revoked, or once its `app:execute` access (grants, role, profile chain)
- * is removed.
+ * is revoked, once its `app:execute` access (grants, role, profile chain)
+ * or an outside visitor's "Run as me" approval is removed, or once its slug
+ * names a different app.
  */
 export async function checkPackageAppVisitSession(input: {
 	env: Env
 	session: RuntimePackageAppVisitSession
+	/** Saved package the socket runs; the session's slug must still name it. */
+	appId: string
 	now?: number
 }): Promise<PackageAppVisitSessionStatus> {
 	const { session } = input
@@ -156,5 +165,10 @@ export async function checkPackageAppVisitSession(input: {
 		kodyId: session.kodyId,
 		credential: session.credential ?? null,
 	})
-	return authorized.kind === 'ok' ? 'live' : 'revoked'
+	// Serve also refuses an outside visitor whose "Run as me" approval is gone.
+	return authorized.kind === 'ok' &&
+		authorized.appId === input.appId &&
+		!authorized.needsRunConsent
+		? 'live'
+		: 'revoked'
 }
