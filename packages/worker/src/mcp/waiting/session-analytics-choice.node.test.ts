@@ -1,4 +1,7 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createOrg } from '#worker/orgs/access-writes.ts'
@@ -21,6 +24,7 @@ async function choiceItems(
 			userId: 1,
 			stableUserId: ownerIdFromStored(input.orgId),
 			actorStableUserId: ownerIdFromStored(input.personId),
+			personId: personIdFromStored(input.personId),
 			email: 'person@example.com',
 			username: 'person',
 			emailVerified: true,

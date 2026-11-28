@@ -56,7 +56,7 @@ export type DeriveWaitingUser = {
 	/** Person id for probes that are not org-owned, such as agent OAuth grants. */
 	actorStableUserId?: OwnerId
 	/** The signed-in person, for their role in the org. */
-	personId?: PersonId
+	personId: PersonId
 	email: string
 	username: string
 	emailVerified: boolean
@@ -227,7 +227,7 @@ export async function collectWaitingSignals(input: {
 				appsWithoutRunsAs(
 					env,
 					user.stableUserId,
-					user.personId ?? user.actorStableUserId ?? user.stableUserId,
+					user.personId,
 					packages.ok ? packages.value : [],
 				),
 			),
