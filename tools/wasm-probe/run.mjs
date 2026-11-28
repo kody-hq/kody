@@ -115,31 +115,87 @@ function short(result) {
 	return result.error ?? `HTTP ${result.status}: ${JSON.stringify(result.body)}`
 }
 
-const dynamicCountQuery = `query($accountTag: string!, $filter: AccountWorkersInvocationsByOwnerAndScriptGroupsFilter_InputObject) {
+const datasetField = 'workersInvocationsByOwnerAndScriptGroups'
+const typeRef = '{ name kind ofType { name kind ofType { name kind } } }'
+const typeQuery = `query($name: String!) { __type(name: $name) { fields { name args { name type ${typeRef} } type ${typeRef} } inputFields { name } } }`
+
+function unwrap(type) {
+	let t = type
+	while (t && !t.name) t = t.ofType
+	return t?.name ?? null
+}
+
+async function typeInfo(name) {
+	const r = await cf.graphql(typeQuery, { name })
+	return (
+		r.data?.__type ?? {
+			error: r.errors?.map((e) => e.message) ?? r.raw ?? 'not found',
+		}
+	)
+}
+
+let schemaCache
+async function datasetSchema() {
+	if (schemaCache) return schemaCache
+	const account = await typeInfo('Account')
+	const field = account.fields?.find((f) => f.name === datasetField)
+	if (!field)
+		return (schemaCache = {
+			error: account.error ?? `${datasetField} not on Account`,
+		})
+	const filterArg = field.args.find((a) => a.name === 'filter')
+	const filterType = unwrap(filterArg?.type)
+	const row = await typeInfo(unwrap(field.type))
+	const rowFields = {}
+	for (const f of row.fields ?? []) {
+		const t = unwrap(f.type)
+		if (!t) continue
+		const info = await typeInfo(t)
+		rowFields[f.name] = info.fields?.map((x) => x.name) ?? info.error
+	}
+	const filter = filterType ? await typeInfo(filterType) : null
+	schemaCache = {
+		args: field.args.map((a) => a.name),
+		filterType: filterType
+			? `${filterType}${filterArg.type.kind === 'NON_NULL' ? '!' : ''}`
+			: null,
+		rowFields,
+		filterFields:
+			filter?.inputFields?.map((f) => f.name) ?? filter?.error ?? null,
+	}
+	return schemaCache
+}
+
+async function dynamicCounts(filter) {
+	const schema = await datasetSchema()
+	if (!schema.filterType)
+		return { errors: [schema.error ?? 'no filter type'], rows: null }
+	const dims = (
+		Array.isArray(schema.rowFields?.dimensions)
+			? schema.rowFields.dimensions
+			: []
+	).filter((d) => ['date', 'scriptName'].includes(d))
+	const query = `query($accountTag: string!, $filter: ${schema.filterType}) {
 	viewer { accounts(filter: { accountTag: $accountTag }) {
-		workersInvocationsByOwnerAndScriptGroups(limit: 10000, filter: $filter) {
-			dimensions { date scriptName }
+		${datasetField}(limit: 10000, filter: $filter) {
+			${dims.length ? `dimensions { ${dims.join(' ')} }` : ''}
 			uniq { distinctDynamicWorkerCount }
 		}
 	} }
 }`
-
-async function dynamicCounts(filter) {
-	const response = await cf.graphql(dynamicCountQuery, {
+	const response = await cf.graphql(query, {
 		accountTag: env.CLOUDFLARE_ACCOUNT_ID,
 		filter,
 	})
-	const rows =
-		response.data?.viewer?.accounts?.[0]
-			?.workersInvocationsByOwnerAndScriptGroups ?? null
+	const rows = response.data?.viewer?.accounts?.[0]?.[datasetField] ?? null
 	return {
 		errors:
 			response.errors?.map((e) => e.message) ??
 			(response.raw ? [response.raw] : null),
 		rows:
 			rows?.map((row) => ({
-				date: row.dimensions?.date,
-				scriptName: row.dimensions?.scriptName,
+				date: row.dimensions?.date ?? filter.date ?? null,
+				scriptName: row.dimensions?.scriptName ?? filter.scriptName ?? null,
 				count: row.uniq?.distinctDynamicWorkerCount,
 			})) ?? null,
 	}
@@ -149,54 +205,40 @@ function isoDate(ms) {
 	return new Date(ms).toISOString().slice(0, 10)
 }
 
-async function analyticsChecks() {
-	const out = {}
-	const introspect = async (typeName) => {
-		const r = await cf.graphql(
-			`{ __type(name: ${JSON.stringify(typeName)}) { fields { name } inputFields { name } } }`,
-		)
-		const t = r.data?.__type
-		return t
-			? (t.fields ?? t.inputFields ?? []).map((f) => f.name)
-			: (r.errors?.map((e) => e.message) ?? 'not found')
-	}
-	out.groupFields = await introspect(
-		'AccountWorkersInvocationsByOwnerAndScriptGroups',
-	)
-	out.dimensionFields = await introspect(
-		'AccountWorkersInvocationsByOwnerAndScriptGroupsDimensions',
-	)
-	out.filterFields = await introspect(
-		'AccountWorkersInvocationsByOwnerAndScriptGroupsFilter_InputObject',
-	)
-	const counts = await dynamicCounts({
-		date_geq: isoDate(Date.now() - 7 * day),
+function recentFilter(extra = {}) {
+	return {
+		date_geq: isoDate(Date.now() - 2 * day),
 		date_leq: isoDate(Date.now()),
-	})
-	out.queryErrors = counts.errors
-	if (counts.rows) {
-		const live = new Set((await cf.listScripts()).map((s) => s.name))
-		const withCounts = counts.rows.filter((row) => row.count > 0)
-		const deleted = withCounts.filter(
-			(row) => row.scriptName && !live.has(row.scriptName),
-		)
-		out.rowsWithDynamicWorkers = withCounts.length
-		out.scriptsWithDynamicWorkers = new Set(
-			withCounts.map((r) => r.scriptName),
-		).size
-		out.deletedScriptsStillReadable = new Set(
-			deleted.map((r) => r.scriptName),
-		).size
-		out.deletedExamples = [...new Set(deleted.map((r) => r.scriptName))]
-			.filter((n) => /^kody-(pr|branch|wasm-probe)-/.test(n))
-			.slice(0, 8)
-		out.deletedRowsByDate = Object.fromEntries(
-			[...new Set(deleted.map((r) => r.date))]
-				.sort()
-				.map((d) => [d, deleted.filter((r) => r.date === d).length]),
-		)
+		...extra,
+	}
+}
+
+async function analyticsChecks() {
+	const out = { schema: await datasetSchema() }
+	out.accountWideLast2Days = await dynamicCounts(recentFilter())
+	if (
+		Array.isArray(out.schema.filterFields) &&
+		out.schema.filterFields.includes('scriptName')
+	) {
+		out.deletedProbeScripts = {}
+		for (const name of config.deletedScriptsToRead ?? []) {
+			out.deletedProbeScripts[name] = await dynamicCounts(
+				recentFilter({ scriptName: name }),
+			)
+		}
 	}
 	return out
+}
+
+async function pollDeletedScriptAnalytics() {
+	const polls = []
+	for (let i = 0; i < 12; i += 1) {
+		await new Promise((r) => setTimeout(r, 60_000))
+		const counts = await dynamicCounts(recentFilter({ scriptName }))
+		polls.push({ at: new Date().toISOString(), ...counts })
+		if (counts.rows?.some((row) => row.count > 0)) break
+	}
+	return polls
 }
 
 async function deleteOwnWorker() {
@@ -216,6 +258,8 @@ async function runPermissions() {
 	results.wasmBasic = short(await call({ scenario: 'basic', id: 'basic-v1' }))
 	results.analytics = await analyticsChecks()
 	results.ownWorkerDelete = await deleteOwnWorker()
+	results.deletedAt = new Date().toISOString()
+	results.ownDeletedScriptAnalytics = await pollDeletedScriptAnalytics()
 }
 
 async function runProbe() {
