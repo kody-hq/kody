@@ -73,9 +73,9 @@ async function listMemberlessTeamOrgs(input: {
 			 FROM orgs o
 			 WHERE ${memberlessTeamOrgWhereSql} ${idFilter}
 			 ORDER BY o.created_at ASC, o.id ASC
-			 LIMIT ?`,
+			 LIMIT ${Math.trunc(input.limit)}`,
 		)
-		.bind(...orgIds, input.limit)
+		.bind(...orgIds)
 		.all<{
 			id: OwnerId
 			slug: string
