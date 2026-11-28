@@ -68,8 +68,8 @@ test('an app address names the owning org as @org/app or as a hosted URL', async
 })
 
 test('a path mount names the app by its first path segment', async () => {
-	// No customMount: the shared host stops serving apps at the path-mount
-	// cutover, so the visit goes to the app's own host instead.
+	// No customMount: a path under the owner's host only names the app, and
+	// the visit goes to the address the deployment serves that app from.
 	expect(await resolve('https://acme.apps.example/board/cards?x=1')).toEqual({
 		ownerHandle: 'acme',
 		appSlug: 'board',
