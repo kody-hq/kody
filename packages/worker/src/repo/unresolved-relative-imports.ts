@@ -58,11 +58,11 @@ export async function collectUnbundleableImports(input: {
 		}
 		for (const node of imports) {
 			const { specifier } = node
-			if (node.kind !== 'static') continue
 			if (isWasmImportSpecifier(specifier)) {
 				wasm.push({ importer: filePath, specifier })
 				continue
 			}
+			if (node.kind !== 'static') continue
 			if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
 			if (/[?#]/.test(specifier)) continue
 			const resolved = resolveWorkspaceSourceFilePath({
@@ -88,7 +88,7 @@ export function formatWasmImportsMessage(
 		.slice(1, 10)
 		.map((entry) => `"${entry.specifier}" in "${entry.importer}"`)
 	const more = others.length > 0 ? ` Also: ${others.join(', ')}.` : ''
-	return `${unsupportedWasmImportMessage({ specifier: first.specifier, side: 'worker' })} Imported from "${first.importer}".${more}`
+	return `${unsupportedWasmImportMessage({ specifier: first.specifier, side: 'any' })} Imported from "${first.importer}".${more}`
 }
 
 export function formatUnresolvedRelativeImportsMessage(

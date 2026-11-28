@@ -46,6 +46,7 @@ test('getErrorMessage never returns a blank message', () => {
 	expect(getErrorMessage(new TypeError(''))).toBe(
 		'TypeError (no error message was provided)',
 	)
+	expect(getErrorMessage('  ')).toBe('Error (no error message was provided)')
 	expect(getErrorMessage({ message: '' })).toBe(
 		'Error (no error message was provided)',
 	)

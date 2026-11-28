@@ -133,3 +133,17 @@ test(
 		expect(message).toContain('WebAssembly.instantiateStreaming')
 	},
 )
+
+test(
+	'JavaScript with a literal NUL in a string still bundles',
+	{ timeout: 60_000 },
+	async () => {
+		const message = await appBundleError(
+			appSourceFiles(
+				"import { sep } from './sep.ts'\nexport default { fetch: () => new Response(sep) }\n",
+				{ 'src/sep.ts': 'export const sep = "a\0b"\n' },
+			),
+		)
+		expect(message).toBeNull()
+	},
+)

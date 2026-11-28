@@ -11,7 +11,9 @@ export function getErrorMessage(error: unknown): string {
 }
 
 function readErrorMessage(error: unknown, seen: Set<unknown>): string {
-	if (typeof error === 'string') return error
+	if (typeof error === 'string') {
+		return error.trim() ? error : 'Error (no error message was provided)'
+	}
 	if (error === null || typeof error !== 'object') return String(error)
 	seen.add(error)
 	const message = (error as { message?: unknown }).message

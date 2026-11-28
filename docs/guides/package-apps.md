@@ -2197,11 +2197,14 @@ importing file. Workers also block compiling WebAssembly from bytes at runtime
 library cannot load its binary either.
 
 Run the WebAssembly in the browser instead: put the `.wasm` file in the
-`kody.app.assets` directory and load it from the client:
+`kody.app.assets` directory, render
+`data-asset-base="${packageContext?.assetBasePath}"` on `<html>` from the server
+entry, and load it from the client:
 
 ```ts
+const assetBase = document.documentElement.dataset.assetBase
 const { instance } = await WebAssembly.instantiateStreaming(
-	fetch(`${packageContext.assetBasePath}/engine.wasm`),
+	fetch(`${assetBase}/engine.wasm`),
 )
 ```
 
