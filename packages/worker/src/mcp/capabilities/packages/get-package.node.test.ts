@@ -17,6 +17,10 @@ const mockModule = vi.hoisted(() => ({
 	>(async () => new Map()),
 }))
 
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	loadPackageAppRunsAs: async () => ({ status: 'ready' }),
+}))
+
 vi.mock('#worker/community/fork-listing-relation.ts', () => ({
 	applySavedPackageForkListingAncestry: async ({
 		records,
