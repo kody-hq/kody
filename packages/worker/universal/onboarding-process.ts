@@ -99,7 +99,7 @@ const portabilityGuideEntity = 'guide:portability'
 export const portabilityGuideHref = '/docs/portability'
 
 export const onboardingAccessLede =
-	"Kody is Your agents\u2019 cloud: memory, secrets, packages, jobs, workflows, and apps. Paste this prompt so your agent looks at what's already in it, proposes a few things to move into Kody, and helps you move one. If there is not much to move, it offers first-win ideas instead. It is not a service gateway."
+	"Kody is Your agents\u2019 cloud: memory, secrets, packages, jobs, workflows, and apps. Paste this prompt so your agent looks at what's already in it, proposes a few things to move into Kody, and helps you move one. If there is not much to move, it offers first-win ideas instead."
 
 export function onboardingAccessSelectedLede(agentLabel: string | null) {
 	const name = agentLabel?.trim() ? agentLabel.trim() : 'your agent'

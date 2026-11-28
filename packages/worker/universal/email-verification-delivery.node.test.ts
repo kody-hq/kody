@@ -47,6 +47,8 @@ test('accepted delivery waits honestly and keeps polling', () => {
 		acceptedEmailVerificationDelivery(),
 	)
 	expect(accepted.indicator).toBe('waiting')
+	expect(accepted.headline).toBe('Verification email sent')
+	expect(accepted.statusLabel).toBe('Waiting for delivery confirmation')
 	expect(accepted.helpHref).toBeNull()
 	expect(
 		shouldPollEmailVerificationDelivery(acceptedEmailVerificationDelivery()),

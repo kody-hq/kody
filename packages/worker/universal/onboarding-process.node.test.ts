@@ -30,7 +30,7 @@ test('Step 2 ledes describe moving into Kody before first-win ideas, without em 
 		expect(firstWinAt).toBeGreaterThan(moveAt)
 		expect(lede).not.toContain('\u2014')
 	}
-	expect(onboardingAccessLede).toContain('not a service gateway')
+	expect(onboardingAccessLede).not.toContain('service gateway')
 	expect(named).toContain('Copy this prompt into Claude Code.')
 	expect(unnamed).toContain('Copy this prompt into your agent.')
 	expect(named).not.toContain('your agent')

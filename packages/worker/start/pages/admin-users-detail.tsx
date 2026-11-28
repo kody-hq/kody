@@ -390,7 +390,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 						>
 							{describeEmailVerificationDelivery(
 								selectedUser.email_verification_delivery,
-							).headline ?? selectedUser.email_verification_delivery.status}
+							).statusLabel ?? selectedUser.email_verification_delivery.status}
 							{selectedUser.email_verification_delivery_detail
 								? ` — ${selectedUser.email_verification_delivery_detail}`
 								: ''}

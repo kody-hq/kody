@@ -62,6 +62,7 @@ export async function executeVerifyEmail({
 			title: 'Verify email',
 			status: 400,
 			ok: false,
+			kind: 'email_verify',
 			error: getVerifyEmailError(result.reason),
 		}
 	}

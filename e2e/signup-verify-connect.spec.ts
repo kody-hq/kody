@@ -75,6 +75,17 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 		await expect(page.getByTestId('username-permanence-confirm')).toContainText(
 			"You can't change this later",
 		)
+		await expect(
+			page.getByTestId('username-permanence-confirm'),
+		).toHaveAttribute('role', 'status')
+		await expect(
+			page
+				.locator('[aria-live], [role="status"], [role="alert"]')
+				.filter({ hasText: "can't change this later" }),
+		).toHaveCount(1)
+		await expect(
+			page.getByText('Submit again to create your account.', { exact: true }),
+		).toBeVisible()
 		await page.getByRole('button', { name: 'Yes, create account' }).click()
 
 		await expect(page).toHaveURL(

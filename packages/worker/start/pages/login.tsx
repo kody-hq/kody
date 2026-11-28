@@ -37,7 +37,7 @@ import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import type { CSSObject } from '@emotion/react'
-import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-permanence.ts'
+import { signupConfirmSubmitAgainMessage } from '@kody-internal/shared/handle-permanence.ts'
 import {
 	startAuthentication,
 	WebAuthnAbortService,
@@ -209,7 +209,7 @@ export function LoginPage({
 				sendFormEvent({
 					type: 'CONFIRM_USERNAME',
 					data: {
-						message: handlePermanenceConfirmMessage(username.toLowerCase()),
+						message: signupConfirmSubmitAgainMessage,
 					},
 				})
 				return
