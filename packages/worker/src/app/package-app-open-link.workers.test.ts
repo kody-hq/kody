@@ -305,3 +305,32 @@ test('revoking the API token ends the visit its link opened', async () => {
 	const me = await open(`${privateOrigin}/-/auth/me`, cookie)
 	expect(me.status).toBe(401)
 })
+
+test('a refused agent credential never falls back to the person on a public app', async () => {
+	const bumpEpoch = () =>
+		env.APP_DB.prepare(
+			`UPDATE orgs SET access_epoch = access_epoch + 1 WHERE id = ?`,
+		)
+			.bind(accessFixture.orgId)
+			.run()
+	// Decisions are cached per access epoch; an earlier test removed this grant.
+	await bumpEpoch()
+	const opened = await open(
+		await mintLink({
+			person: 'member',
+			origin: publicOrigin,
+			slug: publicApp.slug,
+		}),
+	)
+	expect(opened.status).toBe(302)
+	const cookie = opened.session ?? ''
+
+	await env.APP_DB.prepare(
+		`DELETE FROM grants WHERE id = 'grant-cost-member'`,
+	).run()
+	await bumpEpoch()
+
+	// Not the anonymous serve, and not the person's sign-in identity.
+	const visit = await open(`${publicOrigin}/`, cookie)
+	expect(visit).toMatchObject({ status: 403, openLink: 'rejected' })
+})

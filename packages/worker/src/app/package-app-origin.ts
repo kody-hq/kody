@@ -1559,6 +1559,21 @@ async function servePackageAppForSession(input: {
 			)
 		: { kind: 'session-required' }
 
+	if (sessionCredential && authorized.kind === 'forbidden') {
+		// A refused agent credential is not the person: it must not fall back
+		// to their sign-in grant or consent on an internet-visible app.
+		logPackageAppAccessEvent({
+			env,
+			request,
+			outcome: 'denied',
+			visitorEmail: authorized.visitorEmail,
+			orgHandle: handle,
+			appSlug: packagePath.kodyId,
+			reason: 'open-link visit: no app:execute',
+		})
+		return createOpenLinkRejectedResponse({ request })
+	}
+
 	if (authorized.kind === 'ok') {
 		const response = await servePackageAppRequest({
 			request: servedRequest,
