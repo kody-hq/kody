@@ -559,3 +559,60 @@ test('0013 treats a name under a declared prefix slot as declared', async () => 
 		{ path: 'index.ts', message: messages.kindMismatch },
 	])
 })
+
+test('0013 does not read a parameter that shadows a module constant as that constant', async () => {
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"const name = 'acme'",
+			'const pick = (name: string) => name',
+			'function choose(name: string) {',
+			'	return name',
+			'}',
+			'export function api(input: { a: string; b: string }) {',
+			'	return [',
+			'		createAuthenticatedFetch(pick(input.a)),',
+			'		createAuthenticatedFetch(choose(input.b)),',
+			'	]',
+			'}',
+		].join('\n'),
+	})
+	// Still reported: the passed names are not the constant.
+	expect(result.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
+})
+
+test('0013 keeps the prefix when one variable is both the default and the prefix head', async () => {
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			'function connect(provider: string, account?: string) {',
+			'	return createAuthenticatedFetch(account ? `${provider}-${account}` : provider)',
+			'}',
+			"export const linear = (account?: string) => connect('linear', account)",
+		].join('\n'),
+	})
+	expect(declaredSlots(result)).toEqual({ linear: prefixSlot })
+	expect(result.needsManual).toEqual([])
+})
+
+test('0013 matches a name to the covering prefix slot whose kind fills it', async () => {
+	const result = await transformFiles(
+		{
+			'index.ts': [
+				"import { createAuthenticatedFetch } from 'kody:runtime'",
+				"export const api = createAuthenticatedFetch('acme-oauth-work')",
+				"export const key = '{{secret:acme-billing}}'",
+			].join('\n'),
+		},
+		{
+			credentials: {
+				acme: { kind: 'secret', description: 'Keys.', prefix: true },
+				'acme-oauth': { kind: 'oauth', description: 'OAuth.', prefix: true },
+			},
+		},
+	)
+	expect(result.changed).toBe(false)
+	expect(result.needsManual).toEqual([])
+})

@@ -451,27 +451,35 @@ async function planDeclarations(
 		if (isPlainObject(slot) && slot.prefix === true) continue
 		addPrefix.push(name)
 	}
-	/** The declared or planned prefix slot that covers `name`, if any. */
-	const coveringPrefix = (name: string) =>
+	/** Declared or planned prefix slots that cover `name`, longest first. */
+	const coveringPrefixes = (name: string) =>
 		[
 			...addPrefix,
 			...Object.entries(declaredSlots)
 				.filter(([, slot]) => isPlainObject(slot) && slot.prefix === true)
 				.map(([key]) => key),
-		].find((key) => credentialSlotPrefixCoversName(key, name))
+		]
+			.filter((key) => credentialSlotPrefixCoversName(key, name))
+			.sort((left, right) => right.length - left.length)
 	const add: Array<string> = []
 	for (const [name, kinds] of [...uses].sort(([left], [right]) =>
 		left.localeCompare(right),
 	)) {
 		const paths = [...(pathsByName.get(name) ?? [])]
-		const declaredName = Object.hasOwn(declaredSlots, name)
-			? name
-			: coveringPrefix(name)
-		if (declaredName !== undefined) {
-			const declaredKind = slotKind(declaredName)
-			if (declaredKind == null) continue
+		// As at run time: the exact slot, else a covering prefix slot whose
+		// kind fills the use.
+		const candidates = Object.hasOwn(declaredSlots, name)
+			? [name]
+			: coveringPrefixes(name)
+		if (candidates.length > 0) {
 			const fills = [...kinds].every((kind) =>
-				fillingSlotKinds[kind].has(String(declaredKind)),
+				candidates.some((candidate) => {
+					const declaredKind = slotKind(candidate)
+					return (
+						declaredKind == null ||
+						fillingSlotKinds[kind].has(String(declaredKind))
+					)
+				}),
 			)
 			if (!fills) for (const path of paths) flag(path, 'kindMismatch')
 			continue
