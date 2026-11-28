@@ -77,10 +77,9 @@ export default (params) => action(params)
 ```
 
 **execute** has no `invoke` field
-([ADR 0085](../contributing/decisions/0085-execute-takes-code-only.md)). A call
-that still sends `invoke` fails with an error that shows this `code` form for
-its specifier. The CLI `kody execute --invoke kody:@scope/package/export` flag
-is client-side sugar: the CLI writes this module and sends it as `code`.
+([ADR 0085](../contributing/decisions/0085-execute-takes-code-only.md)). The CLI
+`kody execute --invoke kody:@scope/package/export` flag is client-side sugar:
+the CLI writes this module and sends it as `code`.
 
 Ad hoc worker identity follows the acting user plus that **`code`** module
 graph. Put varying capability args in **`params`**, not string literals inside
