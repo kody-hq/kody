@@ -5,7 +5,9 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 const mockModule = vi.hoisted(() => ({
 	resolveArtifactSourceHead: vi.fn(),
 	publishFromExternalRef: vi.fn(),
-	clearExpiredPackageGitWriteMinters: vi.fn(async () => {}),
+	clearExpiredPackageGitWriteMinters: vi.fn(
+		async (..._args: Array<unknown>) => {},
+	),
 	pusherByCommit: new Map<string, string>(),
 	pendingApproval: null as {
 		pendingCommit: string
