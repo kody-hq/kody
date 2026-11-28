@@ -113,8 +113,10 @@ An internet-visible app
 and
 [`packageSave`](../../packages/worker/src/mcp/capabilities/packages/save-package-entitlements.node.test.ts)
 report `held_for_approval`, not `published`, `already_published`, or `ok`, with
-`serving_commit`, `held_commit`, `approval_url`, and `message`. Unlike `locked`
-and `approval_required`, the hold happens after the publish builds the commit. A
+`serving_commit`, `held_commit`, `approval_url`, and `message`.
+`packagePublishExternalPush` first returns `dispatched` with a `workflow_id`;
+the held result comes from `packageRunResult`. Unlike `locked` and
+`approval_required`, the hold happens after the publish builds the commit. A
 durable publish run treats the hold as a refusal, and the CLI exits 1.
 [`packageGet`](../../packages/worker/src/mcp/capabilities/packages/get-package.ts)
 reports the serving commit as `published_commit` and `serving_commit` while a
