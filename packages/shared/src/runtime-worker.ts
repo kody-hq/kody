@@ -91,6 +91,37 @@ export type RuntimePackageAppIdentity = {
 	username: string
 }
 
+/**
+ * The agent credential a visit session acts as: what `appOpenLink` copied
+ * from the calling token. `profileOrgId` is always set with `profileId`.
+ */
+export type RuntimePackageAppVisitSessionCredential = Pick<
+	RequestCredential,
+	'kind' | 'id' | 'scopes'
+> & {
+	profileId?: string
+	profileChain?: ReadonlyArray<string>
+	profileOrgId?: OwnerId
+}
+
+/**
+ * The package-app session a signed-in visitor rides on: what a long-lived
+ * realtime socket needs to be authorized again the way the next HTTP request
+ * from the same session would be, and when that session's cookie expires.
+ * It names a credential by id and never carries a secret.
+ */
+export type RuntimePackageAppVisitSession = {
+	stableUserId: string
+	issuedAt: number
+	/** Epoch ms the session cookie expires; no request is served after it. */
+	expiresAt: number
+	/** Org handle and app slug the session was authorized for. */
+	handle: string
+	kodyId: string
+	/** Set for an agent's visit opened with `appOpenLink`. */
+	credential?: RuntimePackageAppVisitSessionCredential | null
+}
+
 export type RuntimePackageAppPath = {
 	username: string
 	kodyId: string
@@ -124,6 +155,11 @@ export type RuntimePackageAppServeInput = {
 	 * when it is missing or the live published commit differs.
 	 */
 	approvedPublishedCommit?: string | null
+	/**
+	 * With a visitor: the session they were authorized from. Required for a
+	 * realtime upgrade, so the socket can be authorized again while it is open.
+	 */
+	visitSession?: RuntimePackageAppVisitSession | null
 	packagePath: RuntimePackageAppPath
 	/**
 	 * An agent visit (`appFetch`, or a session opened with `appOpenLink`), its

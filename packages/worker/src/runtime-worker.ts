@@ -97,6 +97,7 @@ class RuntimeWorkerServiceEntrypoint
 					identity: input.identity ?? null,
 					consentPrincipal: input.consentPrincipal ?? null,
 					approvedPublishedCommit: input.approvedPublishedCommit,
+					visitSession: input.visitSession ?? null,
 					packagePath: input.packagePath,
 					dispatch: input.dispatch,
 				}),

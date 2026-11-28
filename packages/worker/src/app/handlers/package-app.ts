@@ -1,15 +1,20 @@
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { buildPackagePagePath } from '@kody-internal/shared/public-urls.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import {
+	getAuthSessionExpiresAtMs,
+	readParsedAuthSession,
+} from '#app/auth-session.ts'
 import { requestHasSessionCookie } from '#app/anonymous-html-cache.ts'
 import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
 import { readPackageAppSession } from '#app/package-app-session.ts'
+import { resolvePackageAppIdentityOnlyVisitor } from '#app/package-app-origin.ts'
 import {
 	authorizePackageAppVisitorForOrg,
-	resolvePackageAppIdentityOnlyVisitor,
-} from '#app/package-app-origin.ts'
+	packageAppVisitSessionFor,
+} from '#app/package-app-visit-authorization.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
@@ -152,6 +157,11 @@ async function handleTaggedPackageAppRequest(
 				packagePath,
 				owner: authorized.owner,
 				visitor: authorized.visitor,
+				visitSession: packageAppVisitSessionFor({
+					parsed: packageAppSession,
+					handle: packagePath.username,
+					kodyId: packagePath.kodyId,
+				}),
 				...(authorized.agent ? { dispatch: { agent: true } } : {}),
 			})
 			return applyPackageAppCacheHeaders(response, 'signed-in')
@@ -242,11 +252,10 @@ async function handleTaggedPackageAppRequest(
 			},
 		})
 	}
-	const binding = await loadOrgBindingForOrg(
-		env.APP_DB,
-		user.mcpUser.userId,
-		org.userId,
-	)
+	const [binding, parsedAuthSession] = await Promise.all([
+		loadOrgBindingForOrg(env.APP_DB, user.mcpUser.userId, org.userId),
+		readParsedAuthSession(request),
+	])
 	const response = await servePackageAppRequest({
 		request,
 		env,
@@ -263,6 +272,19 @@ async function handleTaggedPackageAppRequest(
 			username: user.username,
 			role: binding?.role ?? null,
 		},
+		visitSession:
+			parsedAuthSession?.issuedAt !== undefined
+				? {
+						stableUserId: user.mcpUser.userId,
+						issuedAt: parsedAuthSession.issuedAt,
+						expiresAt: getAuthSessionExpiresAtMs({
+							rememberMe: parsedAuthSession.session.rememberMe,
+							issuedAt: parsedAuthSession.issuedAt,
+						}),
+						handle: packagePath.username,
+						kodyId: packagePath.kodyId,
+					}
+				: null,
 	})
 	return applyPackageAppCacheHeaders(response, 'signed-in')
 }

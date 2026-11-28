@@ -48,6 +48,7 @@ type TestInstance = {
 		sessions: Record<string, { connectedAt: string; topics: Array<string> }>
 	}
 	alarm: () => Promise<void>
+	checkVisitSession: () => Promise<'live' | 'expired' | 'revoked'>
 }
 
 function createBinding() {
@@ -95,6 +96,7 @@ async function prepare(
 		anyInstance.recordSessionUsage = (_binding, session) => {
 			usage.push(session.id)
 		}
+		anyInstance.checkVisitSession = async () => 'live'
 	})
 	return { calls, usage }
 }
@@ -123,6 +125,14 @@ async function connect(
 		messages.push(String(event.data))
 	})
 	return { response, socket, messages, closed }
+}
+
+const visitSession = {
+	stableUserId: 'member-person',
+	issuedAt: Date.now(),
+	expiresAt: Date.now() + 60 * 60 * 1000,
+	handle: 'kentcdodds',
+	kodyId: 'podium',
 }
 
 const anonymousReceive: PackageRealtimeConnectOptions = {
@@ -227,6 +237,7 @@ test('signed-in visitors are named in hooks and session lists; members stay unca
 	})
 	const member = await connect(binding, {
 		access: 'member',
+		visitSession,
 		visitor: { userId: 'person-member', username: 'member', role: 'owner' },
 	})
 	expect(outsider.response.status).toBe(101)
@@ -308,7 +319,11 @@ test('anonymous socket caps: per IP, per app, and connects per minute', async ()
 	})
 	expect(otherIp.response.status).toBe(101)
 	// Members are not counted against or refused by the public caps.
-	const member = await connect(binding, { access: 'member', visitor: null })
+	const member = await connect(binding, {
+		access: 'member',
+		visitor: null,
+		visitSession,
+	})
 	expect(member.response.status).toBe(101)
 
 	await runInDurableObject(getStub(binding), async (instance) => {
@@ -362,7 +377,11 @@ test('broadcast and emit payloads over 64 KiB and broadcasts over the soft rate 
 	const binding = createBinding()
 	await prepare(binding)
 	const anonymous = await connect(binding, anonymousReceive)
-	const member = await connect(binding, { access: 'member', visitor: null })
+	const member = await connect(binding, {
+		access: 'member',
+		visitor: null,
+		visitSession,
+	})
 	const rpc = packageRealtimeSessionRpc(binding)
 	const big = 'x'.repeat(anonymousRealtimeLimits.maxPayloadBytes + 1)
 
@@ -395,7 +414,11 @@ test('the access alarm closes public sockets past 24 hours and records the sessi
 	const binding = createBinding()
 	const { usage } = await prepare(binding)
 	const anonymous = await connect(binding, anonymousReceive)
-	const member = await connect(binding, { access: 'member', visitor: null })
+	const member = await connect(binding, {
+		access: 'member',
+		visitor: null,
+		visitSession,
+	})
 	await runInDurableObject(getStub(binding), async (instance, state) => {
 		const anyInstance = instance as unknown as TestInstance
 		await expect(state.storage.getAlarm()).resolves.not.toBeNull()

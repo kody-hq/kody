@@ -30,7 +30,10 @@ import {
 	createPackageAppSessionCookie,
 	destroyPackageAppSessionCookie,
 	readPackageAppSession,
+	type ParsedPackageAppSession,
 } from '#app/package-app-session.ts'
+import { deferWork } from '#worker/deferred-work.ts'
+import { endPackageRealtimeVisitSession } from '#worker/package-runtime/realtime-session.ts'
 import {
 	destroyPackageAppTicketCookie,
 	readPackageAppTicket,
@@ -478,6 +481,35 @@ async function handleCallback(input: { request: Request; env: Env; url: URL }) {
 	])
 }
 
+/** Signing out of an app also closes the realtime sockets the session opened. */
+async function endPackageAppRealtimeVisit(input: {
+	env: Env
+	kodyId: string
+	ended: ParsedPackageAppSession
+}) {
+	const org = await resolvePackageAppOrgOwnerByHandle({
+		env: input.env,
+		handle: input.ended.session.username,
+	})
+	if (!org) return
+	const lookup = await resolveSavedPackageForPackageAppSlug({
+		db: input.env.APP_DB,
+		userId: org.userId,
+		slug: input.kodyId,
+	})
+	if (!lookup?.savedPackage.hasApp) return
+	await endPackageRealtimeVisitSession({
+		env: input.env,
+		userId: org.userId,
+		packageId: lookup.savedPackage.id,
+		session: {
+			stableUserId: input.ended.session.stableUserId,
+			issuedAt: input.ended.issuedAt,
+			expiresAt: input.ended.expiresAt,
+		},
+	})
+}
+
 async function handleLogout(input: { request: Request; env: Env; url: URL }) {
 	const secure = isSecureRequest(input.request)
 	const returnTo = normalizeReturnTo(
@@ -492,6 +524,25 @@ async function handleLogout(input: { request: Request; env: Env; url: URL }) {
 	// session cookies: per-app names cannot be guessed.
 	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	const kodyId = await resolveLogoutAppSlug({ ...input, returnTo })
+	const endedSession = kodyId
+		? await readPackageAppSession({
+				request: input.request,
+				env: input.env,
+				slug: kodyId,
+			})
+		: null
+	// Best effort: logout never waits on D1. If closing fails (logged), the
+	// session's sockets stay open until the access alarm finds the cookie
+	// expired; the cookie itself is still cleared.
+	if (kodyId && endedSession) {
+		void deferWork('package-app-logout-realtime-end-failed', () =>
+			endPackageAppRealtimeVisit({
+				env: input.env,
+				kodyId,
+				ended: endedSession,
+			}),
+		)
+	}
 	const cookies = [
 		...(kodyId
 			? await destroyPackageAppSessionCookie({

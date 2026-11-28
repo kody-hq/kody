@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type * as AuthRedirect from '#app/auth-redirect.ts'
+import type * as AuthSession from '#app/auth-session.ts'
 import type * as AuthenticatedUser from '#app/authenticated-user.ts'
 import type * as AppBaseUrl from '#worker/app-base-url.ts'
 import type * as ModuleArtifacts from '#worker/package-invocations/module-artifacts.ts'
@@ -140,6 +141,15 @@ vi.mock('#app/authenticated-user.ts', () => ({
 	readAuthenticatedAppUser: (
 		...args: Parameters<typeof AuthenticatedUser.readAuthenticatedAppUser>
 	) => mockModule.readAuthenticatedAppUser(...args),
+}))
+
+vi.mock('#app/auth-session.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof AuthSession>()),
+	readParsedAuthSession: async () => ({
+		session: { rememberMe: false },
+		issuedAt: Date.now(),
+		setCookie: null,
+	}),
 }))
 
 vi.mock('#app/package-app-owner.ts', () => ({
