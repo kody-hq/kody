@@ -15,8 +15,14 @@ const mocks = vi.hoisted(() => ({
 	getPlatformFeedbackForAdmin: vi.fn(),
 	invokePackageSubscription: vi.fn(),
 	listAdminStableUserIds: vi.fn(),
-	listSavedPackagesByUserId: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
+	listLiveSubscriptionTargetsForEnablers: vi.fn(),
 	loadPackageManifestBySourceId: vi.fn(),
+}))
+
+vi.mock('#worker/enablements/repo.ts', () => ({
+	listLiveSubscriptionTargetsForEnablers:
+		mocks.listLiveSubscriptionTargetsForEnablers,
 }))
 
 vi.mock('#worker/identity/permissions-db.ts', () => ({
@@ -28,7 +34,7 @@ vi.mock('#worker/package-invocations/service.ts', () => ({
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	listSavedPackagesByUserId: mocks.listSavedPackagesByUserId,
+	listSavedPackagesByIds: mocks.listSavedPackagesByIds,
 }))
 
 vi.mock('#worker/package-registry/source.ts', () =>
@@ -106,6 +112,7 @@ function createManifest(packageId: string, subscribed: boolean) {
 	}
 }
 
+/** `byUser`: each admin and the packages (in any org) they enabled. */
 function seedAdminPackages(
 	byUser: Record<string, Array<SavedPackage>>,
 	manifests: {
@@ -115,9 +122,24 @@ function seedAdminPackages(
 ) {
 	const all = Object.values(byUser).flat()
 	mocks.listAdminStableUserIds.mockResolvedValue(Object.keys(byUser))
-	mocks.listSavedPackagesByUserId.mockImplementation(
-		async (_db: D1Database, input: { userId: string }) =>
-			byUser[input.userId] ?? [],
+	mocks.listLiveSubscriptionTargetsForEnablers.mockImplementation(
+		async (input: { enablerUserIds: Array<string> }) =>
+			input.enablerUserIds.flatMap((enablerId) =>
+				(byUser[enablerId] ?? []).map((entry) => ({
+					orgId: entry.userId,
+					packageId: entry.id,
+				})),
+			),
+	)
+	mocks.listSavedPackagesByIds.mockImplementation(
+		async (
+			_db: D1Database,
+			input: { userId: string; packageIds: Array<string> },
+		) =>
+			all.filter(
+				(entry) =>
+					entry.userId === input.userId && input.packageIds.includes(entry.id),
+			),
 	)
 	mocks.loadPackageManifestBySourceId.mockImplementation(
 		async (input: { sourceId: string }) => {
@@ -231,8 +253,8 @@ test('platform feedback dispatch isolates terminal handler failures and rejects 
 	mocks.invokePackageSubscription.mockClear()
 	const first = pkg('first')
 	const second = pkg('second')
-	const broken = pkg('broken', 'admin-stable-2')
-	const unrelated = pkg('unrelated', 'admin-stable-2')
+	const broken = pkg('broken', 'team-org')
+	const unrelated = pkg('unrelated', 'team-org')
 	seedAdminPackages(
 		{
 			'admin-stable-1': [first, second],
@@ -260,6 +282,7 @@ test('platform feedback dispatch isolates terminal handler failures and rejects 
 					idempotencyKey: `platform-feedback:feedback-1:${savedPackage.id}:platform.feedback.submitted`,
 					source: 'platform-feedback',
 					actorTokenId: 'internal:platform-feedback-subscriptions',
+					enablerIds: ['admin-stable-1', 'admin-stable-2'],
 				}),
 			),
 		),

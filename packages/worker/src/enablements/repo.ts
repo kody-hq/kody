@@ -4,9 +4,11 @@ import {
 	isOrgPermission,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
+import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
+	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	canonicalizeEnablementSender,
@@ -458,6 +460,39 @@ export async function listEnablementsForInstance(input: {
 		)
 		.all<EnablementRow>()
 	return (result.results ?? []).map(toRecord)
+}
+
+/**
+ * Orgs and packages, in any org, with a live subscription enablement of
+ * `topic` turned on by one of `enablerUserIds`. Admin events find their
+ * targets this way: by who turned the subscription on, not by which org owns
+ * the package. The run gate still checks each enabler's access per event.
+ */
+export async function listLiveSubscriptionTargetsForEnablers(input: {
+	db: D1Database
+	topic: string
+	enablerUserIds: ReadonlyArray<string>
+}): Promise<Array<{ orgId: OwnerId; packageId: string }>> {
+	const enablerUserIds = [...new Set(input.enablerUserIds)]
+	const targets = new Map<string, { orgId: OwnerId; packageId: string }>()
+	for (const idChunk of chunkArray(enablerUserIds, 90)) {
+		const placeholders = idChunk.map(() => '?').join(', ')
+		const result = await input.db
+			.prepare(
+				`SELECT DISTINCT org_id, package_id FROM enablements
+				 WHERE trigger_kind = 'subscription' AND trigger_name = ?
+				   AND state <> 'off' AND enabler_user_id IN (${placeholders})`,
+			)
+			.bind(input.topic, ...idChunk)
+			.all<{ org_id: string; package_id: string }>()
+		for (const row of result.results ?? []) {
+			targets.set(`${row.org_id}\u0000${row.package_id}`, {
+				orgId: ownerIdFromStored(row.org_id),
+				packageId: row.package_id,
+			})
+		}
+	}
+	return [...targets.values()]
 }
 
 /** Every enablement in an org, including off ones, for listing and backfill. */

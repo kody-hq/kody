@@ -43,9 +43,16 @@ setup, see [Subscriptions and events](./package-subscriptions.md).
 
 The
 [dispatcher](../../packages/worker/src/package-invocations/admin-package-subscriptions.ts)
-looks up current site admins on each dispatch and selects subscribed packages
-saved under those admin IDs. The consent and D1 replica topics also include
-packages saved under the configured `FIRST_PARTY_ORG_IDS`.
+looks up current site admins on each dispatch and selects packages, in any org,
+where one of them turned on a subscription to the topic. Only those admins'
+enablements run; another member's enablement on the same package does not. The
+consent and D1 replica topics also include packages saved under the configured
+`FIRST_PARTY_ORG_IDS`.
+
+Removing someone's admin role stops their subscriptions on the next event.
+Losing access to the package's org, or Run on the package, pauses their
+enablement through the usual run gate. The payload is visible to members of the
+org that owns the receiving package.
 
 Kody
 [runs the handler as the enabler](../../packages/worker/src/package-invocations/subscription-dispatch.ts)
@@ -188,8 +195,8 @@ Every What's New in Kody consent or recipient change made on the site writes a
 consent ledger current without polling.
 
 The payload carries subscriber addresses. The Queue consumer selects packages
-saved by current site admins or owned by orgs in `FIRST_PARTY_ORG_IDS`, as
-enforced by the
+where a current site admin turned the subscription on, or owned by orgs in
+`FIRST_PARTY_ORG_IDS`, as enforced by the
 [outbox dispatch](../../packages/worker/src/newsletter/consent-outbox.ts) and
 covered by the
 [first-party delivery tests](../../packages/worker/src/newsletter/consent-outbox-first-party-orgs.node.test.ts).
