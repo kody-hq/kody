@@ -5,6 +5,7 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 const mockModule = vi.hoisted(() => ({
 	resolveArtifactSourceHead: vi.fn(),
 	publishFromExternalRef: vi.fn(),
+	clearExpiredPackageGitWriteMinters: vi.fn(async () => {}),
 	pusherByCommit: new Map<string, string>(),
 	pendingApproval: null as {
 		pendingCommit: string
@@ -17,7 +18,8 @@ vi.mock('#worker/package-capabilities/approval-requests-repo.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
-	clearExpiredPackageGitWriteMinters: async () => {},
+	clearExpiredPackageGitWriteMinters: (...args: Array<unknown>) =>
+		mockModule.clearExpiredPackageGitWriteMinters(...args),
 	findPackageAppPusher: async (input: { commit: string }) =>
 		mockModule.pusherByCommit.get(input.commit) ?? null,
 }))
@@ -507,4 +509,52 @@ test('reconcileArtifactsPushes publishes a pushed HEAD as the person who pushed 
 			requestedByUserId: null,
 		}),
 	)
+})
+
+test('reconcileArtifactsPushes clears expired write-token minters only once HEAD is published', async () => {
+	mockModule.pendingApproval = null
+	const reconcile = () =>
+		reconcileArtifactsPushes({
+			env: createPackageSourceEnv({ updates: [] }),
+			baseUrl: 'https://kody.test',
+			now: new Date('2026-08-04T12:00:00.000Z'),
+			batchSize: 10,
+			staleAfterMinutes: 0,
+			timeBudgetMs: 1000,
+		})
+	const clear = mockModule.clearExpiredPackageGitWriteMinters
+	mockModule.publishFromExternalRef.mockReset()
+
+	// An unchanged HEAD means no expired token pushed anything newer.
+	clear.mockClear()
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-old',
+	})
+	expect((await reconcile()).alreadyPublished).toBe(1)
+	expect(clear).toHaveBeenCalledWith(
+		expect.objectContaining({
+			scope: { orgId: ownerIdFromStored('user-1'), packageId: 'pkg-1' },
+		}),
+	)
+
+	// A push still awaiting publication keeps every possible pusher.
+	clear.mockClear()
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-new',
+	})
+	mockModule.publishFromExternalRef.mockResolvedValueOnce({
+		status: 'checks_failed',
+	})
+	expect((await reconcile()).checksFailed).toBe(1)
+	expect(clear).not.toHaveBeenCalled()
+
+	mockModule.publishFromExternalRef.mockResolvedValueOnce({
+		status: 'published',
+		previous_commit: 'commit-old',
+		published_commit: 'commit-new',
+	})
+	expect((await reconcile()).published).toBe(1)
+	expect(clear).toHaveBeenCalledTimes(1)
 })
