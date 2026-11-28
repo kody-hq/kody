@@ -346,6 +346,7 @@ async function planDeclarations(
 		pathsByName.set(name, paths)
 	}
 	const credentialKeys: Array<{ path: string; key: string }> = []
+	const computedKeyPaths = new Set<string>()
 	await scanModuleCredentialReferences(files, (path, parsed) => ({
 		add: () => {},
 		named: (name, kind, via) => {
@@ -369,7 +370,7 @@ async function planDeclarations(
 				if (!Object.hasOwn(declaredSlots, key))
 					credentialKeys.push({ path, key })
 			},
-			computed: () => flag(path, 'computed'),
+			computed: () => computedKeyPaths.add(path),
 			indirect: () => flag(path, 'indirectCredential'),
 		}
 		if (parsed) scanParsedCredentialKeys(parsed, constants, scan)
@@ -383,27 +384,48 @@ async function planDeclarations(
 				key.length >= packageCredentialSlotPrefixMinLength,
 		)
 		.map(([key]) => key)
-	const buildsNames = [...manual.values()].some((messages) =>
-		messages.has('computed'),
-	)
+	const buildsNames =
+		computedKeyPaths.size > 0 ||
+		[...manual.values()].some((messages) => messages.has('computed'))
+	const slotKind = (key: string) => {
+		const slot = declaredSlots[key]
+		return isPlainObject(slot) && slot.kind != null ? String(slot.kind) : null
+	}
 	// Read conventions only for a package that builds a name at run time.
 	const prefix = buildsNames
 		? (await inferCredentialPrefixes(files)).filter((key) => {
 				if (declaredPrefixes.includes(key)) return false
 				const slot = declaredSlots[key]
-				if (slot === undefined) return true
+				if (slot === undefined) {
+					// Declaring a key changes how credential(key) resolves it, so a
+					// package that may pass this key to credential() keeps it undeclared.
+					return (
+						computedKeyPaths.size === 0 &&
+						!credentialKeys.some((used) => used.key === key)
+					)
+				}
 				if (!isPlainObject(slot)) return false
 				return slot.kind == null || prefixableSlotKinds.has(String(slot.kind))
 			})
 		: []
 	const prefixes = [...declaredPrefixes, ...prefix]
-	const coveredByPrefix = (name: string) =>
-		prefixes.some((key) =>
-			packageCredentialSlotCoversName({ key, prefix: true }, name),
-		)
+	const coveredByPrefix = (name: string, kinds?: ReadonlySet<NameKind>) =>
+		prefixes.some((key) => {
+			if (!packageCredentialSlotCoversName({ key, prefix: true }, name)) {
+				return false
+			}
+			const kind = slotKind(key)
+			return (
+				kind == null ||
+				kinds == null ||
+				[...kinds].every((used) => fillingSlotKinds[used].has(kind))
+			)
+		})
 	if (prefixes.length > 0) {
 		// The prefix slots state which names the package can build.
 		for (const messages of manual.values()) messages.delete('computed')
+	} else {
+		for (const path of computedKeyPaths) flag(path, 'computed')
 	}
 	for (const { path, key } of credentialKeys) {
 		if (!coveredByPrefix(key)) flag(path, 'undeclaredCredentialKey')
@@ -427,7 +449,7 @@ async function planDeclarations(
 			for (const path of paths) flag(path, 'invalidKey')
 			continue
 		}
-		if (coveredByPrefix(name)) continue
+		if (coveredByPrefix(name, kinds)) continue
 		add.push(name)
 	}
 	return {

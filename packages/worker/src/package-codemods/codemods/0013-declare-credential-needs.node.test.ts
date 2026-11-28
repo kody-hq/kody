@@ -481,3 +481,37 @@ test('0013 reads a declared prefix slot as covering built and literal names', as
 	expect(result.changed).toBe(false)
 	expect(result.needsManual).toEqual([])
 })
+
+test('0013 keeps a prefix from changing credential() resolution or hiding a kind mismatch', async () => {
+	// A new slot would change how credential('acme') resolves.
+	const called = await transform(
+		[
+			"import { createAuthenticatedFetch, credential } from 'kody:runtime'",
+			'export function client(name?: string) {',
+			"\treturn createAuthenticatedFetch(name ?? 'acme')",
+			'}',
+			"export const signer = credential('acme')",
+		].join('\n'),
+	)
+	expect(called.changed).toBe(false)
+	expect(called.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+		{ path: 'index.ts', message: messages.undeclaredCredentialKey },
+	])
+	// An OAuth prefix does not fill a Key placeholder, so that name gets a slot.
+	const mixed = await transform(
+		[
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			'export function client(name: string) {',
+			'\treturn createAuthenticatedFetch(name)',
+			'}',
+			"export const header = 'Bearer {{secret:google-key}}'",
+		].join('\n'),
+		{
+			credentials: {
+				google: { kind: 'oauth', prefix: true, description: 'G.' },
+			},
+		},
+	)
+	expect(Object.keys(declaredSlots(mixed))).toEqual(['google', 'google-key'])
+})

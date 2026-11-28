@@ -525,6 +525,11 @@ For a package that builds a name or key at run time, the codemod declares a
   (`createAuthenticatedFetch(name ?? 'slack')`, a parameter default, a `const`
   initializer, or a same-module function's return).
 
+A new prefix slot is not declared when the package passes that key, or a
+computed key, to `credential()`: declaring a key changes how `credential(key)`
+resolves it. A literal name whose use the prefix slot's kind cannot fill still
+gets its own exact slot.
+
 An already declared slot keeps its fields and gains `prefix`, unless its kind
 cannot take one. A package with a prefix slot, declared or inferred, is not
 reported for computed names, and literal names and `credential()` keys the
