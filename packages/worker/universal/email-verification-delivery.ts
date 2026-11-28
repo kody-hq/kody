@@ -231,7 +231,7 @@ export function describeEmailVerificationDelivery(
 			})
 		case 'accepted':
 			return describeDelivery({
-				headline: 'Verification email sent',
+				headline: 'Waiting for delivery confirmation',
 				detail: emailVerificationDeliveryWaitingDetail,
 				canResend: true,
 				tone: 'info',
@@ -241,7 +241,7 @@ export function describeEmailVerificationDelivery(
 			const exhaustive: never = delivery.status
 			void exhaustive
 			return describeDelivery({
-				headline: 'Verification email sent',
+				headline: 'Waiting for delivery confirmation',
 				detail: emailVerificationDeliveryWaitingDetail,
 				canResend: true,
 				tone: 'info',

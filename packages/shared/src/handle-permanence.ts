@@ -30,5 +30,5 @@ export function handleEmailLocalPreview(slug: string) {
 
 export function handlePermanenceConfirmMessage(slug: string) {
 	const handle = slug.trim().toLowerCase() || 'your-username'
-	return `Submit again to create your account as ${handle}.`
+	return `You're choosing ${handle}. You can't change this later. Submit again to create your account.`
 }
