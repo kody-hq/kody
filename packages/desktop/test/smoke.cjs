@@ -7,6 +7,7 @@ const { _electron } = require('@playwright/test')
 // The screenshot is a CI artifact, not an assertion. Linux CI sometimes fails
 // Page.captureScreenshot on a window that already passed every check.
 async function captureScreenshot(page, path) {
+	rmSync(path, { force: true })
 	for (let attempt = 1; attempt <= 3; attempt++) {
 		try {
 			await page.screenshot({ path })
