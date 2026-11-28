@@ -515,3 +515,22 @@ test('0013 keeps a prefix from changing credential() resolution or hiding a kind
 	)
 	expect(Object.keys(declaredSlots(mixed))).toEqual(['google', 'google-key'])
 })
+
+test('0013 settles in one pass when credential() and the gateway share a default name', async () => {
+	const result = await transform(
+		[
+			"import { createAuthenticatedFetch, credential } from 'kody:runtime'",
+			'export function client(name?: string) {',
+			"\treturn createAuthenticatedFetch(name ?? 'acme')",
+			'}',
+			"export const plain = createAuthenticatedFetch('acme')",
+			"export const scoped = credential('acme')",
+		].join('\n'),
+	)
+	expect(declaredSlots(result)).toEqual({ acme: prefixSlot })
+	const again = await declareCredentialNeedsCodemod.transform(
+		result.files,
+		packageContext,
+	)
+	expect(again.changed).toBe(false)
+})

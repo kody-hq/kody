@@ -399,9 +399,11 @@ async function planDeclarations(
 				if (slot === undefined) {
 					// Declaring a key changes how credential(key) resolves it, so a
 					// package that may pass this key to credential() keeps it undeclared.
+					// A literal gateway use declares the key either way.
 					return (
-						computedKeyPaths.size === 0 &&
-						!credentialKeys.some((used) => used.key === key)
+						uses.has(key) ||
+						(computedKeyPaths.size === 0 &&
+							!credentialKeys.some((used) => used.key === key))
 					)
 				}
 				if (!isPlainObject(slot)) return false
