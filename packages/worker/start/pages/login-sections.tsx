@@ -58,7 +58,21 @@ export function renderMobileBrand() {
 	return renderBrand(authBrandMobileCss)
 }
 
-export function renderLoginVisualPanel() {
+export type AuthVisitor = 'returning' | 'new'
+
+const authGreetings: Record<AuthVisitor, { title: string; body: string }> = {
+	returning: {
+		title: 'Good to see you.',
+		body: 'Your packages, jobs, and memory: right where you left them.',
+	},
+	new: {
+		title: 'Make yourself at home.',
+		body: 'Memory, secrets, and packages your agents can carry everywhere.',
+	},
+}
+
+export function renderLoginVisualPanel(visitor: AuthVisitor = 'returning') {
+	const greeting = authGreetings[visitor]
 	return (
 		<aside data-parallax-scope aria-hidden="true" css={authVisualCss}>
 			{renderBrand(authBrandCss, { decorative: true })}
@@ -66,10 +80,8 @@ export function renderLoginVisualPanel() {
 				<div css={authStageWrapCss}>
 					<HeroStage size="auth" alt="" />
 				</div>
-				<p css={authGreetingCss}>Good to see you.</p>
-				<p css={authGreetingSubCss}>
-					Your packages, jobs, and memory: right where you left them.
-				</p>
+				<p css={authGreetingCss}>{greeting.title}</p>
+				<p css={authGreetingSubCss}>{greeting.body}</p>
 			</div>
 			<p css={authFactCss}>
 				Fully isolated per user. Your capabilities are yours alone.

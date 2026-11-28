@@ -5,6 +5,7 @@ import { colors } from '#universal/styles/tokens.ts'
 import {
 	renderLoginVisualPanel,
 	renderMobileBrand,
+	type AuthVisitor,
 } from '../pages/login-sections.tsx'
 import { SiteLink } from './site-link.tsx'
 export function AuthLayout({
@@ -12,15 +13,17 @@ export function AuthLayout({
 	description,
 	children,
 	ref,
+	visitor,
 }: {
 	title: string
 	description?: string
 	children: ReactNode
 	ref?: Ref<HTMLDivElement>
+	visitor?: AuthVisitor
 }) {
 	return (
 		<div ref={ref} css={authLayoutCss}>
-			{renderLoginVisualPanel()}
+			{renderLoginVisualPanel(visitor)}
 			<div css={authPanelCss}>
 				{renderMobileBrand()}
 				<div css={authCardCss}>

@@ -895,7 +895,7 @@ export function OAuthAuthorizeRoute({
 					resendMessage={resendMessage}
 					resendTone={resendTone}
 					onResend={() => void handleResendVerification()}
-					continueLabel="I've verified - continue"
+					continueLabel="I've verified, continue"
 					onContinue={() => void handleContinueAfterVerify()}
 				/>
 			) : null}
