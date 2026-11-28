@@ -214,23 +214,41 @@ and unrelated account content.
 
 ## Session analytics (opt-in)
 
+Session analytics summarizes agent sessions as counts. Manage the setting in
+Organization settings, or jump to [collection](#what-session-analytics-collects)
+and [session insights](#see-or-delete-session-insights).
+
 Session analytics is off for every organization until an Owner or Admin turns it
 on in Organization settings. Until then Kody collects nothing for it. Everyone
 in the organization can see whether it is on. For a personal organization only
 the person can answer; an agent can pass the question along but cannot answer
 it.
 
+### What session analytics collects
+
 When it is on, Kody counts, for each agent session in that organization, a
 general category of work (two to four plain words such as "connect service"),
 the agent app that connected, how many calls and errors there were, whether the
 session ended without errors, and where it got stuck (a fixed list of error
-kinds and the Kody tool involved). To pick the category, the short task
-description your agent already sends for memory, or its search text when there
-is none, is read once by Cloudflare Workers AI and then discarded. Kody never
-stores it, and never stores code, queries, results, secrets, memory, or the
-names of your packages for session analytics. A new category name is kept only
-after a format check and a second model, which sees only the proposed name, both
-find no person, company, product, or project name in it.
+kinds and the Kody tool involved). To pick the category, Cloudflare Workers AI
+reads the short context your agent sends for memory or, if there is none, the
+ranked search's inferred task label rather than its raw query. The
+[session analytics test](../../packages/worker/src/session-analytics/session-analytics.node.test.ts)
+checks that task text is not stored in the analytics tables. The
+[analytics recorder](../../packages/worker/src/session-analytics/record.ts)
+records call counts and a category, not raw code, queries, results, secrets,
+memory, or package names. A new category name is kept only after a format check
+and a second model, which sees only the proposed name, both find no person,
+company, product, or project name in it.
+
+### See or delete session insights
+
+Open **Organization settings → Session insights** or use `sessionInsightsGet`
+and `sessionInsightsDelete`. Both MCP tools default to `scope: "mine"`; use
+`scope: "org"` for the organization-wide view and deletion. For deletion, pass
+one entry's `category_id`, `outcome`, `stuck_kind`, and `stuck_tool` as `entry`,
+or pass `all: true` for the selected scope. The insights view covers the last 30
+days.
 
 A session row exists only while the session is open. When it ends, or after 30
 minutes without a call, it is folded into daily counts and deleted. The daily
@@ -241,6 +259,13 @@ permission) see the organization's combined counts. Either can delete any entry
 or all of them; entries cannot be edited. Turning session analytics off deletes
 everything it stored for the organization right away, and deleting an account or
 organization deletes its counts too.
+
+### Cross-organization totals
+
+Publishers can query `packageSessionInsights({ package_id })` for a package's
+30-day totals. The
+[aggregation check](../../packages/worker/src/session-analytics/insights.ts)
+returns `available: false` below the minimum.
 
 Kody staff, and the publishers of public packages your sessions used, see only
 combined totals across organizations, and only once a number covers at least 10

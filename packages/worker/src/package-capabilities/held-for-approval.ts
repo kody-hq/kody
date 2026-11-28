@@ -33,10 +33,8 @@ export function heldForApprovalFromSource(
 }
 
 /**
- * Set when an internet-visible app's latest publish asks for more
- * capabilities than the approved version, so everyone (members, the owner
- * and anonymous visitors) stays on the serving commit until the owner
- * approves it (ADR 0069). Null otherwise.
+ * The recorded hold for an internet-visible app's current published commit
+ * while a different commit serves (ADR 0069). Null otherwise.
  */
 export async function loadHeldForApproval(input: {
 	env: Env

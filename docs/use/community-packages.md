@@ -425,10 +425,11 @@ Use the MCP `community` domain:
 - `communitySearch` — search active listings (`sort: "newest"` for last
   published first; optional `category` to browse one listing category)
 - `communityGet` — fetch one listing's metadata and aggregates (including owner
-  profile linkage when the owner is public)
-- `communityFork` — copy HEAD into your account (inert until published).
-  Omitting a name uses the listing leaf, or the next free `leaf-N` when that
-  leaf is already taken by an unrelated package.
+  profile linkage when the owner is public). Share the returned `public_url`: it
+  uses the owner and package slug when available, or the listing ID.
+- `communityFork` — [copy the listing's source](#forking-a-listing) into your
+  account as an inert fork. Omitting a name uses the listing leaf, or the next
+  free `leaf-N` when that leaf is already taken by an unrelated package.
 - `communityForkAdopt` — return the website link where you adopt a reviewed
   fork, granting it self-authored-like secret read/use access (see
   [Secrets and host approval](./secrets-and-values.md)); it never adopts

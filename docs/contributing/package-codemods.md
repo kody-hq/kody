@@ -490,19 +490,29 @@ Findings are a recommendation for owners to declare a type, not a migration.
 
 ### `0013-declare-credential-needs`
 
-Prepares for credential-need enforcement
-([#3822](https://github.com/kody-hq/kody/issues/3822)). That enforcement limits
-a package that someone other than its author runs to the credentials it
-declares. The codemod adds a `kody.credentials` slot for each name the package
-fills through the fetch gateway by a literal name and does not declare yet:
-`{{secret:NAME}}`, `{{integration-token:NAME}}`,
-`createAuthenticatedFetch('NAME')`, and the secret fields of
-`secretHeaders.basic` and `oauthClientCredentials`. Names are resolved through
-module and imported constants, as in `0010`. A name that `kody.secretMounts`
-also mounts still gets a slot, because the stored needs closure reads only
-`kody.credentials`.
+This codemod adds missing fetch-gateway credential slots to `kody.credentials`
+and reports cases that need owner review. It supports credential-need
+enforcement ([#3822](https://github.com/kody-hq/kody/issues/3822)). See
+[computed names](#computed-credential-names) or
+[manual findings and runs](#manual-findings-and-runs).
 
-A name built at run time is traced through the package's own source (variables,
+#### Literal names
+
+The
+[declaration codemod](../../packages/worker/src/package-codemods/codemods/0013-declare-credential-needs.ts)
+adds a `kody.credentials` slot for each name the package fills through the fetch
+gateway by a literal name and does not declare yet: `{{secret:NAME}}`,
+`{{integration-token:NAME}}`, `createAuthenticatedFetch('NAME')`, and the secret
+fields of `secretHeaders.basic` and `oauthClientCredentials`. Names are resolved
+through module and imported constants, as in `0010`. A name that
+`kody.secretMounts` also mounts still gets a slot, because the stored needs
+closure reads only `kody.credentials`.
+
+#### Computed credential names
+
+The
+[name inference helper](../../packages/worker/src/package-codemods/codemods/0013-infer-credential-names.ts)
+traces a name built at run time through the package's own source (variables,
 parameters and their call sites inside the package, returned values, and object
 fields, matched by name). The codemod declares each literal the name can be.
 Where the traced value is a literal, a hyphen, then anything
@@ -511,12 +521,14 @@ Where the traced value is a literal, a hyphen, then anything
 or sets `prefix: true` on the slot already declared. It never writes a prefix
 that is not a literal in the source.
 
-Such a name is no longer reported only when every value it can take is one of
+The codemod omits a manual finding only when every value it can take is one of
 those literals or falls under one of those prefixes. A value from outside the
 package (a parameter of an exported function, an object field, an input) is
 unbounded unless the package checks it with `name.startsWith(prefix)` first. So
 a wrapper with the convention and an unchecked override gets its prefix slot and
 is still reported, as is a name with only a literal default (`name || 'slack'`).
+
+#### Manual findings and runs
 
 Each new slot has no `kind` and a fixed description the owner can reword.
 Placeholders resolve by name whatever their slot says, so this changes nothing

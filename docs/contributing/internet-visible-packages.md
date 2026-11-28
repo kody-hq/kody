@@ -106,21 +106,15 @@ while the published one is held, so webhooks, events, subscription dispatch,
 secret access, and enablements follow it too. Capability checks pin the commit
 they inspect (`commit`).
 
-`loadHeldForApproval` (`package-capabilities/held-for-approval.ts`) reports the
-held state from `held_commit`: an internet-visible app whose held commit is the
-published commit and not the serving one (`heldForApprovalFromSource`). The
+[`loadHeldForApproval`](../../packages/worker/src/package-capabilities/held-for-approval.ts)
+reads the recorded hold for an internet-visible app; it does not compare
+capability sets. It returns both commits when the held commit matches the
+published tip and a different commit still serves. The
 `entity_sources.published_commit` column is the internal tip and does name the
 held commit; nothing reports it to callers as published. A held publish is its
-own status, `held_for_approval`, on every publish result
-(`packagePublishExternalPush`, `repoPublishSession`, `packageSave`), built by
-`loadHeldForApprovalPublishStatus`, with `serving_commit`, `held_commit`,
-`approval_url`, and `message`. It is never `published`, `already_published`, or
-`ok`, and it is distinct from `locked` and `approval_required`, which pause a
-publish before it starts. A durable publish run that ends held fails like any
-other refusal (`durablePublishRefusalReason`), and the CLI exits 1. `packageGet`
-reads the serving view while a commit is held and returns `serving_commit`,
-`held_commit`, and `approval_url`; `held_commit` and `approval_url` are null for
-callers without `package:write`.
+own status, `held_for_approval`, built by
+[`loadHeldForApprovalPublishStatus`](../../packages/worker/src/mcp/capabilities/packages/held-for-approval-publish-status.ts).
+See [Held publishes](../use/packages.md#held-publishes) for API and CLI results.
 
 The owner notice fires where the hold is recorded, not in a publish handler:
 `advancePackageServingCommit` calls `notifyOwnersOfHeldPublish`

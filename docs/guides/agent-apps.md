@@ -77,25 +77,12 @@ returns in your browser. Nobody has to sign in to Kody in that browser first.
 
 From a terminal, `kody app open-link @acme/board /cards` prints only the link.
 
-- The link works **once** and expires **5 minutes** after it is made. Treat it
-  like a password until then: do not paste it into chat, logs, or a pull
-  request.
-- Opening it signs that browser in to **that one app** for **60 minutes**. Later
-  clicks and page loads in the app use the browser's cookie, so you need one
-  link per browser session, not one per page. After 60 minutes, call
-  `appOpenLink` again.
-- The browser gets a
-  [cookie for that app on that host only](../../packages/worker/src/app/package-app-session.ts).
-  It is not a Kody sign-in: it opens no other app and nothing on kody.codes.
-- The visit has
-  [the same access as `appFetch` from the same credential](../../packages/worker/src/app/package-app-open-link.node.test.ts):
-  your person, your token's scopes, and your profile. Access is checked again on
-  every request, so removing the profile's grant or revoking the API token ends
-  the visit.
-- If the person still owes a consent, `appOpenLink` reports
-  `app_consent_required` with a `consent_url` instead of a link, exactly like
-  `appFetch`. See
-  [When the app needs your person once](#when-the-app-needs-your-person-once).
+Treat the link like a password: do not paste it into chat, logs, or a pull
+request. Use one link per browser visit, not one per page. See the
+[open-link reference](../use/app-fetch.md#open-link) for expiry and visit
+access, or
+[When the app needs your person once](#when-the-app-needs-your-person-once) if
+you get `app_consent_required`.
 
 Keep using `appFetch` for programmatic calls: it returns the status, headers,
 and body directly and needs no browser. Never send your API token to the app's

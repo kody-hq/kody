@@ -1116,13 +1116,15 @@ and recorded in the org activity log on its own. If the capability set was
 already approved, `packageUpdate` and the settings toggle turn internet-visible
 on immediately without another Approve click.
 
+### Held publishes
+
 Republishing an approved internet-visible app does not interrupt anyone.
 Everyone keeps the approved version until the new one finishes building. If the
 new version asks for the same capabilities or fewer, its approval carries
-forward and everyone switches to it right away. If it asks for more, everyone,
-including you and other members of the account, stays on the approved version
-until you approve the new capability set; members and public visitors never run
-different versions.
+forward and the serving commit advances. If it asks for more or the capability
+check fails, the publish stays on hold and the approved commit keeps serving.
+See
+[how Kody advances the serving commit](../contributing/internet-visible-packages.md#republishing-an-approved-app).
 
 A publish in that state is held, not published. Every publish surface reports it
 with the status `held_for_approval` instead of `published`: `repoPublishSession`

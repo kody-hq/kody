@@ -64,6 +64,10 @@ Owners and Admins can also turn off
 usage emails and the monthly execute heads-up) with `orgUpdate`
 `{ "usage_warnings": false }` or **Organization settings**, **Usage warnings**.
 
+For agent session counts, see
+[Session analytics](../use/privacy.md#session-analytics-opt-in), including the
+organization setting and how to view or delete insights.
+
 ## Org-wide read access
 
 To let a Member read everything of one kind without making them an Owner, an

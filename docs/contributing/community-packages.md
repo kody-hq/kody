@@ -158,6 +158,14 @@ offers **Use in agent** under the listing.
 Reports survive listing deletion via denormalized listing name and owner on the
 report row.
 
+### Public response shapes
+
+[`community-public.ts`](../../packages/worker/src/app/community-public.ts) maps
+profiles, packages, activity, and listings to the website's public response
+types. The mappers select fields explicitly rather than serializing the stored
+records; for example, the profile mapper returns the username instead of the
+stable user ID.
+
 ### KV snapshots
 
 A listing's pinned file tree is the owner package's SHA-keyed source snapshot,
@@ -247,6 +255,13 @@ is not community-banned. It upserts D1 metadata including optional browse
 `category` from `package.json#kody.category` or well-known tags, and writes a
 SHA-keyed source snapshot.
 
+### Fork rewrite and scan
+
+Fork preparation renames self-references and reports references that need
+review. See
+[what a fork changes](../use/community-packages.md#forking-a-listing) for the
+user-facing workflow.
+
 [`fork-scan.ts`](../../packages/worker/src/community/fork-scan.ts) rewrites the
 manifest name, sets `private: true`, and drops authored `kody.id`. It rewrites
 whole package self-references and renamed emits-topic references in text files,
@@ -265,8 +280,10 @@ ordinary dependency and belongs to the cross-scope scan. The result is
 sentence in `agentPrompt` on the one-click install response. It never fails the
 fork.
 
-The list always describes the tree the fork wrote. When the storage-layer copy
-lands on a dest HEAD that is ahead of the listing pin,
+#### Which tree is scanned
+
+The scan prefers the tree the fork writes. When the storage-layer copy lands on
+a dest HEAD that is ahead of the listing pin,
 `persistForkedArtifactRepoContents` rewrites and scans dest HEAD's tree and that
 scan replaces the one from preparation. If that tree cannot be read, only
 `package.json` is rewritten and the preparation scan is kept as the best
