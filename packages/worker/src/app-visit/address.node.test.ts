@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 
 vi.mock('#app/package-app-origin.ts', () => ({
-	resolveVerifiedCustomHostnameIfEnabled: async (request: Request) => {
+	async resolveVerifiedCustomHostnameIfEnabled(request: Request) {
 		const { host } = new URL(request.url)
 		if (host === 'board.example.org') {
 			return { bindingKind: 'app', username: 'acme', kodyId: 'board' }
@@ -68,13 +68,15 @@ test('an app address names the owning org as @org/app or as a hosted URL', async
 })
 
 test('a path mount names the app by its first path segment', async () => {
-	// The owner's shared host is not kept as the host of the visit.
+	// No customMount: the shared host stops serving apps at the path-mount
+	// cutover, so the visit goes to the app's own host instead.
 	expect(await resolve('https://acme.apps.example/board/cards?x=1')).toEqual({
 		ownerHandle: 'acme',
 		appSlug: 'board',
 		path: '/cards?x=1',
 	})
-	// An org's custom domain is, with the app mounted under its name.
+	// An org's custom domain serves every app of the org, so the app's name
+	// stays in the mount.
 	expect(await resolve('https://apps.example.org/board/cards?x=1')).toEqual({
 		ownerHandle: 'acme',
 		appSlug: 'board',

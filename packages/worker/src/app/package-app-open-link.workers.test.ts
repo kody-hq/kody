@@ -399,7 +399,7 @@ test.each([
 		const mountOrigin = new URL(base).origin
 		const anonymous = await open(`${base}/cards`)
 		expect(anonymous.session).toBeNull()
-		expect(anonymous.status).not.toBe(200)
+		expect(anonymous.status).toBe(403)
 
 		const link = await mintLink({
 			person: 'owner',
@@ -417,7 +417,6 @@ test.each([
 		const session = exchanged.session ?? ''
 		expect(session).not.toBe('')
 
-		// Later navigations inside the mount need no second link.
 		await expectServedLikeAPerson(`${base}/cards?tab=2`, session)
 		await expectServedLikeAPerson(`${base}/settings`, session)
 
@@ -437,7 +436,7 @@ test('an open link works on a verified custom domain, and its cookie stays on th
 	await seedCustomHostname()
 	const anonymous = await open(`${customOrigin}/cards`)
 	expect(anonymous.session).toBeNull()
-	expect(anonymous.status).not.toBe(200)
+	expect(anonymous.status).toBe(403)
 
 	const link = await mintLink({
 		person: 'owner',
@@ -462,8 +461,12 @@ test('an open link works on a verified custom domain, and its cookie stays on th
 	expect(onSubdomain.status).toBe(403)
 	const onMount = await open(`${mountBase}/cards`, session)
 	expect(onMount.session).toBeNull()
-	expect(onMount.status).not.toBe(200)
-	expect(onMount.status).not.toBe(500)
+	expect(onMount.status).toBe(403)
+
+	await expect(open(link)).resolves.toMatchObject({
+		status: 403,
+		openLink: 'rejected',
+	})
 })
 
 test('a link minted for one host form of an app is refused on every other', async () => {

@@ -293,14 +293,17 @@ test('appOpenLink mints for the host each hosted URL form is served on', async (
 			// the path address is retired, so the link is minted for that host.
 			app: 'https://acme.apps.example.com/demo-app/cards?tab=2',
 			opens: 'https://demo-app--acme.apps.example.com/cards?tab=2',
+			mount: 'custom-hostname',
 		},
 		{
 			app: 'https://demo.customer.example/cards?tab=2',
 			opens: 'https://demo.customer.example/cards?tab=2',
+			mount: 'custom-hostname',
 		},
 		{
 			app: 'https://apps.customer.example/demo-app/cards?tab=2',
 			opens: 'https://apps.customer.example/demo-app/cards?tab=2',
+			mount: 'user-subdomain',
 		},
 	]
 	const tokens = new Map<string, string>()
@@ -313,6 +316,16 @@ test('appOpenLink mints for the host each hosted URL form is served on', async (
 		)
 		link.searchParams.delete(packageAppOpenLinkQueryParam)
 		expect(link.toString()).toBe(form.opens)
+		// The preflight runs the app's checks at the mount the browser will use.
+		const preflight = mockModule.servePackageAppRequest.mock.lastCall?.[0] as {
+			request: Request
+			packagePath: { mount: string; restPath: string }
+		}
+		expect(preflight.request.url).toBe(form.opens)
+		expect(preflight.packagePath).toMatchObject({
+			mount: form.mount,
+			restPath: '/cards',
+		})
 	}
 	expect(tokens.size).toBe(3)
 
