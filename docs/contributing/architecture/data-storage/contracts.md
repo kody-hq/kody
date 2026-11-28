@@ -591,7 +591,9 @@ Current retention policies:
   `adminUnverifiedAccountPurgeRun` capability runs one bounded pass on demand
   (or previews the claim page with `dryRun`) and returns per-account outcomes
   keyed by stable user id. Social-login accounts are verified at creation and
-  are not in this set.
+  are not in this set. An account that is the only Owner of a team org with
+  other members is skipped (`skipped_sole_owner`); see
+  [organizations a deleted person leaves behind](./account-lifecycle.md#organizations-a-deleted-person-leaves-behind).
 
 The squashed baseline defines the global time-column indexes these prunes order
 by (`created_at` / `day` / `month` / `started_at` across users); per-user

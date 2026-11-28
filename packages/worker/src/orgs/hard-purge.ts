@@ -20,6 +20,11 @@ import {
 	optionalOrgAuditWriter,
 	redactOrgAuditActorIdsForDeletedUser,
 } from './org-audit.ts'
+import {
+	assertUserDeleteNotBlockedAsSoleOwner,
+	listLiveSoleMemberTeamOrgIds,
+	softDeleteOrg,
+} from './soft-delete.ts'
 
 /**
  * How this org relates to a person account for hard-purge policy. A
@@ -101,6 +106,104 @@ export async function hardPurgeOrg(input: {
 	await deleteOrgRows({ env: input.env, orgId: input.orgId, mode: 'team' })
 }
 
+export async function hardPurgeOrgIfPresent(env: Env, orgId: OwnerId) {
+	try {
+		await hardPurgeOrg({ env, orgId })
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			error.message.startsWith('org_purge_missing_row:')
+		) {
+			return
+		}
+		throw error
+	}
+}
+
+/**
+ * Tombstoned organizations this person was the only Owner of, other than
+ * their personal org. Nobody is left to restore them once the person is
+ * hard-deleted, so the person's hard delete purges them.
+ */
+export async function listTombstonedSoleOwnedOrgIds(
+	db: D1Database,
+	userId: string,
+	personalOrgId: string,
+) {
+	const rows = await db
+		.prepare(
+			`SELECT o.id AS id
+			 FROM orgs o
+			 INNER JOIN org_memberships m
+			   ON m.org_id = o.id AND m.user_id = ? AND m.role = 'owner'
+			 WHERE o.deleted_at IS NOT NULL
+			   AND o.id != ?
+			   AND NOT EXISTS (
+			     SELECT 1 FROM org_memberships other
+			     WHERE other.org_id = o.id
+			       AND other.role = 'owner'
+			       AND other.user_id != ?
+			   )`,
+		)
+		.bind(userId, personalOrgId, userId)
+		.all<{ id: string }>()
+	return (rows.results ?? []).map((row) => row.id)
+}
+
+/**
+ * Team-org step of every hard delete of a person who was not soft-deleted
+ * first (unverified-account purge, guest purge, guest merge, and the
+ * `deleting_at` retry). It applies the account-deletion rules of
+ * `softDeleteUserAccount` before `deleteUserAccount` removes the person's
+ * memberships:
+ *
+ * - The only Owner of a team org that still has other members blocks the
+ *   deletion (`UserDeleteBlockedSoleOwnerError`). Nothing is changed.
+ * - A team org whose only member is this person is tombstoned and then purged
+ *   now, because these paths have no restore window.
+ * - Shared orgs with another Owner stay; `deleteUserAccount` removes the
+ *   membership.
+ *
+ * Safe to retry: an org tombstoned by a failed attempt is purged next time.
+ */
+export async function purgeSoleMemberTeamOrgsForPersonHardDelete(input: {
+	env: Env
+	personUserId: OwnerId
+	personalOrgId: OwnerId
+}): Promise<{ purgedOrgIds: Array<string> }> {
+	const db = input.env.APP_DB
+	await assertUserDeleteNotBlockedAsSoleOwner({
+		db,
+		userId: input.personUserId,
+	})
+	const liveOrgIds = await listLiveSoleMemberTeamOrgIds({
+		db,
+		userId: input.personUserId,
+		personalOrgId: input.personalOrgId,
+	})
+	for (const orgId of liveOrgIds) {
+		await softDeleteOrg({
+			env: input.env,
+			orgId,
+			actorUserId: input.personUserId,
+		})
+	}
+	const purgedOrgIds = [
+		...new Set([
+			...liveOrgIds,
+			...(await listTombstonedSoleOwnedOrgIds(
+				db,
+				input.personUserId,
+				input.personalOrgId,
+			)),
+		]),
+	]
+	for (const orgId of purgedOrgIds) {
+		await hardPurgeOrgIfPresent(input.env, orgId as OwnerId)
+	}
+	return { purgedOrgIds }
+}
+
 async function wipeOrgPinnedConnections(env: Env, orgId: OwnerId) {
 	// Orgs soft-deleted before soft delete wiped pinned connections still have
 	// them. Wipe and revoke them while the app and its client secret exist;
@@ -178,6 +281,62 @@ async function purgePersonAndPersonalOrg(input: {
 		purgeSoftDeleted: input.purgeSoftDeleted,
 	})
 	if (input.personalOrgId) {
+		await deleteOrgRows({
+			env: input.env,
+			orgId: input.personalOrgId,
+			mode: 'personal',
+		})
+	}
+	return result
+}
+
+/**
+ * Hard-delete a live (never soft-deleted) person with every org that would
+ * otherwise be left without members: sole-member team orgs first, then the
+ * person, then the personal org row. Use this instead of calling
+ * `deleteUserAccount` directly; see
+ * docs/contributing/architecture/data-storage/account-lifecycle.md.
+ *
+ * Throws `UserDeleteBlockedSoleOwnerError` before changing anything when the
+ * person is the only Owner of a team org that still has other members.
+ */
+export async function hardDeleteLivePersonWithOrgs(input: {
+	env: Env
+	dbUserId: number
+	/** The person's `users.stable_user_id`. */
+	personUserId: string
+	personalOrgId: OwnerId
+	keepOAuthGrants?: boolean
+}) {
+	await purgeSoleMemberTeamOrgsForPersonHardDelete({
+		env: input.env,
+		personUserId: input.personUserId as OwnerId,
+		personalOrgId: input.personalOrgId,
+	})
+	const result = await deleteUserAccount({
+		env: input.env,
+		dbUserId: input.dbUserId,
+		mcpUserId: input.personalOrgId,
+		personUserId: input.personUserId,
+		keepOAuthGrants: input.keepOAuthGrants,
+	})
+	// Account deletion read the Stripe customer from this row, so it goes
+	// last. Tombstoned first: if the row delete fails, the org lane purges it.
+	const db = input.env.APP_DB
+	const tombstoned = await runD1WithRetry(() =>
+		db
+			.prepare(
+				`UPDATE orgs SET deleted_at = ?
+				 WHERE id = ? AND deleted_at IS NULL
+				   AND NOT EXISTS (
+				     SELECT 1 FROM users u
+				     WHERE COALESCE(NULLIF(TRIM(u.personal_org_id), ''), u.stable_user_id) = orgs.id
+				   )`,
+			)
+			.bind(new Date().toISOString(), input.personalOrgId)
+			.run(),
+	)
+	if ((tombstoned.meta.changes ?? 0) === 1) {
 		await deleteOrgRows({
 			env: input.env,
 			orgId: input.personalOrgId,
@@ -304,6 +463,11 @@ export async function finishLegacyUserDeletion(input: {
 	}
 	const storageOwnerId = personalOrgIdFromUserRow(row)
 	const personUserId = row.stable_user_id.trim() || input.stableUserId
+	await purgeSoleMemberTeamOrgsForPersonHardDelete({
+		env: input.env,
+		personUserId: input.stableUserId,
+		personalOrgId: storageOwnerId,
+	})
 	// Tombstone a still-live personal org first: if this attempt removes the
 	// person and then fails on the org, the org lane can still purge it.
 	const deletingAt = row.deleting_at

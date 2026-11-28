@@ -3,7 +3,6 @@ import { onEmailVerified } from '#worker/identity/email-verified.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
-import { deleteUserAccount } from '#app/account-deletion.ts'
 import { scheduleFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import { maybeGrantSignupWelcomeCredits } from '#worker/billing/signup-welcome-credits.ts'
@@ -21,6 +20,12 @@ import type { McpMemoryRow } from '#mcp/memory/types.ts'
 import { runOrgResourceTransfer } from '#worker/org-transfer/apply.ts'
 import { defaultOrgTransferEffects } from '#worker/org-transfer/effects.ts'
 import { runLogRpc } from '#worker/run-records/service.ts'
+import { hardDeleteLivePersonWithOrgs } from '#worker/orgs/hard-purge.ts'
+import {
+	assertUserDeleteNotBlockedAsSoleOwner,
+	soleOwnerWithOtherMembersReason,
+	UserDeleteBlockedSoleOwnerError,
+} from '#worker/orgs/soft-delete.ts'
 import { scheduleGuestClaimedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
 import type {
 	GuestClaimCounts,
@@ -390,6 +395,28 @@ export async function mergeGuestIntoAccount(
 	const counts = await countsPromise
 	const fromOrgId = guest.personalOrgId
 	const toOrgId = target.personalOrgId
+	// Before anything moves: deleting the guest must not leave a team org
+	// without an Owner.
+	try {
+		await assertUserDeleteNotBlockedAsSoleOwner({
+			db,
+			userId: guest.personId as never,
+		})
+	} catch (error) {
+		if (!(error instanceof UserDeleteBlockedSoleOwnerError)) throw error
+		await logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'guest_account_claim_blocked',
+			result: 'failure',
+			email: target.email,
+			reason: `mode=merge;${soleOwnerWithOtherMembersReason}`,
+		})
+		throw new GuestClaimError(
+			'merge_blocked',
+			'This guest account is the only Owner of an organization that still has other members. Nothing was changed. Promote another Owner or remove the other members first, or claim into a new account.',
+		)
+	}
 	const renamedPackages = await renameClashingPackages(db, fromOrgId, toOrgId)
 	await db
 		.prepare(
@@ -470,11 +497,11 @@ export async function mergeGuestIntoAccount(
 			intoOrgId: toOrgId,
 		}),
 	])
-	await deleteUserAccount({
+	await hardDeleteLivePersonWithOrgs({
 		env,
 		dbUserId: user.id,
-		mcpUserId: fromOrgId as never,
 		personUserId: guest.personId,
+		personalOrgId: fromOrgId,
 		keepOAuthGrants: true,
 	})
 	await (async () => {

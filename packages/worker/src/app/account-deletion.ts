@@ -69,6 +69,7 @@ import {
 	getAccountD1UserColumnCoverage,
 } from '#worker/account/data-targets.ts'
 import { hardPurgeDataTargets } from '#worker/orgs/data-targets.ts'
+import { assertPersonHardDeleteLeavesNoTeamOrgBehind } from '#worker/orgs/soft-delete.ts'
 import {
 	accountUserOwnedVectorizeSurfaces,
 	getAccountDeletionDurableObjectResultKeys,
@@ -1735,6 +1736,14 @@ export async function deleteUserAccount(input: {
 			deletingAt: tombstone.deleting_at ?? new Date().toISOString(),
 		}
 	} else {
+		// A soft-deleted person's team orgs were settled by the soft delete.
+		// Every other caller must settle them first; see
+		// docs/contributing/architecture/data-storage/account-lifecycle.md.
+		await assertPersonHardDeleteLeavesNoTeamOrgBehind({
+			db: input.env.APP_DB,
+			userId: personUserId as OwnerId,
+			personalOrgId: input.mcpUserId,
+		})
 		marked = await markAccountDeleting({
 			db: input.env.APP_DB,
 			dbUserId: input.dbUserId,

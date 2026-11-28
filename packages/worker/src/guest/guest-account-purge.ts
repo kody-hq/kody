@@ -2,12 +2,18 @@
 // soft-deleted users rows, so it only removes rows whose account is gone)
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
-import { deleteUserAccount } from '#app/account-deletion.ts'
 import { scheduleUserDeletedEvent } from '#worker/identity/schedule-user-lifecycle-event.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { softDeletePurgeRetryBackoffMs } from '#worker/orgs/purge.ts'
-import { finishLegacyUserDeletion } from '#worker/orgs/hard-purge.ts'
+import {
+	finishLegacyUserDeletion,
+	hardDeleteLivePersonWithOrgs,
+} from '#worker/orgs/hard-purge.ts'
+import {
+	soleOwnerWithOtherMembersReason,
+	UserDeleteBlockedSoleOwnerError,
+} from '#worker/orgs/soft-delete.ts'
 
 export const guestPurgeBatchSize = 10
 
@@ -87,14 +93,25 @@ export async function pruneExpiredGuestAccounts(input: {
 						stableUserId: ownerIdFromStored(row.stable_user_id),
 					})
 				} else {
-					await deleteUserAccount({
+					await hardDeleteLivePersonWithOrgs({
 						env: input.env,
 						dbUserId: row.id,
-						mcpUserId: personalOrgIdFromUserRow(row),
 						personUserId: row.stable_user_id,
+						personalOrgId: personalOrgIdFromUserRow(row),
 					})
 				}
 			} catch (error) {
+				if (error instanceof UserDeleteBlockedSoleOwnerError) {
+					// The guest stays until another Owner is promoted or the
+					// other members are removed; the next pass checks again.
+					await logAuditEvent({
+						db: auditDatabaseFromEnv(input.env),
+						category: 'account',
+						action: 'guest_account_purge_skipped',
+						result: 'failure',
+						reason: soleOwnerWithOtherMembersReason,
+					})
+				}
 				// Once the users row is gone this guest cannot be selected again,
 				// so a later step failing (a tombstoned personal org is left for
 				// the org lane) must not skip the event, audit, and guest row.

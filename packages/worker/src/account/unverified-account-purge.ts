@@ -21,8 +21,14 @@ import {
 	AccountDeletionBillingError,
 	AccountDeletionCleanupError,
 	AccountDeletionInventoryError,
-	deleteUserAccount,
 } from '#app/account-deletion.ts'
+
+import { hardDeleteLivePersonWithOrgs } from '#worker/orgs/hard-purge.ts'
+import {
+	assertUserDeleteNotBlockedAsSoleOwner,
+	soleOwnerWithOtherMembersReason,
+	UserDeleteBlockedSoleOwnerError,
+} from '#worker/orgs/soft-delete.ts'
 
 export { shouldRunRetentionCron as shouldRunUnverifiedAccountPurgeCron }
 
@@ -91,6 +97,8 @@ export type UnverifiedAccountPurgeOutcomeKind =
 	| 'purged'
 	| 'failed'
 	| 'skipped_claim'
+	/** Only Owner of a team org that still has other members; nothing changed. */
+	| 'skipped_sole_owner'
 
 /**
  * Per-account result of one purge pass. Identifies the account by stable id
@@ -368,6 +376,40 @@ export async function pruneUnverifiedAccounts(input: {
 			break
 		}
 		const accountAgeDays = ageDays(account.created_at, now)
+		const personalOrgId = personalOrgIdFromUserRow({
+			personal_org_id: account.personal_org_id,
+			stable_user_id: account.stable_user_id,
+		})
+		// Checked before the claim so a blocked account is never fenced.
+		try {
+			await assertUserDeleteNotBlockedAsSoleOwner({
+				db: input.env.APP_DB,
+				userId: account.stable_user_id,
+			})
+		} catch (error) {
+			if (!(error instanceof UserDeleteBlockedSoleOwnerError)) throw error
+			result.outcomes.push({
+				stableUserId: account.stable_user_id,
+				ageDays: accountAgeDays,
+				outcome: 'skipped_sole_owner',
+			})
+			try {
+				await logAuditEvent({
+					db: auditDatabaseFromEnv(input.env),
+					category: 'account',
+					action: 'unverified_account_purge_skipped',
+					result: 'failure',
+					email: account.email,
+					reason: soleOwnerWithOtherMembersReason,
+				})
+			} catch (auditError) {
+				console.warn('unverified_account_purge_audit_failed', {
+					userId: account.stable_user_id,
+					error: auditError,
+				})
+			}
+			continue
+		}
 		const claim = await claimUnverifiedAccountForPurge({
 			db: input.env.APP_DB,
 			dbUserId: account.id,
@@ -383,14 +425,11 @@ export async function pruneUnverifiedAccounts(input: {
 			continue
 		}
 		try {
-			await deleteUserAccount({
+			await hardDeleteLivePersonWithOrgs({
 				env: input.env,
 				dbUserId: account.id,
-				mcpUserId: personalOrgIdFromUserRow({
-					personal_org_id: account.personal_org_id,
-					stable_user_id: account.stable_user_id,
-				}),
 				personUserId: account.stable_user_id,
+				personalOrgId,
 			})
 			try {
 				await logAuditEvent({

@@ -44,9 +44,15 @@ const outcomeSchema = z.object({
 		.int()
 		.describe('Whole days since the account was created.'),
 	outcome: z
-		.enum(['purged', 'failed', 'skipped_claim', 'would_claim'])
+		.enum([
+			'purged',
+			'failed',
+			'skipped_claim',
+			'skipped_sole_owner',
+			'would_claim',
+		])
 		.describe(
-			'purged: deleted and audited. failed: deleteUserAccount threw (see error/warnings); an audit row unverified_account_purge_failed was written. skipped_claim: the row was verified, linked, or fenced between select and claim. would_claim: dry-run candidate.',
+			'purged: deleted and audited. failed: deleteUserAccount threw (see error/warnings); an audit row unverified_account_purge_failed was written. skipped_claim: the row was verified, linked, or fenced between select and claim. skipped_sole_owner: the person is the only Owner of an organization that still has other members, so nothing was changed and an audit row unverified_account_purge_skipped was written. would_claim: dry-run candidate.',
 		),
 	error: z
 		.string()

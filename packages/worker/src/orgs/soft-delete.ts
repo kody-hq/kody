@@ -76,6 +76,9 @@ export class PersonalOrgDeleteRequiresAccountDeletionError extends Error {
 	}
 }
 
+/** Audit reason when a purge or guest merge skips a blocked person. */
+export const soleOwnerWithOtherMembersReason = 'sole_owner_with_other_members'
+
 export class UserDeleteBlockedSoleOwnerError extends Error {
 	readonly blockers: Array<{ orgId: OwnerId; orgSlug: string }>
 	constructor(blockers: Array<{ orgId: OwnerId; orgSlug: string }>) {
@@ -858,6 +861,60 @@ export async function assertUserDeleteNotBlockedAsSoleOwner(input: {
 	}
 	if (blockers.length > 0) {
 		throw new UserDeleteBlockedSoleOwnerError(blockers)
+	}
+}
+
+/**
+ * Live orgs, other than the personal org, whose only live member is this
+ * person. Account deletion deletes them with the person.
+ */
+export async function listLiveSoleMemberTeamOrgIds(input: {
+	db: D1Database
+	userId: OwnerId
+	personalOrgId: OwnerId
+}): Promise<Array<OwnerId>> {
+	const rows = await input.db
+		.prepare(
+			`SELECT m.org_id AS org_id
+			 FROM org_memberships m
+			 INNER JOIN orgs o ON o.id = m.org_id
+			 WHERE m.user_id = ?
+			   AND m.org_id != ?
+			   AND m.deleted_at IS NULL
+			   AND o.deleted_at IS NULL
+			   AND NOT EXISTS (
+			     SELECT 1 FROM org_memberships other
+			     WHERE other.org_id = m.org_id
+			       AND other.user_id != ?
+			       AND other.deleted_at IS NULL
+			   )`,
+		)
+		.bind(input.userId, input.personalOrgId, input.userId)
+		.all<{ org_id: OwnerId }>()
+	return (rows.results ?? []).map((row) => row.org_id)
+}
+
+export class PersonHardDeleteWouldOrphanTeamOrgError extends Error {
+	constructor(orgIds: ReadonlyArray<string>) {
+		super(`person_hard_delete_would_orphan_team_org:${orgIds.join(',')}`)
+		this.name = 'PersonHardDeleteWouldOrphanTeamOrgError'
+	}
+}
+
+/**
+ * Fail closed before a hard delete removes a live person's memberships: no
+ * team org may be left without members or without an Owner. Callers settle
+ * team orgs first with `purgeSoleMemberTeamOrgsForPersonHardDelete`.
+ */
+export async function assertPersonHardDeleteLeavesNoTeamOrgBehind(input: {
+	db: D1Database
+	userId: OwnerId
+	personalOrgId: OwnerId
+}) {
+	await assertUserDeleteNotBlockedAsSoleOwner(input)
+	const orgIds = await listLiveSoleMemberTeamOrgIds(input)
+	if (orgIds.length > 0) {
+		throw new PersonHardDeleteWouldOrphanTeamOrgError(orgIds)
 	}
 }
 

@@ -141,6 +141,48 @@ Deletion must cover these user-owned surfaces:
   per-user `RepoSessionIndex` catalog are deleted through the REST client in
   `packages/worker/src/repo/artifacts.ts`.
 
+## Organizations a deleted person leaves behind
+
+`deleteUserAccount` deletes the person's `org_memberships` rows and anonymizes
+`orgs.created_by_user_id`. It does not delete any `orgs` row. A caller that
+hard-deletes a person must settle that person's organizations itself, with the
+rules `softDeleteUserAccount` (`packages/worker/src/orgs/soft-delete.ts`)
+applies to self-serve deletion:
+
+| The person is                                             | What happens                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------ |
+| the only member of a team org                             | the org is soft-deleted, then hard-purged, packages included       |
+| the only Owner of a team org that still has other members | nothing is deleted; the deletion is refused or skipped and audited |
+| a member of a team org that has another Owner             | only the membership is removed                                     |
+
+Paths that hard-delete a live person (no restore window) call
+`hardDeleteLivePersonWithOrgs` in `packages/worker/src/orgs/hard-purge.ts`
+instead of `deleteUserAccount`. It applies the table above, deletes the person,
+then deletes the personal org row. Today those paths are the unverified-account
+purge, the guest purge, and guest claim into an existing account. A fenced retry
+goes through `finishLegacyUserDeletion`, which applies the same table. Admin
+hard-delete and the soft-delete purge lane settle team orgs in
+`softDeleteUserAccount` first and pass `purgeSoftDeleted`.
+
+A refused deletion throws `UserDeleteBlockedSoleOwnerError` before anything
+changes and is audited with reason `sole_owner_with_other_members`
+(`unverified_account_purge_skipped`, `guest_account_purge_skipped`,
+`guest_account_claim_blocked`). The person stays until another Owner is promoted
+or the other members are removed.
+
+`deleteUserAccount` also fails closed: without `purgeSoftDeleted` it throws
+`PersonHardDeleteWouldOrphanTeamOrgError` when the person is still the only
+member of a live team org. A new deletion path that skips the helper cannot
+leave a live team org with no members.
+
+The admin-only `adminMemberlessTeamOrgsCleanup` capability finds organizations
+that earlier deletions left live with no live members. `dryRun` defaults to
+`true` and lists ids, slugs, and package counts. With `dryRun: false` it
+soft-deletes and hard-purges each listed organization. It matches organizations
+that are not a person's personal org and have a creator, so it also lists
+personal org rows left behind after their person was hard-deleted. Nothing runs
+it automatically.
+
 ## Account export inventory
 
 Account export is implemented in `packages/worker/src/account/export.ts`. It
