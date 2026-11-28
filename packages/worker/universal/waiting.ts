@@ -429,7 +429,7 @@ export function buildWaitingItems(
 			id: `app-runs-as:${app.id}`,
 			kind: 'app-runs-as',
 			title: `${app.name} has no one to run as`,
-			why: `Every server-side Kody call from its app fails. ${app.message}`,
+			why: `Its app's server-side Kody calls that act as the publisher fail. ${app.message}`,
 			who: 'you',
 			doLabel: 'See who apps run as',
 			href: appRunsAsDocHref,

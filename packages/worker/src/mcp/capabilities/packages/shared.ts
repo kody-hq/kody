@@ -411,7 +411,7 @@ export const packageDetailSchema =
 			.string()
 			.optional()
 			.describe(
-				'Present when the package has an app that has no one to run as: every server-side Kody call from it fails until an Owner of its org publishes again or picks a person with packageAppRunsAsSet. See packageAppRunsAsGet.',
+				'Present when the package has an app that has no one to run as: its server-side Kody calls that act as the publisher fail until an Owner of its org publishes again or picks a person with packageAppRunsAsSet. See packageAppRunsAsGet.',
 			),
 		exports: z.array(packageExportSurfaceSchema),
 		package_secrets: z
