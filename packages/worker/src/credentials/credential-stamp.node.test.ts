@@ -1255,6 +1255,18 @@ test('a literal name under a described prefix slot needs no description of its o
 		expect(scan.failures).toEqual([])
 		expect(scan.keys).toEqual(['google-work'])
 	}
+	const otherKind = await scanCredentialStamp({
+		'package.json': manifest({
+			credentials: {
+				google: { ...prefixed, kind: 'oauth' },
+				'google-work': { kind: 'signing' },
+			},
+		}),
+		'src/index.ts': source,
+	})
+	expect(otherKind.failures.map((failure) => failure.code)).toEqual([
+		'missing_description',
+	])
 	const bare = await scanCredentialStamp({
 		'package.json': manifest({
 			credentials: { google: { description: 'Google.' } },

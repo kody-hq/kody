@@ -312,6 +312,8 @@ function slotDescription(
 	for (const [name, slot] of Object.entries(slots)) {
 		if (
 			slot.description != null &&
+			// The exact slot's kind is the one the name is used as.
+			(slot.kind == null || slot.kind === exact?.kind) &&
 			packageCredentialSlotCoversName({ key: name, prefix: slot.prefix }, key)
 		) {
 			return slot.description
