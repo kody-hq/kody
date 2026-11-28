@@ -426,10 +426,12 @@ code runs with publisher authority and bills the owning org (ADR 0095). The
 - **Receive-only** sockets never run app hooks. Inbound frames close with `1008`
   and `kody:ping` is answered by `setWebSocketAutoResponse`, so a stranger
   cannot run owner code, and keepalive pings never wake the Durable Object.
-- **Pin:** hooks for a public socket build only from its approved commit (a
-  mismatch closes it with `1012`), and the access alarm rechecks the approved
-  commit every minute (`realtimeAccessRecheckMs`) so republishing or turning off
-  internet visibility drops open public sockets.
+- **Pin:**
+  [public socket hooks build only from the socket's approved commit](../../packages/worker/src/package-runtime/realtime-session.ts).
+  The access alarm is scheduled to recheck it every minute and
+  [closes the socket with `1012` (`app-updated`)](../../packages/worker/src/package-runtime/realtime-session-anonymous.workers.test.ts)
+  if the app stops serving that approved commit, for example after visibility is
+  turned off or a new commit starts serving.
 - **Visitor context:** hooks get `visitor` (`null` when anonymous) and sessions
   carry `anonymous`, so app code cannot mistake a stranger for a member.
 - **Caps** (public sockets only, `anonymousRealtimeLimits`): 2,000 per app, 20
@@ -442,31 +444,33 @@ code runs with publisher authority and bills the owning org (ADR 0095). The
 
 ### Member realtime re-authorization
 
-The
-[realtime Durable Object](../../packages/worker/src/package-runtime/realtime-session.ts)
-requires a package-app visit session for a member upgrade (`403` without one).
-It stores the person id, session `issuedAt` and cookie expiry, org handle and
-app slug, plus credential kind, token id, scopes, and profile chain for an
-`appOpenLink` visit. A member socket closes with `1008` for these reasons:
+A member upgrade without a package-app visit session
+[gets `403`](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
+The Durable Object stores the person id, session `issuedAt` and cookie expiry,
+org handle and app slug, plus credential kind, token id, scopes, and profile
+chain for an `appOpenLink` visit. Member sockets close with `1008` in these
+cases:
 
-- `session-expired`: the access alarm targets the cookie's expiry, with a
-  minimum scheduling delay of one second. The Durable Object also checks expiry
-  before processing an inbound app message or sending an outbound app message.
+- `session-expired`: the access alarm
+  [closes an expired session](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
+  It targets the cookie's expiry, with a minimum scheduling delay of one second.
+  The
+  [app-message handlers](../../packages/worker/src/package-runtime/realtime-session.ts)
+  check expiry before sending a message or passing an inbound message to the
+  app.
 - `signed-out`:
   [app logout](../../packages/worker/src/app/package-app-oauth-host-auth.ts)
-  clears the cookie and schedules a best-effort close of that visit's sockets.
+  clears the cookie and makes a best-effort request to
+  [close the sockets opened by that visit session](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
   If closing fails, the socket can remain open until the cookie expires.
-- `access-revoked`: when an access recheck rejects the visit, for example after
-  grant or role removal, profile grant removal, API token revocation, withdrawn
-  "Run as me" approval, suspension, deletion, a password change, or the visit's
-  slug naming a different app. The alarm is scheduled at one-minute intervals
-  (`realtimeAccessRecheckMs`) and runs
+- `access-revoked`: the
+  [next recheck that detects lost access](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts)
+  closes the socket. The one-minute alarm uses
   [`checkPackageAppVisitSession`](../../packages/worker/src/app/package-app-visit-authorization.ts),
-  the same `authorizePackageAppVisitorForOrg` decision package-app HTTP requests
-  use, once per distinct session per alarm, never per frame. Its cached reads
-  (owner row 15 s, org access epoch) are the same ones HTTP uses. If the recheck
-  throws an error instead of returning a decision, the alarm leaves the socket
-  open and retries on the next alarm.
+  which calls the same `authorizePackageAppVisitorForOrg` used for HTTP visits.
+  [If the check throws](../../packages/worker/src/package-runtime/realtime-session.ts),
+  the alarm logs the error and retries on a later alarm rather than closing the
+  socket based on that error.
 
 Team-org realtime (team-scoped sockets) is still not supported
 ([#5067](https://github.com/kody-hq/kody/issues/5067)).

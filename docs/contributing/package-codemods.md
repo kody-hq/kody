@@ -502,21 +502,24 @@ module and imported constants, as in `0010`. A name that `kody.secretMounts`
 also mounts still gets a slot, because the stored needs closure reads only
 `kody.credentials`.
 
-A name built at run time is traced through the package's own source (variables,
-parameters and their call sites inside the package, returned values, and object
-fields, matched by name). The codemod declares each literal the name can be.
-Where the traced value is a literal, a hyphen, then anything
-(`` `${DEFAULT}-${purpose}` ``, `prefix + '-' + account`,
-`{{secret:stripe-${env}}}`), it declares that literal as a `prefix: true` slot,
-or sets `prefix: true` on the slot already declared. It never writes a prefix
-that is not a literal in the source.
+Codemod `0013` traces names built at run time, declares the literal names and
+prefixes it finds, and flags names it still considers unbounded.
 
-Such a name is no longer reported only when every value it can take is one of
-those literals or falls under one of those prefixes. A value from outside the
-package (a parameter of an exported function, an object field, an input) is
-unbounded unless the package checks it with `name.startsWith(prefix)` first. So
-a wrapper with the convention and an unchecked override gets its prefix slot and
-is still reported, as is a name with only a literal default (`name || 'slack'`).
+It traces names through the package's own source (variables, parameters and
+their call sites inside the package, returned values, and object fields, matched
+by name). The codemod declares each literal the name can be. Where the traced
+value is a literal, a hyphen, then anything (`` `${DEFAULT}-${purpose}` ``,
+`prefix + '-' + account`, `{{secret:stripe-${env}}}`), it declares that literal
+as a `prefix: true` slot, or sets `prefix: true` on the slot already declared.
+It never writes a prefix that is not a literal in the source.
+
+The
+[name tracer](../../packages/worker/src/package-codemods/codemods/0013-infer-credential-names.ts)
+uses a recognized `name.startsWith(prefix + '-')` check as a hint that an
+external value follows the convention; it does not prove the check always runs
+before use. A wrapper with a prefix convention and an unchecked override can get
+its prefix slot and still be reported, as can a name with only a literal default
+(`name || 'slack'`).
 
 Each new slot has no `kind` and a fixed description the owner can reword.
 Placeholders resolve by name whatever their slot says, so this changes nothing

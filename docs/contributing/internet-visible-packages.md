@@ -106,32 +106,30 @@ while the published one is held, so webhooks, events, subscription dispatch,
 secret access, and enablements follow it too. Capability checks pin the commit
 they inspect (`commit`).
 
-`loadHeldForApproval` (`package-capabilities/held-for-approval.ts`) reports the
-held state from `held_commit`: an internet-visible app whose held commit is the
-published commit and not the serving one (`heldForApprovalFromSource`). The
-`entity_sources.published_commit` column is the internal tip and does name the
-held commit; nothing reports it to callers as published. A held publish is its
-own status, `held_for_approval`, on every publish result
-(`packagePublishExternalPush`, `repoPublishSession`, `packageSave`), built by
-`loadHeldForApprovalPublishStatus`, with `serving_commit`, `held_commit`,
-`approval_url`, and `message`. It is never `published`, `already_published`, or
-`ok`, and it is distinct from `locked` and `approval_required`, which pause a
-publish before it starts. A durable publish run that ends held fails like any
-other refusal (`durablePublishRefusalReason`), and the CLI exits 1. `packageGet`
-reads the serving view while a commit is held and returns `serving_commit`,
-`held_commit`, and `approval_url`; `held_commit` and `approval_url` are null for
-callers without `package:write`.
+An internet-visible app
+[keeps serving its approved commit while a new commit is held](../../packages/worker/src/package-capabilities/serving-commit-advance.node.test.ts).
+[`packagePublishExternalPush`](../../packages/worker/src/mcp/capabilities/packages/publish-external-push.node.test.ts),
+[`repoPublishSession`](../../packages/worker/src/mcp/capabilities/repo/repo-publish-session.node.test.ts),
+and
+[`packageSave`](../../packages/worker/src/mcp/capabilities/packages/save-package-entitlements.node.test.ts)
+report `held_for_approval`, not `published`, `already_published`, or `ok`, with
+`serving_commit`, `held_commit`, `approval_url`, and `message`.
+`packagePublishExternalPush` first returns `dispatched` with a `workflow_id`;
+the held result comes from `packageRunResult`. Unlike `locked` and
+`approval_required`, the hold happens after the publish builds the commit. A
+durable publish run treats the hold as a refusal, and the CLI exits 1.
+[`packageGet`](../../packages/worker/src/mcp/capabilities/packages/get-package.ts)
+reports the serving commit as `published_commit` and `serving_commit` while a
+commit is held. It returns null for `held_commit` and `approval_url` on a
+successful read without `package:write`.
 
-The owner notice fires where the hold is recorded, not in a publish handler:
-`advancePackageServingCommit` calls `notifyOwnersOfHeldPublish`
-(`package-capabilities/held-for-approval-notice.ts`) the first time a commit is
-held. Every publish path serves a commit through that one function, so a direct
-publish and an automatic republish notify the same way. It emails the owners of
-the account that owns the held package (transactional kind
-`publish_held_for_approval`), which is not always the person who published.
-Waiting lists the same packages as `publish-held` items
-(`listHeldForApprovalPackages`) until they are approved. The owner package page
-renders the held state as a notice with the approval link.
+The
+[serving update](../../packages/worker/src/package-capabilities/serving-commit-advance.ts)
+requests an email notice when it first records the hold, whether the publish was
+direct or automatic. The
+[email goes to the package-owning account's owners](../../packages/worker/src/package-capabilities/held-for-approval-notice.ts),
+not necessarily the publisher. Waiting lists holds as `publish-held` items until
+approval, and the owner package page shows the approval link.
 
 ## Self-publish
 
