@@ -123,7 +123,8 @@ export const appOpenLinkCapability = defineDomainCapability(
 				`/${firstSegment}` === packageAppHostSystemPrefix ||
 				isPackageAppHostProbeFirstSegment(firstSegment)
 					? `/${firstSegment}`
-					: isPackageAppOauthHostAuthPathname(url.pathname)
+					: // Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+						isPackageAppOauthHostAuthPathname(url.pathname)
 						? '/_kody/auth'
 						: null
 			if (kodyPath) {
