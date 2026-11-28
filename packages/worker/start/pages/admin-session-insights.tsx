@@ -82,7 +82,7 @@ export function AdminSessionInsightsRoute({
 		>
 			<AdminPageHeader
 				title="Session insights"
-				description={`How agent sessions go across organizations that turned on session analytics. Combined totals only; a number shows once it has ${minimum}.`}
+				description={`How agent sessions go across organizations that turned on session analytics. Combined totals only. The opt-in count, category names and statuses, and category name checks always show; other session counts and rates show once they have ${minimum}.`}
 				currentHref={currentHref}
 			/>
 			{error ? (

@@ -162,7 +162,7 @@ test('newsletter mail has a dedicated sender, quota, send kind, and one-recipien
 		.bind(systemEmailLimits.maxNewsletterSendsPerDay, systemEmailDayKey(now))
 		.run()
 	await expect(sendNewsletterEmail(input)).rejects.toThrow(
-		'newsletter send limit (2000)',
+		`newsletter send limit (${systemEmailLimits.maxNewsletterSendsPerDay})`,
 	)
 	expect(payloads).toHaveLength(1)
 })

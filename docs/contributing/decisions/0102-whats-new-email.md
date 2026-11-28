@@ -27,9 +27,10 @@ auth decision.
 Send newsletters through Kody's Cloudflare Email integration as `news@`, named
 Kent from Kody, with replies to `kent@`. Reserve the local for inbound system
 mail. One recipient per call, a distinct `whats_new` delivery kind, and a
-separate 2,000-send daily counter isolate newsletter volume and sender
-complaints from transactional correspondence. Shared recipient suppression still
-applies. `adminSystemEmailSend` cannot select `news`.
+separate daily send counter (`systemEmailLimits.maxNewsletterSendsPerDay`)
+isolate newsletter volume and sender complaints from transactional
+correspondence. Shared recipient suppression still applies.
+`adminSystemEmailSend` cannot select `news`.
 
 Cloudflare reports match `system_email_sends` by provider message ID and
 recipient. The delivery listing exposes the latest matched status per newsletter
