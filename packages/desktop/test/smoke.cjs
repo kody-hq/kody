@@ -4,6 +4,23 @@ const { mkdtempSync, rmSync, realpathSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { _electron } = require('@playwright/test')
 
+// The screenshot is a CI artifact, not an assertion. Linux CI sometimes fails
+// Page.captureScreenshot on a window that already passed every check.
+async function captureScreenshot(page, path) {
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		try {
+			await page.screenshot({ path })
+			return
+		} catch (error) {
+			if (attempt === 3) {
+				console.warn(`desktop smoke: screenshot skipped (${error.message})`)
+				return
+			}
+			await new Promise((done) => setTimeout(done, 500))
+		}
+	}
+}
+
 async function smoke() {
 	const env = { ...process.env }
 	delete env.ELECTRON_RUN_AS_NODE
@@ -73,7 +90,7 @@ async function smoke() {
 		assert.equal(workflow.running, false)
 		assert.equal(workflow.contextId, null)
 
-		await page.screenshot({ path: 'artifacts/desktop-live.png' })
+		await captureScreenshot(page, 'artifacts/desktop-live.png')
 		console.log(JSON.stringify({ ...result, workflow }, null, 2))
 	} finally {
 		await app.close()

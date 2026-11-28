@@ -47,9 +47,9 @@ permission fixes are verified on the preview; see
   interaction.
 - Previews leave `PACKAGE_APP_BASE_URL` unset and serve package apps inline, so
   package-app host behavior (per-host subdomains, cookie `Domain` scrub, the
-  cross-site handoff) cannot be checked there. Verify it locally with
-  `PACKAGE_APP_BASE_URL=http://packages.localhost:<port>` in
-  `packages/worker/.env`, which `npm run dev` also forwards to the runtime
+  cross-site handoff, `appOpenLink`, custom domains) cannot be checked there.
+  Verify it locally with `PACKAGE_APP_BASE_URL=http://packages.localhost:<port>`
+  in `packages/worker/.env`, which `npm run dev` also forwards to the runtime
   Worker (if a `.dev.vars` exists beside it, Wrangler ignores `.env` for the
   origin, so set it in both; see
   [security](../../../docs/contributing/security.md#hosted-package-app-origin-isolation))

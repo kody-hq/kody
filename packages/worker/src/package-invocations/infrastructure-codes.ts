@@ -13,6 +13,7 @@ const retryablePackageInvocationInfrastructureCodes = new Set([
 	'invocation_in_progress',
 	'invocation_failed',
 	'idempotency_response_unavailable',
+	'artifact_preparation_failed',
 	durableObjectResetInvocationErrorCode,
 ])
 

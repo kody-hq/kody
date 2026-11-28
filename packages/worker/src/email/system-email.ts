@@ -70,7 +70,7 @@ export const systemEmailLimits = {
 	maxReceivesPerDay: 1000,
 	/** Per-sender ceiling on operator sends (see `sendSystemEmail`). */
 	maxSendsPerDay: 200,
-	maxNewsletterSendsPerDay: 2000,
+	maxNewsletterSendsPerDay: 250_000,
 	maxStoredMessages: 5000,
 	retentionDays: 90,
 	pruneBatchSize: 500,

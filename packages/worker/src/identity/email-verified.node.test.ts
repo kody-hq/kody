@@ -24,7 +24,11 @@ function sourceFiles(dir: string): Array<string> {
 	return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
 		const path = join(dir, entry.name)
 		if (entry.isDirectory()) {
-			return entry.name === 'test-support' ? [] : sourceFiles(path)
+			// Dot directories are lint-rule test fixtures that other tests create
+			// and delete while this walk runs.
+			return entry.name === 'test-support' || entry.name.startsWith('.')
+				? []
+				: sourceFiles(path)
 		}
 		if (!/\.tsx?$/.test(entry.name) || /\.test\.tsx?$/.test(entry.name)) {
 			return []
