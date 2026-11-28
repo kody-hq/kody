@@ -278,6 +278,20 @@ async function checkSource(input: {
 			userId: source.user_id,
 			lastExternalCheckAt: now.toISOString(),
 		})
+	// Once HEAD is published, an expired write token cannot push anything newer.
+	const clearExpiredMinters = async () => {
+		if (source.entity_kind !== 'package') return
+		await clearExpiredPackageGitWriteMinters({
+			db: env.APP_DB,
+			scope: { orgId: source.user_id, packageId: source.entity_id },
+			now,
+		}).catch((error: unknown) => {
+			console.warn(
+				'reconcile_artifacts_pushes: could not clear expired git write minters, so a later push may publish as unknown',
+				error,
+			)
+		})
+	}
 	const head = await resolveArtifactSourceHead(env, source.repo_id)
 	if (input.shouldCleanupTokens) {
 		try {
@@ -322,6 +336,7 @@ async function checkSource(input: {
 			lastExternalCheckAt: now.toISOString(),
 			...(horizonPassed ? { externalCheckUntil: null } : {}),
 		})
+		await clearExpiredMinters()
 		return 'alreadyPublished'
 	}
 	const pendingApproval =
@@ -381,18 +396,7 @@ async function checkSource(input: {
 	})
 	const outcome = publishOutcome(publishResult.status)
 	const settled = outcome === 'published' || outcome === 'alreadyPublished'
-	if (settled && source.entity_kind === 'package') {
-		await clearExpiredPackageGitWriteMinters({
-			db: env.APP_DB,
-			scope: { orgId: source.user_id, packageId: source.entity_id },
-			now,
-		}).catch((error: unknown) => {
-			console.warn(
-				'reconcile_artifacts_pushes: could not clear expired git write minters, so a later push may publish as unknown',
-				error,
-			)
-		})
-	}
+	if (settled) await clearExpiredMinters()
 	await updateEntitySource(env.APP_DB, {
 		id: source.id,
 		userId: source.user_id,
