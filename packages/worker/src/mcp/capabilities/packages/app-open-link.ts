@@ -120,6 +120,8 @@ export const appOpenLinkCapability = defineDomainCapability(
 			const firstSegment = url.pathname.split('/').find(Boolean) ?? ''
 			if (
 				`/${firstSegment}` === packageAppHostSystemPrefix ||
+				// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+				firstSegment === '_kody' ||
 				isPackageAppHostProbeFirstSegment(firstSegment)
 			) {
 				throw new McpCallerError(
