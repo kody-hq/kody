@@ -220,6 +220,29 @@ test('only added or reshaped needs count as a change', () => {
 	])
 })
 
+test('turning a need into a prefix slot reshapes it; dropping the prefix does not', () => {
+	const wide = need('google', { prefix: true })
+	const changes = diffCredentialNeeds([need('google')], [wide])
+	expect(changes).toEqual([
+		{
+			key: 'google',
+			change: 'changed',
+			before: { kind: 'secret', provider: 'resend', multiple: false },
+			after: {
+				kind: 'secret',
+				provider: 'resend',
+				multiple: false,
+				prefix: true,
+			},
+		},
+	])
+	expect(describeCredentialNeedChange(changes[0]!)).toContain(
+		'names that start with this key and a hyphen',
+	)
+	expect(diffCredentialNeeds([wide], [need('google')])).toEqual([])
+	expect(diffCredentialNeeds([wide], [wide])).toEqual([])
+})
+
 test('turning on owner credentials for visitors reshapes a need; turning it off does not', () => {
 	const shared = need('DB', { ownerCredentialForVisitors: true })
 	const changes = diffCredentialNeeds([need('DB')], [shared])
