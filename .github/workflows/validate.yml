@@ -1191,8 +1191,16 @@ jobs:
     # cancelled, and that child result is cancelled != success.
     if: >-
       always() && !cancelled() && (github.event_name != 'pull_request' ||
-      github.event.pull_request.draft == false)
+      github.event.pull_request.draft == false || github.head_ref ==
+      'devin/1795891120-wasm-probe')
     steps:
+      - name: 🚫 do-not-merge (Wasm production probe branch)
+        if:
+          github.head_ref == 'devin/1795891120-wasm-probe' || github.ref_name ==
+          'devin/1795891120-wasm-probe'
+        run: |
+          echo "::error::The Wasm production probe branch must never merge into main."
+          exit 1
       - name: ⏱️ Run wall-clock summary
         if: always() && !cancelled()
         env:

@@ -20,6 +20,8 @@ export default defineConfig({
 				'tools/execution-context-e2e/daemon-host.cjs',
 				// esbuild loads this harness against each performance snapshot.
 				'tools/markdown-perf/sample-entry.mjs',
+				// Uploaded as a Worker by tools/wasm-probe/run.mjs.
+				'tools/wasm-probe/probe-worker.js',
 				'e2e/**/*.ts',
 				'vitest*.ts',
 				'playwright*.config.ts',
