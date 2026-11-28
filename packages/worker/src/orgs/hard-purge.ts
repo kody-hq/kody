@@ -188,18 +188,30 @@ export async function purgeSoleMemberTeamOrgsForPersonHardDelete(input: {
 			actorUserId: input.personUserId,
 		})
 	}
+	// Orgs a failed attempt already tombstoned. An org that ever had another
+	// member keeps its restore window and is left to the org purge lane.
+	const tombstoned = await db
+		.prepare(
+			`SELECT o.id AS id
+			 FROM orgs o
+			 INNER JOIN org_memberships m ON m.org_id = o.id AND m.user_id = ?
+			 WHERE o.deleted_at IS NOT NULL
+			   AND o.id != ?
+			   AND NOT EXISTS (
+			     SELECT 1 FROM org_memberships other
+			     WHERE other.org_id = o.id AND other.user_id != ?
+			   )`,
+		)
+		.bind(input.personUserId, input.personalOrgId, input.personUserId)
+		.all<{ id: OwnerId }>()
 	const purgedOrgIds = [
 		...new Set([
 			...liveOrgIds,
-			...(await listTombstonedSoleOwnedOrgIds(
-				db,
-				input.personUserId,
-				input.personalOrgId,
-			)),
+			...(tombstoned.results ?? []).map((row) => row.id),
 		]),
 	]
 	for (const orgId of purgedOrgIds) {
-		await hardPurgeOrgIfPresent(input.env, orgId as OwnerId)
+		await hardPurgeOrgIfPresent(input.env, orgId)
 	}
 	return { purgedOrgIds }
 }
