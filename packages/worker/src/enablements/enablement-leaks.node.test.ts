@@ -34,6 +34,7 @@ import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import type { PackageInvocationResponse } from '#worker/package-invocations/common.ts'
 import type * as IdempotentModuleInvocation from '#worker/package-invocations/idempotent-module-invocation.ts'
 import type * as ModuleArtifacts from '#worker/package-invocations/module-artifacts.ts'
+import { dispatchAdminPackageSubscriptionEvent } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import { runSavedPackageModuleOnce } from '#worker/package-invocations/module-execution.ts'
 import { invokePackageSubscription } from '#worker/package-invocations/service.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
@@ -1241,6 +1242,62 @@ test("webhook- and run-raised events reach only that run's enabler's subscriptio
 			.map(String)
 			.sort(),
 	)
+})
+
+test('an admin event reaches packages in any org a current admin turned it on in, as that admin only', async () => {
+	const t = await setup()
+	t.setPackageCode(async () => {})
+	await t.enable('owner', 'subscription', eventTopic)
+	const beas = await t.enable('bea', 'subscription', eventTopic)
+	const setAdmin = async (person: 'bea', admin: boolean) => {
+		const userId = t.people[person].userId
+		await t.db
+			.prepare(
+				admin
+					? `INSERT OR IGNORE INTO user_roles (user_id, role_id)
+					   SELECT u.id, r.id FROM users u, roles r
+					   WHERE u.stable_user_id = ? AND r.name = 'admin'`
+					: `DELETE FROM user_roles
+					   WHERE user_id = (SELECT id FROM users WHERE stable_user_id = ?)
+					     AND role_id = (SELECT id FROM roles WHERE name = 'admin')`,
+			)
+			.bind(userId)
+			.run()
+	}
+	const dispatch = () =>
+		dispatchAdminPackageSubscriptionEvent({
+			env: t.env,
+			baseUrl: 'https://kody.example',
+			topic: eventTopic,
+			getParams: () => ({ thing: 1 }),
+			source: 'test',
+			buildIdempotencyKey: (savedPackage) =>
+				`admin-${crypto.randomUUID()}:${savedPackage.id}`,
+		})
+
+	// Bea is an admin and a member of the team org (not her personal org):
+	// her enablement runs; the non-admin Owner's on the same package does not.
+	await setAdmin('bea', true)
+	await dispatch()
+	expect(t.runs.map((run) => String(run.request?.actor?.userId))).toEqual([
+		String(t.people.bea.userId),
+	])
+
+	// Admin role revoked: nothing runs on the next event.
+	t.runs.splice(0)
+	await setAdmin('bea', false)
+	await expect(dispatch()).resolves.toEqual([])
+	expect(t.runs).toEqual([])
+
+	// Admin again but out of the org: the run gate pauses it and drops it.
+	await setAdmin('bea', true)
+	await t.removeFromOrg('bea')
+	await dispatch()
+	expect(t.runs).toEqual([])
+	await expect(t.enablement(beas.id)).resolves.toMatchObject({
+		state: 'paused',
+		pause: { reason: 'org_access' },
+	})
 })
 
 test("member email runs only that member's rule; unmatched mail runs nothing", async () => {

@@ -1,4 +1,5 @@
 import { runQueueableDynamicWorkerWork } from '#worker/dynamic-worker-evaluation-budget.ts'
+import { listLiveSubscriptionTargetsForEnablers } from '#worker/enablements/repo.ts'
 import { listAdminStableUserIds } from '#worker/identity/permissions-db.ts'
 import { listPackageSubscriptions } from '#worker/package-registry/manifest.ts'
 import {
@@ -31,6 +32,11 @@ export {
 export type LoadedPackageSubscription = {
 	savedPackage: SavedPackageRecord
 	subscription: ReturnType<typeof listPackageSubscriptions>[number]
+}
+
+type AdminDispatchTarget = LoadedPackageSubscription & {
+	/** Only these people's enablements run; absent runs every enabler. */
+	enablerIds?: ReadonlyArray<string>
 }
 
 function isMissingSavedPackagesTableError(error: unknown) {
@@ -207,7 +213,6 @@ export async function loadMatchingPackageSubscriptions(input: {
 
 async function loadSubscriptionsForSavedPackages(input: {
 	env: Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'>
-	baseUrl: string
 	userId: string
 	topic: string
 	savedPackages: Array<SavedPackageRecord>
@@ -228,11 +233,77 @@ async function loadSubscriptionsForSavedPackages(input: {
 }
 
 /**
- * Fans an event out only to packages whose owners hold the admin role at
- * dispatch time, plus packages owned by the `additionalOwnerIds` orgs the
- * caller trusts with the payload. Failures warn and skip by default; opt-in
- * retry flags reject after all successfully discovered sibling attempts
- * finish.
+ * Packages in any org where a current admin turned on a subscription to
+ * `topic`, minus `skipOrgIds`. Per-org load failures are collected.
+ */
+async function loadAdminEnabledPackageSubscriptions(input: {
+	env: Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'>
+	topic: string
+	adminUserIds: ReadonlyArray<string>
+	skipOrgIds: ReadonlySet<string>
+}) {
+	const subscriptions: Array<LoadedPackageSubscription> = []
+	const discoveryErrors: Array<unknown> = []
+	if (input.adminUserIds.length === 0) {
+		return { subscriptions, discoveryErrors }
+	}
+	const targets = await listLiveSubscriptionTargetsForEnablers({
+		db: input.env.APP_DB,
+		topic: input.topic,
+		enablerUserIds: input.adminUserIds,
+	})
+	const packageIdsByOrg = new Map<string, Array<string>>()
+	for (const target of targets) {
+		if (input.skipOrgIds.has(target.orgId)) continue
+		const packageIds = packageIdsByOrg.get(target.orgId) ?? []
+		packageIds.push(target.packageId)
+		packageIdsByOrg.set(target.orgId, packageIds)
+	}
+	const orgIds = [...packageIdsByOrg.keys()]
+	const loaded = await mapSettledInChunks(orgIds, async (orgId) => {
+		let savedPackages: Array<SavedPackageRecord>
+		try {
+			savedPackages = await listSavedPackagesByIds(input.env.APP_DB, {
+				userId: orgId,
+				packageIds: packageIdsByOrg.get(orgId) ?? [],
+			})
+		} catch (error) {
+			if (isMissingSavedPackagesTableError(error)) {
+				return { subscriptions: [], discoveryErrors: [] }
+			}
+			throw error
+		}
+		return await loadSubscriptionsForSavedPackages({
+			env: input.env,
+			userId: orgId,
+			topic: input.topic,
+			savedPackages,
+		})
+	})
+	for (const [index, result] of loaded.entries()) {
+		if (result.status === 'fulfilled') {
+			subscriptions.push(...result.value.subscriptions)
+			discoveryErrors.push(...result.value.discoveryErrors)
+			continue
+		}
+		console.warn('admin-package-subscription-discovery-failed', {
+			topic: input.topic,
+			orgId: orgIds[index],
+			error: result.reason,
+		})
+		discoveryErrors.push(result.reason)
+	}
+	return { subscriptions, discoveryErrors }
+}
+
+/**
+ * Fans an admin event out to every package, in any org, where someone who
+ * holds the admin role at dispatch time turned on a subscription to `topic`;
+ * only those admins' enablements run, and the run gate still checks each
+ * one's org and package access. Packages owned by the `additionalOwnerIds`
+ * orgs the caller trusts with the payload run for every enabler. Failures
+ * warn and skip by default; opt-in retry flags reject after all
+ * successfully discovered sibling attempts finish.
  */
 export async function dispatchAdminPackageSubscriptionEvent(input: {
 	env: Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'>
@@ -248,36 +319,45 @@ export async function dispatchAdminPackageSubscriptionEvent(input: {
 	retryOnlyPreExecutionInfrastructureFailures?: boolean
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
-	const adminUserIds = [
-		...new Set([
-			...(await listAdminStableUserIds(input.env.APP_DB)),
-			...(input.additionalOwnerIds ?? []),
-		]),
-	]
-	if (adminUserIds.length === 0) {
+	const adminUserIds = await listAdminStableUserIds(input.env.APP_DB)
+	const trustedOrgIds = [...new Set(input.additionalOwnerIds ?? [])]
+	if (adminUserIds.length === 0 && trustedOrgIds.length === 0) {
 		return []
 	}
-	const discovered = await mapSettledInChunks(
-		adminUserIds,
-		async (userId) =>
-			await loadMatchingPackageSubscriptions({
-				env: input.env,
-				baseUrl: input.baseUrl,
-				userId,
-				topic: input.topic,
-			}),
-	)
-	const subscriptions: Array<LoadedPackageSubscription> = []
+	const subscriptions: Array<AdminDispatchTarget> = []
 	const discoveryErrors: Array<unknown> = []
-	for (const [index, result] of discovered.entries()) {
+	const [adminEnabled, ...trusted] = await Promise.allSettled([
+		loadAdminEnabledPackageSubscriptions({
+			env: input.env,
+			topic: input.topic,
+			adminUserIds,
+			skipOrgIds: new Set(trustedOrgIds),
+		}),
+		...trustedOrgIds.map(
+			async (orgId) =>
+				await loadMatchingPackageSubscriptions({
+					env: input.env,
+					baseUrl: input.baseUrl,
+					userId: orgId,
+					topic: input.topic,
+				}),
+		),
+	])
+	for (const [index, result] of [adminEnabled!, ...trusted].entries()) {
 		if (result.status === 'fulfilled') {
-			subscriptions.push(...result.value.subscriptions)
+			subscriptions.push(
+				...result.value.subscriptions.map((subscription) =>
+					index === 0
+						? { ...subscription, enablerIds: adminUserIds }
+						: subscription,
+				),
+			)
 			discoveryErrors.push(...result.value.discoveryErrors)
 			continue
 		}
 		console.warn('admin-package-subscription-discovery-failed', {
 			topic: input.topic,
-			userId: adminUserIds[index],
+			...(index === 0 ? {} : { orgId: trustedOrgIds[index - 1] }),
 			error: result.reason,
 		})
 		discoveryErrors.push(result.reason)
@@ -293,36 +373,42 @@ export async function dispatchAdminPackageSubscriptionEvent(input: {
 	const params = await input.getParams()
 	const invoked = await runQueueableDynamicWorkerWork(
 		async () =>
-			await mapSettledInChunks(subscriptions, async ({ savedPackage }) => {
-				const response = await invokePackageSubscription({
-					env: input.env as Env,
-					baseUrl: input.baseUrl,
-					savedPackage,
-					topic: input.topic,
-					params,
-					idempotencyKey: input.buildIdempotencyKey(savedPackage),
-					source: input.source,
-					actorTokenId: input.actorTokenId,
-					request: { kind: 'platform-event', sourceId: input.source },
-					waitUntil: input.waitUntil,
-				})
-				if (response.status < 200 || response.status >= 400) {
-					console.warn('admin-package-subscription-handler-failed', {
+			await mapSettledInChunks(
+				subscriptions,
+				async ({ savedPackage, enablerIds }) => {
+					const response = await invokePackageSubscription({
+						env: input.env as Env,
+						baseUrl: input.baseUrl,
+						savedPackage,
 						topic: input.topic,
-						packageId: savedPackage.id,
-						status: response.status,
+						params,
+						idempotencyKey: input.buildIdempotencyKey(savedPackage),
+						source: input.source,
+						actorTokenId: input.actorTokenId,
+						request: { kind: 'platform-event', sourceId: input.source },
+						...(enablerIds ? { enablerIds } : {}),
+						waitUntil: input.waitUntil,
 					})
-				}
-				return {
-					response,
-					retryableInfrastructureCode:
-						input.retryInvocationInfrastructureFailures
-							? input.retryOnlyPreExecutionInfrastructureFailures
-								? readPreExecutionPackageInvocationInfrastructureCode(response)
-								: readRetryablePackageInvocationInfrastructureCode(response)
-							: null,
-				}
-			}),
+					if (response.status < 200 || response.status >= 400) {
+						console.warn('admin-package-subscription-handler-failed', {
+							topic: input.topic,
+							packageId: savedPackage.id,
+							status: response.status,
+						})
+					}
+					return {
+						response,
+						retryableInfrastructureCode:
+							input.retryInvocationInfrastructureFailures
+								? input.retryOnlyPreExecutionInfrastructureFailures
+									? readPreExecutionPackageInvocationInfrastructureCode(
+											response,
+										)
+									: readRetryablePackageInvocationInfrastructureCode(response)
+								: null,
+					}
+				},
+			),
 	)
 	const invocationInfrastructureErrors: Array<unknown> = []
 	const responses = invoked.map((result, index) => {

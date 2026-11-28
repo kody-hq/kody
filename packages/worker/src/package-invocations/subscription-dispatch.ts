@@ -553,6 +553,8 @@ export type SubscriptionInvocationInput = {
 	request: RequestSource
 	/** What an org-wide event is about, for the enablement audience rule. */
 	audience?: EnablementAudience | null
+	/** Run only enablements turned on by these people (admin events). */
+	enablerIds?: ReadonlyArray<string>
 	/**
 	 * Inbound From, for per-sender enablement matching. Address, domain, and
 	 * `any_authenticated` also need `inboundFromAuthenticated`.
@@ -674,6 +676,7 @@ export async function invokePackageSubscription(
 			triggerName: topic,
 		},
 		onlyEnablerId: scope?.onlyEnablerId,
+		enablerIds: input.enablerIds,
 		...(input.request.kind === 'inbound-email'
 			? {
 					inboundSender: {

@@ -68,7 +68,10 @@ export type EnablementTrigger = {
 export type EnablementSkipReason =
 	/** Paused before this event, or paused by this event's access check. */
 	| 'paused'
-	/** Not the enabler this event may reach (run-raised and emailed events). */
+	/**
+	 * Not an enabler this event may reach (run-raised, emailed, and admin
+	 * events).
+	 */
 	| 'other_enabler'
 	/** The inbound sender does not match this enablement's sender rule. */
 	| 'sender'
@@ -341,6 +344,8 @@ function samePause(
  *
  * - `onlyEnablerId`: events raised by a run reach only that person's
  *   enablements.
+ * - `enablerIds`: only enablements turned on by one of these people run
+ *   (admin events: current site admins).
  * - `inboundSender`: inbound email skips enablements whose sender rule does
  *   not match. A null sender kind never matches. Checked before access, so
  *   a non-matching row is not paused.
@@ -353,6 +358,7 @@ export async function planEnablementRuns(input: {
 	packageId: string
 	trigger: EnablementTrigger
 	onlyEnablerId?: string | null
+	enablerIds?: ReadonlyArray<string>
 	inboundSender?: InboundSenderMatch
 	audience?: EnablementAudience | null
 }): Promise<EnablementRunPlan> {
@@ -367,6 +373,7 @@ export async function planEnablementRuns(input: {
 	const runs: Array<EnablementRun> = []
 	const skipped: Array<EnablementSkip> = []
 	const access = new Map<string, EffectivePermissions>()
+	const enablerIds = input.enablerIds ? new Set(input.enablerIds) : null
 	for (const enablement of enablements) {
 		const skip = (reason: EnablementSkipReason) =>
 			skipped.push({
@@ -375,8 +382,9 @@ export async function planEnablementRuns(input: {
 				reason,
 			})
 		if (
-			input.onlyEnablerId &&
-			String(enablement.enablerUserId) !== String(input.onlyEnablerId)
+			(input.onlyEnablerId &&
+				String(enablement.enablerUserId) !== String(input.onlyEnablerId)) ||
+			(enablerIds && !enablerIds.has(String(enablement.enablerUserId)))
 		) {
 			skip('other_enabler')
 			continue
