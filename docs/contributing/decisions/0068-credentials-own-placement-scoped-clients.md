@@ -1305,7 +1305,9 @@ applies to uses that name a credential: fetch-gateway placeholders,
 `createAuthenticatedFetch`, `integrationTokenRefresh`, and the resolved name of
 a secret mount, for stamped packages and under the flag alike. An exact key
 wins, then the longest matching prefix, and the slot's `kind` still decides
-which use it fills. It is valid with no `kind`, or `secret` or `oauth`.
+which use it fills. It is valid with no `kind`, or `secret` or `oauth`. Setting
+it on a need a package already declares widens the need, so it needs the same
+approval as a changed need; removing it does not.
 
 `credential(key)` and vault providers keep the exact key: a need's mapping is
 for its own key, so a longer key there would read the default account. The stamp
