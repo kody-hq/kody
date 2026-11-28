@@ -5,6 +5,7 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 const mockModule = vi.hoisted(() => ({
 	resolveArtifactSourceHead: vi.fn(),
 	publishFromExternalRef: vi.fn(),
+	pusherByCommit: new Map<string, string>(),
 	pendingApproval: null as {
 		pendingCommit: string
 		baseCommit: string | null
@@ -13,6 +14,11 @@ const mockModule = vi.hoisted(() => ({
 
 vi.mock('#worker/package-capabilities/approval-requests-repo.ts', () => ({
 	getPendingPackageApprovalRequest: async () => mockModule.pendingApproval,
+}))
+
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	findPackageAppPublishRequester: async (input: { commit: string }) =>
+		mockModule.pusherByCommit.get(input.commit) ?? null,
 }))
 
 vi.mock('#worker/repo/artifacts.ts', () => ({
@@ -459,4 +465,45 @@ test('reconcileArtifactsPushes remembers a failed head and skips re-checking it'
 	)
 	expect(retried.failedHeadSkipped).toBe(0)
 	expect(retried.checksFailed).toBe(1)
+})
+
+test('reconcileArtifactsPushes publishes a pushed HEAD as the person who pushed it', async () => {
+	mockModule.pendingApproval = null
+	mockModule.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-new',
+	})
+	mockModule.publishFromExternalRef.mockReset()
+	mockModule.publishFromExternalRef.mockResolvedValue({
+		status: 'published',
+		previous_commit: 'commit-old',
+		published_commit: 'commit-new',
+	})
+	const reconcile = () =>
+		reconcileArtifactsPushes({
+			env: createPackageSourceEnv({ updates: [] }),
+			baseUrl: 'https://kody.test',
+			now: new Date('2026-08-04T12:00:00.000Z'),
+			batchSize: 10,
+			staleAfterMinutes: 0,
+			timeBudgetMs: 1000,
+		})
+
+	mockModule.pusherByCommit.set('commit-new', 'user-pusher')
+	expect((await reconcile()).published).toBe(1)
+	expect(mockModule.publishFromExternalRef).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			newCommit: 'commit-new',
+			requestedByUserId: 'user-pusher',
+		}),
+	)
+
+	mockModule.pusherByCommit.clear()
+	await reconcile()
+	expect(mockModule.publishFromExternalRef).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			newCommit: 'commit-new',
+			requestedByUserId: null,
+		}),
+	)
 })

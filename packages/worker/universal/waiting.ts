@@ -27,6 +27,7 @@ export const waitingItemKinds = [
 	'secret-expired',
 	'publish-lock',
 	'publish-held',
+	'app-runs-as',
 	'email-change',
 	'entitlement',
 	'error-rate',
@@ -161,6 +162,13 @@ type WaitingHeldPublishSignal = {
 	heldCommit: string
 }
 
+/** A package app with no one to run as: its server-side Kody calls fail. */
+type WaitingAppRunsAsSignal = {
+	id: string
+	name: string
+	message: string
+}
+
 type WaitingEntitlementCapSignal = {
 	resource: string
 	label: string
@@ -177,6 +185,7 @@ export type WaitingSignals = {
 	expiredSecrets: Array<WaitingExpiredSecretSignal>
 	lockedPackages: Array<WaitingLockedPackageSignal>
 	heldPublishes?: Array<WaitingHeldPublishSignal>
+	appsWithoutRunsAs?: Array<WaitingAppRunsAsSignal>
 	pendingEmailChange: string | null
 	/** Open (untriaged) Activity errors vs runs in the Activity window. */
 	errorRate: { errorCount: number; eventCount: number } | null
@@ -216,15 +225,16 @@ const kindRank: Record<WaitingItemKind, number> = {
 	'secret-expired': 4,
 	'publish-lock': 5,
 	'publish-held': 6,
-	'email-change': 7,
-	entitlement: 8,
-	'error-rate': 9,
-	onboarding: 10,
-	'first-use': 11,
-	'context-misconfigured': 12,
-	'context-elevation': 13,
-	'context-open-shell': 14,
-	'session-analytics-choice': 15,
+	'app-runs-as': 7,
+	'email-change': 8,
+	entitlement: 9,
+	'error-rate': 10,
+	onboarding: 11,
+	'first-use': 12,
+	'context-misconfigured': 13,
+	'context-elevation': 14,
+	'context-open-shell': 15,
+	'session-analytics-choice': 16,
 }
 
 const firstUseRank = Object.fromEntries(
@@ -414,6 +424,19 @@ export function buildWaitingItems(
 		})
 	}
 
+	for (const app of signals.appsWithoutRunsAs ?? []) {
+		items.push({
+			id: `app-runs-as:${app.id}`,
+			kind: 'app-runs-as',
+			title: `${app.name} has no one to run as`,
+			why: `Every server-side Kody call from its app fails. ${app.message}`,
+			who: 'you',
+			doLabel: 'See who apps run as',
+			href: appRunsAsDocHref,
+			severity: 'block',
+		})
+	}
+
 	if (signals.pendingEmailChange) {
 		items.push({
 			id: 'email-change',
@@ -580,6 +603,10 @@ const waitingFirstUseCopy: Record<
 }
 
 const pausedEnablementDocLabel = 'How paused automation resumes'
+const appRunsAsDocHref = `${routes.docDetail.href({
+	slug: 'package-apps',
+})}#who-the-app-runs-as`
+
 const pausedEnablementDocHref = `${routes.docDetail.href({
 	slug: 'organizations',
 })}#automation-runs-as-the-person-who-turned-it-on`

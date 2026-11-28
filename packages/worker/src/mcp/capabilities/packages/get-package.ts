@@ -28,6 +28,7 @@ import {
 	loadServingPackageSourceBySourceId,
 } from '#worker/package-registry/source.ts'
 import { buildPackageCapabilityApprovalUrl } from '#worker/package-capabilities/capability-approval-url.ts'
+import { loadPackageAppRunsAs } from '#worker/package-runtime/package-app-authority.ts'
 import { heldForApprovalFromSource } from '#worker/package-capabilities/held-for-approval.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { servingCommitForSource } from '#worker/repo/serving-commit.ts'
@@ -185,7 +186,16 @@ export const getPackageCapability = defineDomainCapability(
 						publishedCommit,
 					}).catch(() => [])
 				: []
+			const runsAs = saved.hasApp
+				? await loadPackageAppRunsAs({
+						env: ctx.env,
+						scope: { orgId: owner.ownerUserId, packageId: saved.id },
+					}).catch(() => null)
+				: null
 			return {
+				...(runsAs?.status === 'unavailable'
+					? { app_runs_as_warning: runsAs.message }
+					: {}),
 				...(publishedCommit && provenanceArtifacts.length > 0
 					? {
 							provenance: {

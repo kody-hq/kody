@@ -3,6 +3,7 @@ import {
 	noticePayload,
 } from '#worker/execution-contexts/notices.ts'
 import {
+	ownerIdFromStored,
 	personalOrgId,
 	type OwnerId,
 	type PersonId,
@@ -25,6 +26,7 @@ import { readEntitlementUsageSnapshot } from '#worker/entitlements/usage-snapsho
 import { getUserEntitlement } from '#worker/entitlements/service.ts'
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
 import { listHeldForApprovalPackages } from '#worker/package-capabilities/held-for-approval.ts'
+import { loadPackageAppRunsAs } from '#worker/package-runtime/package-app-authority.ts'
 import { listJoinedIntegrations } from '#worker/integrations/service.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { listEnablementsForOrg } from '#worker/enablements/repo.ts'
@@ -164,6 +166,7 @@ export async function collectWaitingSignals(input: {
 		enablementsProbe,
 		contextNoticesProbe,
 		heldPublishesProbe,
+		appsWithoutRunsAsProbe,
 		sessionAnalyticsChoice,
 	] = await Promise.all([
 		readOnboardingChecklistDismissed({
@@ -212,6 +215,15 @@ export async function collectWaitingSignals(input: {
 			probe(() =>
 				listHeldForApprovalPackages(
 					env.APP_DB,
+					packages.ok ? packages.value : [],
+				),
+			),
+		),
+		packagesRead.then((packages) =>
+			probe(() =>
+				appsWithoutRunsAs(
+					env,
+					user.stableUserId,
 					packages.ok ? packages.value : [],
 				),
 			),
@@ -273,6 +285,9 @@ export async function collectWaitingSignals(input: {
 					servingCommit: held.servingCommit,
 					heldCommit: held.heldCommit,
 				}))
+			: [],
+		appsWithoutRunsAs: appsWithoutRunsAsProbe.ok
+			? appsWithoutRunsAsProbe.value
 			: [],
 		pendingEmailChange,
 		errorRate,
@@ -466,6 +481,28 @@ function expiredUserSecrets(
 	return secrets
 		.filter((secret) => secret.ttlMs != null && secret.ttlMs <= 0)
 		.map((secret) => ({ name: secret.name }))
+}
+
+async function appsWithoutRunsAs(
+	env: WaitingEnv,
+	orgId: string,
+	packages: Awaited<ReturnType<typeof listSavedPackagesByUserId>>,
+) {
+	const apps = packages.filter((pkg) => pkg.hasApp)
+	const resolved = await Promise.all(
+		apps.map(async (pkg) => ({
+			pkg,
+			runsAs: await loadPackageAppRunsAs({
+				env,
+				scope: { orgId: ownerIdFromStored(orgId), packageId: pkg.id },
+			}).catch(() => null),
+		})),
+	)
+	return resolved.flatMap(({ pkg, runsAs }) =>
+		runsAs?.status === 'unavailable'
+			? [{ id: pkg.id, name: pkg.name, message: runsAs.message }]
+			: [],
+	)
 }
 
 function lockedSavedPackages(

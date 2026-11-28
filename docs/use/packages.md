@@ -1034,6 +1034,13 @@ run for minutes) does not land from reconcile, and that HEAD is skipped for six
 hours, so publish those with `kody package publish` or
 `packagePublishExternalPush`.
 
+A reconcile publish runs as the person who pushed that HEAD over git, when they
+still belong to the owning org, so a package app keeps someone to run as (see
+[Who the app runs as](../guides/package-apps.md#who-the-app-runs-as)). A HEAD
+nobody is recorded as pushing publishes with no known person: a personal-org app
+then runs as the org owner, and a team-org app has no one to run as until an
+Owner publishes again or picks someone; `packageGet` and Waiting flag it.
+
 Once a package is listed, publishing or promoting advances the public community
 listing with the runtime — see
 [Listing vs publish and promote](./community-packages.md#listing-vs-publish-and-promote).

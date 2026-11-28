@@ -55,3 +55,31 @@ test('a held publish waits on the owner with both commits and the approval page'
 		severity: 'block',
 	})
 })
+
+test('an app with no one to run as waits on the owner with why its calls fail', () => {
+	const items = buildWaitingItems(
+		{
+			...quiet,
+			appsWithoutRunsAs: [
+				{
+					id: 'pkg-app',
+					name: '@acme/app',
+					message: 'An owner must publish it again.',
+				},
+			],
+		},
+		'acme',
+	)
+	expect(items).toEqual([
+		{
+			id: 'app-runs-as:pkg-app',
+			kind: 'app-runs-as',
+			title: '@acme/app has no one to run as',
+			why: 'Every server-side Kody call from its app fails. An owner must publish it again.',
+			who: 'you',
+			doLabel: 'See who apps run as',
+			href: expect.stringContaining('/package-apps#who-the-app-runs-as'),
+			severity: 'block',
+		},
+	])
+})

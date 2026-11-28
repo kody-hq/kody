@@ -12,6 +12,7 @@ import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { getSavedPackageLockedAt } from '#worker/package-registry/repo.ts'
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
 import { getPendingPackageApprovalRequest } from '#worker/package-capabilities/approval-requests-repo.ts'
+import { findPackageAppPublishRequester } from '#worker/package-runtime/package-app-authority.ts'
 
 export type ReconcileArtifactsPushesResult = {
 	checked: number
@@ -351,6 +352,16 @@ async function checkSource(input: {
 		await advanceCursor()
 		return 'failedHeadSkipped'
 	}
+	// Publish as the person who pushed this HEAD, when they still belong to
+	// the owning org; otherwise the publisher is unknown.
+	const pusher =
+		source.entity_kind === 'package'
+			? await findPackageAppPublishRequester({
+					db: env.APP_DB,
+					scope: { orgId: source.user_id, packageId: source.entity_id },
+					commit: head.commit,
+				})
+			: null
 	const sessionId = `external-reconcile-${source.id}`
 	const publishResult = await repoSessionRpc(
 		env,
@@ -363,6 +374,7 @@ async function checkSource(input: {
 		expectedHead: head.commit,
 		allowForce: false,
 		baseUrl: input.baseUrl,
+		requestedByUserId: pusher,
 	})
 	const outcome = publishOutcome(publishResult.status)
 	const settled = outcome === 'published' || outcome === 'alreadyPublished'
