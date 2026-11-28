@@ -183,9 +183,7 @@ export async function resolveAppVisitTarget(
 		appLabel,
 		notFound: () => appNotFound(requested.label),
 		/** The app's address in a browser, with the requested path. */
-		url: customMount
-			? `${customMount.baseUrl}${restPath === '/' && customMount.mount !== 'custom-hostname' ? '' : restPath}`
-			: hosted.hostedUrl,
+		url: customMount ? `${customMount.baseUrl}${restPath}` : hosted.hostedUrl,
 		/** False when this deployment serves apps on the Kody origin itself. */
 		hasAppHost: customMount != null || packageAppOrigin != null,
 		owner: {

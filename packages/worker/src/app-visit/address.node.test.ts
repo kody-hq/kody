@@ -1,10 +1,16 @@
 import { expect, test, vi } from 'vitest'
 
 vi.mock('#app/package-app-origin.ts', () => ({
-	resolveVerifiedCustomHostnameIfEnabled: async (request: Request) =>
-		new URL(request.url).host === 'board.example.org'
-			? { bindingKind: 'app', username: 'acme', kodyId: 'board' }
-			: null,
+	async resolveVerifiedCustomHostnameIfEnabled(request: Request) {
+		const { host } = new URL(request.url)
+		if (host === 'board.example.org') {
+			return { bindingKind: 'app', username: 'acme', kodyId: 'board' }
+		}
+		if (host === 'apps.example.org') {
+			return { bindingKind: 'org', username: 'acme' }
+		}
+		return null
+	},
 }))
 vi.mock('#worker/package-app-profile-host.ts', () => ({
 	hasProfilePackageApp: async () => false,
@@ -58,6 +64,31 @@ test('an app address names the owning org as @org/app or as a hosted URL', async
 		ownerHandle: 'acme',
 		appSlug: 'board',
 		path: null,
+	})
+})
+
+test('a path mount names the app by its first path segment', async () => {
+	// No customMount: a path under the owner's host only names the app, and
+	// the visit goes to the address the deployment serves that app from.
+	expect(await resolve('https://acme.apps.example/board/cards?x=1')).toEqual({
+		ownerHandle: 'acme',
+		appSlug: 'board',
+		path: '/cards?x=1',
+	})
+	// An org's custom domain serves every app of the org, so the app's name
+	// stays in the mount.
+	expect(await resolve('https://apps.example.org/board/cards?x=1')).toEqual({
+		ownerHandle: 'acme',
+		appSlug: 'board',
+		path: '/cards?x=1',
+		customMount: {
+			baseUrl: 'https://apps.example.org/board',
+			mount: 'user-subdomain',
+		},
+	})
+	expect(await resolve('https://apps.example.org/board')).toMatchObject({
+		path: null,
+		customMount: { baseUrl: 'https://apps.example.org/board' },
 	})
 })
 

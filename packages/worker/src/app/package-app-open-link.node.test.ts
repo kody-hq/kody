@@ -142,6 +142,7 @@ test('an open link is not a handoff token and its session is not a Kody account 
 		}),
 	).resolves.toBeNull()
 
+	const now = Date.now()
 	const [setCookie = ''] = await createPackageAppSessionCookie({
 		env,
 		session: {
@@ -152,7 +153,8 @@ test('an open link is not a handoff token and its session is not a Kody account 
 		},
 		slug: 'board',
 		secure: true,
-		expiresAt: Date.now() + packageAppOpenLinkSessionTtlMs,
+		expiresAt: now + packageAppOpenLinkSessionTtlMs,
+		now,
 	})
 	// Host-only and app-scoped: `__Host-`, no Domain, an hour at most.
 	expect(setCookie).toMatch(/^__Host-kody_pkg_session_[\w-]{12}=/)
