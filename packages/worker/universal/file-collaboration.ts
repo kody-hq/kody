@@ -206,7 +206,13 @@ export type RoomServerMessage =
 	| { type: 'snapshot'; snapshot: RoomSnapshot }
 	| { type: 'file'; revisionId: string; sequence: number }
 	| { type: 'notifications'; notifications: FileNotification[] }
-	| { type: 'update'; update: string; sequence: number; revisionId: string }
+	| {
+			type: 'update'
+			update: string
+			sequence: number
+			revisionId: string
+			agent?: Pick<CollaborationActor, 'id' | 'name'>
+	  }
 	| { type: 'ack'; operationId: string; sequence: number; revisionId: string }
 	| { type: 'presence'; presence: FilePresence[]; recent: RecentParticipant[] }
 	| {

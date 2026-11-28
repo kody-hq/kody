@@ -51,9 +51,15 @@ import type {
 } from '#universal/file-collaboration.ts'
 import {
 	absolutePositionToRelativePosition,
+	relativePositionToAbsolutePosition,
 	ySyncPluginKey,
 } from '@tiptap/y-tiptap'
 import type { FileRoomClient } from './file-room-client.ts'
+import {
+	agentEditLayerStyle,
+	editRangeRects,
+	mountAgentEditOverlay,
+} from './file-agent-edit-overlay.ts'
 import { actorColor } from '#universal/collaboration-color.ts'
 import { replaceCollaborativeContent } from '#universal/collaborative-document.ts'
 import {
@@ -224,6 +230,7 @@ export function WorkspacePageEditor({
 	const [picker, setPicker] = useState<PickerState | null>(null)
 	const [message, setMessage] = useState('')
 	const canvas = useRef<HTMLDivElement>(null)
+	const editLayer = useRef<HTMLDivElement>(null)
 
 	const discussions = useRef({
 		threads,
@@ -355,6 +362,47 @@ export function WorkspacePageEditor({
 		enabled: !!onComment && !!collaboration,
 		meta: { name: 'Comment on selection' },
 	})
+	useResourceLifetime(() => {
+		const layer = editLayer.current
+		if (!editor || !collaboration || !layer) return () => {}
+		const view = editor.view
+		return mountAgentEditOverlay(
+			collaboration,
+			view.dom,
+			view.dom,
+			layer,
+			({ start, end }) => {
+				const binding = ySyncPluginKey.getState(view.state)?.binding
+				if (!binding) return []
+				const from = relativePositionToAbsolutePosition(
+					binding.doc,
+					binding.type,
+					start,
+					binding.mapping,
+				)
+				const to = relativePositionToAbsolutePosition(
+					binding.doc,
+					binding.type,
+					end,
+					binding.mapping,
+				)
+				if (
+					from === null ||
+					to === null ||
+					from < 0 ||
+					to < from ||
+					to > view.state.doc.content.size
+				)
+					return []
+				if (from === to) {
+					const { left, top, bottom } = view.coordsAtPos(from)
+					return [new DOMRect(left, top, 0, bottom - top)]
+				}
+				return editRangeRects(view.domAtPos(from, 1), view.domAtPos(to, -1))
+			},
+		)
+	}, [editor, collaboration])
+
 	useResourceLifetime(() => {
 		if (!editor || !onComment || !collaboration) return () => {}
 		const update = () => {
@@ -671,6 +719,9 @@ export function WorkspacePageEditor({
 					/>
 				)}
 				<div ref={canvas} css={documentCss}>
+					{collaboration && (
+						<div ref={editLayer} aria-hidden="true" css={agentEditLayerStyle} />
+					)}
 					{editor ? (
 						<EditorContent editor={editor} />
 					) : (
@@ -1270,6 +1321,7 @@ const documentExtensions = [
 ]
 const documentCss: import('@emotion/react').CSSObject = {
 	...workspaceProse.body,
+	position: 'relative',
 	'& .tiptap': { outline: 'none' },
 	'& .collaboration-carets__caret': {
 		borderLeft: '2px solid',
