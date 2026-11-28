@@ -449,9 +449,9 @@ It stores the person id, session `issuedAt` and cookie expiry, org handle and
 app slug, plus credential kind, token id, scopes, and profile chain for an
 `appOpenLink` visit. A member socket closes with `1008` for these reasons:
 
-- `session-expired`: the access alarm is scheduled no later than the cookie's
-  expiry. The Durable Object also checks expiry before processing an inbound app
-  message or sending an outbound app message.
+- `session-expired`: the access alarm targets the cookie's expiry, with a
+  minimum scheduling delay of one second. The Durable Object also checks expiry
+  before processing an inbound app message or sending an outbound app message.
 - `signed-out`:
   [app logout](../../packages/worker/src/app/package-app-oauth-host-auth.ts)
   clears the cookie and schedules a best-effort close of that visit's sockets.
