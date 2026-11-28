@@ -282,12 +282,13 @@ fork.
 
 #### Which tree is scanned
 
-The scan prefers the tree the fork writes. When the storage-layer copy lands on
-a dest HEAD that is ahead of the listing pin,
-`persistForkedArtifactRepoContents` rewrites and scans dest HEAD's tree and that
-scan replaces the one from preparation. If that tree cannot be read, only
-`package.json` is rewritten and the preparation scan is kept as the best
-estimate.
+When the storage-layer copy lands on a dest HEAD that differs from the prepared
+commit, `persistForkedArtifactRepoContents` re-derives the rewrite from that
+HEAD rather than applying edits that could revert origin changes. If the package
+name changes, it reads the whole tree, rewrites the package self-references and
+any renamed emits topics, and replaces the preparation scan. If the tree cannot
+be read, it rewrites only `package.json` and keeps the preparation scan. If the
+name does not change, it needs neither a whole-tree rewrite nor a scan.
 
 `forkCommunityListing` reads the KV snapshot for rewrite/scan (Worker), then
 copies the origin Artifacts repo with `POST .../repos/{source}/fork` so the tree
@@ -301,9 +302,6 @@ the existing fork instead of allocating another leaf. Persist stamps dest
 records that SHA on `community_forks.origin_commit`. When dest HEAD matches the
 listing pin used in prepare, only rewritten files (`package.json`,
 self-reference text, and renamed `kody.emits` topic references) are applied.
-When dest HEAD is ahead of that pin, persist re-derives the rewrite from dest
-HEAD (the whole tree when emits topics are renamed, else only `package.json`)
-instead of applying pin-relative edits that would revert later origin commits.
 When the origin Artifacts repo is missing, persist falls back to the full-tree
 snapshot sync. Isolate memory / Artifacts `MEMORY_LIMIT` failures surface as
 `CommunityForkResourceLimitError` (honest UI/MCP copy; fork count does not
