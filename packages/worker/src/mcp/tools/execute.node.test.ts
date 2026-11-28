@@ -20,7 +20,6 @@ import {
 	maxMcpContentBlockCount,
 	wrapDownstreamMcpToolResult,
 } from '#mcp/downstream-mcp-result.ts'
-import { executeInvokeRemovedMessage } from '#mcp/execute-invoke-removed.ts'
 import { createExecutorSandboxTimeoutMessage } from '#mcp/executor.ts'
 import type * as AccessControlModule from '#mcp/capabilities/access-control.ts'
 import type * as MemoryToolContextModule from './memory-tool-context.ts'
@@ -280,8 +279,6 @@ function mockPerformanceSequence(...values: Array<number>) {
 
 type ExecuteInput = {
 	code?: string
-	/** Removed field; still sent by legacy callers. */
-	invoke?: string
 	params?: Record<string, unknown>
 	responseLimit?: number
 	conversationId?: string
@@ -1492,7 +1489,7 @@ test('execute tool refuses an identical call loop but still runs changed params'
 	)
 })
 
-test('execute rejects the removed invoke field with the equivalent code', async () => {
+test('execute rejects a call that sends invoke instead of code as a missing code error', async () => {
 	const [name, config, handler] = await getExecuteRegistration({
 		baseUrl: 'https://example.com',
 		user: { userId: ownerIdFromStored('user-1') },
@@ -1506,53 +1503,26 @@ test('execute rejects the removed invoke field with the equivalent code', async 
 	expect(jsonSchema.properties).not.toHaveProperty('invoke')
 	expect(jsonSchema.required).toContain('code')
 
-	const expected = executeInvokeRemovedMessage('kody:@acme/github/listRepos')
-	expect(expected).toContain(
-		'import action from "kody:@acme/github/listRepos"\nexport default (params) => action(params)',
-	)
+	const codeRequired =
+		'execute requires `code`: a single ESM module string with a default export.'
 	const parsed = config.inputSchema.safeParse({
 		invoke: 'kody:@acme/github/listRepos',
 	})
 	expect(parsed.success).toBe(false)
-	expect(parsed.error?.issues.map((issue) => issue.message)).toContain(expected)
 	expect(
-		config.inputSchema.safeParse({ code: 'export default () => 1' }).success,
-	).toBe(true)
+		parsed.error?.issues.map((issue) => ({
+			path: issue.path,
+			message: issue.message,
+		})),
+	).toEqual([{ path: ['code'], message: codeRequired }])
 
 	const rejected = await handler({
-		invoke: '@acme/github#listRepos',
-		conversationId: 'conv-invoke-removed',
-	})
-	expect(rejected.isError).toBe(true)
-	expect(rejected.structuredContent.error).toBe(expected)
-
-	const both = await handler({
-		code: 'export default async function main() { return 1 }',
 		invoke: 'kody:@acme/github/listRepos',
-		conversationId: 'conv-invoke-both',
-	})
-	expect(both.isError).toBe(true)
-	expect(both.structuredContent.error).toBe(expected)
+		conversationId: 'conv-invoke-only',
+	} as ExecuteInput)
+	expect(rejected.isError).toBe(true)
+	expect(rejected.structuredContent.error).toBe(codeRequired)
 	expect(mockModule.runModuleWithRegistry).not.toHaveBeenCalled()
-
-	moduleReturns({ ok: true })
-	const ran = await handler({
-		code: 'import action from "kody:@acme/github/listRepos"\nexport default (params) => action(params)',
-		params: { limit: 5 },
-		conversationId: 'conv-code',
-	})
-	expect(ran.isError).toBe(false)
-	expect(mockModule.runModuleWithRegistry).toHaveBeenCalledWith(
-		expect.anything(),
-		expect.anything(),
-		expect.stringContaining('kody:@acme/github/listRepos'),
-		{ limit: 5 },
-		expect.objectContaining({
-			runRecord: expect.objectContaining({
-				metadata: { conversationId: 'conv-code', entry: 'code' },
-			}),
-		}),
-	)
 })
 
 test('execute does not run or reach the registry when live flag resolution fails', async () => {

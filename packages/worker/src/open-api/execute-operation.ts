@@ -1,6 +1,5 @@
 import { executeRoutingInputFields } from '#worker/execution-contexts/execute-routing.ts'
 import { z } from 'zod'
-import { hasRemovedExecuteInvoke } from '#mcp/execute-invoke-removed.ts'
 import { runExecuteToolCall } from '#mcp/tools/execute.ts'
 import {
 	isWalletGuardLimitErrorDetails,
@@ -62,11 +61,6 @@ export const executeOperationDefinition: NativeApiOperationDefinition = {
 	readOnly: false,
 	async handler(params, ctx) {
 		const args = parseNativeInput(executeHttpInputSchema, params)
-		// The removed `invoke` field is not in the schema; forward it so the
-		// runner answers with the equivalent `code` instead of ignoring it.
-		const removedInvoke = hasRemovedExecuteInvoke(params)
-			? { invoke: params.invoke }
-			: {}
 		const startedByLabel =
 			ctx.principal.kind === 'token' ? ctx.principal.token.name : null
 		const result = await runExecuteToolCall({
@@ -74,7 +68,7 @@ export const executeOperationDefinition: NativeApiOperationDefinition = {
 			callerContext: ctx.callerContext,
 			loopbackExports: ctx.loopbackExports ?? ({} as Cloudflare.Exports),
 			waitUntil: ctx.waitUntil,
-			args: { ...args, ...removedInvoke },
+			args,
 			startedByLabel,
 			transportBudgetMs: openApiExecuteTransportBudgetMs,
 			detachedWorkLimitMs: detachedExecuteWorkLimitMs,

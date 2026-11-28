@@ -41,10 +41,6 @@ import {
 	resolveCallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
-import {
-	executeInvokeRemovedMessage,
-	hasRemovedExecuteInvoke,
-} from '#mcp/execute-invoke-removed.ts'
 import { buildExecuteAttributionMetadata } from '#worker/run-records/execute-attribution.ts'
 import { executeToolDescription } from '#mcp/instructions/execute-tool-description.ts'
 import {
@@ -334,49 +330,37 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 			description: executeTool.description,
 			outputSchema: executeToolOutputSchema,
 			...(icons ? { icons } : {}),
-			inputSchema: z
-				.object({
-					code: z
-						.string({ error: executeCodeMissingError })
-						.describe(executeCodeFieldDescription),
-					params: z
-						.record(z.string(), z.unknown())
-						.optional()
-						.describe(
-							'JSON object passed as the first argument to the default export. Put varying capability args here so the same `code` graph is reused.',
-						),
-					responseLimit: z
-						.number()
-						.int()
-						.min(1)
-						.optional()
-						.describe(
-							"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
-						),
-					conversationId: conversationIdInputField,
-					memoryContext: memoryContextInputFieldFor(sessionAnalyticsEnabled),
-					idempotencyKey: z
-						.string()
-						.min(1)
-						.max(runRecordMaxIdempotencyKeyLength)
-						.optional()
-						.describe(
-							'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
-						),
-					credentials: credentialCallMapSchema.optional(),
-					...(executionContextsEnabled ? executeRoutingInputFields : {}),
-				})
-				// Unknown keys pass through so a removed `invoke` reaches the
-				// check below instead of being silently stripped.
-				.loose()
-				.refine((args) => !hasRemovedExecuteInvoke(args), {
-					error: (issue) =>
-						executeInvokeRemovedMessage(
-							(issue.input as Record<string, unknown>)['invoke'],
-						),
-					path: ['invoke'],
-					when: () => true,
-				}),
+			inputSchema: z.object({
+				code: z
+					.string({ error: executeCodeMissingError })
+					.describe(executeCodeFieldDescription),
+				params: z
+					.record(z.string(), z.unknown())
+					.optional()
+					.describe(
+						'JSON object passed as the first argument to the default export. Put varying capability args here so the same `code` graph is reused.',
+					),
+				responseLimit: z
+					.number()
+					.int()
+					.min(1)
+					.optional()
+					.describe(
+						"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
+					),
+				conversationId: conversationIdInputField,
+				memoryContext: memoryContextInputFieldFor(sessionAnalyticsEnabled),
+				idempotencyKey: z
+					.string()
+					.min(1)
+					.max(runRecordMaxIdempotencyKeyLength)
+					.optional()
+					.describe(
+						'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
+					),
+				credentials: credentialCallMapSchema.optional(),
+				...(executionContextsEnabled ? executeRoutingInputFields : {}),
+			}),
 			annotations: executeTool.annotations,
 		},
 		async (args, toolExtra) =>
@@ -719,9 +703,6 @@ async function runExecuteToolCallUnobserved(input: {
 			callerContext,
 		})
 		void registryPromise.catch(() => {})
-		if (hasRemovedExecuteInvoke(input.args)) {
-			throw new McpCallerError(executeInvokeRemovedMessage(input.args.invoke))
-		}
 		const moduleCode = code?.trim() ? code : undefined
 		if (!moduleCode) {
 			throw new McpCallerError(executeCodeRequiredMessage)

@@ -23,17 +23,15 @@ import action from 'kody:@scope/package/export'
 export default (params) => action(params)
 ```
 
-The flag and its gate sites are deleted. A call that still sends `invoke` gets
-an error showing that `code` for its specifier instead of being ignored. The CLI
-keeps `kody execute --invoke` as client-side sugar: it writes the passthrough
-and sends `code`, so it costs nothing on the server.
+The flag and its gate sites are deleted. The CLI keeps `kody execute --invoke`
+as client-side sugar: it writes the passthrough and sends `code`, so it costs
+nothing on the server.
 
 ## Consequences
 
 Agents write one extra line per single-export call. Run records written while
 the shortcut existed keep `entry: invoke` and stay readable; new runs record
-`entry: code`. The migration error stays at least 30 days (until 2026-11-27 at
-the earliest) and is then removed, after which `invoke` is just an unknown
-argument. Revisit only if a module-reference field earns its own primitive (for
-example a cacheable reference with different billing), not as an alias for
-`code`.
+`entry: code`. `invoke` is not part of the input schema, so a call that sends
+only `invoke` fails validation because `code` is missing. Revisit only if a
+module-reference field earns its own primitive (for example a cacheable
+reference with different billing), not as an alias for `code`.
