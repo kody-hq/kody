@@ -224,6 +224,28 @@ test('a push with a git remote write token publishes as the one person who minte
 		expiresAt,
 	})
 	expect(await pusher()).toBeNull()
+	expect(
+		await findPackageAppPusher({
+			db: t.db,
+			scope: t.scope,
+			commit,
+			since: new Date(Date.now() + 120_000).toISOString(),
+		}),
+	).toBeNull()
+	await notePackageGitWriteMinter({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		expiresAt: new Date(Date.now() + 300_000).toISOString(),
+	})
+	expect(
+		await findPackageAppPusher({
+			db: t.db,
+			scope: t.scope,
+			commit,
+			since: new Date(Date.now() + 120_000).toISOString(),
+		}),
+	).toBe(t.member)
 	await notePackageAppPublishRequester({
 		db: t.db,
 		scope: t.scope,

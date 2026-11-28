@@ -360,6 +360,7 @@ async function checkSource(input: {
 					db: env.APP_DB,
 					scope: { orgId: source.user_id, packageId: source.entity_id },
 					commit: head.commit,
+					since: source.last_external_check_at,
 				})
 			: null
 	const sessionId = `external-reconcile-${source.id}`

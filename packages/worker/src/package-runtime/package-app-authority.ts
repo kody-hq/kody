@@ -476,13 +476,17 @@ export async function findPackageAppPusher(input: {
 	db: D1Database
 	scope: PackageAppAuthorityScope
 	commit: string
+	/** The previous reconcile check: a token that expired before it cannot have pushed this HEAD. */
+	since?: string | null
 	now?: Date
 }) {
 	const pusher = await findPackageAppPublishRequester(input)
 	if (pusher) return pusher
-	const since = new Date(
-		(input.now ?? new Date()).getTime() - writeMinterGraceMs,
-	).toISOString()
+	const since =
+		input.since ??
+		new Date(
+			(input.now ?? new Date()).getTime() - writeMinterGraceMs,
+		).toISOString()
 	const { results } = await input.db
 		.prepare(
 			`SELECT person_id FROM package_git_write_minters
