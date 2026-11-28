@@ -843,7 +843,6 @@ async function proxyArtifactsReceivePack(input: {
 	env: Env
 	target: ProxiedGitTarget
 	request: Request
-	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<Response> {
 	buildAuthenticatedArtifactsRemote({
 		remote: input.target.remote,
@@ -884,8 +883,9 @@ async function proxyArtifactsReceivePack(input: {
 			pusher,
 			pushedOids: observed.pushedOids,
 		})
-		if (input.waitUntil) input.waitUntil(noting)
-		else await noting
+		// Noted before the push reports success, so the reconcile that picks
+		// up the new HEAD finds its pusher.
+		await noting
 	}
 
 	return new Response(upstream.body, {
@@ -910,6 +910,7 @@ async function notePushedCommits(input: {
 				},
 				personId: input.pusher.personId,
 				commit,
+				replace: true,
 			})
 		}
 	} catch (error) {
@@ -1420,7 +1421,6 @@ export async function handlePublicPackageGitHttpRequest(
 				env,
 				target: resolved.target,
 				request,
-				waitUntil,
 			})
 		} catch {
 			return gitResultErrorResponse(

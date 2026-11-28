@@ -36,6 +36,7 @@ import {
 	buildAuthenticatedArtifactsRemote,
 	parseArtifactTokenSecret,
 } from '#worker/repo/artifacts.ts'
+import { notePackageGitWriteMinter } from '#worker/package-runtime/package-app-authority.ts'
 import { markEntitySourcePendingExternalReconcile } from '#worker/repo/entity-sources.ts'
 import {
 	enhanceGitRemoteReadDenial,
@@ -285,6 +286,12 @@ export const getGitRemoteCapability = defineDomainCapability(
 					id: source.id,
 					userId: owner.ownerUserId,
 					tokenExpiresAt: token.expiresAt,
+				})
+				await notePackageGitWriteMinter({
+					db: ctx.env.APP_DB,
+					scope: { orgId: owner.ownerUserId, packageId },
+					personId: user.userId,
+					expiresAt: token.expiresAt,
 				})
 			}
 			const gitExtraHeader = `Authorization: Bearer ${parseArtifactTokenSecret(token.plaintext)}`

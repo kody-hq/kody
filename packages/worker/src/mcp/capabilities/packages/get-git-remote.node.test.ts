@@ -47,6 +47,10 @@ vi.mock('#worker/package-registry/package-owner.ts', () => ({
 		mockModule.resolvePackageOwnerContext(...args),
 }))
 
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	notePackageGitWriteMinter: async () => {},
+}))
+
 vi.mock('#worker/repo/entity-sources.ts', () => ({
 	getEntitySourceByIdForUser: (...args: Array<unknown>) =>
 		mockModule.getEntitySourceByIdForUser(...args),

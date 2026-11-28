@@ -324,6 +324,8 @@ export async function notePackageAppPublishRequester(input: {
 	personId: string
 	commit: string
 	now?: Date
+	/** Git pushes: the latest pusher of a commit replaces an earlier one. */
+	replace?: boolean
 }) {
 	const now = input.now ?? new Date()
 	await input.db.batch([
@@ -341,7 +343,11 @@ export async function notePackageAppPublishRequester(input: {
 				`INSERT INTO package_app_publish_requests
 				 (package_id, commit_sha, owner_id, person_id, created_at)
 				 VALUES (?, ?, ?, ?, ?)
-				 ON CONFLICT(package_id, commit_sha) DO NOTHING`,
+				 ON CONFLICT(package_id, commit_sha) DO ${
+						input.replace
+							? 'UPDATE SET person_id = excluded.person_id, created_at = excluded.created_at'
+							: 'NOTHING'
+					}`,
 			)
 			.bind(
 				input.scope.packageId,
@@ -402,8 +408,10 @@ export async function recordPackageAppPublish(input: {
 }
 
 /**
- * The live member of the owning org who asked for, or pushed, this commit
- * (`notePackageAppPublishRequester`), or null.
+ * The person with a live binding to the owning org who asked for, or pushed,
+ * this commit (`notePackageAppPublishRequester`), or null. A grant-only
+ * collaborator counts, so their code is recorded as theirs and fails closed
+ * instead of running as the org owner.
  */
 export async function findPackageAppPublishRequester(input: {
 	db: D1Database
@@ -423,6 +431,80 @@ export async function findPackageAppPublishRequester(input: {
 	)
 	return binding ? requester : null
 }
+
+/** Note who minted a write token for a package's git remote, until it expires. */
+export async function notePackageGitWriteMinter(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	personId: string
+	expiresAt: string
+	now?: Date
+}) {
+	const now = (input.now ?? new Date()).toISOString()
+	await input.db.batch([
+		input.db
+			.prepare(
+				`DELETE FROM package_git_write_minters
+				 WHERE package_id = ? AND expires_at < ?`,
+			)
+			.bind(input.scope.packageId, now),
+		input.db
+			.prepare(
+				`INSERT INTO package_git_write_minters
+				 (package_id, owner_id, person_id, expires_at)
+				 VALUES (?, ?, ?, ?)
+				 ON CONFLICT(package_id, person_id) DO UPDATE SET
+					owner_id = excluded.owner_id,
+					expires_at = MAX(expires_at, excluded.expires_at)`,
+			)
+			.bind(
+				input.scope.packageId,
+				input.scope.orgId,
+				input.personId,
+				input.expiresAt,
+			),
+	])
+}
+
+/**
+ * Who to publish a pushed HEAD as: whoever pushed that commit through the Kody
+ * git remote, else the one person holding a write token for it (tokens push
+ * straight to Artifacts). With several token holders, a collaborator without
+ * an org role wins so their code fails closed; several members are unknown.
+ */
+export async function findPackageAppPusher(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	commit: string
+	now?: Date
+}) {
+	const pusher = await findPackageAppPublishRequester(input)
+	if (pusher) return pusher
+	const since = new Date(
+		(input.now ?? new Date()).getTime() - writeMinterGraceMs,
+	).toISOString()
+	const { results } = await input.db
+		.prepare(
+			`SELECT person_id FROM package_git_write_minters
+			 WHERE package_id = ? AND owner_id = ? AND expires_at >= ?`,
+		)
+		.bind(input.scope.packageId, input.scope.orgId, since)
+		.all<{ person_id: string }>()
+	const bound = []
+	for (const { person_id } of results) {
+		const binding = await loadOrgBindingForOrg(
+			input.db,
+			person_id,
+			input.scope.orgId,
+		)
+		if (binding) bound.push({ personId: person_id, role: binding.role })
+	}
+	if (bound.length === 1) return bound[0]!.personId
+	return bound.find((minter) => !minter.role)?.personId ?? null
+}
+
+/** Matches the reconcile's grace after a write token expires. */
+const writeMinterGraceMs = 60 * 60 * 1000
 
 async function resolvePublishingPerson(input: {
 	db: D1Database

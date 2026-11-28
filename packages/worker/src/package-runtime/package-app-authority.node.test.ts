@@ -20,6 +20,8 @@ import {
 	createPackageAppVisitorPersonalRequest,
 	createPackageAppCredentialAuthority,
 	findPackageAppPublishRequester,
+	findPackageAppPusher,
+	notePackageGitWriteMinter,
 	forgetPackageAppRunsAs,
 	loadPackageAppRunsAs,
 	notePackageAppPublishRequester,
@@ -192,6 +194,44 @@ test('a git push notes the pusher, and only a live member of the org is found fo
 			commit: outsiderCommit,
 		}),
 	).toBeNull()
+})
+
+test('a push with a git remote write token publishes as the one person who minted it', async () => {
+	const t = await setup()
+	const commit = 'd'.repeat(40)
+	const expiresAt = new Date(Date.now() + 60_000).toISOString()
+	const pusher = () =>
+		findPackageAppPusher({ db: t.db, scope: t.scope, commit })
+	expect(await pusher()).toBeNull()
+	await notePackageGitWriteMinter({
+		db: t.db,
+		scope: t.scope,
+		personId: t.outsider,
+		expiresAt,
+	})
+	expect(await pusher()).toBeNull()
+	await notePackageGitWriteMinter({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		expiresAt,
+	})
+	expect(await pusher()).toBe(t.member)
+	await notePackageGitWriteMinter({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+		expiresAt,
+	})
+	expect(await pusher()).toBeNull()
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+		commit,
+		replace: true,
+	})
+	expect(await pusher()).toBe(t.owner)
 })
 
 test('a publish with no known person forgets the publisher and keeps the Owner pick', async () => {
