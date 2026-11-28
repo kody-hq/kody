@@ -48,7 +48,7 @@ import {
 	type WaitingSignals,
 } from '#universal/waiting.ts'
 
-import { getOrgById } from '#worker/orgs/repo.ts'
+import { getOrgById, loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 export type DeriveWaitingUser = {
 	userId: number
@@ -224,6 +224,7 @@ export async function collectWaitingSignals(input: {
 				appsWithoutRunsAs(
 					env,
 					user.stableUserId,
+					user.actorStableUserId ?? user.stableUserId,
 					packages.ok ? packages.value : [],
 				),
 			),
@@ -483,19 +484,30 @@ function expiredUserSecrets(
 		.map((secret) => ({ name: secret.name }))
 }
 
+/** Owners only: they can fix it and can read every package in the org. */
 async function appsWithoutRunsAs(
 	env: WaitingEnv,
 	orgId: string,
+	personId: string,
 	packages: Awaited<ReturnType<typeof listSavedPackagesByUserId>>,
 ) {
 	const apps = packages.filter((pkg) => pkg.hasApp)
+	if (apps.length === 0) return []
+	const binding = await loadOrgBindingForOrg(env.APP_DB, personId, orgId)
+	if (binding?.role !== 'owner') return []
 	const resolved = await Promise.all(
 		apps.map(async (pkg) => ({
 			pkg,
 			runsAs: await loadPackageAppRunsAs({
 				env,
 				scope: { orgId: ownerIdFromStored(orgId), packageId: pkg.id },
-			}).catch(() => null),
+			}).catch((error: unknown) => {
+				console.warn(
+					'waiting: could not read who an app runs as, so its app-runs-as item is omitted',
+					error,
+				)
+				return null
+			}),
 		})),
 	)
 	return resolved.flatMap(({ pkg, runsAs }) =>

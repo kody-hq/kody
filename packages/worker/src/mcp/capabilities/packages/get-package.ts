@@ -190,7 +190,13 @@ export const getPackageCapability = defineDomainCapability(
 				? await loadPackageAppRunsAs({
 						env: ctx.env,
 						scope: { orgId: owner.ownerUserId, packageId: saved.id },
-					}).catch(() => null)
+					}).catch((error: unknown) => {
+						console.warn(
+							'packageGet: could not read who the app runs as, so app_runs_as_warning is omitted',
+							error,
+						)
+						return null
+					})
 				: null
 			return {
 				...(runsAs?.status === 'unavailable'
