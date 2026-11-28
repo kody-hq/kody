@@ -267,7 +267,7 @@ test('appOpenLink opens the root of an org custom-domain mount with its trailing
 	const mountRoot: AppAddress = {
 		ownerHandle: 'acme',
 		appSlug: 'demo-app',
-		path: '/',
+		path: null,
 		customMount: {
 			baseUrl: 'https://apps.customer.example/demo-app',
 			mount: 'user-subdomain',
