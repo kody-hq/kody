@@ -2186,6 +2186,31 @@ Static `assets` paths are not fingerprinted (they carry a commit-scoped `ETag`
 and a five-minute max-age), so precache them keyed by `publishedCommit` and drop
 old caches on activate.
 
+### WebAssembly
+
+Package bundles do not support `.wasm` imports (`import mod from './x.wasm'`),
+in the Worker graph (`kody.app.entry`, exports, jobs) or in `kody.app.client`.
+Publish and `kody dev check` fail with
+`Cannot import "./x.wasm": .wasm imports are not supported ...`, naming the
+importing file. Workers also block compiling WebAssembly from bytes at runtime
+(`WebAssembly.compile`/`instantiate` on an `ArrayBuffer`), so a server-side WASM
+library cannot load its binary either.
+
+Run the WebAssembly in the browser instead: put the `.wasm` file in the
+`kody.app.assets` directory, render
+`data-asset-base="${packageContext?.assetBasePath}"` on `<html>` from the server
+entry, and load it from the client:
+
+```ts
+const assetBase = document.documentElement.dataset.assetBase
+const { instance } = await WebAssembly.instantiateStreaming(
+	fetch(`${assetBase}/engine.wasm`),
+)
+```
+
+For WASM that must run on a server, use a pure-JavaScript build of the library
+or deploy the WASM to a separate Worker you own and call it over `fetch`.
+
 ### Troubleshooting
 
 - **404 on `<assetBasePath>/__version.json`** — the host does not serve client

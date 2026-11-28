@@ -210,6 +210,34 @@ test('deferred bundle check refuses relative imports the rebuild could not resol
 	)
 })
 
+test('deferred bundle check refuses .wasm imports with the import site and a workaround', async () => {
+	const files = new Map<string, string>([
+		[
+			'package.json',
+			packageJson('deferred-wasm', {}, { '.': './src/index.ts' }),
+		],
+		...docs,
+		[
+			'src/index.ts',
+			"import add from './add.wasm'\nimport engine from 'kody:@kody/engine/engine.wasm'\nexport default async () => [add, engine, await import('./lazy.wasm')]\n",
+		],
+		['src/add.wasm', '\0asm\x01\0\0\0'],
+		['src/job.ts', 'export default async () => ({ ok: true })\n'],
+	])
+	const { result } = await runDeferred(files)
+	expect(result.ok).toBe(false)
+	const bundle = result.results.find((entry) => entry.kind === 'bundle')
+	expect(bundle).toMatchObject({ ok: false })
+	expect(bundle?.message).toContain('Cannot import "./add.wasm"')
+	expect(bundle?.message).toContain('.wasm imports are not supported')
+	expect(bundle?.message).toContain('Imported from "src/index.ts"')
+	expect(bundle?.message).toContain('"./lazy.wasm" in "src/index.ts"')
+	expect(bundle?.message).not.toContain('kody:@kody/engine')
+	expect(bundle?.message).toContain('kody.app.assets')
+	expect(bundle?.message).not.toContain('could not be resolved')
+	expectNoBundleBuilds()
+})
+
 test('deferred bundle check still typechecks in an isolate and does not start bundle-chunk isolates', async () => {
 	const files = new Map<string, string>([
 		[

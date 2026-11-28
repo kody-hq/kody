@@ -29,6 +29,7 @@ import {
 	createNodeModulesResolutionPlugin,
 } from './package-bundle-node-modules.ts'
 import { createPackageAppJsxBundleOptions } from './package-app-tsconfig.ts'
+import { createUnsupportedImportsPlugin } from './package-bundle-unsupported-imports.ts'
 import type { RuntimeBundle } from './runtime-bundle-types.ts'
 import { iterateModuleSourceTexts } from './runtime-source-modules.ts'
 import { isTypeDeclarationFilePath } from './static-kody-imports.ts'
@@ -303,6 +304,7 @@ export async function buildKodyAppClientBundle(input: {
 		...createPackageAppJsxBundleOptions(input.sourceFiles),
 		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
 			...(externals.length > 0 ? [createClientExternalsPlugin(externals)] : []),
+			createUnsupportedImportsPlugin({ files, side: 'client' }),
 			createNodeModulesResolutionPlugin(files),
 		],
 	})

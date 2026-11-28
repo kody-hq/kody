@@ -5,6 +5,10 @@ import {
 	joinPath,
 	resolveWorkspaceSourceFilePath,
 } from '#worker/package-runtime/module-graph-paths.ts'
+import {
+	isWasmImportSpecifier,
+	unsupportedWasmImportMessage,
+} from '#worker/package-runtime/package-bundle-unsupported-imports.ts'
 import { isTypeDeclarationFilePath } from '#worker/package-runtime/static-kody-imports.ts'
 
 export type UnresolvedRelativeImport = {
@@ -14,16 +18,17 @@ export type UnresolvedRelativeImport = {
 
 /**
  * Static relative imports reachable from the entrypoints that resolve to no
- * file in `files`, the way the bundler would fail on them. Cheap stand-in
- * for esbuild when publish defers bundling to rebuild. Awaits
+ * file in `files`, and `.wasm` imports, the way the bundler would fail on
+ * them. Cheap stand-in for esbuild when publish defers bundling to rebuild. Awaits
  * `collectModuleImportNodes` (lazy Babel parse). Files that do not parse are
  * skipped: other checks report them.
  */
-export async function collectUnresolvedRelativeImports(input: {
+export async function collectUnbundleableImports(input: {
 	files: Record<string, string>
 	entryPoints: ReadonlyArray<string>
 }) {
 	const unresolved: Array<UnresolvedRelativeImport> = []
+	const wasm: Array<UnresolvedRelativeImport> = []
 	const visited = new Set<string>()
 	const stack = input.entryPoints.flatMap((entryPoint) => {
 		const resolved = resolveWorkspaceSourceFilePath({
@@ -53,6 +58,10 @@ export async function collectUnresolvedRelativeImports(input: {
 		}
 		for (const node of imports) {
 			const { specifier } = node
+			if (isWasmImportSpecifier(specifier)) {
+				wasm.push({ importer: filePath, specifier })
+				continue
+			}
 			if (node.kind !== 'static') continue
 			if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
 			if (/[?#]/.test(specifier)) continue
@@ -67,7 +76,19 @@ export async function collectUnresolvedRelativeImports(input: {
 			}
 		}
 	}
-	return unresolved
+	return { unresolved, wasm }
+}
+
+export function formatWasmImportsMessage(
+	wasm: ReadonlyArray<UnresolvedRelativeImport>,
+) {
+	const [first] = wasm
+	if (!first) return ''
+	const others = wasm
+		.slice(1, 10)
+		.map((entry) => `"${entry.specifier}" in "${entry.importer}"`)
+	const more = others.length > 0 ? ` Also: ${others.join(', ')}.` : ''
+	return `${unsupportedWasmImportMessage({ specifier: first.specifier, side: 'any' })} Imported from "${first.importer}".${more}`
 }
 
 export function formatUnresolvedRelativeImportsMessage(
