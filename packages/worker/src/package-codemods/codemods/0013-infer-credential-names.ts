@@ -239,18 +239,41 @@ function functionName(node: AstNode, parent: AstNode | undefined) {
 	return null
 }
 
-function returnedValues(fn: AstNode, constants: ReadonlyMap<string, string>) {
+function returnedValues(
+	fn: AstNode,
+	moduleConstants: ReadonlyMap<string, string>,
+	outer: ReadonlyArray<AstNode>,
+) {
 	const body = fn.body
 	if (!body || Array.isArray(body)) return []
-	if (body.type !== 'BlockStatement') return [toValue(body, constants)]
+	// The function's own parameters and locals shadow module constants.
+	const scope = [...outer, fn]
+	if (body.type !== 'BlockStatement') {
+		return [toValue(body, constantsWithoutShadows(moduleConstants, scope))]
+	}
 	const returns: Array<Value> = []
-	walkAst(body, (node, ancestors) => {
-		if (node.type !== 'ReturnStatement') return
-		if (ancestors.some((ancestor) => functionTypes.has(ancestor.type))) return
-		returns.push(
-			node.argument ? toValue(node.argument, constants) : unknownValue,
-		)
-	})
+	walkAst(
+		body,
+		(node, ancestors) => {
+			if (node.type !== 'ReturnStatement') return
+			if (
+				ancestors
+					.slice(scope.length)
+					.some((ancestor) => functionTypes.has(ancestor.type))
+			) {
+				return
+			}
+			returns.push(
+				node.argument
+					? toValue(
+							node.argument,
+							constantsWithoutShadows(moduleConstants, ancestors),
+						)
+					: unknownValue,
+			)
+		},
+		scope,
+	)
 	return returns
 }
 
@@ -376,7 +399,7 @@ export function summarizeModuleNames(
 			if (name) {
 				push(summary.functions, name, {
 					exported,
-					returns: returnedValues(node, constants()),
+					returns: returnedValues(node, moduleConstants, ancestors),
 				})
 			}
 			// An array method callback takes one element of the array.
@@ -552,7 +575,8 @@ export function inferCredentialNames(
 	const callsTruncated = [...modules.values()].some(
 		(summary) => summary.callsTruncated,
 	)
-	const seen = new Set<string>()
+	/** Names being resolved: a cycle adds nothing. */
+	const active = new Set<string>()
 	const everywhere = <Item>(
 		home: string,
 		read: (summary: ModuleNameSummary) => Array<Item> | undefined,
@@ -613,19 +637,20 @@ export function inferCredentialNames(
 				// never fully known.
 				into.unknown = true
 				const key = `field:${current.name}`
-				if (seen.has(key)) return
-				seen.add(key)
+				if (active.has(key)) return
+				active.add(key)
 				for (const [modulePath, summary] of modules) {
 					for (const option of summary.fields.get(current.name) ?? []) {
 						resolve(option, modulePath, into)
 					}
 				}
+				active.delete(key)
 				return
 			}
 			case 'call': {
 				const key = `call:${current.name}`
-				if (seen.has(key)) return
-				seen.add(key)
+				if (active.has(key)) return
+				active.add(key)
 				const functions = everywhere(home, (summary) =>
 					summary.functions.get(current.name),
 				)
@@ -636,12 +661,13 @@ export function inferCredentialNames(
 						resolve(returned, fn.path, into)
 					}
 				}
+				active.delete(key)
 				return
 			}
 			case 'ref': {
 				const key = `ref:${home}:${current.name}`
-				if (seen.has(key)) return
-				seen.add(key)
+				if (active.has(key)) return
+				active.add(key)
 				const bindings = everywhere(home, (summary) =>
 					summary.bindings.get(current.name),
 				)
@@ -682,6 +708,7 @@ export function inferCredentialNames(
 						if (argument) resolve(argument, call.path, into)
 					}
 				}
+				active.delete(key)
 				return
 			}
 			default: {
