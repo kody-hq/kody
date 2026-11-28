@@ -39,13 +39,13 @@ export type EmailVerificationDeliveryIndicator =
 	(typeof emailVerificationDeliveryIndicatorValues)[number]
 
 export const emailVerificationSenderBlockMessage =
-	'Your mail provider is blocking our domain right now, try another address. Social login on the signup page still works. Support can also verify you manually — contact support with the address you used.'
+	'Your mail provider is blocking our domain right now, try another address. Social login on the signup page still works. Support can also verify you manually: contact support with the address you used.'
 
 const emailVerificationDeliveryFailedMessage =
 	'The verification email could not be delivered. Try social login on the signup page, or contact support with the address you used.'
 
 const emailVerificationDeliveryWaitingDetail =
-	'Our mail provider accepted the message. Delivery confirmation can take a minute — check your inbox and spam folder while we wait.'
+	'Our mail provider accepted the message. Delivery confirmation can take a minute, so check your inbox and spam folder while we wait.'
 
 export function isEmailVerificationDeliveryStatus(
 	value: string | null | undefined,
@@ -231,7 +231,7 @@ export function describeEmailVerificationDelivery(
 			})
 		case 'accepted':
 			return describeDelivery({
-				headline: 'Waiting for delivery confirmation',
+				headline: 'Verification email sent',
 				detail: emailVerificationDeliveryWaitingDetail,
 				canResend: true,
 				tone: 'info',
@@ -241,7 +241,7 @@ export function describeEmailVerificationDelivery(
 			const exhaustive: never = delivery.status
 			void exhaustive
 			return describeDelivery({
-				headline: 'Waiting for delivery confirmation',
+				headline: 'Verification email sent',
 				detail: emailVerificationDeliveryWaitingDetail,
 				canResend: true,
 				tone: 'info',

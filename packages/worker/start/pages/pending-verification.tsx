@@ -229,7 +229,7 @@ export function PendingVerificationPage({
 						onResend: () => {
 							void resend()
 						},
-						continueLabel: "I've verified - continue",
+						continueLabel: "I've verified, continue",
 						onContinue: () => {
 							void continueAfterVerification()
 						},

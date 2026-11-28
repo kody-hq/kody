@@ -22,6 +22,7 @@ export function NativeAuth({
 	return (
 		<AuthLayout
 			title={mode === 'signup' ? 'Create your account' : 'Welcome back'}
+			visitor={mode === 'signup' ? 'new' : 'returning'}
 		>
 			<Button
 				variant="primary"

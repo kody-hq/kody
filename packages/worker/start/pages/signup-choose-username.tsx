@@ -202,7 +202,7 @@ export function SignupChooseUsernamePage(props: {
 
 	return (
 		<div ref={trackLifecycle} css={authLayoutCss}>
-			{renderLoginVisualPanel()}
+			{renderLoginVisualPanel('new')}
 			<div css={authPanelCss}>
 				{renderMobileBrand()}
 				<div css={authCardCss}>

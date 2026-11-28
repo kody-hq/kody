@@ -417,7 +417,12 @@ export function LoginPage({
 	const showSocial = authProviders.length > 0
 
 	return (
-		<AuthLayout ref={trackLifecycle} title={title} description={description}>
+		<AuthLayout
+			ref={trackLifecycle}
+			title={title}
+			description={description}
+			visitor={isSignup ? 'new' : 'returning'}
+		>
 			{oauthErrorMessage ? (
 				<>
 					<p aria-live="polite" data-tone="error" css={formMessageCss}>
