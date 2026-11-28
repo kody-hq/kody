@@ -1,18 +1,7 @@
-import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import type { RequestCredential } from '@kody-internal/shared/request-context.ts'
+import type { RuntimePackageAppVisitSessionCredential } from '@kody-internal/shared/runtime-worker.ts'
 
-/**
- * The agent credential a visit session acts as: what `appOpenLink` copied
- * from the calling token. `profileOrgId` is always set with `profileId`.
- */
-export type AppVisitSessionCredential = Pick<
-	RequestCredential,
-	'kind' | 'id' | 'scopes'
-> & {
-	profileId?: string
-	profileChain?: ReadonlyArray<string>
-	profileOrgId?: OwnerId
-}
+/** The agent credential a visit session acts as (see the shared type). */
+export type AppVisitSessionCredential = RuntimePackageAppVisitSessionCredential
 
 const isText = (value: unknown): value is string =>
 	typeof value === 'string' && value.length > 0

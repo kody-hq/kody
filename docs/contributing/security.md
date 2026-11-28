@@ -427,9 +427,9 @@ code runs with publisher authority and bills the owning org (ADR 0095). The
   and `kody:ping` is answered by `setWebSocketAutoResponse`, so a stranger
   cannot run owner code, and keepalive pings never wake the Durable Object.
 - **Pin:** hooks for a public socket build only from its approved commit (a
-  mismatch closes it with `1012`), and an alarm rechecks the approved commit
-  every 5 minutes so republishing or turning off internet visibility drops open
-  public sockets.
+  mismatch closes it with `1012`), and the access alarm rechecks the approved
+  commit every minute (`realtimeAccessRecheckMs`) so republishing or turning off
+  internet visibility drops open public sockets.
 - **Visitor context:** hooks get `visitor` (`null` when anonymous) and sessions
   carry `anonymous`, so app code cannot mistake a stranger for a member.
 - **Caps** (public sockets only, `anonymousRealtimeLimits`): 2,000 per app, 20
@@ -439,6 +439,26 @@ code runs with publisher authority and bills the owning org (ADR 0095). The
   kept only as a package-salted SHA-256 prefix in a socket tag. Per-socket state
   is stored under its own key, so a busy socket does not rewrite every session's
   state.
+
+**Member realtime re-authorization.** A member socket stores the package-app
+visit session it was opened from (person id, session `issuedAt` and cookie
+expiry, org handle and app slug, and for an `appOpenLink` agent visit the
+credential kind, token id, scopes and profile chain; never a secret). A member
+upgrade without one is `403`. The socket then closes with `1008` when the next
+HTTP request from that session would be refused:
+
+- `session-expired`: at the cookie's expiry (the alarm is set for it, and no
+  frame is delivered or accepted after it);
+- `signed-out`: right away when the session signs out of the app with
+  `/-/auth/logout`;
+- `access-revoked`: within one minute (`realtimeAccessRecheckMs`) of grant or
+  role removal, profile grant removal, API token revocation, suspension,
+  deletion or a password change. The alarm runs `checkPackageAppVisitSession`
+  (`packages/worker/src/app/package-app-visit-authorization.ts`), the same
+  `authorizePackageAppVisitorForOrg` decision package-app HTTP requests use,
+  once per distinct session per alarm, never per frame. Its cached reads (owner
+  row 15 s, org access epoch) are the same ones HTTP uses. A failed check keeps
+  the socket open until the next alarm.
 
 Team-org realtime (team-scoped sockets) is still not supported
 ([#5067](https://github.com/kody-hq/kody/issues/5067)).

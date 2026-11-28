@@ -1,10 +1,7 @@
 import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
 import { buildPackageAppPathMountCutoverLocation } from '#worker/package-runtime/package-app-path-mount-cutover.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import type {
-	RuntimePackageAppIdentity,
-	RuntimePackageAppVisitor,
-} from '@kody-internal/shared/runtime-worker.ts'
+import type { RuntimePackageAppIdentity } from '@kody-internal/shared/runtime-worker.ts'
 import { html } from 'remix/html-template'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { createHtmlResponse } from 'remix/response/html'
@@ -86,21 +83,17 @@ import {
 	handlePackageAppOauthHostAuth,
 	isPackageAppOauthHostAuthPath,
 } from '#app/package-app-oauth-host-auth.ts'
+import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
+import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import {
-	resolvePackageAppOrgOwnerByHandle,
-	resolvePackageAppOwnerByStableUserId,
-} from '#app/package-app-owner.ts'
-import { authorizeAppVisit } from '#worker/app-visit/authorize.ts'
-import {
-	packageAppSessionCredentialIsLive,
-	visitSessionRequestFor,
-	viewerCanExecutePackageApp,
-} from '#app/package-viewer-access.ts'
+	authorizePackageAppVisitorForOrg,
+	packageAppVisitSessionFor,
+	type AuthorizedPackageAppServe,
+} from '#app/package-app-visit-authorization.ts'
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
 } from '#app/package-app-session.ts'
-import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 import {
 	type PackageAppPath,
 	parsePackageAppCustomHostnamePath,
@@ -108,7 +101,6 @@ import {
 	parsePackageAppSubdomainPath,
 	servePackageAppRequest,
 } from '#app/handlers/package-app.ts'
-import type { PackageAppServeOwner } from '#worker/package-runtime/package-app-serve.ts'
 import { resolveInternetVisibleApprovedCommit } from '#app/package-app-internet-visible.ts'
 import {
 	destroyPackageAppTicketCookie,
@@ -506,101 +498,6 @@ function redirectToPackagePage(input: {
 		}),
 		status: input.status ?? 302,
 	})
-}
-
-export type AuthorizedPackageAppServe =
-	| {
-			kind: 'ok'
-			owner: PackageAppServeOwner
-			visitor: RuntimePackageAppVisitor
-			/** Org `access_epoch` the decision was made at. */
-			epoch: number
-			visitorEmail: string
-			sessionIssuedAt: number
-			/** True for a visit session an agent opened with `appOpenLink`. */
-			agent: boolean
-	  }
-	| { kind: 'session-required' }
-	| {
-			kind: 'forbidden'
-			visitorEmail: string
-			/** The live session person, for an identity-only internet-visible serve. */
-			person: RuntimePackageAppIdentity
-	  }
-
-/**
- * Confirm the session person is still live, then authorize the visit with
- * {@link authorizeAppVisit}, the check `appFetch` also uses. A person's own
- * browser session carries no profile and no token scopes; a session an agent
- * opened with `appOpenLink` carries its credential's, so it is authorized
- * exactly like that token's `appFetch`. The visitor keeps their live org
- * role; the owner is the org, not the visitor's personal account.
- */
-export async function authorizePackageAppVisitorForOrg(input: {
-	env: Env
-	stableUserId: string
-	issuedAt: number
-	handle: string
-	/** Package slug so app:execute is checked on that app, not any grant. */
-	kodyId?: string
-	/** The agent credential the visit session carries, when it has one. */
-	credential?: AppVisitSessionCredential | null
-}): Promise<AuthorizedPackageAppServe> {
-	const person = await resolvePackageAppOwnerByStableUserId({
-		env: input.env,
-		stableUserId: input.stableUserId,
-		issuedAt: input.issuedAt,
-	})
-	if (!person) return { kind: 'session-required' }
-	const credential = input.credential ?? null
-	if (
-		credential &&
-		!(await packageAppSessionCredentialIsLive({
-			env: input.env,
-			stableUserId: input.stableUserId,
-			credential,
-		}))
-	) {
-		return { kind: 'session-required' }
-	}
-
-	const viewer = {
-		userId: personIdFromStored(input.stableUserId),
-		username: person.username,
-	}
-	const visit = await authorizeAppVisit({
-		env: input.env,
-		callerRequest: visitSessionRequestFor(viewer, credential),
-		ownerHandle: input.handle,
-		appSlug: input.kodyId,
-	})
-	if (visit.kind === 'not-found') return { kind: 'session-required' }
-	if (visit.kind === 'forbidden') {
-		return {
-			kind: 'forbidden',
-			visitorEmail: person.email,
-			person: { userId: viewer.userId, username: person.username },
-		}
-	}
-
-	// Team org entitlements resolve by org id alone. Pairing the visitor's
-	// email with the team org id would miss the users row and fall to Free.
-	const ownerEmail =
-		visit.owner.userId === person.personalOrgId ? person.email : ''
-	return {
-		kind: 'ok',
-		owner: {
-			userId: visit.owner.userId,
-			username: visit.owner.username,
-			email: ownerEmail,
-			displayName: visit.owner.displayName,
-		},
-		visitor: visit.visitor,
-		epoch: visit.epoch,
-		visitorEmail: person.email,
-		sessionIssuedAt: input.issuedAt,
-		agent: credential !== null,
-	}
 }
 
 function settledValue<T>(result: PromiseSettledResult<T>): T {
@@ -1538,6 +1435,11 @@ async function servePackageAppForSession(input: {
 				env,
 				owner: ticket.owner,
 				visitor: ticket.visitor,
+				visitSession: packageAppVisitSessionFor({
+					parsed: parsedSession,
+					handle,
+					kodyId: packagePath.kodyId,
+				}),
 				packagePath,
 				serverTiming,
 			})
@@ -1580,6 +1482,13 @@ async function servePackageAppForSession(input: {
 			env,
 			owner: authorized.owner,
 			visitor: authorized.visitor,
+			visitSession: parsedSession
+				? packageAppVisitSessionFor({
+						parsed: parsedSession,
+						handle,
+						kodyId: packagePath.kodyId,
+					})
+				: null,
 			packagePath,
 			serverTiming,
 			// Agents never give consent: a missing one is reported, not offered.

@@ -1,6 +1,11 @@
 import { servingCommitForSource } from '#worker/repo/serving-commit.ts'
 import { DurableObject } from 'cloudflare:workers'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type { RuntimePackageAppVisitSession } from '@kody-internal/shared/runtime-worker.ts'
+import {
+	checkPackageAppVisitSession,
+	type PackageAppVisitSessionStatus,
+} from '#app/package-app-visit-authorization.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { buildFacetName } from '#mcp/app-runner-facet-names.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
@@ -54,9 +59,19 @@ export const anonymousRealtimeLimits = {
 	/** Two-way only; a socket over it is closed with 1008. */
 	inboundMessagesPerSecond: 10,
 	inboundMessageBurst: 20,
-	/** How often live public sockets recheck the app's approved commit. */
-	accessRecheckMs: 5 * 60 * 1000,
 } as const
+
+/**
+ * How often the access alarm re-authorizes open sockets: public ones against
+ * the app's approved commit, member ones against their visit session. This
+ * bounds how long a socket outlives revoked access (sign-out closes at once,
+ * cookie expiry exactly at expiry).
+ */
+export const realtimeAccessRecheckMs = 60 * 1000
+
+const sessionExpiredCloseReason = 'session-expired'
+const accessRevokedCloseReason = 'access-revoked'
+const signedOutCloseReason = 'signed-out'
 
 /** Text frame the platform answers without waking the app or its hooks. */
 export const packageRealtimePingMessage = 'kody:ping'
@@ -83,6 +98,8 @@ type PackageRealtimeSocketAttachment = {
 	visitor: PackageRealtimeVisitor | null
 	/** Commit the owner approved for public visitors when the socket opened. */
 	approvedCommit: string | null
+	/** Member sockets only: the session to re-authorize while it is open. */
+	visitSession?: RuntimePackageAppVisitSession | null
 }
 
 type PersistedPackageRealtimeSession = PackageRealtimeSocketAttachment & {
@@ -238,11 +255,18 @@ type PackageRealtimeConnectPayload = {
 	approvedCommit?: string | null
 	/** Public access only: hashed client IP for the per-IP caps. */
 	ipHash?: string | null
+	/** Member access only, and required for it. */
+	visitSession?: RuntimePackageAppVisitSession | null
 }
 
 export type PackageRealtimeConnectOptions = Pick<
 	PackageRealtimeConnectPayload,
-	'access' | 'visitor' | 'approvedCommit' | 'ipHash'
+	'access' | 'visitor' | 'approvedCommit' | 'ipHash' | 'visitSession'
+>
+
+type PackageRealtimeEndVisitPayload = Pick<
+	RuntimePackageAppVisitSession,
+	'stableUserId' | 'issuedAt' | 'expiresAt'
 >
 
 type PackageRealtimeEmitPayload = {
@@ -285,6 +309,14 @@ function ipTag(ipHash: string) {
 
 function isPublicAccess(access: PackageRealtimeAccess | undefined) {
 	return access === 'receive' || access === 'two-way'
+}
+
+function visitSessionExpired(
+	session: PersistedPackageRealtimeSession,
+	now = Date.now(),
+) {
+	if (isPublicAccess(session.access)) return false
+	return !session.visitSession || session.visitSession.expiresAt <= now
 }
 
 function readSocketAttachment(
@@ -959,6 +991,11 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			await this.forgetSession(sessionId)
 			return { delivered: false, reason: 'session_not_connected' as const }
 		}
+		const session = this.stateSnapshot.sessions[sessionId]
+		if (session && visitSessionExpired(session)) {
+			closeSocket(socket, 1008, sessionExpiredCloseReason)
+			return { delivered: false, reason: 'session_not_connected' as const }
+		}
 		try {
 			socket.send(message)
 		} catch {
@@ -1172,50 +1209,110 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 	}
 
 	/**
-	 * Close public sockets past the session cap, or whose approved commit is
-	 * no longer what the app serves to public visitors (republished without
-	 * approval, opted out, or no longer internet-visible).
+	 * Re-authorize every open socket. A public socket closes past the session
+	 * cap or once its approved commit is no longer what the app serves to
+	 * public visitors. A member socket closes once its visit session expires
+	 * or would be refused by the next HTTP request from the same session.
 	 */
 	async alarm() {
 		const binding = this.stateSnapshot.binding
 		if (!binding) return
-		const sockets = this.ctx.getWebSockets(publicSocketTag)
+		const sockets = this.ctx.getWebSockets()
 		if (sockets.length === 0) return
-		this.publicAccessLookup = null
-		const commit = await this.resolvePublicAccessCommit(binding).then(
-			(value) => ({ ok: true as const, value }),
-			(error: unknown) => {
-				console.warn('package-realtime-access-recheck-failed', error)
-				return { ok: false as const }
-			},
-		)
 		const now = Date.now()
+		const visitChecks = new Map<
+			string,
+			Promise<PackageAppVisitSessionStatus | null>
+		>()
+		let publicCommit: Promise<
+			{ ok: true; value: string | null } | { ok: false }
+		> | null = null
 		for (const ws of sockets) {
 			const session = this.sessionForSocket(ws)
 			if (!session) continue
+			if (!isPublicAccess(session.access)) {
+				const closure = await this.memberAccessClosure(
+					session,
+					now,
+					visitChecks,
+				)
+				if (closure) closeSocket(ws, 1008, closure)
+				continue
+			}
 			if (
 				now - Date.parse(session.connectedAt) >=
 				anonymousRealtimeLimits.maxSessionMs
 			) {
 				closeSocket(ws, 1001, 'max-session-duration')
-			} else if (commit.ok && commit.value !== session.approvedCommit) {
+				continue
+			}
+			publicCommit ??= this.recheckPublicAccessCommit(binding)
+			const commit = await publicCommit
+			if (commit.ok && commit.value !== session.approvedCommit) {
 				closeSocket(ws, 1012, 'app-updated')
 			}
 		}
 		await this.scheduleAccessAlarm()
 	}
 
+	private recheckPublicAccessCommit(binding: PackageRealtimeBindingState) {
+		this.publicAccessLookup = null
+		return this.resolvePublicAccessCommit(binding).then(
+			(value) => ({ ok: true as const, value }),
+			(error: unknown) => {
+				console.warn('package-realtime-access-recheck-failed', error)
+				return { ok: false as const }
+			},
+		)
+	}
+
+	/**
+	 * Why a member socket must close, or null while its visit session holds.
+	 * Sockets sharing a session share one check per alarm. A failed check
+	 * keeps the socket open until the next alarm.
+	 */
+	private async memberAccessClosure(
+		session: PersistedPackageRealtimeSession,
+		now: number,
+		checks: Map<string, Promise<PackageAppVisitSessionStatus | null>>,
+	) {
+		const visit = session.visitSession
+		if (!visit || visitSessionExpired(session, now)) {
+			return sessionExpiredCloseReason
+		}
+		const key = JSON.stringify(visit)
+		let check = checks.get(key)
+		if (!check) {
+			check = this.checkVisitSession(visit).catch((error: unknown) => {
+				console.warn('package-realtime-visit-recheck-failed', error)
+				return null
+			})
+			checks.set(key, check)
+		}
+		const status = await check
+		if (status === 'expired') return sessionExpiredCloseReason
+		if (status === 'revoked') return accessRevokedCloseReason
+		return null
+	}
+
+	private checkVisitSession(session: RuntimePackageAppVisitSession) {
+		return checkPackageAppVisitSession({ env: this.env, session })
+	}
+
 	private async scheduleAccessAlarm() {
-		const sockets = this.ctx.getWebSockets(publicSocketTag)
+		const sockets = this.ctx.getWebSockets()
 		if (sockets.length === 0) return
 		const now = Date.now()
-		let next = now + anonymousRealtimeLimits.accessRecheckMs
+		let next = now + realtimeAccessRecheckMs
 		for (const ws of sockets) {
 			const session = this.sessionForSocket(ws)
 			if (!session) continue
 			next = Math.min(
 				next,
-				Date.parse(session.connectedAt) + anonymousRealtimeLimits.maxSessionMs,
+				isPublicAccess(session.access)
+					? Date.parse(session.connectedAt) +
+							anonymousRealtimeLimits.maxSessionMs
+					: (session.visitSession?.expiresAt ?? now),
 			)
 		}
 		next = Math.max(next, now + 1_000)
@@ -1225,10 +1322,34 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		}
 	}
 
+	/** Sign-out: close the sockets opened from one visit session. */
+	private endVisitSession(ended: PackageRealtimeEndVisitPayload) {
+		let closed = 0
+		for (const ws of this.ctx.getWebSockets()) {
+			const visit = this.sessionForSocket(ws)?.visitSession
+			if (
+				visit?.stableUserId === ended.stableUserId &&
+				visit.issuedAt === ended.issuedAt &&
+				visit.expiresAt === ended.expiresAt
+			) {
+				closeSocket(ws, 1008, signedOutCloseReason)
+				closed += 1
+			}
+		}
+		return closed
+	}
+
 	private async handleConnectRequest(payload: PackageRealtimeConnectPayload) {
 		await this.initializeBinding(payload.binding)
 		const access = payload.access ?? 'member'
 		const isPublic = isPublicAccess(access)
+		const visitSession = isPublic ? null : (payload.visitSession ?? null)
+		if (!isPublic && !visitSession) {
+			return new Response(
+				'Member realtime needs the visit session it was opened from.',
+				{ status: 403 },
+			)
+		}
 		const approvedCommit = isPublic ? (payload.approvedCommit ?? null) : null
 		const facet = buildFacetName(payload.facet)
 		const ipHash = pickString(payload.ipHash) ?? 'unknown'
@@ -1263,6 +1384,7 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			access,
 			visitor: payload.visitor ?? null,
 			approvedCommit,
+			visitSession,
 		}
 		const tags = [sessionTag(sessionId), facetTag(facet)]
 		if (isPublic) tags.push(publicSocketTag, ipTag(ipHash))
@@ -1274,7 +1396,7 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			lastSeenAt: now,
 		}
 		this.stateSnapshot.sessions[sessionId] = session
-		if (isPublic) await this.scheduleAccessAlarm()
+		await this.scheduleAccessAlarm()
 		// Receive-only sockets never run app code: no connect hook either.
 		if (access === 'receive') {
 			return new Response(null, { status: 101, webSocket: client })
@@ -1408,6 +1530,11 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 			return Response.json({ ok: true })
 		}
 
+		if (request.method === 'POST' && url.pathname.endsWith('/end-visit')) {
+			const body = (await request.json()) as PackageRealtimeEndVisitPayload
+			return Response.json({ closed: this.endVisitSession(body) })
+		}
+
 		if (request.method === 'POST' && url.pathname.endsWith('/purge')) {
 			const body = (await request.json()) as {
 				binding: PackageRealtimeBindingState
@@ -1457,6 +1584,10 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 		const session = this.stateSnapshot.sessions[sessionId]
 		const binding = this.stateSnapshot.binding
 		if (!session || !binding) return
+		if (visitSessionExpired(session)) {
+			closeSocket(ws, 1008, sessionExpiredCloseReason)
+			return
+		}
 		if (isPublicAccess(session.access)) {
 			const refusal = await this.checkPublicInbound(
 				ws,
@@ -1647,6 +1778,31 @@ function getPackageRealtimeStub(input: {
 		}),
 	)
 	return namespace.get(id) as unknown as PackageRealtimeSessionRpc
+}
+
+/**
+ * Close the realtime sockets a package-app visit session opened on one app,
+ * when that session signs out. Other access changes reach open sockets
+ * through the access alarm.
+ */
+export async function endPackageRealtimeVisitSession(input: {
+	env: Env
+	userId: OwnerId
+	packageId: string
+	session: PackageRealtimeEndVisitPayload
+}) {
+	const response = await getPackageRealtimeStub(input).fetch(
+		new Request('https://package-realtime.invalid/session/end-visit', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				stableUserId: input.session.stableUserId,
+				issuedAt: input.session.issuedAt,
+				expiresAt: input.session.expiresAt,
+			} satisfies PackageRealtimeEndVisitPayload),
+		}),
+	)
+	return (await response.json()) as { closed: number }
 }
 
 export function packageRealtimeSessionRpc(input: {

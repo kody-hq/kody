@@ -7,7 +7,7 @@ import {
 	readPackageAppSession,
 } from '#app/package-app-session.ts'
 import { handlePackageAppRequest } from '#app/handlers/package-app.ts'
-import { authorizePackageAppVisitorForOrg } from '#app/package-app-origin.ts'
+import { authorizePackageAppVisitorForOrg } from '#app/package-app-visit-authorization.ts'
 import { packageAppVisitorHeaderName } from './package-app-visitor-header.ts'
 
 /**

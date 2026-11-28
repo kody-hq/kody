@@ -2,6 +2,7 @@ import { packageAppVisitorNeedKeyPattern } from '#worker/package-registry/types.
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type {
 	RuntimePackageAppIdentity,
+	RuntimePackageAppVisitSession,
 	RuntimePackageAppVisitor,
 } from '@kody-internal/shared/runtime-worker.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -952,6 +953,8 @@ async function servePackageAppRequestWithId(input: {
 	consentPrincipal?: RuntimePackageAppIdentity | null
 	/** See `RuntimePackageAppServeInput.approvedPublishedCommit`. */
 	approvedPublishedCommit?: string | null
+	/** See `RuntimePackageAppServeInput.visitSession`. */
+	visitSession?: RuntimePackageAppVisitSession | null
 	packagePath: PackageAppPath
 	dispatch?: PackageAppTrustedDispatch
 	/**
@@ -985,6 +988,7 @@ async function servePackageAppRequestWithId(input: {
 			identity: input.identity ?? null,
 			consentPrincipal: input.consentPrincipal ?? null,
 			approvedPublishedCommit: input.approvedPublishedCommit,
+			visitSession: input.visitSession ?? null,
 			packagePath: input.packagePath,
 			dispatch: input.dispatch,
 		})
@@ -1130,7 +1134,19 @@ async function servePackageAppRequestWithId(input: {
 			// opt-in at the commit its owner approved (ADR 0069).
 			let connectOptions: PackageRealtimeConnectOptions
 			if (visitor) {
+				// A member socket is authorized again while it stays open, so it
+				// needs the session it was opened from (realtime-session.ts).
+				if (!input.visitSession) {
+					return attachPackageAppServerTiming(
+						new Response('Realtime needs a signed-in visit session.', {
+							status: 403,
+							headers: { 'Cache-Control': 'no-store' },
+						}),
+						serverTiming,
+					)
+				}
 				connectOptions = {
+					visitSession: input.visitSession,
 					access: 'member',
 					visitor: {
 						userId: visitor.userId,

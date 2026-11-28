@@ -11,6 +11,17 @@ import {
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+
+const memberConnect = {
+	visitSession: {
+		stableUserId: 'member-person',
+		issuedAt: Date.now(),
+		expiresAt: Date.now() + 60 * 60 * 1000,
+		handle: 'kentcdodds',
+		kodyId: 'example',
+	},
+}
+
 function createBinding(
 	overrides?: Partial<{
 		userId: string
@@ -99,6 +110,7 @@ test('package realtime connect upgrades through the real durable object stub and
 			},
 		}),
 		'chat',
+		memberConnect,
 	)
 
 	expect(response.status).toBe(101)
@@ -143,7 +155,10 @@ test('package realtime session broadcast and disconnect paths tolerate partial d
 				close: () => void
 			}
 			stateSnapshot: {
-				sessions: Record<string, { id: string; topics?: Array<string> }>
+				sessions: Record<
+					string,
+					{ id: string; topics?: Array<string>; visitSession?: unknown }
+				>
 			}
 			broadcast: (input: {
 				facet?: string | null
@@ -176,8 +191,8 @@ test('package realtime session broadcast and disconnect paths tolerate partial d
 
 		anyInstance.stateSnapshot = {
 			sessions: {
-				'session-1': { id: 'session-1' },
-				'session-2': { id: 'session-2' },
+				'session-1': { id: 'session-1', ...memberConnect },
+				'session-2': { id: 'session-2', ...memberConnect },
 			},
 		}
 		anyInstance.getSocketBySessionId = (sessionId) => ({
@@ -195,7 +210,7 @@ test('package realtime session broadcast and disconnect paths tolerate partial d
 
 		anyInstance.stateSnapshot = {
 			sessions: {
-				'session-1': { id: 'session-1', topics: [] },
+				'session-1': { id: 'session-1', topics: [], ...memberConnect },
 			},
 		}
 
@@ -261,6 +276,7 @@ test('package realtime session closes open sockets without running hooks once th
 						connectedAt: '2026-09-23T00:00:00.000Z',
 						lastSeenAt: '2026-09-23T00:00:00.000Z',
 						topics: [],
+						...memberConnect,
 					},
 				},
 			}
@@ -305,6 +321,7 @@ test('package realtime session closes open sockets without running hooks once th
 			headers: { Upgrade: 'websocket' },
 		}),
 		'main',
+		memberConnect,
 	)
 	expect(connect.status).toBe(403)
 	await expect(connect.json()).resolves.toMatchObject({

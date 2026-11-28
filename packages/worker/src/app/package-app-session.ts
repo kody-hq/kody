@@ -83,7 +83,7 @@ type StoredPackageAppSession = {
 export type ParsedPackageAppSession = {
 	session: PackageAppSession
 	issuedAt: number
-	expiresAt?: number
+	expiresAt: number
 }
 
 export function remainingCookieMaxAgeSeconds(
