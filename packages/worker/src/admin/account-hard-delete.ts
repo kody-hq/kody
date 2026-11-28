@@ -37,8 +37,9 @@ import {
 	AccountDeletionInventoryError,
 } from '#app/account-deletion.ts'
 import {
-	hardPurgeOrg,
+	hardPurgeOrgIfPresent,
 	hardPurgeSoftDeletedUser,
+	listTombstonedSoleOwnedOrgIds,
 } from '#worker/orgs/hard-purge.ts'
 import {
 	UserDeleteBlockedSoleOwnerError,
@@ -477,45 +478,6 @@ async function releaseAdminRoleIfNotLast(
 		.bind(dbUserId)
 		.first<{ ok: number }>()
 	return stillAdmin ? 'last_admin' : 'not_admin'
-}
-
-async function listTombstonedSoleOwnedOrgIds(
-	db: D1Database,
-	userId: string,
-	personalOrgId: string,
-) {
-	const rows = await db
-		.prepare(
-			`SELECT o.id AS id
-			 FROM orgs o
-			 INNER JOIN org_memberships m
-			   ON m.org_id = o.id AND m.user_id = ? AND m.role = 'owner'
-			 WHERE o.deleted_at IS NOT NULL
-			   AND o.id != ?
-			   AND NOT EXISTS (
-			     SELECT 1 FROM org_memberships other
-			     WHERE other.org_id = o.id
-			       AND other.role = 'owner'
-			       AND other.user_id != ?
-			   )`,
-		)
-		.bind(userId, personalOrgId, userId)
-		.all<{ id: string }>()
-	return (rows.results ?? []).map((row) => row.id)
-}
-
-async function hardPurgeOrgIfPresent(env: Env, orgId: OwnerId) {
-	try {
-		await hardPurgeOrg({ env, orgId })
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.message.startsWith('org_purge_missing_row:')
-		) {
-			return
-		}
-		throw error
-	}
 }
 
 export async function executeAdminAccountHardDelete(input: {

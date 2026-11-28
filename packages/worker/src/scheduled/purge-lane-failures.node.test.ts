@@ -35,7 +35,8 @@ vi.mock('#worker/audit-log.ts', async (importOriginal) => {
 })
 
 const finishLegacyUserDeletion = vi.fn()
-vi.mock('#worker/orgs/hard-purge.ts', () => ({
+vi.mock('#worker/orgs/hard-purge.ts', async (importOriginal) => ({
+	...(await importOriginal<object>()),
 	hardPurgeOrg: vi.fn(),
 	hardPurgeSoftDeletedUser: vi.fn(),
 	finishLegacyUserDeletion: (input: unknown) => finishLegacyUserDeletion(input),
