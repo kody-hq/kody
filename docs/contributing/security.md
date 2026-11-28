@@ -426,10 +426,12 @@ code runs with publisher authority and bills the owning org (ADR 0095). The
 - **Receive-only** sockets never run app hooks. Inbound frames close with `1008`
   and `kody:ping` is answered by `setWebSocketAutoResponse`, so a stranger
   cannot run owner code, and keepalive pings never wake the Durable Object.
-- **Pin:** hooks for a public socket build only from its approved commit (a
-  mismatch closes it with `1012`), and the access alarm rechecks the approved
-  commit every minute (`realtimeAccessRecheckMs`) so republishing or turning off
-  internet visibility drops open public sockets.
+- **Pin:**
+  [public socket hooks build only from the socket's approved commit](../../packages/worker/src/package-runtime/realtime-session.ts).
+  The access alarm is scheduled to recheck it every minute and
+  [closes the socket with `1012` (`app-updated`)](../../packages/worker/src/package-runtime/realtime-session-anonymous.workers.test.ts)
+  if the app stops serving that approved commit, for example after visibility is
+  turned off or a new commit starts serving.
 - **Visitor context:** hooks get `visitor` (`null` when anonymous) and sessions
   carry `anonymous`, so app code cannot mistake a stranger for a member.
 - **Caps** (public sockets only, `anonymousRealtimeLimits`): 2,000 per app, 20
@@ -440,28 +442,29 @@ code runs with publisher authority and bills the owning org (ADR 0095). The
   is stored under its own key, so a busy socket does not rewrite every session's
   state.
 
-**Member realtime re-authorization.** A member socket stores the package-app
-visit session it was opened from (person id, session `issuedAt` and cookie
-expiry, org handle and app slug, and for an `appOpenLink` agent visit the
-credential kind, token id, scopes and profile chain; never a secret). A member
-upgrade without one is `403`. The socket then closes with `1008` when the next
-HTTP request from that session would be refused:
+**Member realtime re-authorization.** A member upgrade without a package-app
+visit session
+[gets `403`](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
+Member sockets close with `1008` in these cases:
 
-- `session-expired`: at the cookie's expiry (the alarm is set for it, and no
-  frame is delivered or accepted after it);
-- `signed-out`: right away when the session signs out of the app with
-  `/-/auth/logout` (best effort after the cookie is cleared; if closing fails it
-  is logged and the socket lasts until the cookie's expiry);
-- `access-revoked`: within one minute (`realtimeAccessRecheckMs`) of grant or
-  role removal, profile grant removal, API token revocation, withdrawn "Run as
-  me" approval, suspension, deletion, a password change, or the session's slug
-  naming a different app than the socket runs. The alarm runs
-  `checkPackageAppVisitSession`
-  (`packages/worker/src/app/package-app-visit-authorization.ts`), the same
-  `authorizePackageAppVisitorForOrg` decision package-app HTTP requests use,
-  once per distinct session per alarm, never per frame. Its cached reads (owner
-  row 15 s, org access epoch) are the same ones HTTP uses. A failed check keeps
-  the socket open until the next alarm.
+- `session-expired`: the access alarm
+  [closes an expired session](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts),
+  and the
+  [app-message handlers](../../packages/worker/src/package-runtime/realtime-session.ts)
+  check expiry before sending a message or passing an inbound message to the
+  app.
+- `signed-out`:
+  [app logout](../../packages/worker/src/app/package-app-oauth-host-auth.ts)
+  makes a best-effort request to
+  [close the sockets opened by that visit session](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
+- `access-revoked`: the
+  [next recheck that detects lost access](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts)
+  closes the socket. The one-minute alarm uses
+  [`checkPackageAppVisitSession`](../../packages/worker/src/app/package-app-visit-authorization.ts),
+  which calls the same `authorizePackageAppVisitorForOrg` used for HTTP visits.
+  [If the check throws](../../packages/worker/src/package-runtime/realtime-session.ts),
+  the alarm logs the error and retries on a later alarm rather than closing the
+  socket based on that error.
 
 Team-org realtime (team-scoped sockets) is still not supported
 ([#5067](https://github.com/kody-hq/kody/issues/5067)).

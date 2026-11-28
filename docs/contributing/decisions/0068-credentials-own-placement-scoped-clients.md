@@ -1293,6 +1293,10 @@ one.
 
 ## Amendment 2026-11-27: prefix needs for the enforcement rollout
 
+A `prefix: true` credential need covers account names such as `google-work`
+without listing each one. Codemod `0013` adds prefixes it can trace to literals
+and reports names it cannot bound.
+
 Kent decided on 2026-11-27 to get `credential-need-enforcement` ready without
 breaking packages, migrating them for their owners where possible. A scan found
 249 packages the flag would break, most of them wrappers that take an account
@@ -1303,17 +1307,21 @@ A need may set `prefix: true`. It then also covers a name that is its key, one
 hyphen, then a non-empty purpose, where the whole name is a valid slot name. It
 applies to uses that name a credential: fetch-gateway placeholders,
 `createAuthenticatedFetch`, `integrationTokenRefresh`, and the resolved name of
-a secret mount, for stamped packages and under the flag alike. An exact key
-wins, then the longest matching prefix, and the slot's `kind` still decides
-which use it fills. It is valid with no `kind`, or `secret` or `oauth`. Setting
-it on a need a package already declares widens the need, so it needs the same
-approval as a changed need; removing it does not.
+a secret mount, for stamped packages and under the flag alike. Among slots whose
+`kind` can fill the use,
+[an exact key wins, then the longest matching prefix](../../../packages/worker/src/credentials/credential-need-enforcement.node.test.ts).
+`prefix: true` is valid with no `kind`, or with `secret` or `oauth`. The
+[credential-needs approval gate](../../../packages/worker/src/credentials/credential-needs-approval.ts)
+treats adding the prefix to an existing need like any other widening on a new
+publish of an internet-visible package; removing the prefix alone does not
+trigger that gate.
 
-`credential(key)` and vault providers keep the exact key: a need's mapping is
-for its own key, so a longer key there would read the default account. The stamp
-gate is unchanged and still refuses a name built at run time on publish. There
-is no other pattern, and a prefix is never inferred from anything but a literal
-in the package's source.
+[`credential(key)` and vault providers do not match by prefix](../../../packages/worker/src/credentials/credential-need-enforcement.node.test.ts):
+`credential(key)` uses the need's own mapping, and vault providers use the
+provider's exact ID or bound package. The
+[stamp check](../../../packages/worker/src/credentials/credential-stamp.node.test.ts)
+still rejects non-literal names in stamp-checked calls such as
+`createAuthenticatedFetch`.
 
 Codemod `0013` declares prefix slots and literal defaults it can trace in a
 package's source, and no longer reports `typeof credential` in a type. It still
