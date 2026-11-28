@@ -137,7 +137,7 @@ export function cloudflare({ token, accountId }) {
 	}
 }
 
-export function summarizeErrors(result) {
+function summarizeErrors(result) {
 	const errors = result.json?.errors
 	if (Array.isArray(errors) && errors.length)
 		return errors
