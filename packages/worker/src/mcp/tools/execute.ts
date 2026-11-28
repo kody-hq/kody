@@ -1805,8 +1805,9 @@ async function resolveRawFetchHostNudges(input: {
 }
 
 /**
- * Once a month per org, the hosted execute call that mints a new worker
- * while the org is at or past 80% of its included Worker compute says so.
+ * Monthly compute heads-up on a hosted execute that starts a new worker,
+ * for an org with usage warnings enabled, a credit wallet, and at least
+ * 80% of its included monthly Worker compute used.
  */
 async function resolveComputeIncludeHeadsUp(input: {
 	env: Env

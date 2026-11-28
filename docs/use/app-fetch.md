@@ -149,7 +149,9 @@ in `body` instead. The HTTP call itself still succeeds, so check the result's
 
 `appOpenLink` returns a link that opens the app in the caller's own browser. Use
 it when an agent needs the rendered pages; use `appFetch` for programmatic
-calls.
+calls. Both use the same
+[target resolution and visit authorization](../../packages/worker/src/mcp/capabilities/packages/app-visit-target.ts).
+See [Consent](#consent) if a person needs to approve the visit.
 
 - **Who may call it:** the same callers and the same `app:execute` check as
   `appFetch`, through interactive MCP, `execute`, the Open API
@@ -158,19 +160,23 @@ calls.
   optional `path`.
 - **Result:** `url`, `app`, `expires_at`, `expires_in_seconds` (300), and
   `session_seconds` (3600).
+
+### Link exchange and visit access
+
 - **The link** is a
-  [signed token on the app's own host](../../packages/worker/src/app-visit/open-link.ts),
+  [signed token on the app's own host](../../packages/worker/src/app/package-app-open-link.node.test.ts),
   valid for 5 minutes and for one use. It is bound to that app and that host, so
   it is refused anywhere else.
-- **Opening it** sets the app's host-only visit session cookie for 60 minutes
-  and redirects to the same address without the token. The cookie carries the
-  person plus the calling credential's scopes and profile chain. It is scoped to
-  that one app and is never a Kody account session.
+- **Opening it** sets the app's
+  [host-only visit session cookie](../../packages/worker/src/app/package-app-open-link.node.test.ts)
+  for 60 minutes and redirects to the same address without the token. The cookie
+  carries the person plus the calling credential's scopes and profile chain. It
+  is scoped to that one app and is never a Kody account session.
 - **Every request** under that cookie runs
-  [the visit check `appFetch` runs](../../packages/worker/src/app-visit/authorize.ts)
+  [the visit check `appFetch` runs](../../packages/worker/src/app/package-app-visit-authorization.ts)
   for that credential. A revoked or expired API token, an inactive profile, or a
-  removed grant ends the visit. A visit opened from an MCP or CLI sign-in ends
-  when the cookie does.
+  removed grant ends the authenticated visit. For MCP or CLI sign-ins there is
+  no API-token record to recheck; the cookie still expires after 60 minutes.
 - **Consent** works as in [Consent](#consent): the call returns
   `app_consent_required` and mints no link. In the browser, a consent that
   becomes missing later is a 403 that names the `consent_url`, not a redirect.

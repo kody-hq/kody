@@ -158,6 +158,14 @@ offers **Use in agent** under the listing.
 Reports survive listing deletion via denormalized listing name and owner on the
 report row.
 
+### Public response shapes
+
+[`community-public.ts`](../../packages/worker/src/app/community-public.ts) maps
+profiles, packages, activity, and listings to the website's public response
+types. The mappers select fields explicitly rather than serializing the stored
+records; for example, the profile mapper returns the username instead of the
+stable user ID.
+
 ### KV snapshots
 
 A listing's pinned file tree is the owner package's SHA-keyed source snapshot,
@@ -247,6 +255,13 @@ is not community-banned. It upserts D1 metadata including optional browse
 `category` from `package.json#kody.category` or well-known tags, and writes a
 SHA-keyed source snapshot.
 
+### Fork rewrite and scan
+
+Fork preparation renames self-references and reports references that need
+review. See
+[what a fork changes](../use/community-packages.md#forking-a-listing) for the
+user-facing workflow.
+
 [`fork-scan.ts`](../../packages/worker/src/community/fork-scan.ts) rewrites the
 manifest name, sets `private: true`, and drops authored `kody.id`. It rewrites
 whole package self-references and renamed emits-topic references in text files,
@@ -269,12 +284,15 @@ fork result, `leftover_origin_references` on `communityFork` and `packageFork`,
 and `leftoverOriginReferences` plus a sentence in `agentPrompt` on the one-click
 install response.
 
-The scan describes the written tree when that tree is available. When the
-storage-layer copy lands on a dest HEAD that is ahead of the listing pin,
-`persistForkedArtifactRepoContents` rewrites and scans dest HEAD's tree and that
-scan replaces the one from preparation. If that tree cannot be read, only
-`package.json` is rewritten and the preparation scan is kept as the best
-estimate.
+#### Which tree is scanned
+
+When the storage-layer copy lands on a dest HEAD that differs from the prepared
+commit, `persistForkedArtifactRepoContents` re-derives the rewrite from that
+HEAD rather than applying edits that could revert origin changes. If the package
+name changes, it reads the whole tree, rewrites the package self-references and
+any renamed emits topics, and replaces the preparation scan. If the tree cannot
+be read, it rewrites only `package.json` and keeps the preparation scan. If the
+name does not change, it needs neither a whole-tree rewrite nor a scan.
 
 `forkCommunityListing` reads the KV snapshot for rewrite/scan (Worker), then
 copies the origin Artifacts repo with `POST .../repos/{source}/fork` so the tree
@@ -288,9 +306,6 @@ the existing fork instead of allocating another leaf. Persist stamps dest
 records that SHA on `community_forks.origin_commit`. When dest HEAD matches the
 listing pin used in prepare, only rewritten files (`package.json`,
 self-reference text, and renamed `kody.emits` topic references) are applied.
-When dest HEAD is ahead of that pin, persist re-derives the rewrite from dest
-HEAD (the whole tree when emits topics are renamed, else only `package.json`)
-instead of applying pin-relative edits that would revert later origin commits.
 When the origin Artifacts repo is missing, persist falls back to the full-tree
 snapshot sync. Isolate memory / Artifacts `MEMORY_LIMIT` failures surface as
 `CommunityForkResourceLimitError` (honest UI/MCP copy; fork count does not

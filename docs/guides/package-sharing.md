@@ -290,6 +290,11 @@ credentials however they like, so Kody surfaces and guards it:
 
 ## What a collaborator can do
 
+On a saved package page, Kody
+[checks permissions in the package's owning org](../../packages/worker/src/app/package-page.ts):
+`package:read` for the owner view, `package:write` for settings, and separate
+`package:publish` and `package:delete` checks for publishing and deletion.
+
 Someone who holds a grant but is not a member is an **outside collaborator**.
 They must connect with **your** org selected at consent. Then they can:
 

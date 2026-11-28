@@ -29,6 +29,10 @@ completely separate agent for the same user, sees the same compact block.
 tool calls. Kody uses it to retrieve a small number of relevant long-term
 memories for the current task.
 
+When the connected organization opts in, `execute` also uses this hint to
+categorize the session. See
+[what session analytics collects](./privacy.md#what-kody-records-for-session-analytics).
+
 Keep it brief and factual. Good fields include:
 
 - current task

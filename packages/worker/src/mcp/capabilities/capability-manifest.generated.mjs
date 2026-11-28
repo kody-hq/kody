@@ -33929,7 +33929,7 @@ export const capabilityManifest = {
 							},
 							"public_url": {
 								"type": "string",
-								"description": "Canonical shareable user URL ({base}/@{username}/{package-name-leaf}); share this URL with humans."
+								"description": "Shareable listing URL: {base}/@{username}/{kody-id} when available, otherwise {base}/community/{listing-id}."
 							},
 							"published_at": {
 								"type": "string"
@@ -33951,7 +33951,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type CommunityPublishInput = {\n\t/** Saved package id to publish as a public package. */\n\tpackage_id: string\n}",
-					"outputTypeDefinition": "type CommunityPublishOutput = {\n\tlisting_id: string\n\tname: string\n\tkody_id: string\n\tdescription: string\n\tcategory: \"integrations\" | \"examples\" | \"productivity\" | \"apps\" | \"utilities\" | \"other\"\n\tlicense: string\n\t/** package.json#version from the pinned listing snapshot, or null when the author did not set a string version. */\n\tversion: string | null\n\tpinned_commit: string\n\tstatus: \"active\" | \"delisted\"\n\t/** Canonical shareable user URL ({base}/@{username}/{package-name-leaf}); share this URL with humans. */\n\tpublic_url: string\n\tpublished_at: string\n}"
+					"outputTypeDefinition": "type CommunityPublishOutput = {\n\tlisting_id: string\n\tname: string\n\tkody_id: string\n\tdescription: string\n\tcategory: \"integrations\" | \"examples\" | \"productivity\" | \"apps\" | \"utilities\" | \"other\"\n\tlicense: string\n\t/** package.json#version from the pinned listing snapshot, or null when the author did not set a string version. */\n\tversion: string | null\n\tpinned_commit: string\n\tstatus: \"active\" | \"delisted\"\n\t/** Shareable listing URL: {base}/@{username}/{kody-id} when available, otherwise {base}/community/{listing-id}. */\n\tpublic_url: string\n\tpublished_at: string\n}"
 				},
 				{
 					"name": "communityUnpublish",
@@ -34179,7 +34179,7 @@ export const capabilityManifest = {
 										},
 										"public_url": {
 											"type": "string",
-											"description": "Canonical shareable user URL ({base}/@{username}/{package-name-leaf}); share this URL with humans."
+											"description": "Shareable listing URL: {base}/@{username}/{kody-id} when available, otherwise {base}/community/{listing-id}."
 										}
 									},
 									"required": [
@@ -34212,7 +34212,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type CommunitySearchInput = {\n\t/** Natural-language search query for public packages. */\n\tquery: string\n\t/** Maximum number of matches to return (default 10, max 50). */\n\tlimit?: number\n\t/** best (default) ranks by relevance and ratings. newest orders matching listings by last community publish, including republishes. */\n\tsort?: \"best\" | \"newest\"\n\t/** Optional browse category. integrations, examples, productivity, apps, and utilities come from package.json#kody.category (or tag inference). other is the uncategorized remainder. */\n\tcategory?: \"integrations\" | \"examples\" | \"productivity\" | \"apps\" | \"utilities\" | \"other\"\n}",
-					"outputTypeDefinition": "type CommunitySearchOutput = {\n\toutcome: \"matches\" | \"no_matches\"\n\tguidance: string\n\tmatches: Array<{\n\taverage_stars: number | null\n\trating_count: number\n\taverage_adaptation_effort: number | null\n\t/** Public forks only; private or hidden fork copies are not counted. */\n\tfork_count: number\n\tlisting_id: string\n\tname: string\n\tkody_id: string\n\tdescription: string\n\ttags: Array<string>\n\tcategory: \"integrations\" | \"examples\" | \"productivity\" | \"apps\" | \"utilities\" | \"other\"\n\t/** package.json#version from the pinned listing snapshot, or null when the author did not set a string version. */\n\tversion: string | null\n\towner_anonymous: true\n\t/** Always false. Catalog listings have no trusted-review mark. */\n\ttrusted: boolean\n\t/** Blended lexical and vector query relevance from 0 to 1; null when browsing with an empty query. */\n\trelevance: number | null\n\t/** Last community publish time for this listing. Republishing updates this timestamp. */\n\tpublished_at: string\n\t/** Canonical shareable user URL ({base}/@{username}/{package-name-leaf}); share this URL with humans. */\n\tpublic_url: string\n}>\n}"
+					"outputTypeDefinition": "type CommunitySearchOutput = {\n\toutcome: \"matches\" | \"no_matches\"\n\tguidance: string\n\tmatches: Array<{\n\taverage_stars: number | null\n\trating_count: number\n\taverage_adaptation_effort: number | null\n\t/** Public forks only; private or hidden fork copies are not counted. */\n\tfork_count: number\n\tlisting_id: string\n\tname: string\n\tkody_id: string\n\tdescription: string\n\ttags: Array<string>\n\tcategory: \"integrations\" | \"examples\" | \"productivity\" | \"apps\" | \"utilities\" | \"other\"\n\t/** package.json#version from the pinned listing snapshot, or null when the author did not set a string version. */\n\tversion: string | null\n\towner_anonymous: true\n\t/** Always false. Catalog listings have no trusted-review mark. */\n\ttrusted: boolean\n\t/** Blended lexical and vector query relevance from 0 to 1; null when browsing with an empty query. */\n\trelevance: number | null\n\t/** Last community publish time for this listing. Republishing updates this timestamp. */\n\tpublished_at: string\n\t/** Shareable listing URL: {base}/@{username}/{kody-id} when available, otherwise {base}/community/{listing-id}. */\n\tpublic_url: string\n}>\n}"
 				},
 				{
 					"name": "communityGet",
@@ -34343,7 +34343,7 @@ export const capabilityManifest = {
 							},
 							"public_url": {
 								"type": "string",
-								"description": "Canonical shareable user URL ({base}/@{username}/{package-name-leaf}); share this URL with humans."
+								"description": "Shareable listing URL: {base}/@{username}/{kody-id} when available, otherwise {base}/community/{listing-id}."
 							},
 							"published_at": {
 								"type": "string"
@@ -34389,7 +34389,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type CommunityGetInput = {\n\t/** Catalog entry id to load. */\n\tlisting_id: string\n}",
-					"outputTypeDefinition": "type CommunityGetOutput = {\n\taverage_stars: number | null\n\trating_count: number\n\taverage_adaptation_effort: number | null\n\t/** Public forks only; private or hidden fork copies are not counted. */\n\tfork_count: number\n\tlisting_id: string\n\tname: string\n\tkody_id: string\n\tdescription: string\n\ttags: Array<string>\n\tcategory: \"integrations\" | \"examples\" | \"productivity\" | \"apps\" | \"utilities\" | \"other\"\n\tlicense: string\n\t/** package.json#version from the pinned listing snapshot, or null when the author did not set a string version. */\n\tversion: string | null\n\tpinned_commit: string\n\tstatus: \"active\" | \"delisted\"\n\t/** Always false. Catalog listings have no trusted-review mark. */\n\ttrusted: boolean\n\t/** True when an admin featured this listing as an onboarding starter package. Featured is editorial placement, not a safety review. */\n\tfeatured: boolean\n\towner_username: string\n\towner_profile_url: string | null\n\t/** Canonical shareable user URL ({base}/@{username}/{package-name-leaf}); share this URL with humans. */\n\tpublic_url: string\n\tpublished_at: string\n\treadme_untrusted: string | null\n\tcontent_warning: string\n\tfork_instructions: string\n}"
+					"outputTypeDefinition": "type CommunityGetOutput = {\n\taverage_stars: number | null\n\trating_count: number\n\taverage_adaptation_effort: number | null\n\t/** Public forks only; private or hidden fork copies are not counted. */\n\tfork_count: number\n\tlisting_id: string\n\tname: string\n\tkody_id: string\n\tdescription: string\n\ttags: Array<string>\n\tcategory: \"integrations\" | \"examples\" | \"productivity\" | \"apps\" | \"utilities\" | \"other\"\n\tlicense: string\n\t/** package.json#version from the pinned listing snapshot, or null when the author did not set a string version. */\n\tversion: string | null\n\tpinned_commit: string\n\tstatus: \"active\" | \"delisted\"\n\t/** Always false. Catalog listings have no trusted-review mark. */\n\ttrusted: boolean\n\t/** True when an admin featured this listing as an onboarding starter package. Featured is editorial placement, not a safety review. */\n\tfeatured: boolean\n\towner_username: string\n\towner_profile_url: string | null\n\t/** Shareable listing URL: {base}/@{username}/{kody-id} when available, otherwise {base}/community/{listing-id}. */\n\tpublic_url: string\n\tpublished_at: string\n\treadme_untrusted: string | null\n\tcontent_warning: string\n\tfork_instructions: string\n}"
 				},
 				{
 					"name": "communityFork",
@@ -35078,7 +35078,7 @@ export const capabilityManifest = {
 										},
 										"public_url": {
 											"type": "string",
-											"description": "Canonical shareable user URL ({base}/@{username}/{package-name-leaf}); share this URL with humans."
+											"description": "Shareable listing URL: {base}/@{username}/{kody-id} when available, otherwise {base}/community/{listing-id}."
 										}
 									},
 									"required": [
@@ -35105,7 +35105,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type CommunityProfileGetInput = {\n\t/** Username to load. Omit to load the authenticated caller’s own profile. */\n\tusername?: string\n}",
-					"outputTypeDefinition": "type CommunityProfileGetOutput = {\n\tuser_found: boolean\n\tprofile: {\n\tusername: string\n\tdisplay_name: string\n\tbio: string | null\n\tavatar_url: string | null\n\tvisibility: \"public\" | \"private\"\n\tjoined_at: string\n\tpublic_package_count: number\n\tlisting_count: number\n} | null\n\tpackages: Array<{\n\tpackage_id?: string\n\tname: string\n\tkody_id: string\n\tdescription: string\n\ttags: Array<string>\n\t/** Last time the owner edited the saved package. Independent of what is published to the community. */\n\tupdated_at: string\n\tcommunity_listing_id: string | null\n\t/** Last time the package was published to its catalog entry, or null when it has no active listing. */\n\tcommunity_published_at: string | null\n\t/** True when the active catalog entry pin is behind the package published commit. False when there is no listing, or the pin matches. Do not derive this from updated_at versus published_at. */\n\tneeds_republish: boolean\n\t/** Present only on the caller’s own profile. Hidden packages stay off ranked search. */\n\thidden?: boolean\n\t/** Present only on the caller’s own profile. Repo visibility (`saved_packages.is_private`), not package.json#private. */\n\tis_private?: boolean\n}>\n\trecent_activity: Array<{\n\ttype: \"listing_published\" | \"listing_updated\" | \"listing_forked\"\n\tactor_username: string\n\tactor_display_name: string\n\tactor_avatar_url: string | null\n\tlisting_id: string\n\tlisting_name: string\n\tlisting_kody_id: string\n\tcreated_at: string\n\t/** Canonical shareable user URL ({base}/@{username}/{package-name-leaf}); share this URL with humans. */\n\tpublic_url: string\n}>\n}"
+					"outputTypeDefinition": "type CommunityProfileGetOutput = {\n\tuser_found: boolean\n\tprofile: {\n\tusername: string\n\tdisplay_name: string\n\tbio: string | null\n\tavatar_url: string | null\n\tvisibility: \"public\" | \"private\"\n\tjoined_at: string\n\tpublic_package_count: number\n\tlisting_count: number\n} | null\n\tpackages: Array<{\n\tpackage_id?: string\n\tname: string\n\tkody_id: string\n\tdescription: string\n\ttags: Array<string>\n\t/** Last time the owner edited the saved package. Independent of what is published to the community. */\n\tupdated_at: string\n\tcommunity_listing_id: string | null\n\t/** Last time the package was published to its catalog entry, or null when it has no active listing. */\n\tcommunity_published_at: string | null\n\t/** True when the active catalog entry pin is behind the package published commit. False when there is no listing, or the pin matches. Do not derive this from updated_at versus published_at. */\n\tneeds_republish: boolean\n\t/** Present only on the caller’s own profile. Hidden packages stay off ranked search. */\n\thidden?: boolean\n\t/** Present only on the caller’s own profile. Repo visibility (`saved_packages.is_private`), not package.json#private. */\n\tis_private?: boolean\n}>\n\trecent_activity: Array<{\n\ttype: \"listing_published\" | \"listing_updated\" | \"listing_forked\"\n\tactor_username: string\n\tactor_display_name: string\n\tactor_avatar_url: string | null\n\tlisting_id: string\n\tlisting_name: string\n\tlisting_kody_id: string\n\tcreated_at: string\n\t/** Shareable listing URL: {base}/@{username}/{kody-id} when available, otherwise {base}/community/{listing-id}. */\n\tpublic_url: string\n}>\n}"
 				},
 				{
 					"name": "communityProfileUpdate",

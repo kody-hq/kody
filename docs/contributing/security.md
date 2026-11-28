@@ -207,6 +207,11 @@ need their own looser policies to run author-authored code.
 
 ## Hosted package app origin isolation
 
+Production serves package apps on a separate domain from Kody's signed-in app.
+Start with [host routing](#package-app-host-routing), or see
+[open-link exchange and visit access](../use/app-fetch.md#link-exchange-and-visit-access)
+for agent browser visits.
+
 Hosted package apps execute author-supplied HTML, JS, and worker code. In
 production they run on per-user subdomains of the package-app domain
 (`https://{username}.kody.run/{leaf}/...`); confirmed non-production runtimes
@@ -307,8 +312,10 @@ only when the preferred base is claimable but taken; a substring-eligible
 reserved base skips to a random compact candidate because `support-2` still
 contains `support`.
 
-Dispatch lives in `packages/worker/src/app/package-app-origin.ts`, called first
-in the Worker `fetch` handler:
+### Package app host routing
+
+[`package-app-origin.ts`](../../packages/worker/src/app/package-app-origin.ts)
+dispatches hosted app requests by hostname and path:
 
 - **App origin, `/@{username}/packages/*`:** never executes package code.
   Anonymous visitors and signed-in outsiders stay on the app origin. A

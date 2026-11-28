@@ -266,12 +266,22 @@ same batch as the settings change. Deleting an
 [organization](../../packages/worker/src/orgs/data-targets.ts) also removes its
 counts.
 
+In MCP, use `sessionInsightsGet` to view the last 30 days and
+`sessionInsightsDelete` to delete counts. Both tools default to `scope: "mine"`;
+use `scope: "org"` for the organization-wide scope. To delete one entry, pass
+its `category_id`, `outcome`, `stuck_kind`, and `stuck_tool` as `entry`; to
+delete all entries in that scope, pass `all: true`.
+
 ### Cross-organization session insights
 
 [Publisher totals and stuck-kind counts](../../packages/worker/src/session-analytics/session-analytics.node.test.ts)
 appear when they cover at least 10 sessions from at least 5 organizations and
-include no organization, person, or session IDs. The
-[staff dashboard](https://kody.codes/admin/insights/sessions) shows 30-day
+include no organization, person, or session IDs. Publishers use
+`packageSessionInsights({ package_id })` for 30-day totals; it returns
+`available: false` below the minimum. The totals count only sessions from other
+opted-in organizations that use the public package.
+
+The [staff dashboard](https://kody.codes/admin/insights/sessions) shows 30-day
 cross-organization insights. Its
 [loader](../../packages/worker/src/session-analytics/insights.ts) applies the
 same minimum to session totals, per-client and per-category counts, and stuck

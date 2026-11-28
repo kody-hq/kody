@@ -40,10 +40,8 @@ export async function viewerCanReadSavedPackage(input: {
 }
 
 /**
- * Whether a signed-in person may change a saved package from the account UI
- * (settings, publish, delete). They must belong to the owning org and hold
- * `package:write` on the package there — the same org binding used for write
- * APIs, not signup-org equality.
+ * Whether a signed-in viewer holds `package:write` on the saved package in
+ * its owning org. Publishing and deletion have separate permission checks.
  */
 export async function viewerCanManageSavedPackage(input: {
 	env: Env
@@ -244,9 +242,9 @@ export function visitSessionRequestFor(
 
 /**
  * Whether the credential behind an agent's visit session still stands. A
- * revoked or expired API token ends the visit on the next request. Other
- * credential kinds have no row to read here, so their visit ends when the
- * session cookie does (`packageAppOpenLinkSessionTtlMs`).
+ * revoked or expired API token fails this check on the next request. Other
+ * credential kinds skip the token lookup; visit authorization and cookie
+ * expiry still apply.
  */
 export async function packageAppSessionCredentialIsLive(input: {
 	env: Env

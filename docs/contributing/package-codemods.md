@@ -490,17 +490,25 @@ Findings are a recommendation for owners to declare a type, not a migration.
 
 ### `0013-declare-credential-needs`
 
-Prepares for credential-need enforcement
-([#3822](https://github.com/kody-hq/kody/issues/3822)). That enforcement limits
-a package that someone other than its author runs to the credentials it
-declares. The codemod adds a `kody.credentials` slot for each name the package
-fills through the fetch gateway by a literal name and does not declare yet:
-`{{secret:NAME}}`, `{{integration-token:NAME}}`,
-`createAuthenticatedFetch('NAME')`, and the secret fields of
-`secretHeaders.basic` and `oauthClientCredentials`. Names are resolved through
-module and imported constants, as in `0010`. A name that `kody.secretMounts`
-also mounts still gets a slot, because the stored needs closure reads only
-`kody.credentials`.
+This codemod adds missing fetch-gateway credential slots to `kody.credentials`
+and reports cases that need owner review. It supports credential-need
+enforcement ([#3822](https://github.com/kody-hq/kody/issues/3822)). See
+[computed names](#computed-credential-names) or
+[manual findings and runs](#manual-findings-and-runs).
+
+#### Literal names
+
+The
+[declaration codemod](../../packages/worker/src/package-codemods/codemods/0013-declare-credential-needs.ts)
+adds a `kody.credentials` slot for each name the package fills through the fetch
+gateway by a literal name and does not declare yet: `{{secret:NAME}}`,
+`{{integration-token:NAME}}`, `createAuthenticatedFetch('NAME')`, and the secret
+fields of `secretHeaders.basic` and `oauthClientCredentials`. Names are resolved
+through module and imported constants, as in `0010`. A name that
+`kody.secretMounts` also mounts still gets a slot, because the stored needs
+closure reads only `kody.credentials`.
+
+#### Computed credential names
 
 Codemod `0013` traces names built at run time, declares the literal names and
 prefixes it finds, and flags names it still considers unbounded.
@@ -520,6 +528,8 @@ external value follows the convention; it does not prove the check always runs
 before use. A wrapper with a prefix convention and an unchecked override can get
 its prefix slot and still be reported, as can a name with only a literal default
 (`name || 'slack'`).
+
+#### Manual findings and runs
 
 Each new slot has no `kind` and a fixed description the owner can reword.
 Placeholders resolve by name whatever their slot says, so this changes nothing

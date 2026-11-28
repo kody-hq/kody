@@ -1116,34 +1116,76 @@ and recorded in the org activity log on its own. If the capability set was
 already approved, `packageUpdate` and the settings toggle turn internet-visible
 on immediately without another Approve click.
 
+### Security audit and self-publish
+
+When a request to make the package internet-visible is pending and the published
+version has no [security audit](#security-audit), `packageUpdate` with
+`internet_visible: true` returns `security_audit` next to `approval_url`. The
+**Internet-visible** settings toggle returns `securityAudit` next to
+`approvalUrl`. Each names the operation (`packageSecurityAuditRecord`), its Open
+API route, and the exact `package_id`, `published_commit`, and `fingerprint` to
+record. The agent runs the audit, records it, and then hands you the approval
+link.
+
+The
+[self-publish checks](../../packages/worker/src/package-capabilities/self-publish.node.test.ts)
+require `package:publish`, an empty capability set, and no capability
+declarations in the package or any dependency (no `kody.credentials` slots or
+`secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`, or
+`webhooks`), plus a recorded security audit with verdict `pass` for the current
+published version. `packageUpdate` (and the settings toggle) then turn serving
+on right away; `packageUpdate` returns `self_published: true`. If the audit is
+missing, the request waits (`self_publish_blocker: 'not_audited'`); recording a
+passing audit with `packageSecurityAuditRecord` re-evaluates it and
+self-publishes then, and so does calling `packageUpdate` again. The org activity
+log records it as `package.went_public.self_publish`. The
+[self-publish credential guard](../../packages/worker/src/credentials/self-published-package-guard.node.test.ts)
+blocks credential resolution while the package stays public this way. To give it
+credentials, declare them, publish, turn internet-visible off, and approve
+turning it on again. When something blocks self-publish, `packageUpdate` returns
+the `approval_url` and a `self_publish_blocker` that says why (`unpublished`,
+`stale_dependencies` (a dependency republished since this package was published;
+publish it again), `declares_credentials`, `declares_capabilities`,
+`not_audited`, `audit_concerns`, or `not_permitted` when the caller cannot
+publish the package).
+
+### Held publishes
+
 Republishing an approved internet-visible app does not interrupt anyone.
 Everyone keeps the approved version until the new one finishes building. If the
 new version asks for the same capabilities or fewer, its approval carries
-forward and everyone switches to it right away. If it asks for more, everyone,
-including you and other members of the account, stays on the approved version
-until you approve the new capability set; members and public visitors never run
-different versions.
+forward and the serving commit advances. If it asks for more or the capability
+check fails, the publish stays on hold and the approved commit keeps serving.
+See
+[how Kody advances the serving commit](../contributing/internet-visible-packages.md#republishing-an-approved-app).
 
 A publish in that state is held, not published. Every publish surface reports it
-with the status `held_for_approval` instead of `published`: `repoPublishSession`
-and `packageSave` in their own result, and `packagePublishExternalPush` in the
-result of its durable run. That call answers `dispatched` first; poll
-`packageRunResult`, whose run ends errored with the reason in `last_error` and
-whose `result` is the `held_for_approval` result. The result carries the commit
-everyone still runs (`serving_commit`), the commit that waits (`held_commit`),
-`approval_url`, and a `message`. `kody package publish` follows the run, prints
-the message and the approval link on stderr, and exits 1. `held_for_approval` is
-not `locked` or `approval_required`. Those two pause a publish before it starts
-(`locked` for a locked package, `approval_required` for changed credential
-needs), while a held publish is already built and only waits to go live.
+with the status `held_for_approval` instead of `published`, `already_published`,
+or `ok`:
+[`repoPublishSession`](../../packages/worker/src/mcp/capabilities/repo/repo-publish-session.node.test.ts)
+and
+[`packageSave`](../../packages/worker/src/mcp/capabilities/packages/save-package-entitlements.node.test.ts)
+in their own result, and
+[`packagePublishExternalPush`](../../packages/worker/src/mcp/capabilities/packages/publish-external-push.node.test.ts)
+in the result of its durable run. That call answers `dispatched` with a
+`workflow_id` first; poll `packageRunResult`, whose run ends errored with the
+reason in `last_error` and whose `result` is the `held_for_approval` result. The
+result carries the commit everyone still runs (`serving_commit`), the commit
+that waits (`held_commit`), `approval_url`, and a `message`.
+`kody package publish` follows the run, prints the message and the approval link
+on stderr, and exits 1. `held_for_approval` is not `locked` or
+`approval_required`. Those two pause a publish before it starts (`locked` for a
+locked package, `approval_required` for changed credential needs), while a held
+publish is already built and only waits to go live.
 
-`packageGet` keeps the two commits apart. `serving_commit` is the commit that is
-live, `held_commit` is the commit that waits (null when nothing is held, and for
-callers who cannot edit the package), and `approval_url` approves it.
-`published_commit` is the latest publish that was not held, so it never names
-the held commit, and the rest of the record (exports, credential needs)
-describes the serving commit. After approval `held_commit` is null again and
-`serving_commit` is the commit that was held.
+[`packageGet`](../../packages/worker/src/mcp/capabilities/packages/get-package.ts)
+keeps the two commits apart. `serving_commit` is the live commit, `held_commit`
+is the commit that waits, and `approval_url` is the link to approve it.
+`held_commit` and `approval_url` are null when nothing is held or the caller
+lacks `package:write`. `published_commit` is the latest publish that was not
+held, so it never names the held commit, and the rest of the record (exports,
+credential needs) describes the serving commit. After approval `held_commit` is
+null again and `serving_commit` is the commit that was held.
 
 Kody tells the account owners when a publish is held, whoever caused it: a
 direct publish, an agent, a teammate, or an automatic republish. Kody sends each
@@ -1162,35 +1204,6 @@ approve it, use local dev or a dev check.
 
 Apps that are not internet-visible switch to each new version as soon as it
 finishes building.
-
-When the published version has no [security audit](#security-audit) yet, both
-responses also return the next step for the agent. `packageUpdate` returns
-`security_audit` next to `approval_url`; the settings toggle returns
-`securityAudit` next to `approvalUrl`. Each names the operation
-(`packageSecurityAuditRecord`), its Open API route, and the exact `package_id`,
-`published_commit`, and `fingerprint` to record. The agent runs the audit,
-records it, and then hands you the approval link.
-
-An agent can make a package internet-visible on its own (self-publish) when the
-capability set the owner would approve is empty, the package and every package
-it depends on declare nothing (no `kody.credentials` slots and no
-`secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`, or
-`webhooks`), and a security audit with verdict `pass` is recorded for the
-current published version. `packageUpdate` (and the settings toggle) then turn
-serving on right away; `packageUpdate` returns `self_published: true`. If the
-audit is missing, the request waits (`self_publish_blocker: 'not_audited'`);
-recording a passing audit with `packageSecurityAuditRecord` re-evaluates it and
-self-publishes then, and so does calling `packageUpdate` again. The org activity
-log records it as `package.went_public.self_publish`. A self-published package
-cannot use any credential while it stays public this way, even one it declares
-later. To give it credentials, declare them, publish, turn internet-visible off,
-and approve turning it on again. Agents cannot self-approve a non-empty
-capability set. When anything is declared or listed, `packageUpdate` returns the
-`approval_url` and a `self_publish_blocker` that says why (`unpublished`,
-`stale_dependencies` (a dependency republished since this package was published;
-publish it again), `declares_credentials`, `declares_capabilities`,
-`not_audited`, `audit_concerns`, or `not_permitted` when the caller cannot
-publish the package).
 
 ## Approve many changes at once
 

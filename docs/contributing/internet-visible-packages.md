@@ -106,22 +106,16 @@ while the published one is held, so webhooks, events, subscription dispatch,
 secret access, and enablements follow it too. Capability checks pin the commit
 they inspect (`commit`).
 
-An internet-visible app
-[keeps serving its approved commit while a new commit is held](../../packages/worker/src/package-capabilities/serving-commit-advance.node.test.ts).
-[`packagePublishExternalPush`](../../packages/worker/src/mcp/capabilities/packages/publish-external-push.node.test.ts),
-[`repoPublishSession`](../../packages/worker/src/mcp/capabilities/repo/repo-publish-session.node.test.ts),
-and
-[`packageSave`](../../packages/worker/src/mcp/capabilities/packages/save-package-entitlements.node.test.ts)
-report `held_for_approval`, not `published`, `already_published`, or `ok`, with
-`serving_commit`, `held_commit`, `approval_url`, and `message`.
-`packagePublishExternalPush` first returns `dispatched` with a `workflow_id`;
-the held result comes from `packageRunResult`. Unlike `locked` and
-`approval_required`, the hold happens after the publish builds the commit. A
-durable publish run treats the hold as a refusal, and the CLI exits 1.
-[`packageGet`](../../packages/worker/src/mcp/capabilities/packages/get-package.ts)
-reports the serving commit as `published_commit` and `serving_commit` while a
-commit is held. It returns null for `held_commit` and `approval_url` on a
-successful read without `package:write`.
+[`loadHeldForApproval`](../../packages/worker/src/package-capabilities/held-for-approval.ts)
+reads the recorded hold for an internet-visible app; it does not compare
+capability sets. It returns both commits when the held commit matches the
+published tip and a
+[different commit still serves](../../packages/worker/src/package-capabilities/serving-commit-advance.node.test.ts).
+The `entity_sources.published_commit` column is the internal tip and does name
+the held commit; nothing reports it to callers as published. A held publish is
+its own status, `held_for_approval`, built by
+[`loadHeldForApprovalPublishStatus`](../../packages/worker/src/mcp/capabilities/packages/held-for-approval-publish-status.ts).
+See [Held publishes](../use/packages.md#held-publishes) for API and CLI results.
 
 The
 [serving update](../../packages/worker/src/package-capabilities/serving-commit-advance.ts)
