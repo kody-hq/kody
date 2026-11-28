@@ -30,6 +30,7 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { openCredentialClient } from './credential-client.ts'
 import {
+	findDeclaredNeed,
 	isCredentialReferenceDeclared,
 	type CredentialNeedReference,
 } from './credential-need-enforcement.ts'
@@ -744,6 +745,98 @@ test('a declared slot counts only when its kind can fill the use', () => {
 			isCredentialReferenceDeclared(reference, needs),
 			JSON.stringify(reference),
 		).toBe(declared)
+	}
+})
+
+test('a prefix slot covers its key and key-purpose names, and nothing wider', () => {
+	const google = need('google', { prefix: true })
+	const cases: Array<
+		[CredentialNeedReference, Array<CredentialNeed>, boolean]
+	> = [
+		[{ use: 'integration', name: 'google' }, [google], true],
+		[{ use: 'integration', name: 'google-work' }, [google], true],
+		[{ use: 'secret', name: 'google-work.v2', scope: null }, [google], true],
+		[{ use: 'secret', name: 'google-work', scope: 'user' }, [google], true],
+		// Not the key, a hyphen, then a purpose.
+		[{ use: 'integration', name: 'googlework' }, [google], false],
+		[{ use: 'integration', name: 'google-' }, [google], false],
+		[{ use: 'integration', name: 'google--work' }, [google], false],
+		[{ use: 'integration', name: 'google_work' }, [google], false],
+		[{ use: 'integration', name: 'Google-work' }, [google], false],
+		[{ use: 'integration', name: 'github' }, [google], false],
+		[{ use: 'integration', name: 'my-google-work' }, [google], false],
+		[{ use: 'integration', name: 'google-work/x' }, [google], false],
+		[{ use: 'integration', name: `google-${'a'.repeat(60)}` }, [google], false],
+		// Without prefix the slot is its exact key.
+		[{ use: 'integration', name: 'google-work' }, [need('google')], false],
+		// The slot kind still decides which use it fills.
+		[
+			{ use: 'integration', name: 'google-work' },
+			[need('google', { prefix: true, kind: 'secret' })],
+			false,
+		],
+		[
+			{ use: 'secret', name: 'google-work', scope: null },
+			[need('google', { prefix: true, kind: 'oauth' })],
+			false,
+		],
+		// credential(key) and vault providers take the exact key.
+		[{ use: 'key', key: 'google' }, [google], true],
+		[{ use: 'key', key: 'google-work' }, [google], false],
+		[{ use: 'provider', provider: 'google-work' }, [google], false],
+	]
+	for (const [reference, needs, declared] of cases) {
+		expect(
+			isCredentialReferenceDeclared(reference, needs),
+			JSON.stringify(reference),
+		).toBe(declared)
+	}
+	// An exact slot wins over a prefix, and the longest prefix wins.
+	const exact = need('google-work', { kind: 'oauth' })
+	const longer = need('google-work', { prefix: true })
+	expect(
+		findDeclaredNeed({ use: 'integration', name: 'google-work' }, [
+			google,
+			exact,
+		]),
+	).toBe(exact)
+	expect(
+		findDeclaredNeed({ use: 'integration', name: 'google-work-eu' }, [
+			google,
+			longer,
+		]),
+	).toBe(longer)
+})
+
+test('a limited package fills a prefix slot name and is refused outside it', async () => {
+	const t = await setup()
+	await t.storeSecret(t.acmeId, 'resend-billing')
+	await t.storeSecret(t.acmeId, 'stripe')
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/mailer',
+	})
+	for (const stamped of [true, false]) {
+		enforcement(!stamped)
+		stamp(stamped)
+		declare([need('resend', { prefix: true })])
+		await expect(
+			t.fill({
+				orgId: t.acmeId,
+				packageId,
+				header: 'Bearer {{secret:resend-billing}}',
+			}),
+		).resolves.toBe(`Bearer ${keyValue}`)
+		await expect(
+			t.fill({
+				orgId: t.acmeId,
+				packageId,
+				header: 'Bearer {{secret:stripe}}',
+			}),
+		).rejects.toMatchObject({
+			code: 'credential_need_undeclared',
+			key: 'stripe',
+		})
 	}
 })
 

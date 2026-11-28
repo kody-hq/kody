@@ -304,6 +304,31 @@ export function isSavedCredentialKind(
 	return kind !== secretProviderSlotKind
 }
 
+export const credentialSlotPrefixValueMessage =
+	'kody.credentials prefix takes only true: the slot then also covers names that are its key, a hyphen, then a purpose (such as "google-work" for the slot "google"). Leave it out for an exact key.'
+
+/** Slot kinds a `prefix` slot may declare: the ones a name-based use fills. */
+export const credentialSlotPrefixKindValues = [
+	'secret',
+	'oauth',
+] as const satisfies ReadonlyArray<PackageCredentialSlotKind>
+
+const credentialSlotPrefixSuffixPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+/**
+ * Whether a `prefix: true` slot keyed `key` covers `name`: the key, one
+ * hyphen, then a non-empty purpose, and the whole name is a valid slot name.
+ * The key itself is an exact match, which callers check first.
+ */
+export function credentialSlotPrefixCoversName(key: string, name: string) {
+	const head = `${key}-`
+	return (
+		name.startsWith(head) &&
+		packageCredentialSlotNamePattern.test(name) &&
+		credentialSlotPrefixSuffixPattern.test(name.slice(head.length))
+	)
+}
+
 export const ownerCredentialForVisitorsValueMessage =
 	'kody.credentials ownerCredentialForVisitors is deprecated: it is a legacy alias for supplier "publisher", and apps already use the publisher’s credentials. If you still set it, it takes only true.'
 
@@ -347,6 +372,16 @@ export const packageCredentialSlotSchema = z.strictObject({
 	package: z.string().trim().min(1).max(165).optional(),
 	/** `credentials(key)` returns the caller's picks as an array. */
 	multiple: z.boolean().optional(),
+	/**
+	 * The slot also covers names that are its key, a hyphen, then a purpose
+	 * (`google` covers `google-work`), for uses that name a credential: fetch
+	 * gateway placeholders, `createAuthenticatedFetch`, and secret mounts.
+	 * `credential(key)` still takes the exact key. See
+	 * {@link credentialSlotPrefixCoversName}.
+	 */
+	prefix: z
+		.literal(true, { error: credentialSlotPrefixValueMessage })
+		.optional(),
 	/** Shown to callers choosing a credential for this need. */
 	description: z.string().trim().min(1).max(500),
 	/**
@@ -393,6 +428,19 @@ export const packageCredentialsSchema = z
 					message: `kody.credentials.${name}.package is only valid with kind: "secret-provider".`,
 				})
 			}
+			if (
+				slot.prefix === true &&
+				slot.kind !== undefined &&
+				!(credentialSlotPrefixKindValues as ReadonlyArray<string>).includes(
+					slot.kind,
+				)
+			) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'prefix'],
+					message: `kody.credentials.${name}.prefix applies only to a slot with no kind, or kind "secret" or "oauth": it covers credentials a package uses by name.`,
+				})
+			}
 			if (slot.required !== undefined && slot.supplier !== 'executor') {
 				ctx.addIssue({
 					code: 'custom',
@@ -420,6 +468,7 @@ export const secretProviderSlotPackagePattern =
 const secretProviderSlotOnlyFields = [
 	'provider',
 	'multiple',
+	'prefix',
 	'ownerCredentialForVisitors',
 	'supplier',
 	'required',

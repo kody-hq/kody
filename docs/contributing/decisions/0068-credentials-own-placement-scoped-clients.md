@@ -1290,3 +1290,29 @@ refresh token as a login credential) is
 refresh token saved that way goes only to the sealed token's save hosts, like a
 sealed token saved as a Key (2026-10-28), and package code still cannot save
 one.
+
+## Amendment 2026-11-27: prefix needs for the enforcement rollout
+
+Kent decided on 2026-11-27 to get `credential-need-enforcement` ready without
+breaking packages, migrating them for their owners where possible. A scan found
+249 packages the flag would break, most of them wrappers that take an account
+name at run time under the `<provider>` / `<provider>-<purpose>` convention
+(`google`, `google-work`). An exact key list cannot cover those.
+
+A need may set `prefix: true`. It then also covers a name that is its key, one
+hyphen, then a non-empty purpose, where the whole name is a valid slot name. It
+applies to uses that name a credential: fetch-gateway placeholders,
+`createAuthenticatedFetch`, `integrationTokenRefresh`, and the resolved name of
+a secret mount, for stamped packages and under the flag alike. An exact key
+wins, then the longest matching prefix, and the slot's `kind` still decides
+which use it fills. It is valid with no `kind`, or `secret` or `oauth`.
+
+`credential(key)` and vault providers keep the exact key: a need's mapping is
+for its own key, so a longer key there would read the default account. The stamp
+gate is unchanged and still refuses a name built at run time on publish. There
+is no other pattern, and a prefix is never inferred from anything but a literal
+in the package's source.
+
+Codemod `0013` declares prefix slots and literal defaults it can trace in a
+package's source, and no longer reports `typeof credential` in a type. The flag
+stays off; it is turned on only after a scoped rescan comes back clean.

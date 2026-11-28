@@ -26,7 +26,10 @@ import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { toUnheldSourceView } from '#worker/repo/serving-commit.ts'
-import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
+import {
+	credentialSlotPrefixCoversName,
+	type SavedPackageRecord,
+} from '#worker/package-registry/types.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
 import {
 	isSecretProviderNeed,
@@ -161,15 +164,26 @@ export function findDeclaredNeed(
 	}
 	const key = referenceKey(reference)
 	const kinds = fillingKinds(reference)
-	return (
-		declarations.find(
-			(need) =>
-				need.key === key &&
-				// Saved-credential uses never resolve through a provider slot.
-				!isSecretProviderNeed(need) &&
-				(kinds === null || need.kind == null || kinds.includes(need.kind)),
-		) ?? null
-	)
+	const fills = (need: CredentialNeed) =>
+		// Saved-credential uses never resolve through a provider slot.
+		!isSecretProviderNeed(need) &&
+		(kinds === null || need.kind == null || kinds.includes(need.kind))
+	const exact = declarations.find((need) => need.key === key && fills(need))
+	if (exact) return exact
+	// A `prefix: true` need also covers `<key>-<purpose>` names. Only uses
+	// that name a credential match it: `credential(key)` resolves the need's
+	// own mapping, so a longer key there would silently read the default
+	// account. The longest matching key wins.
+	if (reference.use !== 'secret' && reference.use !== 'integration') {
+		return null
+	}
+	let covering: CredentialNeed | null = null
+	for (const need of declarations) {
+		if (need.prefix !== true || !fills(need)) continue
+		if (!credentialSlotPrefixCoversName(need.key, key)) continue
+		if (!covering || need.key.length > covering.key.length) covering = need
+	}
+	return covering
 }
 
 export function isCredentialReferenceDeclared(
@@ -229,7 +243,7 @@ function undeclaredError(
 	const fix =
 		reference.use === 'provider'
 			? providerFix(reference, declarations)
-			: `Add "${key}" to kody.credentials in its package.json (with a description) and publish again.`
+			: `Add "${key}" to kody.credentials in its package.json (with a description) and publish again. If it names accounts as "<slot>-<purpose>", set prefix: true on that slot instead.`
 	return new CredentialNeedUndeclaredError({
 		key,
 		message: `${subject} uses ${describeUse(reference)} without declaring it. ${rule} ${fix}`,

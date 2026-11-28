@@ -304,6 +304,13 @@ Declare `kind` only when the package needs a specific shape:
   example).
 - A second account from the same provider gets its own key with an explicit
   `provider`.
+- `"prefix": true` makes a need also cover names that are its key, a hyphen,
+  then a purpose: `"google": { "prefix": true, ... }` covers `google` and
+  `google-work`, not `googlework` or `github`. Use it when the package takes an
+  account name at run time and fills it by name (`{{secret:NAME}}`,
+  `{{integration-token:NAME}}`, `createAuthenticatedFetch(name)`, a secret
+  mount). `credential(key)` still takes the exact key. It is valid with no
+  `kind`, or `secret` or `oauth`. There is no wider wildcard.
 - Needs have no hosts or inject fields (those belong to the credential). An
   optional `placement` on a need is the reviewable default for package-scope
   secrets that need inserts as that name (Connect / `secretSet` when no row
