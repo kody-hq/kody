@@ -1,3 +1,6 @@
+import { DatabaseSync } from 'node:sqlite'
+import { ensureOpenLinkTestSchema } from '#worker/app-visit/open-link-test-schema.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -54,14 +57,11 @@ const { appOpenLinkCapability } = await import('./app-open-link.ts')
 
 const personId = '1'.repeat(64)
 
-const replayStore = new Map<string, string>()
+const db = createD1FromSqlite(new DatabaseSync(':memory:'))
+await ensureOpenLinkTestSchema(db)
 const env = {
-	APP_DB: {},
+	APP_DB: db,
 	COOKIE_SECRET: 'PACKAGE_APP_TEST_COOKIE_SECRET_32_CHARS_MINIMUM',
-	BUNDLE_ARTIFACTS_KV: {
-		get: async (key: string) => replayStore.get(key) ?? null,
-		put: async (key: string, value: string) => void replayStore.set(key, value),
-	},
 } as unknown as Env
 
 type ContextInput = {
@@ -139,7 +139,6 @@ async function exchange(url: string) {
 
 beforeEach(() => {
 	vi.clearAllMocks()
-	replayStore.clear()
 	mockModule.servePackageAppRequest.mockImplementation(
 		async () => new Response(null, { status: 204 }),
 	)

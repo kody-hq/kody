@@ -22,8 +22,8 @@ import {
  *
  * The token is a bearer credential in a URL, so it is deliberately weak:
  * five minutes of validity, bound to one app on one host, and burned on
- * first use. Unlike the person handoff, the burn fails closed: without the
- * replay store the link is refused.
+ * first use. Unlike the person handoff, the burn is atomic and fails closed:
+ * a link that cannot be recorded as used is refused.
  */
 
 /** Query parameter that carries a freshly minted open-link token. */
@@ -35,9 +35,8 @@ export const packageAppOpenLinkTtlMs = 5 * 60_000
 export const packageAppOpenLinkSessionTtlMs = 60 * 60_000
 
 const signaturePurpose = 'kody-package-app-open-link:v1'
-const replayKeyPrefix = 'package-app-open-link:'
 // Outlives the token so a burned link stays burned for its whole life.
-const replayTtlSeconds = Math.ceil(packageAppOpenLinkTtlMs / 1000) + 60
+const redemptionRetentionMs = 60_000
 
 export type PackageAppOpenLinkClaims = {
 	stableUserId: string
@@ -137,9 +136,9 @@ function rejected(reason: string) {
  * Validate an open-link token for one app on one host and burn it.
  *
  * The app and host binding is checked before the burn, so a link opened on
- * the wrong address is refused without spending it. The burn uses KV, which
- * is eventually consistent across locations; a missing or failing replay
- * store refuses the link.
+ * the wrong address is refused without spending it. The burn is one D1 insert,
+ * so of several concurrent exchanges exactly one wins; a failing insert
+ * refuses the link.
  */
 export async function consumePackageAppOpenLinkToken(input: {
 	env: Env
@@ -183,12 +182,19 @@ export async function consumePackageAppOpenLinkToken(input: {
 		return rejected('app')
 	}
 
-	const replayStore = input.env.BUNDLE_ARTIFACTS_KV
-	if (!replayStore) return rejected('replay-store')
-	const replayKey = `${replayKeyPrefix}${parsed.jti}`
 	try {
-		if (await replayStore.get(replayKey)) return rejected('replay')
-		await replayStore.put(replayKey, '1', { expirationTtl: replayTtlSeconds })
+		const expiresAt = new Date(parsed.exp + redemptionRetentionMs).toISOString()
+		const [, burned] = await input.env.APP_DB.batch([
+			input.env.APP_DB.prepare(
+				`DELETE FROM package_app_open_link_redemptions WHERE expires_at <= ?`,
+			).bind(new Date(now).toISOString()),
+			// Atomic single use: only one concurrent exchange inserts the row.
+			input.env.APP_DB.prepare(
+				`INSERT INTO package_app_open_link_redemptions (jti, expires_at)
+				 VALUES (?, ?) ON CONFLICT (jti) DO NOTHING`,
+			).bind(parsed.jti, expiresAt),
+		])
+		if ((burned?.meta.changes ?? 0) !== 1) return rejected('replay')
 	} catch (error) {
 		console.warn('Package app open link replay check failed.', error)
 		return null

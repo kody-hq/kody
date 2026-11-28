@@ -1,5 +1,8 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
+import { ensureOpenLinkTestSchema } from '#worker/app-visit/open-link-test-schema.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	readParsedAuthSession,
 	setAuthSessionSecret,
@@ -21,19 +24,10 @@ import { silenceExpectedConsoleWarns } from '#worker/test-support/console-spies.
 const cookieSecret = 'PACKAGE_APP_TEST_COOKIE_SECRET_32_CHARS_MINIMUM'
 const personId = '1'.repeat(64)
 
-function createTestEnv(input: { kv?: 'missing' | 'failing' } = {}) {
-	const store = new Map<string, string>()
-	const kv = {
-		get: async (key: string) => {
-			if (input.kv === 'failing') throw new Error('KV is down')
-			return store.get(key) ?? null
-		},
-		put: async (key: string, value: string) => void store.set(key, value),
-	}
-	return {
-		COOKIE_SECRET: cookieSecret,
-		...(input.kv === 'missing' ? {} : { BUNDLE_ARTIFACTS_KV: kv }),
-	} as unknown as Env
+async function createTestEnv(input: { db?: 'missing' } = {}) {
+	const db = createD1FromSqlite(new DatabaseSync(':memory:'))
+	if (input.db !== 'missing') await ensureOpenLinkTestSchema(db)
+	return { COOKIE_SECRET: cookieSecret, APP_DB: db } as unknown as Env
 }
 
 const profileCredential: AppVisitSessionCredential = {
@@ -56,7 +50,7 @@ const expected = { username: 'acme', kodyId: 'board', host: claims.host }
 
 test('an open link is exchanged once, within five minutes, for the credential it was minted with', async () => {
 	silenceExpectedConsoleWarns(['Package app open link rejected.'])
-	const env = createTestEnv()
+	const env = await createTestEnv()
 	const now = Date.now()
 	const mint = () => createPackageAppOpenLinkToken({ env, claims, now })
 	const consume = (
@@ -117,18 +111,28 @@ test('an open link fails closed when it cannot be burned', async () => {
 		'Package app open link rejected.',
 		'Package app open link replay check failed.',
 	])
-	for (const kv of ['missing', 'failing'] as const) {
-		const env = createTestEnv({ kv })
-		const { token } = await createPackageAppOpenLinkToken({ env, claims })
-		await expect(
+	const env = await createTestEnv({ db: 'missing' })
+	const { token } = await createPackageAppOpenLinkToken({ env, claims })
+	await expect(
+		consumePackageAppOpenLinkToken({ env, token, expected }),
+	).resolves.toBeNull()
+})
+
+test('concurrent exchanges of one open link have exactly one winner', async () => {
+	silenceExpectedConsoleWarns(['Package app open link rejected.'])
+	const env = await createTestEnv()
+	const { token } = await createPackageAppOpenLinkToken({ env, claims })
+	const results = await Promise.all(
+		Array.from({ length: 8 }, () =>
 			consumePackageAppOpenLinkToken({ env, token, expected }),
-		).resolves.toBeNull()
-	}
+		),
+	)
+	expect(results.filter(Boolean)).toHaveLength(1)
 })
 
 test('an open link is not a handoff token and its session is not a Kody account session', async () => {
 	silenceExpectedConsoleWarns(['Package app handoff rejected.'])
-	const env = createTestEnv()
+	const env = await createTestEnv()
 	const { token } = await createPackageAppOpenLinkToken({ env, claims })
 	await expect(
 		consumePackageAppHandoffToken({
