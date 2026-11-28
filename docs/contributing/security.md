@@ -440,31 +440,37 @@ code runs with publisher authority and bills the owning org (ADR 0095). The
   is stored under its own key, so a busy socket does not rewrite every session's
   state.
 
-**Member realtime re-authorization.** A member socket stores the package-app
-visit session it was opened from (person id, session `issuedAt` and cookie
-expiry, org handle and app slug, and for an `appOpenLink` agent visit the
-credential kind, token id, scopes and profile chain; never a secret). A member
-upgrade without one is `403`. The socket then closes with `1008` when the next
-HTTP request from that session would be refused:
+### Member realtime re-authorization
 
-- `session-expired`: at the cookie's expiry (the alarm is set for it, and no
-  frame is delivered or accepted after it);
-- `signed-out`: right away when the session signs out of the app with
-  `/-/auth/logout` (best effort after the cookie is cleared; if closing fails it
-  is logged and the socket lasts until the cookie's expiry);
-- `access-revoked`: within one minute (`realtimeAccessRecheckMs`) of grant or
-  role removal, profile grant removal, API token revocation, withdrawn "Run as
-  me" approval, suspension, deletion, a password change, or the session's slug
-  naming a different app than the socket runs. The alarm runs
-  `checkPackageAppVisitSession`
-  (`packages/worker/src/app/package-app-visit-authorization.ts`), the same
-  `authorizePackageAppVisitorForOrg` decision package-app HTTP requests use,
-  once per distinct session per alarm, never per frame. Its cached reads (owner
-  row 15 s, org access epoch) are the same ones HTTP uses. A failed check keeps
-  the socket open until the next alarm.
+The
+[realtime Durable Object](../../packages/worker/src/package-runtime/realtime-session.ts)
+requires a package-app visit session for a member upgrade (`403` without one).
+It stores the person id, session `issuedAt` and cookie expiry, org handle and
+app slug, plus credential kind, token id, scopes, and profile chain for an
+`appOpenLink` visit. A member socket closes with `1008` for these reasons:
+
+- `session-expired`: the access alarm is scheduled no later than the cookie's
+  expiry. The Durable Object also checks expiry before processing an inbound app
+  message or sending an outbound app message.
+- `signed-out`:
+  [app logout](../../packages/worker/src/app/package-app-oauth-host-auth.ts)
+  clears the cookie and schedules a best-effort close of that visit's sockets.
+  If closing fails, the socket can remain open until the cookie expires.
+- `access-revoked`: when an access recheck rejects the visit, for example after
+  grant or role removal, profile grant removal, API token revocation, withdrawn
+  "Run as me" approval, suspension, deletion, a password change, or the visit's
+  slug naming a different app. The alarm is scheduled at one-minute intervals
+  (`realtimeAccessRecheckMs`) and runs
+  [`checkPackageAppVisitSession`](../../packages/worker/src/app/package-app-visit-authorization.ts),
+  the same `authorizePackageAppVisitorForOrg` decision package-app HTTP requests
+  use, once per distinct session per alarm, never per frame. Its cached reads
+  (owner row 15 s, org access epoch) are the same ones HTTP uses. A failed check
+  keeps the socket open until the next alarm.
 
 Team-org realtime (team-scoped sockets) is still not supported
 ([#5067](https://github.com/kody-hq/kody/issues/5067)).
+
+### Redirects and origin configuration
 
 - **No redirect cycle:** the app origin only ever redirects _to_ a package-app
   subdomain, the apex only redirects to a subdomain or the app origin, and a
