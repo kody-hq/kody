@@ -1,3 +1,7 @@
+import {
+	isPackageAppHostProbeFirstSegment,
+	isPackageAppHostReservedFirstSegment,
+} from '@kody-internal/shared/package-app-host-paths.ts'
 import { z } from 'zod'
 import {
 	createPackageAppOpenLinkToken,
@@ -112,6 +116,17 @@ export const appOpenLinkCapability = defineDomainCapability(
 				)
 			}
 
+			// Kody answers these on the app host itself, before any exchange.
+			const firstSegment = url.pathname.split('/').find(Boolean) ?? ''
+			if (
+				isPackageAppHostReservedFirstSegment(firstSegment) ||
+				isPackageAppHostProbeFirstSegment(firstSegment)
+			) {
+				throw new McpCallerError(
+					`appOpenLink cannot open ${url.pathname}: /${firstSegment} is a Kody path on the app host, not a page of the app.`,
+				)
+			}
+
 			// Everything a visit checks before app code runs, without running
 			// it: a missing visitor credential is reported here, like appFetch.
 			const preflight = await servePackageAppRequest({
@@ -124,6 +139,13 @@ export const appOpenLinkCapability = defineDomainCapability(
 			})
 			await assertAppVisitConsent(target, preflight, url.toString())
 			if (preflight.status === 404) throw target.notFound()
+			if (preflight.status !== 204) {
+				// The browser would meet the same refusal after the exchange.
+				const refusal = (await preflight.text()).slice(0, 500)
+				throw new McpCallerError(
+					`appOpenLink cannot open ${target.appLabel}: the app host refused the visit with ${preflight.status}.${refusal ? ` ${refusal}` : ''}`,
+				)
+			}
 
 			const { credential } = target.callerRequest
 			const profileId = credential.profileId ?? null
