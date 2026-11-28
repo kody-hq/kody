@@ -6,6 +6,7 @@ import {
 	createPackageAppOpenLinkToken,
 	packageAppOpenLinkQueryParam,
 } from '#worker/app-visit/open-link.ts'
+import { revokeApiToken } from '#worker/api-tokens/service.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 import {
@@ -258,4 +259,49 @@ test('the visit keeps the scopes of the credential that minted the link', async 
 		.run()
 	const revoked = await open(await mintLink({ person: 'member' }))
 	expect(revoked).toMatchObject({ status: 403, openLink: 'rejected' })
+})
+
+test('revoking the API token ends the visit its link opened', async () => {
+	const userId = testStableUserIdFromEmail(accessFixture.people.owner.email)
+	const token = { id: 'open-link-agent-token' }
+	await env.APP_DB.prepare(
+		`CREATE TABLE IF NOT EXISTS api_tokens (
+			id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, org_id TEXT NOT NULL,
+			org_binding TEXT NOT NULL DEFAULT 'org', name TEXT NOT NULL,
+			token_hash TEXT NOT NULL, scopes_json TEXT NOT NULL,
+			idle_ttl_seconds INTEGER NOT NULL, expires_at TEXT NOT NULL,
+			max_expires_at TEXT NOT NULL, created_via TEXT NOT NULL,
+			created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_used_at TEXT,
+			rotated_at TEXT, revoked_at TEXT, profile_id TEXT, deleted_at TEXT
+		)`,
+	).run()
+	const nowIso = new Date().toISOString()
+	const expiresAt = new Date(Date.now() + 3_600_000).toISOString()
+	await env.APP_DB.prepare(
+		`INSERT OR REPLACE INTO api_tokens (
+			id, user_id, org_id, name, token_hash, scopes_json, idle_ttl_seconds,
+			expires_at, max_expires_at, created_via, created_at, updated_at
+		) VALUES (?, ?, ?, 'open-link-agent', 'hash', '["app:execute"]', 3600, ?, ?, 'api', ?, ?)`,
+	)
+		.bind(token.id, userId, userId, expiresAt, expiresAt, nowIso, nowIso)
+		.run()
+	const opened = await open(
+		await mintLink({
+			person: 'owner',
+			credential: { kind: 'api-token', id: token.id, scopes: ['app:execute'] },
+		}),
+	)
+	expect(opened.status).toBe(302)
+	const cookie = opened.session ?? ''
+	const live = await open(`${privateOrigin}/`, cookie)
+	expect(live.openLink).toBeNull()
+	expect(live.status).toBe(500)
+
+	await revokeApiToken({ db: env.APP_DB, userId, tokenId: token.id })
+
+	// The session is gone for the page and for Sign in with Kody's `/me`.
+	const visit = await open(`${privateOrigin}/`, cookie)
+	expect(visit.status).not.toBe(500)
+	const me = await open(`${privateOrigin}/-/auth/me`, cookie)
+	expect(me.status).toBe(401)
 })

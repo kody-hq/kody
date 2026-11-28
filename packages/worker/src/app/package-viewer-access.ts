@@ -8,6 +8,10 @@ import {
 	type EffectivePermissions,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
+import {
+	getApiTokenRecord,
+	getApiTokenStatus,
+} from '#worker/api-tokens/service.ts'
 import { checkAppVisitAccess } from '#worker/app-visit/authorize.ts'
 import { loadOrgBindingForOrg, type OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
@@ -236,4 +240,25 @@ export function visitSessionRequestFor(
 				: {}),
 		},
 	}
+}
+
+/**
+ * Whether the credential behind an agent's visit session still stands. A
+ * revoked or expired API token ends the visit on the next request. Other
+ * credential kinds have no row to read here, so their visit ends when the
+ * session cookie does (`packageAppOpenLinkSessionTtlMs`).
+ */
+export async function packageAppSessionCredentialIsLive(input: {
+	env: Env
+	stableUserId: string
+	credential: AppVisitSessionCredential
+}) {
+	const { credential } = input
+	if (credential.kind !== 'api-token' || !credential.id) return true
+	const record = await getApiTokenRecord({
+		db: input.env.APP_DB,
+		userId: input.stableUserId,
+		tokenId: credential.id,
+	})
+	return record !== null && getApiTokenStatus(record) === 'active'
 }

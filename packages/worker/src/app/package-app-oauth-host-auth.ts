@@ -40,7 +40,10 @@ import {
 	resolvePackageAppOwnerByStableUserId,
 } from '#app/package-app-owner.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
+import {
+	packageAppSessionCredentialIsLive,
+	viewerCanExecutePackageApp,
+} from '#app/package-viewer-access.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
 import {
 	isPackageAppOauthHostAuthPathname,
@@ -564,6 +567,19 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 	// An agent's visit session answers only while its credential can run the
 	// app: neither the person's sign-in grant nor a ticket stands in for that.
 	const sessionCredential = parsedSession.session.credential ?? null
+	if (
+		sessionCredential &&
+		!(await packageAppSessionCredentialIsLive({
+			env: input.env,
+			stableUserId: parsedSession.session.stableUserId,
+			credential: sessionCredential,
+		}))
+	) {
+		return Response.json(
+			{ error: 'unauthorized' },
+			{ status: 401, headers: { 'Cache-Control': 'no-store' } },
+		)
+	}
 	const grant = sessionCredential
 		? null
 		: await findLivePackageAppOauthGrant({

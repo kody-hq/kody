@@ -92,6 +92,7 @@ import {
 } from '#app/package-app-owner.ts'
 import { authorizeAppVisit } from '#worker/app-visit/authorize.ts'
 import {
+	packageAppSessionCredentialIsLive,
 	visitSessionRequestFor,
 	viewerCanExecutePackageApp,
 } from '#app/package-viewer-access.ts'
@@ -114,10 +115,6 @@ import {
 	mintPackageAppTicketCookie,
 	readPackageAppTicket,
 } from '#app/package-app-ticket.ts'
-import {
-	getApiTokenRecord,
-	getApiTokenStatus,
-} from '#worker/api-tokens/service.ts'
 import {
 	logPackageAppAccessEvent,
 	logSampledPackageAppTicketAllow,
@@ -604,27 +601,6 @@ export async function authorizePackageAppVisitorForOrg(input: {
 		sessionIssuedAt: input.issuedAt,
 		agent: credential !== null,
 	}
-}
-
-/**
- * Whether the credential behind an agent's visit session still stands. A
- * revoked or expired API token ends the visit on the next request. Other
- * credential kinds have no row to read here, so their visit ends when the
- * session cookie does (`packageAppOpenLinkSessionTtlMs`).
- */
-async function packageAppSessionCredentialIsLive(input: {
-	env: Env
-	stableUserId: string
-	credential: AppVisitSessionCredential
-}) {
-	const { credential } = input
-	if (credential.kind !== 'api-token' || !credential.id) return true
-	const record = await getApiTokenRecord({
-		db: input.env.APP_DB,
-		userId: input.stableUserId,
-		tokenId: credential.id,
-	})
-	return record !== null && getApiTokenStatus(record) === 'active'
 }
 
 function settledValue<T>(result: PromiseSettledResult<T>): T {
