@@ -28,7 +28,7 @@ import {
 import { createPortal } from 'react-dom'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { FileComments, CommentIcon } from './file-comments.tsx'
-import { DbProvider, useLiveQuery } from '@tanstack/react-db'
+import { DbProvider, eq, useLiveQuery } from '@tanstack/react-db'
 import { CollaborativeTextEditor } from './collaborative-text-editor.tsx'
 import { FileRoomClient } from './file-room-client.ts'
 import { actorColor } from '#universal/collaboration-color.ts'
@@ -141,9 +141,6 @@ function CollaborationView({
 	const { data: threads = [] } = useLiveQuery({
 		query: (q) => q.from({ thread: client.threads.options }),
 	})
-	const { data: comments = [] } = useLiveQuery({
-		query: (q) => q.from({ comment: client.comments.options }),
-	})
 	const { data: participants = [] } = useLiveQuery({
 		query: (q) => q.from({ participant: client.participants.options }),
 	})
@@ -159,6 +156,22 @@ function CollaborationView({
 		[anchor, setAnchor] = useState<CommentAnchor>({ kind: 'file' }),
 		[composing, setComposing] = useState(false),
 		[error, setError] = useState('')
+	const showComments = open || closingComments
+	const { data: comments = [] } = useLiveQuery((q) => {
+		if (!showComments) return null
+		const query = q.from({ comment: client.comments.options })
+		return active
+			? query.where(({ comment }) => eq(comment.threadId, active))
+			: query
+	})
+	const { data: commentAuthors = [] } = useLiveQuery((q) =>
+		showComments
+			? q
+					.from({ comment: client.comments.options })
+					.select(({ comment }) => ({ author: comment.author }))
+					.distinct()
+			: null,
+	)
 	const video = useRef<HTMLMediaElement>(null)
 	const documentRoot = useRef<HTMLDivElement>(null)
 	const returnFocus = useRef<HTMLElement | null>(null)
@@ -944,7 +957,7 @@ function CollaborationView({
 							actors={[
 								state.snapshot!.actor,
 								...actors.map((person) => person.actor),
-								...comments.map((comment) => comment.author),
+								...commentAuthors.map(({ author }) => author),
 							]}
 							canComment={!!access?.comment}
 							manage={!!access?.manage}
