@@ -450,10 +450,13 @@ HTTP request from that session would be refused:
 - `session-expired`: at the cookie's expiry (the alarm is set for it, and no
   frame is delivered or accepted after it);
 - `signed-out`: right away when the session signs out of the app with
-  `/-/auth/logout`;
+  `/-/auth/logout` (best effort after the cookie is cleared; if closing fails it
+  is logged and the socket lasts until the cookie's expiry);
 - `access-revoked`: within one minute (`realtimeAccessRecheckMs`) of grant or
-  role removal, profile grant removal, API token revocation, suspension,
-  deletion or a password change. The alarm runs `checkPackageAppVisitSession`
+  role removal, profile grant removal, API token revocation, withdrawn "Run as
+  me" approval, suspension, deletion, a password change, or the session's slug
+  naming a different app than the socket runs. The alarm runs
+  `checkPackageAppVisitSession`
   (`packages/worker/src/app/package-app-visit-authorization.ts`), the same
   `authorizePackageAppVisitorForOrg` decision package-app HTTP requests use,
   once per distinct session per alarm, never per frame. Its cached reads (owner

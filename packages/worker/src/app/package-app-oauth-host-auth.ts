@@ -531,6 +531,9 @@ async function handleLogout(input: { request: Request; env: Env; url: URL }) {
 				slug: kodyId,
 			})
 		: null
+	// Best effort: logout never waits on D1. If closing fails (logged), the
+	// session's sockets stay open until the access alarm finds the cookie
+	// expired; the cookie itself is still cleared.
 	if (kodyId && endedSession) {
 		void deferWork('package-app-logout-realtime-end-failed', () =>
 			endPackageAppRealtimeVisit({
