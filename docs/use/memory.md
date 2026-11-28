@@ -31,7 +31,7 @@ memories for the current task.
 
 When the connected organization opts in, `execute` also uses this hint to
 categorize the session. See
-[what session analytics collects](./privacy.md#what-session-analytics-collects).
+[what session analytics collects](./privacy.md#what-kody-records-for-session-analytics).
 
 Keep it brief and factual. Good fields include:
 

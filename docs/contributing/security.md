@@ -449,21 +449,27 @@ code runs with publisher authority and bills the owning org (ADR 0095). The
   is stored under its own key, so a busy socket does not rewrite every session's
   state.
 
-**Member realtime re-authorization.** A member upgrade without a package-app
-visit session
+### Member realtime re-authorization
+
+A member upgrade without a package-app visit session
 [gets `403`](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
-Member sockets close with `1008` in these cases:
+The Durable Object stores the person id, session `issuedAt` and cookie expiry,
+org handle and app slug, plus credential kind, token id, scopes, and profile
+chain for an `appOpenLink` visit. Member sockets close with `1008` in these
+cases:
 
 - `session-expired`: the access alarm
-  [closes an expired session](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts),
-  and the
+  [closes an expired session](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
+  It targets the cookie's expiry, with a minimum scheduling delay of one second.
+  The
   [app-message handlers](../../packages/worker/src/package-runtime/realtime-session.ts)
   check expiry before sending a message or passing an inbound message to the
   app.
 - `signed-out`:
   [app logout](../../packages/worker/src/app/package-app-oauth-host-auth.ts)
-  makes a best-effort request to
+  clears the cookie and makes a best-effort request to
   [close the sockets opened by that visit session](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts).
+  If closing fails, the socket can remain open until the cookie expires.
 - `access-revoked`: the
   [next recheck that detects lost access](../../packages/worker/src/package-runtime/realtime-session-member-access.workers.test.ts)
   closes the socket. The one-minute alarm uses
@@ -475,6 +481,8 @@ Member sockets close with `1008` in these cases:
 
 Team-org realtime (team-scoped sockets) is still not supported
 ([#5067](https://github.com/kody-hq/kody/issues/5067)).
+
+### Redirects and origin configuration
 
 - **No redirect cycle:** the app origin only ever redirects _to_ a package-app
   subdomain, the apex only redirects to a subdomain or the app origin, and a

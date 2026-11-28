@@ -6,6 +6,7 @@ For the hosted legal policy, see `/privacy`.
 
 - [Account data and cookies](#what-kody-stores-per-account)
 - [Connected services and Google data](#connected-accounts)
+- [Session analytics](#session-analytics-opt-in)
 - [Admin access](#what-a-deployment-admin-can-see) and
   [deployment operator access](#deployment-operator-access)
 - [Retention](#how-long-kody-keeps-data),
@@ -214,68 +215,84 @@ and unrelated account content.
 
 ## Session analytics (opt-in)
 
-Session analytics summarizes agent sessions as counts. Manage the setting in
-Organization settings, or jump to [collection](#what-session-analytics-collects)
-and [session insights](#see-or-delete-session-insights).
+Session analytics summarizes how agent sessions go: what kind of work they do,
+how they end, and where they get stuck. It
+[records calls only after your organization opts in](../../packages/worker/src/session-analytics/session-analytics.node.test.ts).
+Manage the choice in **Organization settings** with
+[`org:write` permission](../../packages/worker/src/app/handlers/org-settings.ts).
 
-Session analytics is off for every organization until an Owner or Admin turns it
-on in Organization settings. Until then Kody collects nothing for it. Everyone
-in the organization can see whether it is on. For a personal organization only
-the person can answer; an agent can pass the question along but cannot answer
-it.
+- [What Kody records](#what-kody-records-for-session-analytics)
+- [How to view and delete counts](#view-and-delete-session-counts)
+- [What staff and package publishers see](#cross-organization-session-insights)
 
-### What session analytics collects
+### What Kody records for session analytics
 
-When it is on, Kody counts, for each agent session in that organization, a
-general category of work (two to four plain words such as "connect service"),
-the agent app that connected, how many calls and errors there were, whether the
-session ended without errors, and where it got stuck (a fixed list of error
-kinds and the Kody tool involved). To pick the category, Cloudflare Workers AI
-reads the short context your agent sends for memory or, if there is none, the
-ranked search's inferred task label rather than its raw query. The
-[session analytics test](../../packages/worker/src/session-analytics/session-analytics.node.test.ts)
-checks that task text is not stored in the analytics tables. The
-[analytics recorder](../../packages/worker/src/session-analytics/record.ts)
-records call counts and a category, not raw code, queries, results, secrets,
-memory, or package names. A new category name is kept only after a format check
-and a second model, which sees only the proposed name, both find no person,
-company, product, or project name in it.
+Kody
+[observes search and execute calls](../../packages/worker/src/session-analytics/record.ts)
+and records the agent client, call and error counts, outcome, and the error kind
+and tool where a session got stuck. A repeated failure can get one fixed hint.
+The [open-session record](../../packages/worker/src/session-analytics/store.ts)
+holds session links, counters, and public package IDs rather than package names
+or source code.
 
-### See or delete session insights
+Cloudflare Workers AI picks a work category such as “connect service” from the
+memory context's task, query, entities, and constraints when provided, or from a
+task label derived from search. The
+[recorder](../../packages/worker/src/session-analytics/record.ts) sends those
+memory context fields to the category model but does not store them in session
+analytics; the derived search label can be retained in the open-session record.
+The [category labeler](../../packages/worker/src/session-analytics/labeler.ts)
+checks the format of a new category name, then asks a second model that sees
+only the proposed name to judge whether it contains user data. If neither an
+existing category nor a new name passes selection, the session can remain
+uncategorized.
 
-Open **Organization settings → Session insights** or use `sessionInsightsGet`
-and `sessionInsightsDelete`. Both MCP tools default to `scope: "mine"`; use
-`scope: "org"` for the organization-wide view and deletion. For deletion, pass
-one entry's `category_id`, `outcome`, `stuck_kind`, and `stuck_tool` as `entry`,
-or pass `all: true` for the selected scope. The insights view covers the last 30
-days.
+### View and delete session counts
 
-A session row exists only while the session is open. When it ends, or after 30
-minutes without a call, it is folded into daily counts and deleted. The daily
-counts are kept for 400 days (about 13 months). Each member sees the counts for
-their own sessions on the organization's Session insights page, and people who
-can manage the organization (Owners, Admins, and anyone they give that
-permission) see the organization's combined counts. Either can delete any entry
-or all of them; entries cannot be edited. Turning session analytics off deletes
-everything it stored for the organization right away, and deleting an account or
-organization deletes its counts too.
+The [session store](../../packages/worker/src/session-analytics/store.ts) rolls
+open sessions into daily counts after 30 minutes of inactivity or four hours
+total, on the next matching call or the hourly sweep. The sweep prunes daily
+counts past 400 days (about 13 months).
 
-### Cross-organization totals
+On the organization's **Session insights** page, view or delete one entry or all
+entries. The
+[insights handler](../../packages/worker/src/app/handlers/session-insights.ts)
+scopes your personal view and deletes to your own counts in that organization
+and requires `org:write` for the organization-wide scope.
+[Turning analytics off](../../packages/worker/src/session-analytics/consent.ts)
+deletes the organization's open sessions, session links, and daily counts in the
+same batch as the settings change. Deleting an
+[account](../../packages/worker/src/account/data-targets.ts) or
+[organization](../../packages/worker/src/orgs/data-targets.ts) also removes its
+counts.
 
-Publishers can query `packageSessionInsights({ package_id })` for a package's
-30-day totals. The
-[aggregation check](../../packages/worker/src/session-analytics/insights.ts)
-returns `available: false` below the minimum.
+In MCP, use `sessionInsightsGet` to view the last 30 days and
+`sessionInsightsDelete` to delete counts. Both tools default to `scope: "mine"`;
+use `scope: "org"` for the organization-wide scope. To delete one entry, pass
+its `category_id`, `outcome`, `stuck_kind`, and `stuck_tool` as `entry`; to
+delete all entries in that scope, pass `all: true`.
 
-Kody staff, and the publishers of public packages your sessions used, see only
-combined totals across organizations, and only once a number covers at least 10
-sessions from at least 5 organizations. Those totals never identify an
-organization, person, or session. An agent that hits the same error twice in a
-row in one session may get one extra fixed line of help on that error; no AI
-model runs for that. Admin-configured notification packages may receive
-metadata-only `session.stuck_pattern.crossed` and `session.category.merged`
-events, which carry a category name, an error kind, a tool name, and combined
-counts over the same minimum, and no organization, person, or session.
+### Cross-organization session insights
+
+[Publisher totals and stuck-kind counts](../../packages/worker/src/session-analytics/session-analytics.node.test.ts)
+appear when they cover at least 10 sessions from at least 5 organizations and
+include no organization, person, or session IDs. Publishers use
+`packageSessionInsights({ package_id })` for 30-day totals; it returns
+`available: false` below the minimum. The
+[staff dashboard](https://kody.codes/admin/insights/sessions) shows 30-day
+cross-organization insights. Its
+[loader](../../packages/worker/src/session-analytics/insights.ts) applies the
+same minimum to session totals, per-client and per-category counts, and stuck
+patterns. It also shows the opt-in organization count, category names and
+statuses, and combined label-check statistics outside that minimum.
+
+Staff can mark a stuck pattern fixed to compare 14-day windows on each side of
+the mark, or
+[retire a category](../../packages/worker/src/session-analytics/session-analytics.node.test.ts)
+to replace its name and remove its daily counts, including counts from
+categories merged into it. See
+[admin session analytics events](../guides/admin-events.md#session.stuck_pattern.crossed-session.category.merged-admins)
+for the separate notification payloads and delivery schedule.
 
 ## Platform feedback
 
