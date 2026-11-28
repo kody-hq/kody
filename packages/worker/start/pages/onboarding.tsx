@@ -137,7 +137,7 @@ export function OnboardingRoute({
 	function selectStep(step: OnboardingWizardStepNumber) {
 		animationArmed.current = true
 		void router
-			.navigate({ to: buildStepHref(step), resetScroll: false })
+			.navigate({ to: buildStepHref(step) })
 			.then(() =>
 				document
 					.getElementById(onboardingWizardStepByNumber(step).panelId)
@@ -221,7 +221,6 @@ export function OnboardingRoute({
 			animationArmed.current = true
 			void router.navigate({
 				to: onboardingWizardStepHref(2, search),
-				resetScroll: false,
 			})
 		}
 	}, [

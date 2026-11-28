@@ -233,7 +233,22 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 		await expect(
 			page.getByTestId('onboarding-connect-second-agent'),
 		).toBeVisible()
-		await expect(page.getByTestId('onboarding-agent-picker')).toBeVisible()
+		const secondAgentPicker = page.getByTestId('onboarding-agent-picker')
+		await expect(secondAgentPicker).toBeVisible()
+		const secondAgentLink = secondAgentPicker.getByRole('link', {
+			name: 'Gemini',
+			exact: true,
+		})
+		await secondAgentLink.evaluate((element) =>
+			element.scrollIntoView({ block: 'center', behavior: 'instant' }),
+		)
+		expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+		await secondAgentLink.click()
+		await expect(page).toHaveURL(/\/onboarding\/step-3\/gemini/)
+		await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+		await expect(
+			page.getByRole('heading', { name: 'Connect Gemini', exact: true }),
+		).toBeInViewport()
 
 		await stepsNav.getByRole('link', { name: '1 Connect your agent' }).click()
 		// Step 3 retains its own picker until Step 1 commits.
