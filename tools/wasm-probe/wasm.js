@@ -21,7 +21,7 @@ function u8(...values) {
 	return Uint8Array.from(values)
 }
 
-export function uleb(value) {
+function uleb(value) {
 	const out = []
 	let n = value
 	do {
