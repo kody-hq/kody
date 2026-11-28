@@ -1,6 +1,6 @@
 import {
 	isPackageAppHostProbeFirstSegment,
-	isPackageAppHostReservedFirstSegment,
+	packageAppHostSystemPrefix,
 } from '@kody-internal/shared/package-app-host-paths.ts'
 import { z } from 'zod'
 import {
@@ -116,10 +116,10 @@ export const appOpenLinkCapability = defineDomainCapability(
 				)
 			}
 
-			// Kody answers these on the app host itself, before any exchange.
+			// Kody answers these on every app host itself, before any exchange.
 			const firstSegment = url.pathname.split('/').find(Boolean) ?? ''
 			if (
-				isPackageAppHostReservedFirstSegment(firstSegment) ||
+				`/${firstSegment}` === packageAppHostSystemPrefix ||
 				isPackageAppHostProbeFirstSegment(firstSegment)
 			) {
 				throw new McpCallerError(
@@ -139,7 +139,7 @@ export const appOpenLinkCapability = defineDomainCapability(
 			})
 			await assertAppVisitConsent(target, preflight, url.toString())
 			if (preflight.status === 404) throw target.notFound()
-			if (preflight.status !== 204) {
+			if (preflight.status >= 400) {
 				// The browser would meet the same refusal after the exchange.
 				const refusal = (await preflight.text()).slice(0, 500)
 				throw new McpCallerError(

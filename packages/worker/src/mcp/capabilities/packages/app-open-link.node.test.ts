@@ -307,6 +307,36 @@ test('appOpenLink mints nothing for a refused app, a blocked profile, or a missi
 	)
 })
 
+test('appOpenLink mints nothing when the app host would refuse the browser, and links to anything it would serve', async () => {
+	// A refusal with no consent to give, such as a profile credential the
+	// profile cannot use.
+	allowVisit()
+	mockModule.servePackageAppRequest.mockResolvedValue(
+		new Response('This app needs a credential the profile cannot use.', {
+			status: 403,
+		}),
+	)
+	await expect(openLink({ app: '@acme/demo-app' })).rejects.toThrow(
+		'the app host refused the visit with 403. This app needs a credential the profile cannot use.',
+	)
+
+	// Kody's own paths on the app host are answered before any exchange.
+	mockModule.servePackageAppRequest.mockClear()
+	await expect(
+		openLink({ app: '@acme/demo-app', path: '/-/health' }),
+	).rejects.toThrow('/- is a Kody path on the app host')
+	expect(mockModule.servePackageAppRequest).not.toHaveBeenCalled()
+
+	// A static asset is served without running the app: still a page to open.
+	for (const path of ['/_assets/logo.svg', '/robots.txt']) {
+		mockModule.servePackageAppRequest.mockResolvedValue(
+			new Response('asset', { status: 200 }),
+		)
+		const result = await openLink({ app: '@acme/demo-app', path })
+		expect(new URL(result.url).pathname).toBe(path)
+	}
+})
+
 test('appOpenLink refuses runtime callers, bad input, and a deployment with no app host', async () => {
 	allowVisit()
 	await expect(
