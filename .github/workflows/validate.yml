@@ -70,7 +70,7 @@ permissions:
 # no_cache (dispatch or workflow_call): leave the remote-cache token empty
 # and set NX_SKIP_NX_CACHE so neither remote nor local Nx cache is used.
 env:
-  CI: "1"
+  CI: '1'
   VALIDATE_NO_CACHE: ${{ inputs.no_cache == true && 'true' || 'false' }}
   # Same expression as heavy-job runs-on. Push/PR leave inputs.runner empty and
   # use vars.CI_RUNNER (else ubuntu-latest); workflow_call always sets it (default
@@ -166,7 +166,8 @@ jobs:
         run: npm run audit:prod
 
   static:
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧹 Static
     timeout-minutes: 15
@@ -360,7 +361,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   node:
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧪 Node (${{ matrix.shard }}/2)
     strategy:
@@ -398,13 +400,14 @@ jobs:
       - name: 🧰 Setup
         uses: ./.github/actions/setup-validate
         with:
-          worker-env: "true"
+          worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
       - name: 🧪 Node unit tests
         run: npm run test:node
         env:
-          KODY_TEST_MODULE_MAP_OUT: ${{ github.workspace }}/.tmp/test-module-map/node-unit.json
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ github.workspace }}/.tmp/test-module-map/node-unit.json
           MIGRATION_VALIDATION_BASE: >-
             ${{ github.event.pull_request.base.sha ||
             github.event.merge_group.base_sha || github.event.before || '' }}
@@ -445,7 +448,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   workers:
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: ☁️ Workers (${{ matrix.shard }}/2)
     strategy:
@@ -488,14 +492,15 @@ jobs:
       - name: 🧰 Setup
         uses: ./.github/actions/setup-validate
         with:
-          worker-env: "true"
+          worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
       - name: ☁️ Workers unit tests
         id: attempt
         run: bash tools/ci/workers-unit-attempt.sh
         env:
-          KODY_TEST_MODULE_MAP_OUT: ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
 
       - name: 🗺️ Upload test module map
         if: success()
@@ -534,7 +539,8 @@ jobs:
     # Fresh runner for a shard whose first attempt hit the ≤780s budget on a
     # slow machine (#3763). Same suite and budget; legs whose shard did not
     # time out finish without running anything.
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: ☁️ Workers retry (${{ matrix.shard }}/2)
     strategy:
@@ -543,8 +549,9 @@ jobs:
         shard: [1, 2]
     env:
       WORKERS_TEST_SHARD: ${{ matrix.shard }}/2
-      WORKERS_ATTEMPT: "2"
-      RETRY: ${{ needs.workers.outputs[format('outcome_{0}', matrix.shard)] ==
+      WORKERS_ATTEMPT: '2'
+      RETRY:
+        ${{ needs.workers.outputs[format('outcome_{0}', matrix.shard)] ==
         'timeout' }}
     timeout-minutes: 20
     outputs:
@@ -580,7 +587,7 @@ jobs:
         if: env.RETRY == 'true'
         uses: ./.github/actions/setup-validate
         with:
-          worker-env: "true"
+          worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
       - name: ☁️ Workers unit tests
@@ -588,7 +595,8 @@ jobs:
         id: attempt
         run: bash tools/ci/workers-unit-attempt.sh
         env:
-          KODY_TEST_MODULE_MAP_OUT: ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
 
       - name: 🗺️ Upload test module map
         if: success() && env.RETRY == 'true'
@@ -625,7 +633,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   mcp:
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🔌 MCP
     timeout-minutes: 10
@@ -646,7 +655,7 @@ jobs:
       - name: 🧰 Setup
         uses: ./.github/actions/setup-validate
         with:
-          worker-env: "true"
+          worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
       - name: 🔌 MCP E2E
@@ -667,7 +676,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   e2e:
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🎭 E2E (${{ matrix.shard }}/2)
     # Each shard owns its own runner (and D1 file), so shards never share
@@ -699,8 +709,8 @@ jobs:
       - name: 🧰 Setup
         uses: ./.github/actions/setup-validate
         with:
-          playwright: "true"
-          worker-env: "true"
+          playwright: 'true'
+          worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
       # Wrangler's local workerd occasionally crashes mid-suite ("Broken
@@ -785,7 +795,8 @@ jobs:
   # e2e/ui-verify/baselines. The report and screenshots upload on every run
   # so reviewers can see the rendering (docs/contributing/ui-verify.md).
   ui_verify:
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🖼️ UI verify
     timeout-minutes: 25
@@ -803,8 +814,8 @@ jobs:
       - name: 🧰 Setup
         uses: ./.github/actions/setup-validate
         with:
-          playwright: "true"
-          worker-env: "true"
+          playwright: 'true'
+          worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
       # Same workerd / Vite webServer crash retry as the E2E shards; real
@@ -936,8 +947,8 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.draft ==
       false)
     env:
-      KODY_SKIP_SKILL_REFRESH: "1"
-      KODY_SKIP_GIT_HELPER_REFRESH: "1"
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2
@@ -965,8 +976,8 @@ jobs:
       'refs/heads/main' && (github.event_name != 'pull_request' ||
       github.event.pull_request.draft == false)
     env:
-      KODY_SKIP_SKILL_REFRESH: "1"
-      KODY_SKIP_GIT_HELPER_REFRESH: "1"
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2
@@ -993,8 +1004,8 @@ jobs:
       github.event.pull_request.draft == false) &&
       needs.host_commands_macos.result == 'abandoned'
     env:
-      KODY_SKIP_SKILL_REFRESH: "1"
-      KODY_SKIP_GIT_HELPER_REFRESH: "1"
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2
@@ -1005,7 +1016,8 @@ jobs:
         uses: ./.github/actions/host-commands
 
   cli:
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧰 CLI
     timeout-minutes: 20
@@ -1055,7 +1067,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   dev_runtime:
-    runs-on: ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
       inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
     name: 🧪 kody dev runtime
     timeout-minutes: 25
@@ -1087,11 +1100,12 @@ jobs:
       - name: 🧪 kody dev with mapped local deps
         working-directory: packages/cli
         env:
-          KODY_REQUIRE_DEV_RUNTIME: "1"
+          KODY_REQUIRE_DEV_RUNTIME: '1'
           KODY_CLI_CREDENTIAL_STORE: file
-          KODY_SKIP_SKILL_REFRESH: "1"
-          KODY_SKIP_GIT_HELPER_REFRESH: "1"
-        run: npx tsx --test --test-force-exit
+          KODY_SKIP_SKILL_REFRESH: '1'
+          KODY_SKIP_GIT_HELPER_REFRESH: '1'
+        run:
+          npx tsx --test --test-force-exit
           test/dev-local-kody-mapped-deps.test.ts
 
   cli_windows:
@@ -1114,8 +1128,8 @@ jobs:
       run:
         shell: bash
     env:
-      KODY_SKIP_SKILL_REFRESH: "1"
-      KODY_SKIP_GIT_HELPER_REFRESH: "1"
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
       # Package scripts use POSIX env prefixes and globs; run them in Git Bash.
       NPM_CONFIG_SCRIPT_SHELL: C:\Program Files\Git\bin\bash.exe
       # TAP prints each failure (and the test still running at a timeout)
@@ -1177,11 +1191,13 @@ jobs:
     # cancelled, and that child result is cancelled != success.
     if: >-
       always() && !cancelled() && (github.event_name != 'pull_request' ||
-      github.event.pull_request.draft == false ||
-      github.head_ref == 'devin/1795891120-wasm-probe')
+      github.event.pull_request.draft == false || github.head_ref ==
+      'devin/1795891120-wasm-probe')
     steps:
       - name: 🚫 do-not-merge (Wasm production probe branch)
-        if: github.head_ref == 'devin/1795891120-wasm-probe' || github.ref_name == 'devin/1795891120-wasm-probe'
+        if:
+          github.head_ref == 'devin/1795891120-wasm-probe' || github.ref_name ==
+          'devin/1795891120-wasm-probe'
         run: |
           echo "::error::The Wasm production probe branch must never merge into main."
           exit 1

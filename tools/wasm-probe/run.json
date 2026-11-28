@@ -1,5 +1,5 @@
 {
-  "mode": "permissions",
-  "keepWorker": false,
-  "billing": null
+	"mode": "permissions",
+	"keepWorker": false,
+	"billing": null
 }
