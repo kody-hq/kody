@@ -3,6 +3,7 @@ import {
 	packageAppHostSystemPrefix,
 } from '@kody-internal/shared/package-app-host-paths.ts'
 import { z } from 'zod'
+import { isPackageAppOauthHostAuthPathname } from '#universal/package-app-oauth-paths.ts'
 import {
 	createPackageAppOpenLinkToken,
 	packageAppOpenLinkQueryParam,
@@ -118,14 +119,16 @@ export const appOpenLinkCapability = defineDomainCapability(
 
 			// Kody answers these on every app host itself, before any exchange.
 			const firstSegment = url.pathname.split('/').find(Boolean) ?? ''
-			if (
+			const kodyPath =
 				`/${firstSegment}` === packageAppHostSystemPrefix ||
-				// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
-				firstSegment === '_kody' ||
 				isPackageAppHostProbeFirstSegment(firstSegment)
-			) {
+					? `/${firstSegment}`
+					: isPackageAppOauthHostAuthPathname(url.pathname)
+						? '/_kody/auth'
+						: null
+			if (kodyPath) {
 				throw new McpCallerError(
-					`appOpenLink cannot open ${url.pathname}: /${firstSegment} is a Kody path on the app host, not a page of the app.`,
+					`appOpenLink cannot open ${url.pathname}: ${kodyPath} is a Kody path on the app host, not a page of the app.`,
 				)
 			}
 

@@ -327,11 +327,11 @@ test('appOpenLink mints nothing when the app host would refuse the browser, and 
 	).rejects.toThrow('/- is a Kody path on the app host')
 	await expect(
 		openLink({ app: '@acme/demo-app', path: '/_kody/auth/me' }),
-	).rejects.toThrow('/_kody is a Kody path on the app host')
+	).rejects.toThrow('/_kody/auth is a Kody path on the app host')
 	expect(mockModule.servePackageAppRequest).not.toHaveBeenCalled()
 
 	// A static asset is served without running the app: still a page to open.
-	for (const path of ['/_assets/logo.svg', '/robots.txt']) {
+	for (const path of ['/_assets/logo.svg', '/robots.txt', '/_kody/help']) {
 		mockModule.servePackageAppRequest.mockResolvedValue(
 			new Response('asset', { status: 200 }),
 		)
