@@ -125,8 +125,15 @@ export type RuntimePackageAppServeInput = {
 	 */
 	approvedPublishedCommit?: string | null
 	packagePath: RuntimePackageAppPath
-	/** `appFetch` only: an agent visit, and its explicit smoke-test opt-in. */
-	dispatch?: { readonly agent?: true; readonly synthetic?: boolean }
+	/**
+	 * An agent visit (`appFetch`, or a session opened with `appOpenLink`), its
+	 * explicit smoke-test opt-in, and `appOpenLink`'s consent-only preflight.
+	 */
+	dispatch?: {
+		readonly agent?: true
+		readonly synthetic?: boolean
+		readonly preflight?: true
+	}
 }
 
 /**

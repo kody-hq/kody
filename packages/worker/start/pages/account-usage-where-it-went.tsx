@@ -300,9 +300,13 @@ function PackageVisitorsTable({
 				rows={visible.map((row, index) => ({
 					id: `${row.displayName}-${row.lastDay}-${index}`,
 					cells: {
-						visitor: row.billedToVisitorOrg
-							? `${row.displayName} (their org pays)`
-							: row.displayName,
+						visitor: [
+							row.displayName,
+							row.agentProfiles?.length
+								? ` (via agent ${row.agentProfiles.length === 1 ? 'profile' : 'profiles'} ${row.agentProfiles.join(', ')})`
+								: '',
+							row.billedToVisitorOrg ? ' (their org pays)' : '',
+						].join(''),
 						credits: formatOnCreditsMicroUsd(row.creditsMicroUsd),
 						meters: row.meters
 							.map(

@@ -67,6 +67,11 @@ import {
 	createPackageAppHandoffToken,
 	packageAppHandoffQueryParam,
 } from '#app/package-app-handoff.ts'
+import {
+	consumePackageAppOpenLinkToken,
+	packageAppOpenLinkQueryParam,
+	packageAppOpenLinkSessionTtlMs,
+} from '#worker/app-visit/open-link.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
 import {
 	needsPackageAppRunConsentForPerson,
@@ -87,13 +92,15 @@ import {
 } from '#app/package-app-owner.ts'
 import { authorizeAppVisit } from '#worker/app-visit/authorize.ts'
 import {
-	sessionRequestFor,
+	packageAppSessionCredentialIsLive,
+	visitSessionRequestFor,
 	viewerCanExecutePackageApp,
 } from '#app/package-viewer-access.ts'
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
 } from '#app/package-app-session.ts'
+import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 import {
 	type PackageAppPath,
 	parsePackageAppCustomHostnamePath,
@@ -104,6 +111,7 @@ import {
 import type { PackageAppServeOwner } from '#worker/package-runtime/package-app-serve.ts'
 import { resolveInternetVisibleApprovedCommit } from '#app/package-app-internet-visible.ts'
 import {
+	destroyPackageAppTicketCookie,
 	mintPackageAppTicketCookie,
 	readPackageAppTicket,
 } from '#app/package-app-ticket.ts'
@@ -194,9 +202,11 @@ import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.
  * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 
+/** Drops a handoff or open-link token, so neither is replayed or reaches app code. */
 function withoutHandoffToken(url: URL) {
 	const cleaned = new URL(url)
 	cleaned.searchParams.delete(packageAppHandoffQueryParam)
+	cleaned.searchParams.delete(packageAppOpenLinkQueryParam)
 	return cleaned
 }
 
@@ -427,6 +437,58 @@ function createPackageAppSessionRequiredResponse(input: {
 	)
 }
 
+/**
+ * Terminal response for an open link that cannot start a visit: expired,
+ * already used, minted for another app or host, or no longer authorized.
+ */
+function createOpenLinkRejectedResponse(input: { request: Request }) {
+	const headers = {
+		'Cache-Control': 'no-store',
+		'X-Kody-Open-Link': 'rejected',
+	}
+	const message =
+		'This open link cannot be used. It may have expired, already been used, or been made for another app.'
+	const nextStep =
+		'Ask your agent to call appOpenLink (or run kody app open-link) again and open the new link.'
+	if (wantsJson(input.request)) {
+		return Response.json(
+			{ error: 'app_open_link_rejected', message, next_step: nextStep },
+			{ status: 403, headers },
+		)
+	}
+	return createHtmlResponse(
+		html`<!doctype html>
+			<html lang="en">
+				<head>
+					<meta charset="utf-8" />
+					<meta name="viewport" content="width=device-width, initial-scale=1" />
+					<title>This open link cannot be used</title>
+					<style>
+						:root {
+							color-scheme: light dark;
+							font-family: ui-sans-serif, system-ui, sans-serif;
+							line-height: 1.5;
+						}
+						main {
+							box-sizing: border-box;
+							max-width: 34rem;
+							margin: 0 auto;
+							padding: min(12vh, 6rem) 1.25rem;
+						}
+					</style>
+				</head>
+				<body>
+					<main>
+						<h1>This open link cannot be used</h1>
+						<p>${message}</p>
+						<p>${nextStep}</p>
+					</main>
+				</body>
+			</html>`,
+		{ status: 403, headers },
+	)
+}
+
 function redirectToPackagePage(input: {
 	env: Env
 	request: Request
@@ -455,6 +517,8 @@ export type AuthorizedPackageAppServe =
 			epoch: number
 			visitorEmail: string
 			sessionIssuedAt: number
+			/** True for a visit session an agent opened with `appOpenLink`. */
+			agent: boolean
 	  }
 	| { kind: 'session-required' }
 	| {
@@ -466,8 +530,10 @@ export type AuthorizedPackageAppServe =
 
 /**
  * Confirm the session person is still live, then authorize the visit with
- * {@link authorizeAppVisit}, the check `appFetch` also uses. A browser session
- * carries no profile and no token scopes. The visitor keeps their live org
+ * {@link authorizeAppVisit}, the check `appFetch` also uses. A person's own
+ * browser session carries no profile and no token scopes; a session an agent
+ * opened with `appOpenLink` carries its credential's, so it is authorized
+ * exactly like that token's `appFetch`. The visitor keeps their live org
  * role; the owner is the org, not the visitor's personal account.
  */
 export async function authorizePackageAppVisitorForOrg(input: {
@@ -477,6 +543,8 @@ export async function authorizePackageAppVisitorForOrg(input: {
 	handle: string
 	/** Package slug so app:execute is checked on that app, not any grant. */
 	kodyId?: string
+	/** The agent credential the visit session carries, when it has one. */
+	credential?: AppVisitSessionCredential | null
 }): Promise<AuthorizedPackageAppServe> {
 	const person = await resolvePackageAppOwnerByStableUserId({
 		env: input.env,
@@ -484,6 +552,17 @@ export async function authorizePackageAppVisitorForOrg(input: {
 		issuedAt: input.issuedAt,
 	})
 	if (!person) return { kind: 'session-required' }
+	const credential = input.credential ?? null
+	if (
+		credential &&
+		!(await packageAppSessionCredentialIsLive({
+			env: input.env,
+			stableUserId: input.stableUserId,
+			credential,
+		}))
+	) {
+		return { kind: 'session-required' }
+	}
 
 	const viewer = {
 		userId: personIdFromStored(input.stableUserId),
@@ -491,7 +570,7 @@ export async function authorizePackageAppVisitorForOrg(input: {
 	}
 	const visit = await authorizeAppVisit({
 		env: input.env,
-		callerRequest: sessionRequestFor(viewer),
+		callerRequest: visitSessionRequestFor(viewer, credential),
 		ownerHandle: input.handle,
 		appSlug: input.kodyId,
 	})
@@ -520,6 +599,7 @@ export async function authorizePackageAppVisitorForOrg(input: {
 		epoch: visit.epoch,
 		visitorEmail: person.email,
 		sessionIssuedAt: input.issuedAt,
+		agent: credential !== null,
 	}
 }
 
@@ -1229,6 +1309,98 @@ export async function resolvePackageAppIdentityOnlyVisitor(input: {
 }
 
 /**
+ * Exchange an `appOpenLink` token for this app's host-only visit session
+ * cookie, then redirect to the same address without the token. The link's
+ * credential is authorized again here, so a link whose access was removed
+ * since it was minted sets no cookie. A refused link is terminal even for
+ * an internet-visible app: serving it anonymously would look like a
+ * signed-in visit to the agent that opened it.
+ */
+async function exchangePackageAppOpenLink(input: {
+	request: Request
+	env: Env
+	url: URL
+	handle: string
+	packagePath: PackageAppPath
+	token: string
+}) {
+	const { request, env, url, handle, packagePath } = input
+	const now = Date.now()
+	const claims =
+		request.method === 'GET' && input.token
+			? await consumePackageAppOpenLinkToken({
+					env,
+					token: input.token,
+					expected: {
+						username: packagePath.username,
+						kodyId: packagePath.kodyId,
+						host: url.host,
+					},
+					now,
+				})
+			: null
+	const authorized = claims
+		? await authorizePackageAppVisitorForOrg({
+				env,
+				stableUserId: claims.stableUserId,
+				issuedAt: now,
+				handle,
+				kodyId: packagePath.kodyId,
+				credential: claims.credential,
+			})
+		: null
+	if (!claims || authorized?.kind !== 'ok') {
+		if (authorized?.kind === 'forbidden') {
+			logPackageAppAccessEvent({
+				env,
+				request,
+				outcome: 'denied',
+				visitorEmail: authorized.visitorEmail,
+				orgHandle: handle,
+				appSlug: packagePath.kodyId,
+				reason: 'open link: no app:execute',
+			})
+		}
+		return createOpenLinkRejectedResponse({ request })
+	}
+	logPackageAppAccessEvent({
+		env,
+		request,
+		outcome: 'open-link-exchanged',
+		visitorEmail: authorized.visitorEmail,
+		orgHandle: handle,
+		appSlug: packagePath.kodyId,
+		reason: `${claims.credential.kind} credential${claims.credential.profileId ? `, profile ${claims.credential.profileId}` : ''}`,
+	})
+	return redirectResponse({
+		location: withoutHandoffToken(url).toString(),
+		status: 302,
+		setCookie: [
+			...(await createPackageAppSessionCookie({
+				env,
+				session: {
+					stableUserId: claims.stableUserId,
+					username: claims.username,
+					credential: claims.credential,
+					host: claims.host,
+				},
+				slug: packagePath.kodyId,
+				secure: isSecureRequest(request),
+				expiresAt: now + packageAppOpenLinkSessionTtlMs,
+				now,
+			})),
+			// A ticket left by a person's session on this host must not
+			// outlive the switch to the agent's.
+			await destroyPackageAppTicketCookie({
+				env,
+				slug: packagePath.kodyId,
+				secure: isSecureRequest(request),
+			}),
+		],
+	})
+}
+
+/**
  * Shared tail of the per-user subdomain and app-level custom hostname:
  * exchange a handoff token for the host-only session cookie, authorize the
  * session visitor, and serve. A visitor without a usable session (or one who
@@ -1244,6 +1416,19 @@ async function servePackageAppForSession(input: {
 }) {
 	const { request, env, url, appBaseUrl, handle, packagePath } = input
 	const serverTiming = packageAppServerTiming()
+	const openLinkToken = url.searchParams.get(packageAppOpenLinkQueryParam)
+	if (openLinkToken !== null) {
+		return await pushServerTiming(serverTiming, 'appOpenLink', () =>
+			exchangePackageAppOpenLink({
+				request,
+				env,
+				url,
+				handle,
+				packagePath,
+				token: openLinkToken,
+			}),
+		)
+	}
 	const handoffToken = url.searchParams.get(packageAppHandoffQueryParam)
 	if (handoffToken) {
 		const now = Date.now()
@@ -1325,7 +1510,10 @@ async function servePackageAppForSession(input: {
 		}),
 	)
 	const secure = isSecureRequest(request)
-	if (parsedSession) {
+	// An agent's session is checked live on every request: a ticket carries
+	// no credential, and profile grants and token scopes can change any time.
+	const sessionCredential = parsedSession?.session.credential ?? null
+	if (parsedSession && !sessionCredential) {
 		const ticket = await pushServerTiming(serverTiming, 'appTicket', () =>
 			readPackageAppTicket({
 				request,
@@ -1366,9 +1554,25 @@ async function servePackageAppForSession(input: {
 					issuedAt: parsedSession.issuedAt,
 					handle,
 					kodyId: packagePath.kodyId,
+					credential: sessionCredential,
 				}),
 			)
 		: { kind: 'session-required' }
+
+	if (sessionCredential && authorized.kind === 'forbidden') {
+		// A refused agent credential is not the person: it must not fall back
+		// to their sign-in grant or consent on an internet-visible app.
+		logPackageAppAccessEvent({
+			env,
+			request,
+			outcome: 'denied',
+			visitorEmail: authorized.visitorEmail,
+			orgHandle: handle,
+			appSlug: packagePath.kodyId,
+			reason: 'open-link visit: no app:execute',
+		})
+		return createOpenLinkRejectedResponse({ request })
+	}
 
 	if (authorized.kind === 'ok') {
 		const response = await servePackageAppRequest({
@@ -1378,9 +1582,16 @@ async function servePackageAppForSession(input: {
 			visitor: authorized.visitor,
 			packagePath,
 			serverTiming,
+			// Agents never give consent: a missing one is reported, not offered.
+			...(authorized.agent ? { dispatch: { agent: true } } : {}),
 		})
 		if (response.headers.has(packageAppRunConsentRequiredHeader))
 			return response
+		if (authorized.agent) {
+			return deferPackageAppResponseRewrite(response, {
+				cacheAudience: 'signed-in',
+			})
+		}
 		const ticketCookie = await mintPackageAppTicketCookie({
 			env,
 			host: url.host,

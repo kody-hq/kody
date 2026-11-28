@@ -143,6 +143,7 @@ async function handleTaggedPackageAppRequest(
 			issuedAt: packageAppSession.issuedAt,
 			handle: packagePath.username,
 			kodyId: packagePath.kodyId,
+			credential: packageAppSession.session.credential,
 		})
 		if (authorized.kind === 'ok') {
 			const response = await servePackageAppRequest({
@@ -151,6 +152,7 @@ async function handleTaggedPackageAppRequest(
 				packagePath,
 				owner: authorized.owner,
 				visitor: authorized.visitor,
+				...(authorized.agent ? { dispatch: { agent: true } } : {}),
 			})
 			return applyPackageAppCacheHeaders(response, 'signed-in')
 		}

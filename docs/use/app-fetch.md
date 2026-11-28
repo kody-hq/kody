@@ -107,7 +107,9 @@ not appear as `app_fetch` run errors.
 The app sees the person: `metaGetCurrentUser()` and `X-Kody-Visitor` carry the
 same `user_id` as a browser visit. When a profile token makes the call they also
 carry `profile: { id, name }`; `profile` is `null` otherwise. The run record
-carries the profile chain.
+carries the profile chain, and the publisher's Visitors list names the profile
+under the person. A browser opened with an [open link](#open-link) is identified
+the same way.
 
 A visitor-need credential (`credential.visitor()`, `visitorNeed`) resolves with
 the caller's own narrowing. A profile reaches it only when its chain was granted
@@ -142,6 +144,38 @@ approval. If the person has consented but the acting profile lacks Use on the
 credential, the result has `status: 403` with `app_profile_credential_required`
 in `body` instead. The HTTP call itself still succeeds, so check the result's
 `status`.
+
+## Open link
+
+`appOpenLink` returns a link that opens the app in the caller's own browser. Use
+it when an agent needs the rendered pages; use `appFetch` for programmatic
+calls.
+
+- **Who may call it:** the same callers and the same `app:execute` check as
+  `appFetch`, through interactive MCP, `execute`, the Open API
+  (`POST /v1/apps/open-link`), and the CLI (`kody app open-link`).
+- **Input:** `app` (an `@org/app` address or hosted URL) or `package_id`, and an
+  optional `path`.
+- **Result:** `url`, `app`, `expires_at`, `expires_in_seconds` (300), and
+  `session_seconds` (3600).
+- **The link** is a
+  [signed token on the app's own host](../../packages/worker/src/app-visit/open-link.ts),
+  valid for 5 minutes and for one use. It is bound to that app and that host, so
+  it is refused anywhere else.
+- **Opening it** sets the app's host-only visit session cookie for 60 minutes
+  and redirects to the same address without the token. The cookie carries the
+  person plus the calling credential's scopes and profile chain. It is scoped to
+  that one app and is never a Kody account session.
+- **Every request** under that cookie runs
+  [the visit check `appFetch` runs](../../packages/worker/src/app-visit/authorize.ts)
+  for that credential. A revoked or expired API token, an inactive profile, or a
+  removed grant ends the visit. A visit opened from an MCP or CLI sign-in ends
+  when the cookie does.
+- **Consent** works as in [Consent](#consent): the call returns
+  `app_consent_required` and mints no link. In the browser, a consent that
+  becomes missing later is a 403 that names the `consent_url`, not a redirect.
+- **A refused link** (expired, used, wrong app or host, or access removed)
+  returns a 403 page and sets no cookie, including on a public app.
 
 ## Synthetic smoke tests
 

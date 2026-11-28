@@ -944,7 +944,9 @@ shape.
 For ordinary agent visits, including visits to apps shared from another org, see
 [Using apps as an agent](./agent-apps.md). From a terminal, use
 `kody app fetch @org/app / --synthetic` for a smoke test. Pass a hosted URL as
-the app address if you do not know its scoped name.
+the app address if you do not know its scoped name. An agent that needs the app
+in its own browser gets a one-time sign-in link from `appOpenLink` or
+`kody app open-link @org/app`.
 
 Typical first probe:
 

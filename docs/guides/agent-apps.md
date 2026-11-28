@@ -2,18 +2,20 @@
 id: agent_apps
 title: Using apps as an agent
 summary:
-  How an agent finds and calls the package apps its person can run. List them
-  with appList, call one with appFetch or kody app fetch, and act as the person
-  with an optional profile label. Covers consent links, profiles, and using
-  hosted URLs as app addresses.
+  How an agent finds, calls, and opens the package apps its person can run. List
+  them with appList, call one with appFetch or kody app fetch, and open one in
+  the agent's own browser with appOpenLink or kody app open-link. Covers acting
+  as the person with an optional profile label, consent links, profiles, and
+  using hosted URLs as app addresses.
 category: platform
 audience: agents
 ---
 
 # Using apps as an agent
 
-Use `appList` to find a hosted package app and `appFetch` or `kody app fetch` to
-call it as your person. The
+Use `appList` to find a hosted package app, `appFetch` or `kody app fetch` to
+call it as your person, and `appOpenLink` or `kody app open-link` to
+[open it in your own browser](#open-an-app-in-your-browser). The
 [shared visit permission check](../../packages/worker/src/app-visit/authorize.node.test.ts)
 requires `app:execute` on the app in its owning org and accounts for the
 credential you call with.
@@ -63,6 +65,42 @@ HTTP routes from an interactive session; the
 [`appFetch` caller check](../../packages/worker/src/mcp/capabilities/packages/app-fetch.node.test.ts)
 rejects package app and background job callers.
 
+## Open an app in your browser
+
+When you need the app's pages in a real browser (to look at the UI, click
+through a flow, or take a screenshot), call `appOpenLink` and open the `url` it
+returns in your browser. Nobody has to sign in to Kody in that browser first.
+
+```json
+{ "app": "@acme/board", "path": "/cards" }
+```
+
+From a terminal, `kody app open-link @acme/board /cards` prints only the link.
+
+- The link works **once** and expires **5 minutes** after it is made. Treat it
+  like a password until then: do not paste it into chat, logs, or a pull
+  request.
+- Opening it signs that browser in to **that one app** for **60 minutes**. Later
+  clicks and page loads in the app use the browser's cookie, so you need one
+  link per browser session, not one per page. After 60 minutes, call
+  `appOpenLink` again.
+- The browser gets a
+  [cookie for that app on that host only](../../packages/worker/src/app/package-app-session.ts).
+  It is not a Kody sign-in: it opens no other app and nothing on kody.codes.
+- The visit has
+  [the same access as `appFetch` from the same credential](../../packages/worker/src/app/package-app-open-link.node.test.ts):
+  your person, your token's scopes, and your profile. Access is checked again on
+  every request, so removing the profile's grant or revoking the API token ends
+  the visit.
+- If the person still owes a consent, `appOpenLink` reports
+  `app_consent_required` with a `consent_url` instead of a link, exactly like
+  `appFetch`. See
+  [When the app needs your person once](#when-the-app-needs-your-person-once).
+
+Keep using `appFetch` for programmatic calls: it returns the status, headers,
+and body directly and needs no browser. Never send your API token to the app's
+host to sign in; [it is stripped](#pass-hosted-urls-as-app-addresses).
+
 ## Who the app sees
 
 The app sees your person: the same `user_id` it sees when they visit in a
@@ -71,9 +109,11 @@ browser. Data the app keeps per person is the same data either way.
 When you act through a [profile](/docs/profiles), the app also sees the profile
 as a label: `metaGetCurrentUser()` and the `X-Kody-Visitor` header carry
 `profile: { id, name }`, and `profile` is `null` for a visit with no profile.
-The visit counts for your person in the publisher's Visitors list, and its run
-record carries the profile chain. The app's own permissions do not change: it
-still runs as its publisher's choice of person. A
+This is the same for `appFetch` and for a browser opened with `appOpenLink`. The
+visit counts for your person in the publisher's Visitors list,
+[which names the profile that visited for them](../../packages/worker/src/usage/credit-attribution.node.test.ts),
+and its run record carries the profile chain. The app's own permissions do not
+change: it still runs as its publisher's choice of person. A
 [visitor-need lookup](../../packages/worker/src/package-runtime/package-app-authority.ts)
 requires the visitor's live grant for that app and need.
 
@@ -109,7 +149,9 @@ even when the person has allowed the need.
 ## When the app needs your person once
 
 When
-[`appFetch` reports `app_consent_required`](../../packages/worker/src/mcp/capabilities/packages/app-fetch.node.test.ts),
+[`appFetch` reports `app_consent_required`](../../packages/worker/src/mcp/capabilities/packages/app-fetch.node.test.ts)
+(or
+[`appOpenLink` does](../../packages/worker/src/mcp/capabilities/packages/app-open-link.node.test.ts)),
 give its `consent_url` to your person. An outside visitor may need to confirm
 **Run as me**, or the app may need approval for a required visitor credential.
 The call reports the missing approval instead of recording it. Retry after the
@@ -120,14 +162,16 @@ person confirms in the browser. See the
 
 `import ... from 'kody:@org/package/export'` reuses code
 [within the caller's org](../../packages/worker/src/package-runtime/package-import-resolution.node.test.ts);
-it is not an app visit. To use an app, call `appFetch`.
+it is not an app visit. To use an app, call `appFetch` or open it with
+`appOpenLink`.
 
 ## Pass hosted URLs as app addresses
 
 An app's hosted URL (`https://<app>--<org>.kody.run/` or a custom domain) is for
-people in a browser, where Kody signs them in. Pass that URL as an address to
-`appFetch` or `kody app fetch` instead of sending your API token to the app
-host. Before handing the request to app code,
+a browser. A person's browser is signed in by Kody; yours is signed in by an
+[`appOpenLink` link](#open-an-app-in-your-browser). Pass that URL as an address
+to `appFetch`, `appOpenLink`, or their CLI commands instead of sending your API
+token to the app host. Before handing the request to app code,
 [Kody strips inbound `Authorization`, `Proxy-Authorization`, and `X-Kody-*` headers and forwards only cookies scoped to that app](../../packages/worker/src/package-runtime/package-app-serve.ts).
 
 ## Related

@@ -1008,6 +1008,8 @@ export function storageRunnerRpc(input: {
 	userId: OwnerId
 	storageId: string
 	packageAppVisitorUserId?: string
+	/** The agent profile behind the visit, when one acted for the visitor. */
+	packageAppVisitorProfileId?: string
 	/**
 	 * Org billed for this bucket's metered work when it is not the bucket
 	 * owner (a visit from another org to an internal app, ADR 0095). The
@@ -1134,6 +1136,9 @@ export function storageRunnerRpc(input: {
 			outcome,
 			...(input.packageAppVisitorUserId !== undefined
 				? { packageAppVisitorUserId: input.packageAppVisitorUserId }
+				: {}),
+			...(input.packageAppVisitorProfileId
+				? { packageAppVisitorProfileId: input.packageAppVisitorProfileId }
 				: {}),
 			...(packageAppOwnerOrgId ? { packageAppOwnerOrgId } : {}),
 			...(attributedPackageId ? { packageId: attributedPackageId } : {}),

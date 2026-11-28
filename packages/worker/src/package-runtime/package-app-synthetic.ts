@@ -6,12 +6,15 @@ export const appFetchCapabilityName = 'appFetch'
 /**
  * Platform-only options for trusted in-process app dispatch.
  * `agent` requests an actionable response for missing visitor-need consent.
- * `synthetic` opts in to the `Kody-Synthetic` header. Run-as-me refusals use a
- * 403 for either kind of dispatch; inbound headers set neither option.
+ * `synthetic` opts in to the `Kody-Synthetic` header. `preflight` stops after
+ * the consent checks with a 204, before any app code runs (`appOpenLink`).
+ * Run-as-me refusals use a 403 for any dispatch; inbound headers set none
+ * of these options.
  */
 export type PackageAppTrustedDispatch = {
 	readonly agent?: true
 	readonly synthetic?: boolean
+	readonly preflight?: true
 }
 
 /** Marks a visitor-need consent refusal; the response body names the need. */

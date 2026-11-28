@@ -1,39 +1,17 @@
-import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import { resolveHostedPackageAppLocation } from '@kody-internal/shared/public-urls.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { z } from 'zod'
-import {
-	resolveAppAddress,
-	type AppAddress,
-} from '#worker/app-visit/address.ts'
-import { AppConsentRequiredError } from '#worker/app-visit/consent-required.ts'
-import { authorizeAppVisit } from '#worker/app-visit/authorize.ts'
-import {
-	packageAppRunConsentRequiredHeader,
-	packageAppRunConsentUrl,
-} from '#worker/app-visit/run-consent-url.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
-	requireMcpRequest,
-	requireMcpUser,
-} from '#mcp/capabilities/meta/require-user.ts'
-import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-interactive-caller.ts'
-import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
-import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
-import { getOrgById } from '#worker/orgs/repo.ts'
-import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
-import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
-import {
-	servePackageAppRequest,
-	type PackageAppPath,
-} from '#worker/package-runtime/package-app-serve.ts'
+	assertAppVisitConsent,
+	resolveAppVisitTarget,
+} from '#mcp/capabilities/packages/app-visit-target.ts'
+import { servePackageAppRequest } from '#worker/package-runtime/package-app-serve.ts'
 import {
 	appFetchCapabilityName,
 	packageAppSyntheticHeaderName,
-	packageAppVisitorConsentRequiredHeader,
 } from '#worker/package-runtime/package-app-synthetic.ts'
 
 /** Body cap for a request, and for a response unless the caller raises it. */
@@ -58,39 +36,6 @@ function responseBodyCap(
 		requested ?? appFetchDefaultMaxBodyBytes,
 		appFetchHardMaxBodyBytes,
 	)
-}
-
-function appNotFound(label: string) {
-	return new McpCallerError(
-		`No app ${label} that you can run. Check the address with appList, which lists every app you can run, or ask the app's owner to share it with you (Use on the app).`,
-	)
-}
-
-async function resolveRequestedApp(
-	ctx: { env: Env; callerContext: { baseUrl: string } },
-	args: { app?: string; package_id?: string },
-): Promise<AppAddress & { label: string }> {
-	if (args.app !== undefined) {
-		const address = await resolveAppAddress({
-			env: ctx.env,
-			address: args.app,
-			appBaseUrl: ctx.callerContext.baseUrl,
-		})
-		return { ...address, label: `at "${args.app}"` }
-	}
-	const label = `with package_id "${args.package_id}"`
-	const saved = await getSavedPackageByIdInAnyOrg(
-		ctx.env.APP_DB,
-		args.package_id ?? '',
-	)
-	const org = saved ? await getOrgById(ctx.env.APP_DB, saved.userId) : null
-	if (!saved || !org) throw appNotFound(label)
-	return {
-		ownerHandle: org.slug,
-		appSlug: getPackageNameLeaf(saved.name),
-		path: null,
-		label,
-	}
 }
 
 const blockedRequestHeaderNames = new Set([
@@ -125,28 +70,6 @@ const allowedMethods = new Set([
 	'DELETE',
 	'OPTIONS',
 ])
-
-function normalizeAppFetchPath(path: string | undefined) {
-	const trimmed = path?.trim() ?? ''
-	if (!trimmed || trimmed === '/') return '/'
-	const pathOnly = trimmed.split(/[?#]/, 1)[0] ?? ''
-	for (const segment of pathOnly.split(/[\\/]/)) {
-		let decoded: string
-		try {
-			decoded = decodeURIComponent(segment)
-		} catch {
-			throw new McpCallerError(
-				'appFetch path contains invalid percent encoding.',
-			)
-		}
-		if (decoded === '..') {
-			throw new McpCallerError(
-				'appFetch path must not contain parent traversal segments.',
-			)
-		}
-	}
-	return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
-}
 
 function collectSafeRequestHeaders(
 	headers: Record<string, string> | undefined,
@@ -393,9 +316,6 @@ export const appFetchCapability = defineDomainCapability(
 			truncated: z.boolean(),
 		}),
 		async handler(args, ctx) {
-			const user = requireMcpUser(ctx.callerContext)
-			requireInteractiveMcpCaller(ctx.callerContext, runtimeCallerErrorMessage)
-
 			const method = (args.method?.trim().toUpperCase() || 'GET') as string
 			if (!allowedMethods.has(method)) {
 				throw new McpCallerError(
@@ -422,82 +342,12 @@ export const appFetchCapability = defineDomainCapability(
 			}
 			assertRequestBodyWithinLimit(args.body)
 
-			const callerRequest = requireMcpRequest(ctx.callerContext)
-			if (!callerRequest.actor) {
-				throw new McpCallerError(
-					`${appFetchCapabilityName} needs a signed-in caller, who the app acts as.`,
-				)
-			}
-			const requested = await resolveRequestedApp(ctx, args)
-			// Validate the path before the access check so traversal and encoding
-			// errors fail closed without warming any cache.
-			const restPath = normalizeAppFetchPath(args.path ?? requested.path ?? '/')
-			const restPathOnly = restPath.split(/[?#]/, 1)[0] || '/'
-
-			// The one visit check, in the org that owns the app, with this
-			// request's profile chain and token scopes (ADR 0062).
-			const visit = await authorizeAppVisit({
-				env: ctx.env,
-				callerRequest,
-				ownerHandle: requested.ownerHandle,
-				appSlug: requested.appSlug,
-			})
-			if (visit.kind === 'not-found') throw appNotFound(requested.label)
-			if (visit.kind === 'forbidden') {
-				// The person can run it but this credential cannot: say which
-				// layer to fix. Anything else reads the same as a missing app.
-				const code = visit.error?.code
-				if (
-					visit.error &&
-					(code === 'profile_grant' ||
-						code === 'profile_inactive' ||
-						code === 'credential_scope')
-				) {
-					throw visit.error
-				}
-				throw appNotFound(requested.label)
-			}
-			const app = visit.app
-			if (!app?.hasApp) throw appNotFound(requested.label)
-			const appSlug = visit.retiredSlug
-				? getPackageNameLeaf(app.name)
-				: requested.appSlug
-			const { owner } = visit
-
-			// A custom domain the caller named stays the app's host, so links
-			// the app builds from the request point back at that domain.
-			const customMount = visit.retiredSlug ? null : requested.customMount
-			const packageAppOrigin = getPackageAppBaseUrl({ env: ctx.env })
-			const hosted = resolveHostedPackageAppLocation({
-				packageAppBaseUrl: packageAppOrigin,
-				appBaseUrl: ctx.callerContext.baseUrl,
-				username: owner.username,
-				kodyId: appSlug,
-				restPath: restPath === '/' ? null : restPath,
-			})
-			const packagePath: PackageAppPath = {
-				username: owner.username,
-				kodyId: appSlug,
-				restPath: restPathOnly,
-				mount: customMount
-					? customMount.mount
-					: !packageAppOrigin
-						? 'username-path'
-						: hosted.appBasePath === ''
-							? 'custom-hostname'
-							: 'user-subdomain',
-			}
-			const appLabel = `@${owner.username}/${appSlug}`
-			const runConsentRequired = () =>
-				new AppConsentRequiredError({
-					consent: 'run_as_me',
-					app: appLabel,
-					consentUrl: packageAppRunConsentUrl({
-						baseUrl: ctx.callerContext.baseUrl,
-						packagePath: { ...packagePath, restPath: '/' },
-					}).toString(),
-				})
-			if (visit.needsRunConsent) throw runConsentRequired()
+			const target = await resolveAppVisitTarget(
+				ctx,
+				args,
+				appFetchCapabilityName,
+				runtimeCallerErrorMessage,
+			)
 
 			const requestHeaders = collectSafeRequestHeaders(args.headers)
 			if (!requestHeaders.has('accept')) {
@@ -510,67 +360,19 @@ export const appFetchCapability = defineDomainCapability(
 			if (args.body != null && method !== 'GET' && method !== 'HEAD') {
 				requestInit.body = args.body
 			}
-			const request = new Request(
-				customMount
-					? `${customMount.baseUrl}${restPath === '/' && customMount.mount !== 'custom-hostname' ? '' : restPath}`
-					: hosted.hostedUrl,
-				requestInit,
-			)
+			const request = new Request(target.url, requestInit)
 
 			const response = await servePackageAppRequest({
 				request,
 				env: ctx.env,
-				owner: {
-					userId: owner.userId,
-					username: owner.username,
-					// Team org entitlements resolve by org id alone.
-					email:
-						owner.userId === personalOrgIdForPerson(user) ? user.email : '',
-					displayName: owner.displayName,
-				},
-				visitor: {
-					...visit.visitor,
-					username: visit.visitor.username || user.username || '',
-				},
-				packagePath,
+				owner: target.owner,
+				visitor: target.visitor,
+				packagePath: target.packagePath,
 				dispatch: { agent: true, synthetic: args.synthetic === true },
 			})
-			if (
-				response.headers.get(packageAppRunConsentRequiredHeader) === 'required'
-			) {
-				throw runConsentRequired()
-			}
-			if (
-				response.headers.get(packageAppVisitorConsentRequiredHeader) ===
-				'required'
-			) {
-				const refusal = (await response.json().catch(() => null)) as {
-					need?: unknown
-					consent_url?: unknown
-				} | null
-				// App code can set this header too, so only a link to Kody's own
-				// sign-in page for this app's host is passed on to the person.
-				const consentUrl =
-					typeof refusal?.consent_url === 'string'
-						? URL.parse(refusal.consent_url)
-						: null
-				const expected = new URL(packageAppOauthPaths.login, request.url)
-				if (
-					!consentUrl ||
-					consentUrl.origin !== expected.origin ||
-					consentUrl.pathname !== expected.pathname
-				) {
-					throw new Error('App consent refusal carried no valid consent link.')
-				}
-				throw new AppConsentRequiredError({
-					consent: 'visitor_need',
-					app: appLabel,
-					consentUrl: consentUrl.toString(),
-					need: typeof refusal?.need === 'string' ? refusal?.need : null,
-				})
-			}
+			await assertAppVisitConsent(target, response, request.url)
 
-			const maxBytes = responseBodyCap(callerRequest, args.max_bytes)
+			const maxBytes = responseBodyCap(target.callerRequest, args.max_bytes)
 			const { bytes, truncated } = await readResponseBodyWithTruncation(
 				response,
 				maxBytes,

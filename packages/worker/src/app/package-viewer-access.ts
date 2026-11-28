@@ -1,15 +1,21 @@
 import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
 	type EffectivePermissions,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
+import {
+	getApiTokenRecord,
+	getApiTokenStatus,
+} from '#worker/api-tokens/service.ts'
 import { checkAppVisitAccess } from '#worker/app-visit/authorize.ts'
 import { loadOrgBindingForOrg, type OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
+import type { AppVisitSessionCredential } from '#worker/app-visit/session-credential.ts'
 
 /**
  * Whether a signed-in person may open the owner view of a saved package on
@@ -177,7 +183,8 @@ export async function viewerIsSavedPackageOrgOwner(input: {
 
 /**
  * Whether a signed-in person may run a hosted package app owned by this org,
- * asked as the person themselves (a session: no profile, no token scopes).
+ * asked as the person themselves (a session: no profile, no token scopes)
+ * unless `credential` names the agent credential of a visit session.
  * Delegates to {@link checkAppVisitAccess} for the owning org's
  * `app:execute` decision, scoped to the app when `appId` is provided.
  */
@@ -187,11 +194,12 @@ export async function viewerCanExecutePackageApp(input: {
 	ownerId: string
 	/** Saved package id when the concrete app is known. */
 	appId?: string | null
+	credential?: AppVisitSessionCredential | null
 }): Promise<boolean> {
 	if (!input.viewer) return false
 	const access = await checkAppVisitAccess({
 		env: input.env,
-		callerRequest: sessionRequestFor(input.viewer),
+		callerRequest: visitSessionRequestFor(input.viewer, input.credential),
 		ownerId: input.ownerId,
 		appId: input.appId,
 	})
@@ -203,4 +211,54 @@ export function sessionRequestFor(
 	viewer: Pick<McpUserContext, 'userId' | 'username'>,
 ) {
 	return deriveRequestContext({ user: viewer, source: { kind: 'session' } })
+}
+
+/**
+ * The request a package-app visit session acts as. A person's own session
+ * narrows nothing; an agent's (opened with `appOpenLink`) keeps the token
+ * scopes and profile chain of the credential that minted the link.
+ */
+export function visitSessionRequestFor(
+	viewer: Pick<McpUserContext, 'userId' | 'username'>,
+	credential: AppVisitSessionCredential | null | undefined,
+): RequestContext {
+	const request = sessionRequestFor(viewer)
+	if (!credential) return request
+	return {
+		...request,
+		credential: {
+			kind: credential.kind,
+			id: credential.id,
+			orgId: request.org.id,
+			scopes: credential.scopes,
+			...(credential.profileId
+				? {
+						profileId: credential.profileId,
+						profileChain: credential.profileChain ?? null,
+						profileOrgId: credential.profileOrgId ?? request.org.id,
+					}
+				: {}),
+		},
+	}
+}
+
+/**
+ * Whether the credential behind an agent's visit session still stands. A
+ * revoked or expired API token ends the visit on the next request. Other
+ * credential kinds have no row to read here, so their visit ends when the
+ * session cookie does (`packageAppOpenLinkSessionTtlMs`).
+ */
+export async function packageAppSessionCredentialIsLive(input: {
+	env: Env
+	stableUserId: string
+	credential: AppVisitSessionCredential
+}) {
+	const { credential } = input
+	if (credential.kind !== 'api-token' || !credential.id) return true
+	const record = await getApiTokenRecord({
+		db: input.env.APP_DB,
+		userId: input.stableUserId,
+		tokenId: credential.id,
+	})
+	return record !== null && getApiTokenStatus(record) === 'active'
 }

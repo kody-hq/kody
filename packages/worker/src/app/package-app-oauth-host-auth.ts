@@ -40,7 +40,10 @@ import {
 	resolvePackageAppOwnerByStableUserId,
 } from '#app/package-app-owner.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
+import {
+	packageAppSessionCredentialIsLive,
+	viewerCanExecutePackageApp,
+} from '#app/package-viewer-access.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
 import {
 	isPackageAppOauthHostAuthPathname,
@@ -561,28 +564,48 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 		app?.orgUsername ?? parsedSession.session.username
 	).toLowerCase()
 
-	const grant = await findLivePackageAppOauthGrant({
-		db: input.env.APP_DB,
-		personId: parsedSession.session.stableUserId,
-		orgUsername: handle,
-		kodyId: slug,
-	})
+	// An agent's visit session answers only while its credential can run the
+	// app: neither the person's sign-in grant nor a ticket stands in for that.
+	const sessionCredential = parsedSession.session.credential ?? null
+	if (
+		sessionCredential &&
+		!(await packageAppSessionCredentialIsLive({
+			env: input.env,
+			stableUserId: parsedSession.session.stableUserId,
+			credential: sessionCredential,
+		}))
+	) {
+		return Response.json(
+			{ error: 'unauthorized' },
+			{ status: 401, headers: { 'Cache-Control': 'no-store' } },
+		)
+	}
+	const grant = sessionCredential
+		? null
+		: await findLivePackageAppOauthGrant({
+				db: input.env.APP_DB,
+				personId: parsedSession.session.stableUserId,
+				orgUsername: handle,
+				kodyId: slug,
+			})
 	if (grant) {
 		await notePackageAppOauthGrantUse({ db: input.env.APP_DB, grant })
 	}
 
 	let role: string | null = null
-	const ticket = await readPackageAppTicket({
-		request: input.request,
-		env: input.env,
-		host: input.url.host,
-		slug,
-		session: {
-			stableUserId: parsedSession.session.stableUserId,
-			issuedAt: parsedSession.issuedAt,
-		},
-		secure: isSecureRequest(input.request),
-	})
+	const ticket = sessionCredential
+		? null
+		: await readPackageAppTicket({
+				request: input.request,
+				env: input.env,
+				host: input.url.host,
+				slug,
+				session: {
+					stableUserId: parsedSession.session.stableUserId,
+					issuedAt: parsedSession.issuedAt,
+				},
+				secure: isSecureRequest(input.request),
+			})
 	if (ticket) {
 		role = ticket.visitor.role
 	} else if (!grant) {
@@ -611,6 +634,7 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 			},
 			ownerId: org.userId,
 			appId: lookup?.savedPackage.id ?? null,
+			credential: sessionCredential,
 		})
 		if (!canExecute) {
 			return Response.json(

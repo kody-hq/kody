@@ -8,6 +8,7 @@ import { authorizeAppVisit } from '#worker/app-visit/authorize.ts'
 import {
 	sessionRequestFor,
 	viewerCanExecutePackageApp,
+	visitSessionRequestFor,
 } from '#app/package-viewer-access.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { appListCapability } from '#mcp/capabilities/packages/app-list.ts'
@@ -297,6 +298,87 @@ test('a profile visits a shared app only with its own grant, and the app sees th
 		.run(now)
 	t.sqlite.prepare(`UPDATE orgs SET access_epoch = access_epoch + 1`).run()
 	expect((await t.visit(t.requestFor(outsiderId, agent))).kind).not.toBe('ok')
+})
+
+test('an open-link visit session is checked as the profile and scopes that minted it', async () => {
+	const t = await setup()
+	const me = t.profilesCaller(outsiderId)
+	const agent = await createProfile(me, {
+		name: 'agent',
+		grants: [useApp('pkg-board')],
+	})
+	const bare = await createProfile(me, { name: 'bare' })
+	const viewer = { userId: outsiderId, username: String(outsiderId) }
+	// What the visit cookie stores: the credential of the request that asked
+	// for the link, here a profile from another org than the app's.
+	const stored = (
+		profile: { id: string } | null,
+		scopes: Array<'app:execute' | 'package:read'> | null = null,
+	) => {
+		const { credential } = t.requestFor(outsiderId, profile)
+		return {
+			kind: credential.kind,
+			id: credential.id,
+			scopes,
+			...(profile
+				? {
+						profileId: profile.id,
+						profileChain: [profile.id],
+						profileOrgId: ownerIdFromStored(String(outsiderId)),
+					}
+				: {}),
+		}
+	}
+	const browserVisit = (credential: ReturnType<typeof stored>) =>
+		t.visit(visitSessionRequestFor(viewer, credential))
+
+	// The cross-org profile grant opens the app in the browser exactly as it
+	// does through appFetch, and the app sees the person plus the profile.
+	const ok = await browserVisit(stored(agent))
+	expect(ok.kind).toBe((await t.visit(t.requestFor(outsiderId, agent))).kind)
+	expect(ok).toMatchObject({
+		kind: 'ok',
+		visitor: {
+			userId: outsiderId,
+			role: null,
+			profile: { id: agent.id, name: 'agent' },
+		},
+		billedOrgId: outsiderId,
+	})
+	// The person may run the app, but a profile without the grant may not,
+	// and neither may a token whose scopes leave out app:execute.
+	expect(await browserVisit(stored(bare))).toMatchObject({
+		kind: 'forbidden',
+		error: { code: 'profile_grant' },
+	})
+	expect((await browserVisit(stored(agent, ['package:read']))).kind).not.toBe(
+		'ok',
+	)
+	expect((await browserVisit(stored(agent, ['app:execute']))).kind).toBe('ok')
+	for (const [credential, allowed] of [
+		[stored(agent), true],
+		[stored(bare), false],
+		[stored(null, ['package:read']), false],
+	] as const) {
+		expect(
+			await viewerCanExecutePackageApp({
+				env: t.env,
+				viewer,
+				ownerId: teamId,
+				appId: 'pkg-board',
+				credential,
+			}),
+		).toBe(allowed)
+	}
+
+	// Revoking the profile's grant closes a session that is already open.
+	t.sqlite
+		.prepare(
+			`UPDATE grants SET deleted_at = ? WHERE subject_type = 'profile' AND subject_id = ?`,
+		)
+		.run(now, agent.id)
+	t.sqlite.prepare(`UPDATE orgs SET access_epoch = access_epoch + 1`).run()
+	expect((await browserVisit(stored(agent))).kind).not.toBe('ok')
 })
 
 test('a member profile in the same org needs the app grant', async () => {

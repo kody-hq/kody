@@ -1308,8 +1308,10 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
 	).resolves.toEqual({ value: 'granted-value' })
 	const rc = (id: string, visitor?: string) => [id, visitor, undefined]
+	// packageStorage reads also pass the visiting agent profile (none here).
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		...rc(buildPackageStorageId('package-1')),
+		undefined,
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 
@@ -1335,6 +1337,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		...rc(buildPackageStorageId('dep-package'), ''),
+		undefined,
 	)
 	expect(setValue).toHaveBeenCalledWith({ key: 'flag', value: true })
 	// The bound binding cannot be pointed at another granted bucket either.
@@ -1383,6 +1386,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	expect(getStorageRunner).toHaveBeenCalledWith(...rc('package-1:facet:main'))
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		...rc('package-1:Counter:instance-a'),
+		undefined,
 	)
 
 	const outsideNamespaceError =

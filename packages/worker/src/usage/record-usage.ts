@@ -143,6 +143,12 @@ export type UsageEvent = {
 	/** Present for package-app billable units; empty string means anonymous. */
 	packageAppVisitorUserId?: string
 	/**
+	 * The agent profile that made a package-app visit for the visitor
+	 * (`appFetch`, or a session opened with `appOpenLink`). Analytics Engine
+	 * blob17. Empty when the person visited themselves.
+	 */
+	packageAppVisitorProfileId?: string
+	/**
 	 * The app's owning org when `userId` (the billed org) is a visiting org
 	 * (ADR 0095). Analytics Engine blob16. Empty when the owner pays.
 	 */
@@ -207,6 +213,7 @@ export const usageEventBlobIndexes = {
 	packageAppVisitorUserId: 13,
 	packageAppUsage: 14,
 	packageAppOwnerOrgId: 15,
+	packageAppVisitorProfileId: 16,
 } as const
 
 export function automationSourceForAnalytics(
@@ -314,6 +321,7 @@ export function usageEventBlobs(
 		| 'cacheReuse'
 		| 'packageId'
 		| 'packageAppVisitorUserId'
+		| 'packageAppVisitorProfileId'
 		| 'packageAppOwnerOrgId'
 		| 'actorUserId'
 		| 'automationSource'
@@ -322,6 +330,7 @@ export function usageEventBlobs(
 	>,
 	timestamp: string,
 ): [
+	string,
 	string,
 	string,
 	string,
@@ -359,6 +368,7 @@ export function usageEventBlobs(
 		event.packageAppVisitorUserId ?? '',
 		event.packageAppVisitorUserId === undefined ? '' : 'package-app',
 		packageAppOwnerOrgIdBlob(event),
+		packageAppVisitorProfileIdOf(event),
 	]
 }
 
@@ -368,6 +378,18 @@ function packageAppOwnerOrgIdBlob(
 ) {
 	const ownerOrgId = event.packageAppOwnerOrgId?.trim() || ''
 	return ownerOrgId && ownerOrgId !== event.userId ? ownerOrgId : ''
+}
+
+/** The visiting profile, only on a package-app unit with a known visitor. */
+function packageAppVisitorProfileIdOf(
+	event: Pick<
+		UsageEvent,
+		'packageAppVisitorUserId' | 'packageAppVisitorProfileId'
+	>,
+) {
+	return event.packageAppVisitorUserId
+		? event.packageAppVisitorProfileId?.trim() || ''
+		: ''
 }
 
 export type UsageEnv = {
@@ -407,10 +429,11 @@ ON CONFLICT (user_id, day, package_id, meter) DO UPDATE SET
 const packageAppVisitorAttributionDailyUpsertStatement = `
 INSERT INTO package_app_visitor_attribution_daily (
 	user_id, day, package_id, visitor_user_id, meter, units, updated_at,
-	billed_org_id
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+	billed_org_id, visitor_profile_id
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
 ON CONFLICT (
-	user_id, day, package_id, visitor_user_id, billed_org_id, meter
+	user_id, day, package_id, visitor_user_id, visitor_profile_id,
+	billed_org_id, meter
 ) DO UPDATE SET
 	units = units + excluded.units,
 	updated_at = excluded.updated_at
@@ -668,6 +691,7 @@ async function writePackageAppVisitorAttributionDaily(
 				eventCount,
 				timestamp,
 				billedOrgId,
+				packageAppVisitorProfileIdOf(event),
 			)
 			.run()
 	} catch (error) {

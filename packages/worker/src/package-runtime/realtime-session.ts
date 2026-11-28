@@ -70,6 +70,8 @@ export type PackageRealtimeVisitor = {
 	userId: string
 	username: string
 	role: string | null
+	/** The agent profile visiting for the person, as on `X-Kody-Visitor`. */
+	profile?: { id: string; name: string } | null
 }
 
 type PackageRealtimeSocketAttachment = {
@@ -1566,6 +1568,7 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 				outcome: 'success',
 				packageId: binding.packageId,
 				packageAppVisitorUserId: visitorUserId,
+				packageAppVisitorProfileId: session.visitor?.profile?.id,
 				actorUserId: visitorUserId,
 			}),
 		)

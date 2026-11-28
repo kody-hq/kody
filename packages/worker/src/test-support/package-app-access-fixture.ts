@@ -1,6 +1,7 @@
 import { applyD1Migrations, type D1Migration } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { createPackageAppSessionCookie } from '#app/package-app-session.ts'
+import { ensureOpenLinkTestSchema } from '#worker/app-visit/open-link-test-schema.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 import { ensureAuditEventsTestSchema } from '#worker/test-support/audit-events-test-schema.ts'
@@ -53,6 +54,7 @@ async function run(sql: string, ...values: Array<unknown>) {
 
 export async function seedPackageAppAccessFixture() {
 	await ensureRbacTestSchema(env.APP_DB)
+	await ensureOpenLinkTestSchema(env.APP_DB)
 	await ensurePackageSubscriptionTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
 	const { TEST_MIGRATIONS } = env as Env & {

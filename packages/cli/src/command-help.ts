@@ -633,6 +633,19 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				],
 				flags: [['--org <slug>', 'List one org only'], jsonFlag],
 			},
+			{
+				name: 'open-link',
+				summary: 'Get a one-time link that opens an app in a browser as you',
+				usage: ['kody app open-link <@org/app | hosted-url> [path] [--json]'],
+				notes: [
+					'For an agent that needs the app in its own browser: open the printed link there. No one has to sign in to Kody in that browser first.',
+					'The link works once, within 5 minutes. It signs that browser in to that one app for 60 minutes, with the same access as kody app fetch: you need Use on the app, and a profile token (KODY_API_TOKEN) visits as its profile.',
+					'It is not a Kody sign-in: the browser gets a cookie for that app only. Your token is never sent to the app or its hosted URL.',
+					'Only the link prints to stdout. Treat it like a password until it is used or expires.',
+					'If the app needs your one-time confirmation, the error gives the link to open in a browser. Open it once, then run the command again.',
+				],
+				flags: [jsonFlag],
+			},
 		],
 	},
 	{

@@ -105,6 +105,12 @@ export type CreditAttributionVisitorRow = {
 	creditsMicroUsd: number
 	lastDay: string
 	/**
+	 * Names of the agent profiles that visited for this person (`appFetch`,
+	 * or a browser session opened with `appOpenLink`). Absent when only the
+	 * person visited.
+	 */
+	agentProfiles?: Array<string>
+	/**
 	 * True when the visitor came from another org and that org paid for the
 	 * metered work their visits caused (ADR 0095).
 	 */

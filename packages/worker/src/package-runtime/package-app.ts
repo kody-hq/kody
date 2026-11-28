@@ -2002,6 +2002,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		storageId: string,
 		packageAppVisitorUserId?: string,
 		billedOrgId?: OwnerId,
+		packageAppVisitorProfileId?: string,
 	) {
 		const runner = storageRunnerRpc({
 			env: this.env,
@@ -2010,6 +2011,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			...(packageAppVisitorUserId !== undefined
 				? { packageAppVisitorUserId }
 				: {}),
+			...(packageAppVisitorProfileId ? { packageAppVisitorProfileId } : {}),
 			...(billedOrgId ? { meterUserId: billedOrgId } : {}),
 		})
 		const latencyMs = kodyDevStorageLatencyMs(this.env)
@@ -2700,6 +2702,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		params?: Array<unknown>
 		writable: boolean
 		packageAppVisitorUserId?: string
+		packageAppVisitorProfileId?: string
 		billedOrgId?: OwnerId
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
@@ -2708,6 +2711,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			input.storageId,
 			input.packageAppVisitorUserId,
 			input.billedOrgId,
+			input.packageAppVisitorProfileId,
 		)
 		if (input.writable && storageSqlNeedsWriteEntitlement(input.query)) {
 			return await this.writeStorageAllowed({
@@ -2744,12 +2748,14 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		key: string
 		value: unknown
 		packageAppVisitorUserId?: string
+		packageAppVisitorProfileId?: string
 		billedOrgId?: OwnerId
 	}) {
 		const runner = this.getStorageRunner(
 			input.storageId,
 			input.packageAppVisitorUserId,
 			input.billedOrgId,
+			input.packageAppVisitorProfileId,
 		)
 		return await this.writeStorageAllowed({
 			storageId: input.storageId,
@@ -2915,9 +2921,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			pageSize?: number
 			startAfter?: string | null
 			packageAppVisitorUserId?: string
+			packageAppVisitorProfileId?: string
 			billedOrgId?: OwnerId
 		}
 		input.packageAppVisitorUserId = packageAppVisitorUserId
+		input.packageAppVisitorProfileId = visit?.credentialProfileId ?? undefined
 		input.billedOrgId = visit?.billing?.orgId
 		switch (method) {
 			case 'packageStorageGet':
@@ -2943,6 +2951,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			packageId: string
 			key: string
 			packageAppVisitorUserId?: string
+			packageAppVisitorProfileId?: string
 			billedOrgId?: OwnerId
 		},
 	) {
@@ -2956,6 +2965,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			buildPackageStorageId(packageId),
 			input.packageAppVisitorUserId,
 			input.billedOrgId,
+			input.packageAppVisitorProfileId,
 		).getValue({
 			key: input.key,
 		})
@@ -2969,6 +2979,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			pageSize?: number
 			startAfter?: string | null
 			packageAppVisitorUserId?: string
+			packageAppVisitorProfileId?: string
 			billedOrgId?: OwnerId
 		},
 	) {
@@ -2980,6 +2991,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			buildPackageStorageId(packageId),
 			input.packageAppVisitorUserId,
 			input.billedOrgId,
+			input.packageAppVisitorProfileId,
 		).listValues({
 			prefix: input.prefix,
 			pageSize: input.pageSize,
@@ -2995,6 +3007,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			params?: Array<unknown>
 			writable?: boolean
 			packageAppVisitorUserId?: string
+			packageAppVisitorProfileId?: string
 			billedOrgId?: OwnerId
 		},
 	) {
@@ -3008,6 +3021,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			params: input.params,
 			writable: input.writable ?? false,
 			packageAppVisitorUserId: input.packageAppVisitorUserId,
+			packageAppVisitorProfileId: input.packageAppVisitorProfileId,
 			billedOrgId: input.billedOrgId,
 		})
 	}
@@ -3019,6 +3033,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			key: string
 			value: unknown
 			packageAppVisitorUserId?: string
+			packageAppVisitorProfileId?: string
 			billedOrgId?: OwnerId
 		},
 	) {
@@ -3031,6 +3046,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			key: input.key,
 			value: input.value,
 			packageAppVisitorUserId: input.packageAppVisitorUserId,
+			packageAppVisitorProfileId: input.packageAppVisitorProfileId,
 			billedOrgId: input.billedOrgId,
 		})
 	}
@@ -4698,6 +4714,7 @@ export async function buildPackageAppWorker(input: {
 				packageId: input.savedPackage.id,
 				packageAppVisitorUserId:
 					visitor?.userId ?? input.runtime.callerContext.user?.userId ?? '',
+				packageAppVisitorProfileId: visitor?.profile?.id,
 				connectionKey: usageConnectionKey(input.runtime.callerContext.request),
 				waitUntil: input.waitUntil,
 			})
@@ -4750,6 +4767,7 @@ function schedulePackageAppUniqueWorkerDay(input: {
 	surface: 'app_fetch' | 'app_realtime'
 	packageId: string
 	packageAppVisitorUserId: string
+	packageAppVisitorProfileId?: string
 	connectionKey: string
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
@@ -4760,6 +4778,7 @@ function schedulePackageAppUniqueWorkerDay(input: {
 		surface: input.surface,
 		packageId: input.packageId,
 		packageAppVisitorUserId: input.packageAppVisitorUserId,
+		packageAppVisitorProfileId: input.packageAppVisitorProfileId,
 		connectionKey: input.connectionKey,
 	}).catch((error: unknown) => {
 		console.warn('package-app-dynamic-worker-day-record-failed', error)
