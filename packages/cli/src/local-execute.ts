@@ -518,6 +518,9 @@ export async function runLocalExecute(
 					response,
 					signal,
 					client,
+					...(input.credentials
+						? { credentialSelections: input.credentials }
+						: {}),
 					...(pinnedCredentials ? { pinnedCredentials } : {}),
 					...(mockFetchGateway ? { mockFetchGateway } : {}),
 				})

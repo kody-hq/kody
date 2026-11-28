@@ -21,7 +21,14 @@ import { setTimeout as delay } from 'node:timers/promises'
 import {
 	assertTokenSafeApiUrl,
 	callCapabilityProxy,
+	checkCredentialCallMap,
+	openCapabilityProxySession,
 } from './capability-proxy.js'
+import {
+	missingCredentialCallMapFeatureMessage,
+	sessionSupportsCredentialCallMap,
+	type CredentialCallMapInput,
+} from './credential-call-map.js'
 import { apiTokenEnvVar } from './defaults.js'
 import { bundleLocalUserModule } from './local-bundle.js'
 import { forwardLocalGatewayFetchStream } from './local-gateway-fetch-forward.js'
@@ -73,6 +80,8 @@ export type LocalPackageRunInput = {
 	fetchFn?: typeof fetch
 	/** User-owned token org selection (`?org=`), same as execute --local. */
 	org?: string
+	/** Per-invocation credential choices from --credential. */
+	credentials?: CredentialCallMapInput
 	/**
 	 * Fetch stamped `kody:@` modules from prod while CapabilityProxy stays on
 	 * mock (published source is not a secret).
@@ -115,6 +124,19 @@ export async function runLocalPackageModule(
 		token: input.token,
 		fetchFn: input.fetchFn,
 		...(input.org ? { org: input.org } : {}),
+	}
+	let credentials = input.credentials
+	let pinnedCredentials: CredentialCallMapInput | undefined
+	if (credentials) {
+		const session = await openCapabilityProxySession(client)
+		if (!sessionSupportsCredentialCallMap(session.features)) {
+			throw new Error(missingCredentialCallMapFeatureMessage())
+		}
+		input.onStatus?.('Checking --credential picks against CapabilityProxy…')
+		const checked = await checkCredentialCallMap({ ...client, credentials })
+		credentials = checked.credentials ?? credentials
+		pinnedCredentials = checked.credentials
+		for (const warning of checked.warnings) input.onStatus?.(warning)
 	}
 
 	const workerdPath =
@@ -236,6 +258,7 @@ export async function runLocalPackageModule(
 				return await callCapabilityProxy({
 					...client,
 					...call,
+					...(credentials !== undefined ? { credentials } : {}),
 					signal,
 				})
 			},
@@ -245,6 +268,10 @@ export async function runLocalPackageModule(
 					response,
 					signal,
 					client,
+					...(input.credentials
+						? { credentialSelections: input.credentials }
+						: {}),
+					...(pinnedCredentials ? { pinnedCredentials } : {}),
 					...(mockFetchGateway ? { mockFetchGateway } : {}),
 				})
 			},

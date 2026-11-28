@@ -1434,6 +1434,7 @@ async function dispatch(
 							hostedUrl: 'http://127.0.0.1:0',
 						}),
 						packageRoot: localPackageRun.packageRoot,
+						...(credentials !== undefined ? { credentials } : {}),
 						...(org ? { org } : {}),
 						...(mockDepResolve ? { depResolve: mockDepResolve } : {}),
 						...(passthroughHosts.length > 0 && target === 'mock'
