@@ -1160,25 +1160,32 @@ See
 [how Kody advances the serving commit](../contributing/internet-visible-packages.md#republishing-an-approved-app).
 
 A publish in that state is held, not published. Every publish surface reports it
-with the status `held_for_approval` instead of `published`: `repoPublishSession`
-and `packageSave` in their own result, and `packagePublishExternalPush` in the
-result of its durable run. That call answers `dispatched` first; poll
-`packageRunResult`, whose run ends errored with the reason in `last_error` and
-whose `result` is the `held_for_approval` result. The result carries the commit
-everyone still runs (`serving_commit`), the commit that waits (`held_commit`),
-`approval_url`, and a `message`. `kody package publish` follows the run, prints
-the message and the approval link on stderr, and exits 1. `held_for_approval` is
-not `locked` or `approval_required`. Those two pause a publish before it starts
-(`locked` for a locked package, `approval_required` for changed credential
-needs), while a held publish is already built and only waits to go live.
+with the status `held_for_approval` instead of `published`, `already_published`,
+or `ok`:
+[`repoPublishSession`](../../packages/worker/src/mcp/capabilities/repo/repo-publish-session.node.test.ts)
+and
+[`packageSave`](../../packages/worker/src/mcp/capabilities/packages/save-package-entitlements.node.test.ts)
+in their own result, and
+[`packagePublishExternalPush`](../../packages/worker/src/mcp/capabilities/packages/publish-external-push.node.test.ts)
+in the result of its durable run. That call answers `dispatched` with a
+`workflow_id` first; poll `packageRunResult`, whose run ends errored with the
+reason in `last_error` and whose `result` is the `held_for_approval` result. The
+result carries the commit everyone still runs (`serving_commit`), the commit
+that waits (`held_commit`), `approval_url`, and a `message`.
+`kody package publish` follows the run, prints the message and the approval link
+on stderr, and exits 1. `held_for_approval` is not `locked` or
+`approval_required`. Those two pause a publish before it starts (`locked` for a
+locked package, `approval_required` for changed credential needs), while a held
+publish is already built and only waits to go live.
 
-`packageGet` keeps the two commits apart. `serving_commit` is the commit that is
-live, `held_commit` is the commit that waits (null when nothing is held, and for
-callers who cannot edit the package), and `approval_url` approves it.
-`published_commit` is the latest publish that was not held, so it never names
-the held commit, and the rest of the record (exports, credential needs)
-describes the serving commit. After approval `held_commit` is null again and
-`serving_commit` is the commit that was held.
+[`packageGet`](../../packages/worker/src/mcp/capabilities/packages/get-package.ts)
+keeps the two commits apart. `serving_commit` is the live commit, `held_commit`
+is the commit that waits, and `approval_url` is the link to approve it.
+`held_commit` and `approval_url` are null when nothing is held or the caller
+lacks `package:write`. `published_commit` is the latest publish that was not
+held, so it never names the held commit, and the rest of the record (exports,
+credential needs) describes the serving commit. After approval `held_commit` is
+null again and `serving_commit` is the commit that was held.
 
 Kody tells the account owners when a publish is held, whoever caused it: a
 direct publish, an agent, a teammate, or an automatic republish. Kody sends each

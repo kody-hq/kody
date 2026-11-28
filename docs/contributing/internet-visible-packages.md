@@ -109,23 +109,21 @@ they inspect (`commit`).
 [`loadHeldForApproval`](../../packages/worker/src/package-capabilities/held-for-approval.ts)
 reads the recorded hold for an internet-visible app; it does not compare
 capability sets. It returns both commits when the held commit matches the
-published tip and a different commit still serves. The
-`entity_sources.published_commit` column is the internal tip and does name the
-held commit; nothing reports it to callers as published. A held publish is its
-own status, `held_for_approval`, built by
+published tip and a
+[different commit still serves](../../packages/worker/src/package-capabilities/serving-commit-advance.node.test.ts).
+The `entity_sources.published_commit` column is the internal tip and does name
+the held commit; nothing reports it to callers as published. A held publish is
+its own status, `held_for_approval`, built by
 [`loadHeldForApprovalPublishStatus`](../../packages/worker/src/mcp/capabilities/packages/held-for-approval-publish-status.ts).
 See [Held publishes](../use/packages.md#held-publishes) for API and CLI results.
 
-The owner notice fires where the hold is recorded, not in a publish handler:
-`advancePackageServingCommit` calls `notifyOwnersOfHeldPublish`
-(`package-capabilities/held-for-approval-notice.ts`) the first time a commit is
-held. Every publish path serves a commit through that one function, so a direct
-publish and an automatic republish notify the same way. It emails the owners of
-the account that owns the held package (transactional kind
-`publish_held_for_approval`), which is not always the person who published.
-Waiting lists the same packages as `publish-held` items
-(`listHeldForApprovalPackages`) until they are approved. The owner package page
-renders the held state as a notice with the approval link.
+The
+[serving update](../../packages/worker/src/package-capabilities/serving-commit-advance.ts)
+requests an email notice when it first records the hold, whether the publish was
+direct or automatic. The
+[email goes to the package-owning account's owners](../../packages/worker/src/package-capabilities/held-for-approval-notice.ts),
+not necessarily the publisher. Waiting lists holds as `publish-held` items until
+approval, and the owner package page shows the approval link.
 
 ## Self-publish
 

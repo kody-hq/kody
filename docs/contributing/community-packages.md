@@ -268,17 +268,21 @@ whole package self-references and renamed emits-topic references in text files,
 skipping byte snapshots. The cross-scope scan reports textual `kody:@scope/`
 matches and manifest Kody dependencies; it does not resolve imports.
 
-`rewriteScopedReferences` follows a fixed set of spellings and keeps the one it
-found: `@` or `%40`, then `/`, `\/`, `\\/`, `%2F`, or `%2f`. It does not decode
-anything else. `scanLeftoverOriginReferences` runs on the rewritten tree with a
-looser pattern (any number of backslashes, `\u0040`, `\x40`, `\u002f`, `\x2f`)
-and returns the lines that still name the origin package, plus escaped or
-encoded references to the origin scope. A plain `@origin-scope/other` is an
-ordinary dependency and belongs to the cross-scope scan. The result is
-`leftoverOriginReferences` on the fork result, `leftover_origin_references` on
-`communityFork` and `packageFork`, and `leftoverOriginReferences` plus a
-sentence in `agentPrompt` on the one-click install response. It never fails the
-fork.
+Forking rewrites known spellings, then
+[reports leftover origin references](../../packages/worker/src/community/service.ts)
+without rejecting the fork for those matches.
+
+[`rewriteScopedReferences`](../../packages/worker/src/community/fork-scan.ts)
+follows a fixed set of spellings and keeps the one it found: `@` or `%40`, then
+`/`, `\/`, `\\/`, `%2F`, or `%2f`. It does not decode anything else.
+`scanLeftoverOriginReferences` runs on the rewritten tree with a looser pattern
+(any number of backslashes, `\u0040`, `\x40`, `\u002f`, `\x2f`) and returns the
+lines that still name the origin package, plus escaped or encoded references to
+the origin scope. A plain `@origin-scope/other` is an ordinary dependency and
+belongs to the cross-scope scan. The result is `leftoverOriginReferences` on the
+fork result, `leftover_origin_references` on `communityFork` and `packageFork`,
+and `leftoverOriginReferences` plus a sentence in `agentPrompt` on the one-click
+install response.
 
 #### Which tree is scanned
 
