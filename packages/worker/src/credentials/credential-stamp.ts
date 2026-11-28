@@ -307,7 +307,7 @@ function slotDescription(
 	key: string,
 ): string | null {
 	const exact = slots[key]
-	if (exact) return exact.description
+	if (exact?.description != null) return exact.description
 	// A literal name under a `prefix: true` slot is declared by that slot.
 	for (const [name, slot] of Object.entries(slots)) {
 		if (

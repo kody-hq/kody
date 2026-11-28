@@ -1234,3 +1234,34 @@ test('a secret-provider slot does not seal display-only vault placeholders', asy
 	expect(result.keys).toEqual([])
 	expect(result.staleManifestKeys).toEqual(['vault'])
 })
+
+test('a literal name under a described prefix slot needs no description of its own', async () => {
+	const source = [
+		"import { credential } from 'kody:runtime'",
+		'export default async function run() {',
+		'  return credential("google-work")',
+		'}',
+	].join('\n')
+	const prefixed = { prefix: true, description: 'Google accounts.' }
+	for (const credentials of [
+		{ google: prefixed },
+		// The slot the stamp merge writes for the literal has no description.
+		{ google: prefixed, 'google-work': {} },
+	]) {
+		const scan = await scanCredentialStamp({
+			'package.json': manifest({ credentials }),
+			'src/index.ts': source,
+		})
+		expect(scan.failures).toEqual([])
+		expect(scan.keys).toEqual(['google-work'])
+	}
+	const bare = await scanCredentialStamp({
+		'package.json': manifest({
+			credentials: { google: { description: 'Google.' } },
+		}),
+		'src/index.ts': source,
+	})
+	expect(bare.failures.map((failure) => failure.code)).toEqual([
+		'missing_description',
+	])
+})
