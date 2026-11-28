@@ -464,8 +464,9 @@ app slug, plus credential kind, token id, scopes, and profile chain for an
   [`checkPackageAppVisitSession`](../../packages/worker/src/app/package-app-visit-authorization.ts),
   the same `authorizePackageAppVisitorForOrg` decision package-app HTTP requests
   use, once per distinct session per alarm, never per frame. Its cached reads
-  (owner row 15 s, org access epoch) are the same ones HTTP uses. A failed check
-  keeps the socket open until the next alarm.
+  (owner row 15 s, org access epoch) are the same ones HTTP uses. If the recheck
+  throws an error instead of returning a decision, the alarm leaves the socket
+  open and retries on the next alarm.
 
 Team-org realtime (team-scoped sockets) is still not supported
 ([#5067](https://github.com/kody-hq/kody/issues/5067)).
