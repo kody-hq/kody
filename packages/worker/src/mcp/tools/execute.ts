@@ -1806,7 +1806,8 @@ async function resolveRawFetchHostNudges(input: {
 
 /**
  * Monthly compute heads-up on a hosted execute that starts a new worker,
- * for an org with usage warnings enabled and a credit wallet.
+ * for an org with usage warnings enabled, a credit wallet, and at least
+ * 80% of its included monthly Worker compute used.
  */
 async function resolveComputeIncludeHeadsUp(input: {
 	env: Env
