@@ -11145,9 +11145,10 @@ export const capabilityManifest = {
 												"purged",
 												"failed",
 												"skipped_claim",
+												"skipped_sole_owner",
 												"would_claim"
 											],
-											"description": "purged: deleted and audited. failed: deleteUserAccount threw (see error/warnings); an audit row unverified_account_purge_failed was written. skipped_claim: the row was verified, linked, or fenced between select and claim. would_claim: dry-run candidate."
+											"description": "purged: deleted and audited. failed: deleteUserAccount threw (see error/warnings); an audit row unverified_account_purge_failed was written. skipped_claim: the row was verified, linked, or fenced between select and claim. skipped_sole_owner: the person is the only Owner of an organization that still has other members, so nothing was changed and an audit row unverified_account_purge_skipped was written. would_claim: dry-run candidate."
 										},
 										"error": {
 											"description": "Compact failure reason, `<ErrorClassName>: <first warning or message>` truncated to 200 characters.",
@@ -11181,7 +11182,140 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type AdminUnverifiedAccountPurgeRunInput = {\n\t/** When true, only list the accounts the next purge pass would claim. No claims, no deletes, no per-account audit rows. */\n\tdryRun?: boolean\n\t/** Accounts to inspect in this pass (1-20, default 5). */\n\tbatchSize?: number\n}",
-					"outputTypeDefinition": "type AdminUnverifiedAccountPurgeRunOutput = {\n\tdryRun: boolean\n\tscanned: number\n\tpurged: number\n\tfailed: number\n\ttimeBudgetExhausted: boolean\n\toutcomes: Array<{\n\t/** Stable users.stable_user_id. */\n\tstableUserId: string\n\t/** Whole days since the account was created. */\n\tageDays: number\n\t/** purged: deleted and audited. failed: deleteUserAccount threw (see error/warnings); an audit row unverified_account_purge_failed was written. skipped_claim: the row was verified, linked, or fenced between select and claim. would_claim: dry-run candidate. */\n\toutcome: \"purged\" | \"failed\" | \"skipped_claim\" | \"would_claim\"\n\t/** Compact failure reason, `<ErrorClassName>: <first warning or message>` truncated to 200 characters. */\n\terror?: string\n\t/** Inventory or cleanup warnings that caused the failure. */\n\twarnings?: Array<string>\n}>\n}"
+					"outputTypeDefinition": "type AdminUnverifiedAccountPurgeRunOutput = {\n\tdryRun: boolean\n\tscanned: number\n\tpurged: number\n\tfailed: number\n\ttimeBudgetExhausted: boolean\n\toutcomes: Array<{\n\t/** Stable users.stable_user_id. */\n\tstableUserId: string\n\t/** Whole days since the account was created. */\n\tageDays: number\n\t/** purged: deleted and audited. failed: deleteUserAccount threw (see error/warnings); an audit row unverified_account_purge_failed was written. skipped_claim: the row was verified, linked, or fenced between select and claim. skipped_sole_owner: the person is the only Owner of an organization that still has other members, so nothing was changed and an audit row unverified_account_purge_skipped was written. would_claim: dry-run candidate. */\n\toutcome: \"purged\" | \"failed\" | \"skipped_claim\" | \"skipped_sole_owner\" | \"would_claim\"\n\t/** Compact failure reason, `<ErrorClassName>: <first warning or message>` truncated to 200 characters. */\n\terror?: string\n\t/** Inventory or cleanup warnings that caused the failure. */\n\twarnings?: Array<string>\n}>\n}"
+				},
+				{
+					"name": "adminMemberlessTeamOrgsCleanup",
+					"domain": "admin",
+					"description": "Admin-only maintenance for live team organizations that have no live members (leftovers from account deletions that removed the last member without deleting the organization). Personal organizations and creator-less platform organizations are never matched. dryRun defaults to true and only lists them with a package count. With dryRun false, each listed organization is soft-deleted and then hard-purged immediately, packages included; this cannot be undone. Audited.",
+					"keywords": [
+						"admin",
+						"organization",
+						"team",
+						"memberless",
+						"orphan",
+						"cleanup",
+						"maintenance"
+					],
+					"readOnly": false,
+					"idempotent": false,
+					"destructive": true,
+					"orgPermission": "none",
+					"contextRuns": "deny",
+					"requiresLivePerson": "never",
+					"requiredRole": "admin",
+					"source": "builtin",
+					"inputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"dryRun": {
+								"description": "Defaults to true (list only). Set false to soft-delete and hard-purge the listed organizations.",
+								"type": "boolean"
+							},
+							"limit": {
+								"description": "Organizations to list or purge in this pass (default 25).",
+								"type": "integer",
+								"minimum": 1,
+								"maximum": 100
+							},
+							"org_ids": {
+								"description": "Optional organization ids to inspect. Ids that are not memberless team organizations are skipped.",
+								"minItems": 1,
+								"maxItems": 100,
+								"type": "array",
+								"items": {
+									"type": "string",
+									"minLength": 1
+								}
+							}
+						},
+						"additionalProperties": false
+					},
+					"outputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"dryRun": {
+								"type": "boolean"
+							},
+							"total": {
+								"type": "integer",
+								"minimum": -9007199254740991,
+								"maximum": 9007199254740991,
+								"description": "All memberless team organizations matching the request, before limit."
+							},
+							"orgs": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"org_id": {
+											"type": "string"
+										},
+										"slug": {
+											"type": "string"
+										},
+										"created_at": {
+											"type": "string"
+										},
+										"creator_deleted": {
+											"type": "boolean",
+											"description": "True when the creating person's account is gone."
+										},
+										"package_count": {
+											"type": "integer",
+											"minimum": 0,
+											"maximum": 9007199254740991
+										}
+									},
+									"required": [
+										"org_id",
+										"slug",
+										"created_at",
+										"creator_deleted",
+										"package_count"
+									],
+									"additionalProperties": false
+								}
+							},
+							"purged_org_ids": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"failures": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"org_id": {
+											"type": "string"
+										},
+										"error": {
+											"type": "string"
+										}
+									},
+									"required": [
+										"org_id",
+										"error"
+									],
+									"additionalProperties": false
+								}
+							}
+						},
+						"required": [
+							"dryRun",
+							"total",
+							"orgs",
+							"purged_org_ids",
+							"failures"
+						],
+						"additionalProperties": false
+					},
+					"inputTypeDefinition": "type AdminMemberlessTeamOrgsCleanupInput = {\n\t/** Defaults to true (list only). Set false to soft-delete and hard-purge the listed organizations. */\n\tdryRun?: boolean\n\t/** Organizations to list or purge in this pass (default 25). */\n\tlimit?: number\n\t/** Optional organization ids to inspect. Ids that are not memberless team organizations are skipped. */\n\torg_ids?: Array<string>\n}",
+					"outputTypeDefinition": "type AdminMemberlessTeamOrgsCleanupOutput = {\n\tdryRun: boolean\n\t/** All memberless team organizations matching the request, before limit. */\n\ttotal: number\n\torgs: Array<{\n\torg_id: string\n\tslug: string\n\tcreated_at: string\n\t/** True when the creating person's account is gone. */\n\tcreator_deleted: boolean\n\tpackage_count: number\n}>\n\tpurged_org_ids: Array<string>\n\tfailures: Array<{\n\torg_id: string\n\terror: string\n}>\n}"
 				},
 				{
 					"name": "adminSoftDeletePurgeRun",
