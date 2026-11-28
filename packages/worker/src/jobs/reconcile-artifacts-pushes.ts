@@ -12,7 +12,10 @@ import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { getSavedPackageLockedAt } from '#worker/package-registry/repo.ts'
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
 import { getPendingPackageApprovalRequest } from '#worker/package-capabilities/approval-requests-repo.ts'
-import { findPackageAppPusher } from '#worker/package-runtime/package-app-authority.ts'
+import {
+	clearExpiredPackageGitWriteMinters,
+	findPackageAppPusher,
+} from '#worker/package-runtime/package-app-authority.ts'
 
 export type ReconcileArtifactsPushesResult = {
 	checked: number
@@ -360,7 +363,6 @@ async function checkSource(input: {
 					db: env.APP_DB,
 					scope: { orgId: source.user_id, packageId: source.entity_id },
 					commit: head.commit,
-					since: source.last_external_check_at,
 				})
 			: null
 	const sessionId = `external-reconcile-${source.id}`
@@ -379,6 +381,18 @@ async function checkSource(input: {
 	})
 	const outcome = publishOutcome(publishResult.status)
 	const settled = outcome === 'published' || outcome === 'alreadyPublished'
+	if (settled && source.entity_kind === 'package') {
+		await clearExpiredPackageGitWriteMinters({
+			db: env.APP_DB,
+			scope: { orgId: source.user_id, packageId: source.entity_id },
+			now,
+		}).catch((error: unknown) => {
+			console.warn(
+				'reconcile_artifacts_pushes: could not clear expired git write minters, so a later push may publish as unknown',
+				error,
+			)
+		})
+	}
 	await updateEntitySource(env.APP_DB, {
 		id: source.id,
 		userId: source.user_id,

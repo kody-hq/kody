@@ -17,6 +17,7 @@ vi.mock('#worker/package-capabilities/approval-requests-repo.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	clearExpiredPackageGitWriteMinters: async () => {},
 	findPackageAppPusher: async (input: { commit: string }) =>
 		mockModule.pusherByCommit.get(input.commit) ?? null,
 }))
