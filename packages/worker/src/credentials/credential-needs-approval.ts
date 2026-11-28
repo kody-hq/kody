@@ -31,6 +31,7 @@ type NeedShape = Pick<
 	| 'provider'
 	| 'package'
 	| 'multiple'
+	| 'prefix'
 	| 'ownerCredentialForVisitors'
 	| 'supplier'
 	| 'required'
@@ -84,6 +85,7 @@ function shape(need: CredentialNeed): NeedShape {
 		provider: need.provider,
 		...(need.package ? { package: need.package } : {}),
 		multiple: need.multiple,
+		...(need.prefix ? { prefix: true as const } : {}),
 		...(need.ownerCredentialForVisitors
 			? { ownerCredentialForVisitors: true as const }
 			: {}),
@@ -145,6 +147,8 @@ export function diffCredentialNeeds(
 			prior.provider !== need.provider ||
 			prior.package !== need.package ||
 			prior.multiple !== need.multiple ||
+			// Turning a prefix on widens; turning it off only narrows.
+			(need.prefix === true && prior.prefix !== true) ||
 			sharesWithVisitors ||
 			supplierChanged(prior, need)
 		) {
@@ -167,7 +171,9 @@ function describeNeedKind(kind: NeedShape['kind']) {
 }
 
 function describeNeedTail(need: NeedShape) {
-	const viaMultiple = need.multiple ? ' (several allowed)' : ''
+	const viaMultiple = `${need.multiple ? ' (several allowed)' : ''}${
+		need.prefix ? ' (and names that start with this key and a hyphen)' : ''
+	}`
 	const forVisitors = need.ownerCredentialForVisitors
 		? ' (app visitors may use your credential)'
 		: need.supplier === 'publisher'

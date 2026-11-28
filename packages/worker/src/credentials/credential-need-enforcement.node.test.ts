@@ -888,3 +888,48 @@ test('stamp presence reads the commit everyone runs while a newer one is held', 
 		expect.objectContaining({ publishedCommit: 'served-commit' }),
 	)
 })
+
+test('a prefix need covers its key and key-suffix names, and nothing else', async () => {
+	const prefix = need('google', { kind: 'oauth', prefix: true })
+	const cases: Array<
+		[CredentialNeedReference, Array<CredentialNeed>, boolean]
+	> = [
+		[{ use: 'integration', name: 'google' }, [prefix], true],
+		[{ use: 'integration', name: 'google-work' }, [prefix], true],
+		[{ use: 'key', key: 'google-work' }, [prefix], true],
+		[{ use: 'integration', name: 'googlework' }, [prefix], false],
+		[{ use: 'integration', name: 'google-' }, [prefix], false],
+		[{ use: 'integration', name: 'google-a b' }, [prefix], false],
+		[{ use: 'integration', name: 'github' }, [prefix], false],
+		[{ use: 'integration', name: 'my-google-work' }, [prefix], false],
+		// The slot kind still decides what it fills.
+		[{ use: 'secret', name: 'google-work', scope: 'user' }, [prefix], false],
+		// Without `prefix` the key is exact.
+		[{ use: 'integration', name: 'google-work' }, [need('google')], false],
+	]
+	for (const [reference, needs, declared] of cases) {
+		expect(
+			isCredentialReferenceDeclared(reference, needs),
+			JSON.stringify(reference),
+		).toBe(declared)
+	}
+
+	const t = await setup()
+	await t.storeSecret(t.acmeId, 'RESEND-live')
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/mailer',
+	})
+	enforcement(true)
+	declare([need('RESEND', { prefix: true })])
+	await expect(
+		t.fill({
+			orgId: t.acmeId,
+			packageId,
+			header: 'Bearer {{secret:RESEND-live}}',
+		}),
+	).resolves.toBe(`Bearer ${keyValue}`)
+	await expect(
+		t.fill({ orgId: t.acmeId, packageId, header: 'Bearer {{secret:OTHER}}' }),
+	).rejects.toMatchObject({ code: 'credential_need_undeclared', key: 'OTHER' })
+})

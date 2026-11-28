@@ -26,7 +26,10 @@ import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { toUnheldSourceView } from '#worker/repo/serving-commit.ts'
-import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
+import {
+	packageCredentialSlotCoversName,
+	type SavedPackageRecord,
+} from '#worker/package-registry/types.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
 import {
 	isSecretProviderNeed,
@@ -161,14 +164,20 @@ export function findDeclaredNeed(
 	}
 	const key = referenceKey(reference)
 	const kinds = fillingKinds(reference)
+	const fills = (need: CredentialNeed) =>
+		// Saved-credential uses never resolve through a provider slot.
+		!isSecretProviderNeed(need) &&
+		(kinds === null || need.kind == null || kinds.includes(need.kind))
 	return (
-		declarations.find(
-			(need) =>
-				need.key === key &&
-				// Saved-credential uses never resolve through a provider slot.
-				!isSecretProviderNeed(need) &&
-				(kinds === null || need.kind == null || kinds.includes(need.kind)),
-		) ?? null
+		declarations.find((need) => need.key === key && fills(need)) ??
+		// A `prefix: true` need also covers its key plus `-suffix`. The exact
+		// slot wins, and the longest prefix after it.
+		declarations
+			.filter(
+				(need) => packageCredentialSlotCoversName(need, key) && fills(need),
+			)
+			.sort((left, right) => right.key.length - left.key.length)[0] ??
+		null
 	)
 }
 
@@ -229,7 +238,7 @@ function undeclaredError(
 	const fix =
 		reference.use === 'provider'
 			? providerFix(reference, declarations)
-			: `Add "${key}" to kody.credentials in its package.json (with a description) and publish again.`
+			: `Add "${key}" to kody.credentials in its package.json (with a description) and publish again. A slot with "prefix": true also covers its key plus "-suffix" names.`
 	return new CredentialNeedUndeclaredError({
 		key,
 		message: `${subject} uses ${describeUse(reference)} without declaring it. ${rule} ${fix}`,

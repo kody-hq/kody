@@ -48,6 +48,7 @@ import {
 	type PackageCredentialKind,
 	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
+	packageCredentialSlotCoversName,
 } from '#worker/package-registry/types.ts'
 import {
 	collectDynamicImportExpressionNodes,
@@ -243,6 +244,7 @@ type ManifestCredentialSlot = {
 	provider?: string
 	package?: string
 	multiple?: boolean
+	prefix?: true
 }
 
 function readManifestCredentialSlots(
@@ -277,6 +279,7 @@ function readManifestCredentialSlots(
 		}
 		if (typeof slot.package === 'string') declared.package = slot.package.trim()
 		if (typeof slot.multiple === 'boolean') declared.multiple = slot.multiple
+		if (slot.prefix === true) declared.prefix = true
 		slots[name] = declared
 	}
 	return slots
@@ -293,6 +296,7 @@ function toInventorySlots(
 			...(slot.kind ? { kind: slot.kind } : {}),
 			...(slot.provider ? { provider: slot.provider } : {}),
 			...(slot.multiple != null ? { multiple: slot.multiple } : {}),
+			...(slot.prefix ? { prefix: true as const } : {}),
 		}
 	}
 	return Object.keys(out).length > 0 ? out : undefined
@@ -302,7 +306,20 @@ function slotDescription(
 	slots: Record<string, ManifestCredentialSlot>,
 	key: string,
 ): string | null {
-	return slots[key]?.description ?? null
+	const exact = slots[key]
+	if (exact?.description != null) return exact.description
+	// A literal name under a `prefix: true` slot is declared by that slot.
+	for (const [name, slot] of Object.entries(slots)) {
+		if (
+			slot.description != null &&
+			// The exact slot's kind is the one the name is used as.
+			(slot.kind == null || slot.kind === exact?.kind) &&
+			packageCredentialSlotCoversName({ key: name, prefix: slot.prefix }, key)
+		) {
+			return slot.description
+		}
+	}
+	return null
 }
 
 type CredentialBindings = {
@@ -477,7 +494,7 @@ const runtimeTypeScriptNodeTypes = new Set([
  * ambient `declare`, or in a type-only export. Such a reference cannot hand
  * the credential function to anything at run time.
  */
-function isErasedTypePosition(ancestors: ReadonlyArray<AstNode>) {
+export function isErasedTypePosition(ancestors: ReadonlyArray<AstNode>) {
 	for (const ancestor of ancestors) {
 		if (
 			ancestor.type.startsWith('TS') &&
@@ -500,7 +517,10 @@ function isErasedTypePosition(ancestors: ReadonlyArray<AstNode>) {
 }
 
 /** `typeof credential` in a runtime expression reads a string, not the value. */
-function isRuntimeTypeofOperand(node: AstNode, parent: AstNode | undefined) {
+export function isRuntimeTypeofOperand(
+	node: AstNode,
+	parent: AstNode | undefined,
+) {
 	return (
 		parent?.type === 'UnaryExpression' &&
 		parent.operator === 'typeof' &&

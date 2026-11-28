@@ -375,3 +375,31 @@ test('a secret-provider slot requires a provider package and no saved-credential
 		}),
 	).toMatch(/kody\.credentials\.github\.package is only valid with kind/)
 })
+
+test('a prefix slot needs a key of 3 characters and a kind that fills by name', () => {
+	const google = { prefix: true, description: 'Google accounts' }
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({ google }),
+		}).kody.credentials,
+	).toEqual({ google })
+	expect(publishError({ go: google })).toMatch(
+		/kody\.credentials\.go\.prefix needs a key of at least 3 characters/,
+	)
+	expect(publishError({ linear: { ...google, kind: 'mcp' } })).toMatch(
+		/kody\.credentials\.linear\.prefix is not valid with kind: "mcp"/,
+	)
+	expect(
+		publishError({ google: { prefix: false, description: 'x' } }),
+	).toBeTruthy()
+	expect(
+		publishError({
+			vault: {
+				kind: 'secret-provider',
+				package: '@acme/op-provider',
+				description: 'x',
+				prefix: true,
+			},
+		}),
+	).toMatch(/vault\.prefix does not apply to kind "secret-provider"/)
+})

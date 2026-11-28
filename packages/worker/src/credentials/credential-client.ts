@@ -706,7 +706,9 @@ async function resolveKey(
 				throw toCredentialClientError(error) ?? error
 			})
 		: null
-	const declaredNeed = declared?.get(key)
+	// A prefix need only permits the use; the key resolves as it did before.
+	const covering = declared?.get(key)
+	const declaredNeed = covering?.key === key ? covering : undefined
 	const need =
 		runNeed ??
 		(declaredNeed ? (savedCredentialNeeds([declaredNeed])[0] ?? null) : null)

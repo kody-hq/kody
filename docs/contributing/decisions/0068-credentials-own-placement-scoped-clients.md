@@ -1290,3 +1290,39 @@ refresh token as a login credential) is
 refresh token saved that way goes only to the sealed token's save hosts, like a
 sealed token saved as a Key (2026-10-28), and package code still cannot save
 one.
+
+## Amendment 2026-11-27: prefix needs for names chosen at run time
+
+Kent decided on 2026-11-27 to make credential-need enforcement safe to turn on
+by migrating packages for their owners
+([#3822](https://github.com/kody-hq/kody/issues/3822),
+[#3833](https://github.com/kody-hq/kody/issues/3833),
+[#3942](https://github.com/kody-hq/kody/issues/3942)). Most packages a rescan
+flagged are integration wrappers that take an account name at run time under the
+`<provider>` / `<provider>-<purpose>` convention (`google`, `google-work`). An
+exact slot list cannot cover them.
+
+- **Declaration.** A `kody.credentials` slot may set `"prefix": true`. It then
+  covers its key and any name that is the key, a hyphen, and a non-empty suffix,
+  as long as the whole name is a valid slot name. It covers nothing else: there
+  is no bare wildcard, the key is at least 3 characters, and kind `mcp`, `url`,
+  and `secret-provider` slots cannot set it.
+- **Enforcement.** Every declared-use check goes through the same lookup, so a
+  prefix need counts for placeholders, `createAuthenticatedFetch`,
+  `credential(key)` / `credentials(key)`, secret mounts, and stamped packages.
+  An exact slot wins over a prefix, then the longest prefix. The slot's kind
+  still decides which uses it fills.
+- **Resolution is unchanged.** A prefix need only permits the use. A covered
+  name resolves by that name as it does for an undeclared name today, and gets
+  no mapping of its own; the exact key keeps its mapping.
+- **Approval.** Turning `prefix` on is a need change that waits for the owner's
+  approval. Turning it off only narrows. A dependency's prefix reaches its
+  importers through the needs closure.
+- **Stamps.** A literal name that a described prefix slot covers needs no slot
+  of its own to seal. The publish gate still fails a name built at run time, so
+  a package that builds names stays unstamped and on the flag path.
+- **Codemod 0013** declares a `prefix: true` slot only where the package's
+  source states the default name or prefix (see
+  [package codemods](../package-codemods.md#0013-declare-credential-needs)). A
+  name outside the declared prefix fails with `credential_need_undeclared` once
+  the flag is on. The flag stays off in this change.

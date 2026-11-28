@@ -304,6 +304,14 @@ Declare `kind` only when the package needs a specific shape:
   example).
 - A second account from the same provider gets its own key with an explicit
   `provider`.
+- A package that picks an account at run time declares the default name with
+  `"prefix": true`: `"google": { "prefix": true, "description": "…" }` covers
+  `google` and any `google-<suffix>` name (`google-work`), and nothing else. The
+  key is at least 3 characters, and `prefix` is not valid with kind `mcp`,
+  `url`, or `secret-provider`. A covered name resolves as it did before: by that
+  name for placeholders and `createAuthenticatedFetch`, and as an undeclared key
+  for `credential(key)`. Turning `prefix` on waits for the owner's approval like
+  a new need.
 - Needs have no hosts or inject fields (those belong to the credential). An
   optional `placement` on a need is the reviewable default for package-scope
   secrets that need inserts as that name (Connect / `secretSet` when no row
