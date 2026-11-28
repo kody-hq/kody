@@ -28,7 +28,6 @@ export function handleEmailLocalPreview(slug: string) {
 	return `${slug}@`
 }
 
-export function handlePermanenceConfirmMessage(slug: string) {
-	const handle = slug.trim().toLowerCase() || 'your-username'
-	return `You're choosing ${handle}. You can't change this later. Submit again to create your account.`
-}
+/** Form status on the signup confirm step; the field announces permanence. */
+export const signupConfirmSubmitAgainMessage =
+	'Submit again to create your account.'

@@ -12,11 +12,18 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { EmailVerificationOutcome } from '#universal/token-outcomes.ts'
+import { useShellData } from '../routes/__root.tsx'
 
 export function VerifyEmailRoute({ data }: { data: EmailVerificationOutcome }) {
 	const isEmailChange = data.ok && data.kind === 'email_change'
 	const isEmailClaimRelease = data.ok && data.kind === 'email_claim_release'
 	const isEmailDestination = data.kind === 'email_destination'
+	const { session } = useShellData()
+	const offersResend =
+		!data.ok &&
+		data.kind === 'email_verify' &&
+		session !== null &&
+		!session.emailVerified
 	const title = data.ok
 		? isEmailChange
 			? 'Email changed'
@@ -104,6 +111,11 @@ export function VerifyEmailRoute({ data }: { data: EmailVerificationOutcome }) {
 						flexWrap: 'wrap',
 					}}
 				>
+					{offersResend ? (
+						<Button href="/pending-verification" variant="primary" size="md">
+							Resend verification email
+						</Button>
+					) : null}
 					{data.ok || isEmailDestination ? (
 						<Button href={ctaHref} variant="primary" size="md">
 							{ctaLabel}

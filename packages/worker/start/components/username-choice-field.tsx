@@ -158,7 +158,7 @@ export function UsernameChoiceField(props: {
 	describedBy?: string
 	invalid?: boolean
 	statusId?: string
-	/** When true, show the confirm-step permanence restatement under the field. */
+	/** When true, announce the confirm-step permanence restatement under the field. */
 	confirming?: boolean
 }) {
 	const generatedId = useId()
@@ -281,12 +281,18 @@ export function UsernameChoiceField(props: {
 					</ul>
 				) : null}
 			</div>
-			{props.confirming ? (
-				<p css={confirmCss} data-testid="username-permanence-confirm">
-					You're choosing <strong>{preview}</strong>.{' '}
-					{signupUsernamePermanentNote}
-				</p>
-			) : null}
+			<p
+				role="status"
+				css={confirmCss}
+				data-testid="username-permanence-confirm"
+			>
+				{props.confirming ? (
+					<>
+						You're choosing <strong>{preview}</strong>.{' '}
+						{signupUsernamePermanentNote}
+					</>
+				) : null}
+			</p>
 		</div>
 	)
 }
@@ -433,8 +439,11 @@ const suggestionButtonCss: CSSObject = {
 	},
 }
 
+// The live region stays mounted so screen readers announce the confirm
+// line; while empty it leaves the grid so it adds no gap.
 const confirmCss: CSSObject = {
 	margin: 0,
+	'&:empty': { position: 'absolute' },
 	fontSize: typography.fontSize.sm,
 	lineHeight: 1.4,
 	color: colors.textMuted,

@@ -135,7 +135,10 @@ export function isEmailVerificationResendBlocked(
 }
 
 export type EmailVerificationDeliveryDescription = {
+	/** Title for the person's own verification prompt. */
 	headline: string | null
+	/** Delivery status wording for operators (admin user detail). */
+	statusLabel: string | null
 	detail: string | null
 	canResend: boolean
 	tone: 'info' | 'error'
@@ -151,6 +154,7 @@ const emailVerificationDeliveryHelpLabel =
 
 function describeDelivery(input: {
 	headline: string | null
+	statusLabel?: string
 	detail: string | null
 	canResend: boolean
 	tone: 'info' | 'error'
@@ -159,6 +163,7 @@ function describeDelivery(input: {
 }): EmailVerificationDeliveryDescription {
 	return {
 		headline: input.headline,
+		statusLabel: input.statusLabel ?? input.headline,
 		detail: input.detail,
 		canResend: input.canResend,
 		tone: input.tone,
@@ -231,7 +236,8 @@ export function describeEmailVerificationDelivery(
 			})
 		case 'accepted':
 			return describeDelivery({
-				headline: 'Waiting for delivery confirmation',
+				headline: 'Verification email sent',
+				statusLabel: 'Waiting for delivery confirmation',
 				detail: emailVerificationDeliveryWaitingDetail,
 				canResend: true,
 				tone: 'info',
@@ -241,7 +247,8 @@ export function describeEmailVerificationDelivery(
 			const exhaustive: never = delivery.status
 			void exhaustive
 			return describeDelivery({
-				headline: 'Waiting for delivery confirmation',
+				headline: 'Verification email sent',
+				statusLabel: 'Waiting for delivery confirmation',
 				detail: emailVerificationDeliveryWaitingDetail,
 				canResend: true,
 				tone: 'info',
