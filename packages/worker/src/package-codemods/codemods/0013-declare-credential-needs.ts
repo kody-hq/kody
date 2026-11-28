@@ -446,26 +446,25 @@ async function planDeclarations(
 		if (isPlainObject(slot) && slot.prefix === true) continue
 		addPrefix.push(name)
 	}
-	/** Declared or planned prefix slots that cover `name`, longest first. */
+	/** Declared or planned prefix slots that cover `name`. */
 	const coveringPrefixes = (name: string) =>
 		[
 			...addPrefix,
 			...Object.entries(declaredSlots)
 				.filter(([, slot]) => isPlainObject(slot) && slot.prefix === true)
 				.map(([key]) => key),
-		]
-			.filter((key) => credentialSlotPrefixCoversName(key, name))
-			.sort((left, right) => right.length - left.length)
+		].filter((key) => credentialSlotPrefixCoversName(key, name))
 	const add: Array<string> = []
 	for (const [name, kinds] of [...uses].sort(([left], [right]) =>
 		left.localeCompare(right),
 	)) {
 		const paths = [...(pathsByName.get(name) ?? [])]
-		// As at run time: the exact slot, else a covering prefix slot whose
-		// kind fills the use.
-		const candidates = Object.hasOwn(declaredSlots, name)
-			? [name]
-			: coveringPrefixes(name)
+		// As at run time: the exact slot or a covering prefix slot, whichever
+		// has a kind that fills the use.
+		const candidates = [
+			...(Object.hasOwn(declaredSlots, name) ? [name] : []),
+			...coveringPrefixes(name),
+		]
 		if (candidates.length > 0) {
 			const fills = [...kinds].every((kind) =>
 				candidates.some((candidate) => {

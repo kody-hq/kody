@@ -616,6 +616,7 @@ test('0013 matches a name to the covering prefix slot whose kind fills it', asyn
 			credentials: {
 				acme: { kind: 'secret', description: 'Keys.', prefix: true },
 				'acme-oauth': { kind: 'oauth', description: 'OAuth.', prefix: true },
+				'acme-billing': { kind: 'oauth', description: 'Billing.' },
 			},
 		},
 	)
@@ -653,4 +654,19 @@ test('0013 clears a name the package checks against its prefix before use', asyn
 	expect(unchecked.needsManual).toEqual([
 		{ path: 'index.ts', message: messages.computed },
 	])
+})
+
+test('0013 does not read a return inside a nested callback as the return of the helper', async () => {
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			'function pick(labels: Array<string>) {',
+			"	labels.map((label) => { return 'not a slot: ' + label })",
+			"	return 'acme'",
+			'}',
+			'export const api = (labels: Array<string>) => createAuthenticatedFetch(pick(labels))',
+		].join('\n'),
+	})
+	expect(declaredSlots(result)).toEqual({ acme: slot })
+	expect(result.needsManual).toEqual([])
 })
