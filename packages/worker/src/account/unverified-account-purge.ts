@@ -123,6 +123,8 @@ export type UnverifiedAccountPurgeResult = {
 export type UnverifiedAccountPurgeCandidate = {
 	stableUserId: OwnerId
 	ageDays: number
+	/** The purge would skip this account (`skipped_sole_owner`). */
+	blockedAsSoleOwner: boolean
 }
 
 function cutoffIso(now: Date, millisecondsAgo: number) {
@@ -335,13 +337,25 @@ export async function listUnverifiedAccountPurgeCandidates(input: {
 		...purgeCutoffs(now),
 		batchSize: input.batchSize ?? unverifiedAccountPurgeBatchSize,
 	})
-	return {
-		scanned: page.length,
-		candidates: page.map((account) => ({
+	const candidates: Array<UnverifiedAccountPurgeCandidate> = []
+	for (const account of page) {
+		let blockedAsSoleOwner = false
+		try {
+			await assertUserDeleteNotBlockedAsSoleOwner({
+				db: input.env.APP_DB,
+				userId: account.stable_user_id,
+			})
+		} catch (error) {
+			if (!(error instanceof UserDeleteBlockedSoleOwnerError)) throw error
+			blockedAsSoleOwner = true
+		}
+		candidates.push({
 			stableUserId: account.stable_user_id,
 			ageDays: ageDays(account.created_at, now),
-		})),
+			blockedAsSoleOwner,
+		})
 	}
+	return { scanned: page.length, candidates }
 }
 
 export async function pruneUnverifiedAccounts(input: {

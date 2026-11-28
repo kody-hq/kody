@@ -292,7 +292,13 @@ test('soft-deleted unverified accounts are left to the soft-delete purge and nev
 		await listUnverifiedAccountPurgeCandidates({ env: h.env, now }),
 	).toEqual({
 		scanned: 1,
-		candidates: [{ stableUserId: live.stableUserId, ageDays: 8 }],
+		candidates: [
+			{
+				stableUserId: live.stableUserId,
+				ageDays: 8,
+				blockedAsSoleOwner: false,
+			},
+		],
 	})
 	expect(await h.run()).toEqual(
 		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(live, 8)]),
@@ -705,8 +711,16 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 	expect(page).toEqual({
 		scanned: 2,
 		candidates: [
-			{ stableUserId: fresh.stableUserId, ageDays: 9 },
-			{ stableUserId: staleFence.stableUserId, ageDays: 30 },
+			{
+				stableUserId: fresh.stableUserId,
+				ageDays: 9,
+				blockedAsSoleOwner: false,
+			},
+			{
+				stableUserId: staleFence.stableUserId,
+				ageDays: 30,
+				blockedAsSoleOwner: false,
+			},
 		],
 	})
 	expect(JSON.stringify(page)).not.toContain('@example.com')
@@ -716,6 +730,12 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 	expect(h.auditRows()).toEqual([])
 	expect(await preview(1)).toEqual({
 		scanned: 1,
-		candidates: [{ stableUserId: fresh.stableUserId, ageDays: 9 }],
+		candidates: [
+			{
+				stableUserId: fresh.stableUserId,
+				ageDays: 9,
+				blockedAsSoleOwner: false,
+			},
+		],
 	})
 })

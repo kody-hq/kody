@@ -66,7 +66,7 @@ vi.mock('#worker/identity/schedule-user-lifecycle-event.ts', () => ({
 	scheduleGuestClaimedEvent: vi.fn(),
 }))
 
-const { pruneUnverifiedAccounts } =
+const { listUnverifiedAccountPurgeCandidates, pruneUnverifiedAccounts } =
 	await import('#worker/account/unverified-account-purge.ts')
 const { pruneExpiredGuestAccounts } =
 	await import('#worker/guest/guest-account-purge.ts')
@@ -398,6 +398,49 @@ for (const path of paths) {
 		})
 	})
 }
+
+test('the unverified-account purge preview marks a blocked sole Owner', async () => {
+	const h = createHarness()
+	const person = h.person('stale')
+	const teammate = h.person('teammate', { verified: true })
+	h.teamOrg(person.stableUserId, [[teammate.stableUserId, 'member']])
+
+	const preview = await listUnverifiedAccountPurgeCandidates({
+		env: h.env,
+		now,
+	})
+
+	expect(preview.candidates).toEqual([
+		expect.objectContaining({
+			stableUserId: person.stableUserId,
+			blockedAsSoleOwner: true,
+		}),
+	])
+	expect(h.auditReasons('unverified_account_purge_skipped')).toEqual([])
+})
+
+test('a soft-deleted team org that had another member keeps its restore window', async () => {
+	const h = createHarness()
+	const person = h.person('stale')
+	const teammate = h.person('teammate', { verified: true })
+	const orgId = h.teamOrg(person.stableUserId, [
+		[teammate.stableUserId, 'member'],
+	])
+	const deletedAt = '2026-11-27T00:00:00.000Z'
+	h.sqlite
+		.prepare(`UPDATE orgs SET deleted_at = ? WHERE id = ?`)
+		.run(deletedAt, orgId)
+	h.sqlite
+		.prepare(`UPDATE org_memberships SET deleted_at = ? WHERE org_id = ?`)
+		.run(deletedAt, orgId)
+
+	await pruneUnverifiedAccounts({ env: h.env, now })
+
+	expect(h.personExists(person.stableUserId)).toBe(false)
+	expect(
+		h.sqlite.prepare(`SELECT deleted_at FROM orgs WHERE id = ?`).get(orgId),
+	).toEqual({ deleted_at: deletedAt })
+})
 
 test('deleteUserAccount refuses a person whose sole-member team org was not settled first', async () => {
 	const h = createHarness()
