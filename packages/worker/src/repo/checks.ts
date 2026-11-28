@@ -39,8 +39,9 @@ import {
 } from '#worker/package-runtime/deprecated-invocation-usage.ts'
 import { validateBarePackageImportDeclarations } from '#worker/package-runtime/bare-package-import-declarations.ts'
 import {
-	collectUnresolvedRelativeImports,
+	collectUnbundleableImports,
 	formatUnresolvedRelativeImportsMessage,
+	formatWasmImportsMessage,
 } from './unresolved-relative-imports.ts'
 import {
 	collectStaticKodyPackageImportsFromFiles,
@@ -2412,14 +2413,21 @@ export async function runRepoChecks(input: {
 			) {
 				// Rebuild runs after the tip moves, so refuse imports esbuild
 				// could never resolve before promotion.
-				const unresolvedImports = await collectUnresolvedRelativeImports({
+				const { unresolved, wasm } = await collectUnbundleableImports({
 					files: sourceFiles,
 					entryPoints: bundleTargets.map((target) => target.path),
 				})
-				if (unresolvedImports.length > 0) {
+				if (unresolved.length > 0 || wasm.length > 0) {
 					return {
 						ok: false,
-						message: formatUnresolvedRelativeImportsMessage(unresolvedImports),
+						message: [
+							unresolved.length > 0
+								? formatUnresolvedRelativeImportsMessage(unresolved)
+								: '',
+							formatWasmImportsMessage(wasm),
+						]
+							.filter(Boolean)
+							.join(' '),
 					}
 				}
 				return {

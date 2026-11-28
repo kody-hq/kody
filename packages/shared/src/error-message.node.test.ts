@@ -34,3 +34,31 @@ test('cause chains are traversed without looping on cycles', () => {
 	cyclic.cause = cyclic
 	expect(formatErrorCauseChain(cyclic)).toBe('cyclic')
 })
+
+test('getErrorMessage never returns a blank message', () => {
+	const esbuildShaped = Object.assign(new Error(''), {
+		errors: [{ text: 'Unexpected "\\x00"' }, { text: '' }],
+	})
+	expect(getErrorMessage(esbuildShaped)).toBe('Unexpected "\\x00"')
+	expect(
+		getErrorMessage(new Error('  ', { cause: new Error('inner failure') })),
+	).toBe('inner failure')
+	expect(getErrorMessage(new TypeError(''))).toBe(
+		'TypeError (no error message was provided)',
+	)
+	expect(getErrorMessage({ message: '' })).toBe(
+		'Error (no error message was provided)',
+	)
+	const cyclic = new Error('')
+	cyclic.cause = cyclic
+	expect(getErrorMessage(cyclic)).toBe('Error (no error message was provided)')
+	expect(formatErrorCauseChain(new Error('', { cause: new Error('x') }))).toBe(
+		'x',
+	)
+})
+
+test('getErrorMessage escapes NUL characters that truncate transports', () => {
+	expect(getErrorMessage(new Error('Unexpected "\0" here'))).toBe(
+		'Unexpected "\\0" here',
+	)
+})

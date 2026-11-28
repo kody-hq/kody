@@ -35,6 +35,7 @@ import {
 	createNodeModulesResolutionPlugin,
 } from './package-bundle-node-modules.ts'
 import { createPackageAppJsxBundleOptions } from './package-app-tsconfig.ts'
+import { createUnsupportedImportsPlugin } from './package-bundle-unsupported-imports.ts'
 import {
 	createAppEntrypointSource,
 	createExecuteEntrypointSource,
@@ -203,6 +204,7 @@ async function createWorkerBundle(input: {
 		target: executeModuleTarget,
 		...createPackageAppJsxBundleOptions(snapshotFiles),
 		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
+			createUnsupportedImportsPlugin({ files: input.files, side: 'worker' }),
 			kodyRuntimeExternalsPlugin,
 			...(input.linkKodyPackageImports ? [kodyLinkedPackageImportsPlugin] : []),
 			...(input.attachedModulePaths?.size

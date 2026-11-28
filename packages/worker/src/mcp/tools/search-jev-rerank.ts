@@ -595,10 +595,10 @@ async function runJevScoreRequest(
 }
 
 function toJevErrorReason(error: unknown): string {
-	return (
-		oneLine(getErrorMessage(error), jevSearchErrorReasonMaxChars) ||
-		'unknown-jev-error'
-	)
+	if (error instanceof Error && !error.message.trim()) {
+		return 'unknown-jev-error'
+	}
+	return oneLine(getErrorMessage(error), jevSearchErrorReasonMaxChars)
 }
 
 async function runJevViaGateway(
