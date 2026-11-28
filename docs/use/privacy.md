@@ -236,11 +236,12 @@ holds session links, counters, and public package IDs rather than package names
 or source code.
 
 Cloudflare Workers AI picks a work category such as “connect service” from the
-short memory task description or, if it is missing, a task label derived from
-search. The recorder
-[does not persist the memory task description](../../packages/worker/src/session-analytics/session-analytics.node.test.ts);
-the derived search label can be retained in the open-session record. The
-[category labeler](../../packages/worker/src/session-analytics/labeler.ts)
+memory context's task, query, entities, and constraints when provided, or from a
+task label derived from search. The
+[recorder](../../packages/worker/src/session-analytics/record.ts) sends those
+memory context fields to the category model but does not store them in session
+analytics; the derived search label can be retained in the open-session record.
+The [category labeler](../../packages/worker/src/session-analytics/labeler.ts)
 checks the format of a new category name, then asks a second model that sees
 only the proposed name to judge whether it contains user data. If neither an
 existing category nor a new name passes selection, the session can remain
