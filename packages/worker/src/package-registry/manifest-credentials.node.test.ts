@@ -141,6 +141,37 @@ test('needs may omit provider and use the opt-in kinds', () => {
 	).toEqual(credentials)
 })
 
+test('a slot covers key-purpose names only with prefix: true on a name-filled kind', () => {
+	const credentials = {
+		google: { description: 'Google accounts.', prefix: true },
+		openaiApiKey: { kind: 'secret', description: 'OpenAI.', prefix: true },
+	}
+	expect(
+		parseAuthoredPackageJson({ content: manifestWithCredentials(credentials) })
+			.kody.credentials,
+	).toEqual(credentials)
+	for (const value of [false, 'google-', '*']) {
+		expect(
+			publishError({ google: { description: 'x', prefix: value } }),
+		).toMatch(/kody\.credentials prefix takes only true/)
+	}
+	for (const kind of ['mcp', 'url', 'login', 'signing']) {
+		expect(
+			publishError({ google: { kind, description: 'x', prefix: true } }),
+		).toMatch(/kody\.credentials\.google\.prefix applies only to a slot/)
+	}
+	expect(
+		publishError({
+			vault: {
+				kind: 'secret-provider',
+				package: '@acme/op-provider',
+				description: 'x',
+				prefix: true,
+			},
+		}),
+	).toMatch(/kody\.credentials\.vault\.prefix does not apply/)
+})
+
 test('a need opts in to owner credentials for visitors only with true', () => {
 	const credentials = {
 		database: {

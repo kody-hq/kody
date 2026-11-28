@@ -29,6 +29,11 @@ export const credentialNeedSchema = z.object({
 	description: z.string(),
 	multiple: z.boolean(),
 	/**
+	 * The need also covers names that are its key, a hyphen, then a purpose,
+	 * for uses that name a credential (not `credential(key)`).
+	 */
+	prefix: z.literal(true).optional(),
+	/**
 	 * Deprecated legacy alias for `supplier: 'publisher'`, set only by the
 	 * package that declares the need.
 	 * Remove when: no published package declares `ownerCredentialForVisitors`.
@@ -100,6 +105,7 @@ export function ownCredentialNeeds(
 				...(slot.package ? { package: slot.package } : {}),
 				description: slot.description,
 				multiple: slot.multiple === true,
+				...(slot.prefix === true ? { prefix: true as const } : {}),
 				...(slot.ownerCredentialForVisitors
 					? { ownerCredentialForVisitors: true as const }
 					: {}),
@@ -249,6 +255,7 @@ export function mergeCredentialNeeds(input: {
 			...(existing.package ? { package: existing.package } : {}),
 			description: existing.description,
 			multiple,
+			...(existing.prefix || need.prefix ? { prefix: true as const } : {}),
 			...(kind ? { kind } : {}),
 			...(existing.ownerCredentialForVisitors
 				? { ownerCredentialForVisitors: true as const }

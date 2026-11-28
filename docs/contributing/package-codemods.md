@@ -502,6 +502,22 @@ module and imported constants, as in `0010`. A name that `kody.secretMounts`
 also mounts still gets a slot, because the stored needs closure reads only
 `kody.credentials`.
 
+A name built at run time is traced through the package's own source (variables,
+parameters and their call sites inside the package, returned values, and object
+fields, matched by name). The codemod declares each literal the name can be.
+Where the traced value is a literal, a hyphen, then anything
+(`` `${DEFAULT}-${purpose}` ``, `prefix + '-' + account`,
+`{{secret:stripe-${env}}}`), it declares that literal as a `prefix: true` slot,
+or sets `prefix: true` on the slot already declared. It never writes a prefix
+that is not a literal in the source.
+
+Such a name is no longer reported only when every value it can take is one of
+those literals or falls under one of those prefixes. A value from outside the
+package (a parameter of an exported function, an object field, an input) is
+unbounded unless the package checks it with `name.startsWith(prefix)` first. So
+a wrapper with the convention and an unchecked override gets its prefix slot and
+is still reported, as is a name with only a literal default (`name || 'slack'`).
+
 Each new slot has no `kind` and a fixed description the owner can reword.
 Placeholders resolve by name whatever their slot says, so this changes nothing
 at run time. Helpers that resolve outside the gateway (`packageSecrets`,
@@ -513,14 +529,15 @@ at run time. Helpers that resolve outside the gateway (`packageSecrets`,
 login credentials), and the source cannot say which kind a key takes.
 
 The codemod adds no slot and reports `needs_manual` for an undeclared
-`credential()` key, a computed name or key, a vault ref, a name that is not a
-valid slot key, a declared slot whose kind cannot fill the use, and `credential`
-passed around instead of called. A package whose `package.json` does not parse
-is reported too. For a nested package it reads the manifest at the entity
-source's `manifest_path` and only the files under its `source_root`. It uses
-`applyMode: 'published-only'`, so drifted and locked packages are updated
-without moving default-branch HEAD. Publishing stores the new needs closure with
-the approval pause skipped, as for every codemod.
+`credential()` key, a computed `credential()` key, a computed name its source
+does not bound, a vault ref, a name that is not a valid slot key, a declared
+slot whose kind cannot fill the use, and `credential` passed around instead of
+called (`typeof credential` in a type is not a use). A package whose
+`package.json` does not parse is reported too. For a nested package it reads the
+manifest at the entity source's `manifest_path` and only the files under its
+`source_root`. It uses `applyMode: 'published-only'`, so drifted and locked
+packages are updated without moving default-branch HEAD. Publishing stores the
+new needs closure with the approval pause skipped, as for every codemod.
 
 Run it with `filters.scope: 'credential-need-enforcement'`. A rescan with the
 same filter must come back clean before the enforcement flag is turned on.

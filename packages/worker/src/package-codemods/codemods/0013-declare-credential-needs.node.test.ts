@@ -37,7 +37,7 @@ const messages = {
 	declare:
 		'Uses credentials by name that kody.credentials does not declare. Add a kody.credentials slot for each.',
 	computed:
-		'Builds a credential name or credential() key at run time. Declare each credential it can use as a kody.credentials slot by hand.',
+		'Builds a credential name or credential() key at run time, and its source does not bound it to literal names or a "<name>-<purpose>" convention. Declare each credential it can use as a kody.credentials slot by hand (prefix: true on a slot covers "<slot>-<purpose>" names).',
 	vault:
 		'Uses a vault ref ({{secret/provider:ref}}). Declare a kody.credentials slot keyed by the provider by hand.',
 	invalidKey:
@@ -329,4 +329,344 @@ test('0013 findings never carry credential names', async () => {
 	for (const finding of findings) {
 		expect(finding.message).not.toContain('SECRET_NAME_123')
 	}
+})
+
+const prefixSlot = {
+	description:
+		'Used by this package by name: this name, or this name, a hyphen, then an account or purpose. Declared automatically from its source; describe what it is for.',
+	prefix: true,
+}
+
+async function transformFiles(
+	sources: Record<string, string>,
+	kody: Record<string, unknown> = {},
+) {
+	return await declareCredentialNeedsCodemod.transform(
+		{ 'package.json': manifest(kody), ...sources },
+		packageContext,
+	)
+}
+
+test('0013 does not read typeof credential in a type as passing it around', async () => {
+	// The @kody/github shape: one declared key, and a client type.
+	const source = [
+		"import { credential, credentials } from 'kody:runtime'",
+		'type GithubCredentialClient = Awaited<ReturnType<typeof credential>>',
+		'type Many = ReturnType<typeof credentials>',
+		'export type Opener = typeof credential',
+		'let cached: GithubCredentialClient | undefined',
+		'export async function client(): Promise<GithubCredentialClient> {',
+		"	if (typeof credential !== 'function') throw new Error('no runtime')",
+		'	return (cached ??= await credential("github"))',
+		'}',
+	].join('\n')
+	const result = await transform(source, {
+		credentials: { github: { description: 'GitHub.' } },
+	})
+	expect(result.changed).toBe(false)
+	expect(result.needsManual).toEqual([])
+
+	const passed = await transform(
+		`${source}\nexport const open = credential\nexport const all = [credentials]`,
+		{ credentials: { github: { description: 'GitHub.' } } },
+	)
+	expect(passed.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.indirectCredential },
+	])
+})
+
+test('0013 declares a prefix slot for a provider-purpose convention and reports an unchecked override', async () => {
+	// The @kody/google shape: default `google`, or `google-<purpose>`.
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"import { resolveGoogleAccount } from './accounts.ts'",
+			'export async function listFiles(params: { account?: string }) {',
+			'	const account = resolveGoogleAccount(params)',
+			'	const fetch = createAuthenticatedFetch(account.integrationName)',
+			"	return await fetch('https://www.googleapis.com/drive/v3/files')",
+			'}',
+		].join('\n'),
+		'accounts.ts': [
+			"export const DEFAULT_GOOGLE_INTEGRATION = 'google'",
+			'function normalizeIntegrationName(value: string) {',
+			"	return value.trim().toLowerCase().replace(/[\\s_]+/g, '-')",
+			'}',
+			'export function describeGoogleAccount(integrationName: string) {',
+			'	const name = normalizeIntegrationName(integrationName)',
+			'	return { integrationName: name, label: `Google (${name})` }',
+			'}',
+			'export function resolveGoogleAccount(raw: { integration?: string; account?: string } = {}) {',
+			'	const explicit = raw.integration',
+			'	if (explicit && explicit.trim()) return describeGoogleAccount(explicit)',
+			'	const account = raw.account?.trim()',
+			"	if (!account || account === 'default') {",
+			'		return describeGoogleAccount(DEFAULT_GOOGLE_INTEGRATION)',
+			'	}',
+			'	const normalized = normalizeIntegrationName(account)',
+			'	return describeGoogleAccount(`${DEFAULT_GOOGLE_INTEGRATION}-${normalized}`)',
+			'}',
+		].join('\n'),
+	})
+	expect(declaredSlots(result)).toEqual({ google: prefixSlot })
+	// `raw.integration` reaches the fetch with nothing checking it.
+	expect(result.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
+
+	const again = await declareCredentialNeedsCodemod.transform(
+		result.files,
+		packageContext,
+	)
+	expect(again.changed).toBe(false)
+	expect(again.needsManual).toEqual(result.needsManual)
+})
+
+test('0013 declares a prefix slot for each catalog prefix a secret name is built from', async () => {
+	// The @kody/ai shape: a closed prefix set, plus `prefix-account`.
+	const result = await transformFiles(
+		{
+			'index.ts': [
+				"import { secretNameFor, secretPlaceholder } from './validation.ts'",
+				'const providers = {',
+				"	openai: { secretPrefix: 'openaiApiKey' as const },",
+				"	anthropic: { secretPrefix: 'anthropicApiKey' as const },",
+				'}',
+				'export async function chat(input: { provider: keyof typeof providers; account?: string; apiKeySecret?: string }) {',
+				'	const provider = providers[input.provider]',
+				'	const secretName = secretNameFor(provider.secretPrefix, input.account, input.apiKeySecret)',
+				"	return await fetch('https://api.example.com', {",
+				'		headers: { authorization: `Bearer ${secretPlaceholder(secretName)}` },',
+				'	})',
+				'}',
+			].join('\n'),
+			'validation.ts': [
+				"const SECRET_PREFIXES = ['openaiApiKey', 'anthropicApiKey'] as const",
+				'type SecretPrefix = (typeof SECRET_PREFIXES)[number]',
+				'export function secretNameFor(prefix: SecretPrefix, account?: string, override?: string) {',
+				'	if (override != null && override.trim()) {',
+				'		const name = override.trim()',
+				"		if (!SECRET_PREFIXES.some((item) => name === item || name.startsWith(item + '-'))) {",
+				"			throw new Error('apiKeySecret is not allowed.')",
+				'		}',
+				'		return name',
+				'	}',
+				'	const label = account?.trim()',
+				"	return label ? prefix + '-' + label : prefix",
+				'}',
+				'export function secretPlaceholder(secretName: string) {',
+				"	return '{{secret:' + secretName + '}}'",
+				'}',
+			].join('\n'),
+		},
+		{
+			credentials: { openaiApiKey: { kind: 'secret', description: 'OpenAI.' } },
+		},
+	)
+	expect(declaredSlots(result)).toEqual({
+		openaiApiKey: { kind: 'secret', description: 'OpenAI.', prefix: true },
+		anthropicApiKey: prefixSlot,
+	})
+	// `secretNameFor` is exported, so a caller outside could pass any prefix.
+	expect(result.needsManual).toEqual([
+		{ path: 'validation.ts', message: messages.computed },
+	])
+})
+
+test('0013 declares a prefix written into the placeholder and a concatenated one', async () => {
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"const PREFIX = 'linear'",
+			'function connect(workspace: string) {',
+			"	return createAuthenticatedFetch(PREFIX + '-' + workspace)",
+			'}',
+			"export const team = () => connect('team')",
+			'export const header = (env: string) => `Bearer {{secret:stripe-${env}}}`',
+		].join('\n'),
+	})
+	expect(declaredSlots(result)).toEqual({
+		linear: prefixSlot,
+		stripe: prefixSlot,
+	})
+	expect(result.needsManual).toEqual([])
+})
+
+test('0013 declares a literal default and still leaves an unbounded name for the owner', async () => {
+	// The @kody/slack shape: default `slack`, or any string the caller passes.
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			'function resolveIntegrationName(name?: string) {',
+			"	return name?.trim() || 'slack'",
+			'}',
+			'export function post(input: { integration?: string; token?: string }) {',
+			'	const slack = createAuthenticatedFetch(resolveIntegrationName(input.integration))',
+			"	const header = `Bearer {{secret:${input.token ?? 'cloudflareApiToken'}}}`",
+			'	return { slack, header }',
+			'}',
+		].join('\n'),
+	})
+	expect(declaredSlots(result)).toEqual({
+		cloudflareApiToken: slot,
+		slack: slot,
+	})
+	expect(result.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
+})
+
+test('0013 clears a name that only takes literal values and invents no prefix', async () => {
+	const closed = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"const name = process.env.STAGING ? 'acme-staging' : 'acme'",
+			'export const api = createAuthenticatedFetch(name)',
+		].join('\n'),
+	})
+	expect(declaredSlots(closed)).toEqual({ acme: slot, 'acme-staging': slot })
+	expect(closed.needsManual).toEqual([])
+
+	const unbounded = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			'export function api(name: string, region: string) {',
+			'	const a = createAuthenticatedFetch(name)',
+			'	const b = createAuthenticatedFetch(`${name}-${region}`)',
+			"	const c = `{{secret:${region + 'Key'}}}`",
+			'	return { a, b, c }',
+			'}',
+		].join('\n'),
+	})
+	expect(unbounded.changed).toBe(false)
+	expect(unbounded.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
+})
+
+test('0013 treats a name under a declared prefix slot as declared', async () => {
+	const result = await transformFiles(
+		{
+			'index.ts': [
+				"import { createAuthenticatedFetch } from 'kody:runtime'",
+				"export const work = createAuthenticatedFetch('google-work')",
+				"export const key = '{{secret:google-work}}'",
+				"export const other = createAuthenticatedFetch('github')",
+			].join('\n'),
+		},
+		{
+			credentials: {
+				google: { kind: 'oauth', description: 'Google.', prefix: true },
+			},
+		},
+	)
+	expect(Object.keys(declaredSlots(result))).toEqual(['google', 'github'])
+	expect(result.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.kindMismatch },
+	])
+})
+
+test('0013 does not read a parameter that shadows a module constant as that constant', async () => {
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"const name = 'acme'",
+			'const pick = (name: string) => name',
+			'function choose(name: string) {',
+			'	return name',
+			'}',
+			'export function api(input: { a: string; b: string }) {',
+			'	return [',
+			'		createAuthenticatedFetch(pick(input.a)),',
+			'		createAuthenticatedFetch(choose(input.b)),',
+			'	]',
+			'}',
+		].join('\n'),
+	})
+	// Still reported: the passed names are not the constant.
+	expect(result.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
+})
+
+test('0013 keeps the prefix when one variable is both the default and the prefix head', async () => {
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			'function connect(provider: string, account?: string) {',
+			'	return createAuthenticatedFetch(account ? `${provider}-${account}` : provider)',
+			'}',
+			"export const linear = (account?: string) => connect('linear', account)",
+		].join('\n'),
+	})
+	expect(declaredSlots(result)).toEqual({ linear: prefixSlot })
+	expect(result.needsManual).toEqual([])
+})
+
+test('0013 matches a name to the covering prefix slot whose kind fills it', async () => {
+	const result = await transformFiles(
+		{
+			'index.ts': [
+				"import { createAuthenticatedFetch } from 'kody:runtime'",
+				"export const api = createAuthenticatedFetch('acme-oauth-work')",
+				"export const key = '{{secret:acme-billing}}'",
+			].join('\n'),
+		},
+		{
+			credentials: {
+				acme: { kind: 'secret', description: 'Keys.', prefix: true },
+				'acme-oauth': { kind: 'oauth', description: 'OAuth.', prefix: true },
+				'acme-billing': { kind: 'oauth', description: 'Billing.' },
+			},
+		},
+	)
+	expect(result.changed).toBe(false)
+	expect(result.needsManual).toEqual([])
+})
+
+test('0013 clears a name the package checks against its prefix before use', async () => {
+	const source = (check: string) =>
+		[
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			"const DEFAULT = 'google'",
+			'function resolve(input: { integration?: string; account?: string }) {',
+			'	const explicit = input.integration?.trim()',
+			'	if (explicit) {',
+			check,
+			'		return explicit',
+			'	}',
+			'	return input.account ? `${DEFAULT}-${input.account}` : DEFAULT',
+			'}',
+			'export function files(input: { integration?: string; account?: string }) {',
+			'	return createAuthenticatedFetch(resolve(input))',
+			'}',
+		].join('\n')
+	const checked = await transformFiles({
+		'index.ts': source(
+			"		if (explicit !== DEFAULT && !explicit.startsWith(DEFAULT + '-')) throw new Error('Not a Google account.')",
+		),
+	})
+	expect(declaredSlots(checked)).toEqual({ google: prefixSlot })
+	expect(checked.needsManual).toEqual([])
+
+	const unchecked = await transformFiles({ 'index.ts': source('') })
+	expect(declaredSlots(unchecked)).toEqual({ google: prefixSlot })
+	expect(unchecked.needsManual).toEqual([
+		{ path: 'index.ts', message: messages.computed },
+	])
+})
+
+test('0013 does not read a return inside a nested callback as the return of the helper', async () => {
+	const result = await transformFiles({
+		'index.ts': [
+			"import { createAuthenticatedFetch } from 'kody:runtime'",
+			'function pick(labels: Array<string>) {',
+			"	labels.map((label) => { return 'not a slot: ' + label })",
+			"	return 'acme'",
+			'}',
+			'export const api = (labels: Array<string>) => createAuthenticatedFetch(pick(labels))',
+		].join('\n'),
+	})
+	expect(declaredSlots(result)).toEqual({ acme: slot })
+	expect(result.needsManual).toEqual([])
 })

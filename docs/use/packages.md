@@ -185,7 +185,11 @@ credentials; opt-in types (`url`, `login`, `signing`) are in
   optional and defaults to the key; a second account from the same provider gets
   its own key with an explicit `provider`. `description` is required, never
   affects matching, and says why the package wants access. `multiple: true`
-  means the package uses several accounts at once. A typical need looks like
+  means the package uses several accounts at once. `prefix: true` makes the need
+  also cover names that are its key, a hyphen, then a purpose (`google` covers
+  `google-work`) for credentials the package fills by name; see
+  [credentials](../guides/credentials.md#declare-needs-in-kodycredentials). A
+  typical need looks like
   `"github": { "description": "Read PRs to summarize them" }`. When the
   `package-credential-suppliers` flag is on, a need can also declare
   `supplier: "publisher"` or `supplier: "executor"`, and executor needs may set

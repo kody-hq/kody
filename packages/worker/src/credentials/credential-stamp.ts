@@ -477,7 +477,7 @@ const runtimeTypeScriptNodeTypes = new Set([
  * ambient `declare`, or in a type-only export. Such a reference cannot hand
  * the credential function to anything at run time.
  */
-function isErasedTypePosition(ancestors: ReadonlyArray<AstNode>) {
+export function isErasedTypePosition(ancestors: ReadonlyArray<AstNode>) {
 	for (const ancestor of ancestors) {
 		if (
 			ancestor.type.startsWith('TS') &&
@@ -500,7 +500,10 @@ function isErasedTypePosition(ancestors: ReadonlyArray<AstNode>) {
 }
 
 /** `typeof credential` in a runtime expression reads a string, not the value. */
-function isRuntimeTypeofOperand(node: AstNode, parent: AstNode | undefined) {
+export function isRuntimeTypeofOperand(
+	node: AstNode,
+	parent: AstNode | undefined,
+) {
 	return (
 		parent?.type === 'UnaryExpression' &&
 		parent.operator === 'typeof' &&
