@@ -1116,6 +1116,39 @@ and recorded in the org activity log on its own. If the capability set was
 already approved, `packageUpdate` and the settings toggle turn internet-visible
 on immediately without another Approve click.
 
+### Security audit and self-publish
+
+When a request to make the package internet-visible is pending and the published
+version has no [security audit](#security-audit), `packageUpdate` with
+`internet_visible: true` returns `security_audit` next to `approval_url`. The
+**Internet-visible** settings toggle returns `securityAudit` next to
+`approvalUrl`. Each names the operation (`packageSecurityAuditRecord`), its Open
+API route, and the exact `package_id`, `published_commit`, and `fingerprint` to
+record. The agent runs the audit, records it, and then hands you the approval
+link.
+
+The
+[self-publish checks](../../packages/worker/src/package-capabilities/self-publish.node.test.ts)
+require `package:publish`, an empty capability set, and no capability
+declarations in the package or any dependency (no `kody.credentials` slots or
+`secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`, or
+`webhooks`), plus a recorded security audit with verdict `pass` for the current
+published version. `packageUpdate` (and the settings toggle) then turn serving
+on right away; `packageUpdate` returns `self_published: true`. If the audit is
+missing, the request waits (`self_publish_blocker: 'not_audited'`); recording a
+passing audit with `packageSecurityAuditRecord` re-evaluates it and
+self-publishes then, and so does calling `packageUpdate` again. The org activity
+log records it as `package.went_public.self_publish`. The
+[self-publish credential guard](../../packages/worker/src/credentials/self-published-package-guard.node.test.ts)
+blocks credential resolution while the package stays public this way. To give it
+credentials, declare them, publish, turn internet-visible off, and approve
+turning it on again. When something blocks self-publish, `packageUpdate` returns
+the `approval_url` and a `self_publish_blocker` that says why (`unpublished`,
+`stale_dependencies` (a dependency republished since this package was published;
+publish it again), `declares_credentials`, `declares_capabilities`,
+`not_audited`, `audit_concerns`, or `not_permitted` when the caller cannot
+publish the package).
+
 ### Held publishes
 
 Republishing an approved internet-visible app does not interrupt anyone.
@@ -1164,35 +1197,6 @@ approve it, use local dev or a dev check.
 
 Apps that are not internet-visible switch to each new version as soon as it
 finishes building.
-
-When the published version has no [security audit](#security-audit) yet, both
-responses also return the next step for the agent. `packageUpdate` returns
-`security_audit` next to `approval_url`; the settings toggle returns
-`securityAudit` next to `approvalUrl`. Each names the operation
-(`packageSecurityAuditRecord`), its Open API route, and the exact `package_id`,
-`published_commit`, and `fingerprint` to record. The agent runs the audit,
-records it, and then hands you the approval link.
-
-An agent can make a package internet-visible on its own (self-publish) when the
-capability set the owner would approve is empty, the package and every package
-it depends on declare nothing (no `kody.credentials` slots and no
-`secretMounts`, `secretProvider`, `subscriptions`, `emits`, `jobs`, or
-`webhooks`), and a security audit with verdict `pass` is recorded for the
-current published version. `packageUpdate` (and the settings toggle) then turn
-serving on right away; `packageUpdate` returns `self_published: true`. If the
-audit is missing, the request waits (`self_publish_blocker: 'not_audited'`);
-recording a passing audit with `packageSecurityAuditRecord` re-evaluates it and
-self-publishes then, and so does calling `packageUpdate` again. The org activity
-log records it as `package.went_public.self_publish`. A self-published package
-cannot use any credential while it stays public this way, even one it declares
-later. To give it credentials, declare them, publish, turn internet-visible off,
-and approve turning it on again. Agents cannot self-approve a non-empty
-capability set. When anything is declared or listed, `packageUpdate` returns the
-`approval_url` and a `self_publish_blocker` that says why (`unpublished`,
-`stale_dependencies` (a dependency republished since this package was published;
-publish it again), `declares_credentials`, `declares_capabilities`,
-`not_audited`, `audit_concerns`, or `not_permitted` when the caller cannot
-publish the package).
 
 ## Approve many changes at once
 
